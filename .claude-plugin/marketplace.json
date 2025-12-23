@@ -24,7 +24,6 @@
         "repo": "yacchi/backlog-cli"
       },
       "description": "Backlog CLI integration for Claude Code - Manage issues, PRs, and wikis from terminal",
-      "version": "0.1.0",
       "category": "integration",
       "tags": ["backlog", "cli", "project-management", "issue-tracker"]
     }
