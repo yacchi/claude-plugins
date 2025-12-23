@@ -1,0 +1,21 @@
+{
+  "name": "yacchi-plugins",
+  "metadata": {
+    "description": "A curated collection of Claude Code plugins for productivity and development workflows",
+    "version": "0.1.0",
+    "pluginRoot": "./plugins"
+  },
+  "owner": {
+    "name": "yacchi"
+  },
+  "plugins": [
+    {
+      "name": "hello-world",
+      "source": "./plugins/hello-world",
+      "description": "A simple example plugin demonstrating the plugin structure",
+      "version": "1.0.0",
+      "category": "example",
+      "tags": ["example", "demo", "starter"]
+    }
+  ]
+}
