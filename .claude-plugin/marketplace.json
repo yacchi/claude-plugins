@@ -16,6 +16,14 @@
       "version": "1.0.0",
       "category": "example",
       "tags": ["example", "demo", "starter"]
+    },
+    {
+      "name": "backlog-cli",
+      "source": "github:yacchi/backlog-cli",
+      "description": "Backlog CLI integration for Claude Code - Manage issues, PRs, and wikis from terminal",
+      "version": "0.1.0",
+      "category": "integration",
+      "tags": ["backlog", "cli", "project-management", "issue-tracker"]
     }
   ]
 }
