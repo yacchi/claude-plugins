@@ -20,8 +20,8 @@
     {
       "name": "backlog-cli",
       "source": {
-        "source": "github",
-        "repo": "yacchi/backlog-cli"
+        "source": "url",
+        "url": "https://github.com/yacchi/backlog-cli.git"
       },
       "description": "Backlog CLI integration for Claude Code - Manage issues, PRs, and wikis from terminal",
       "category": "integration",
