@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "orchestra",
+  "version": "0.1.0",
+  "description": "Cost-tiered multi-agent orchestration: expensive instructor, cheap workers, adversarial verifiers",
+  "author": {
+    "name": "fujie"
+  },
+  "keywords": ["orchestration", "subagents", "cost-optimization", "workflow", "multi-agent"],
+  "license": "MIT"
+}

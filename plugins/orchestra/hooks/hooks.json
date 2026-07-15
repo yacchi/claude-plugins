@@ -1,0 +1,19 @@
+{
+  "description": "Injects the orchestra routing protocol (express vs orchestrated lane) at session start and re-injects it after /clear, resume, and compaction",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/inject-router.sh"],
+            "timeout": 10,
+            "statusMessage": "Injecting orchestra router..."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "tiers": {
+    "worker": "haiku",
+    "hard_worker": "opus",
+    "verifier": "sonnet"
+  },
+  "external_executors": {
+    "codex": {
+      "enabled": true,
+      "dispatch": "agent",
+      "agent_type": "codex:codex-rescue",
+      "roles": ["worker", "independent-verifier"]
+    },
+    "copilot": {
+      "enabled": false,
+      "dispatch": "cli",
+      "command": "copilot -p {promptfile} --allow-all-tools",
+      "roles": ["worker"]
+    }
+  }
+}

@@ -18,6 +18,14 @@
       "tags": ["example", "demo", "starter"]
     },
     {
+      "name": "orchestra",
+      "source": "./plugins/orchestra",
+      "description": "Cost-tiered multi-agent orchestration: expensive instructor, cheap workers, adversarial verifiers",
+      "version": "0.1.0",
+      "category": "productivity",
+      "tags": ["orchestration", "subagents", "cost-optimization", "workflow", "multi-agent"]
+    },
+    {
       "name": "backlog-cli",
       "source": {
         "source": "url",
