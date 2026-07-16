@@ -196,11 +196,12 @@ When rework needs multiple rounds of back-and-forth, do not spawn a fresh `orche
 
 ## 9. Configuration file and external executors
 
-At the start of every orchestration, the instructor resolves configuration from up to three layers, merged in this order (later layers win):
+At the start of every orchestration, the instructor resolves configuration from up to four layers, merged in this order (later layers win):
 
 1. **Defaults**: worker: haiku, hard_worker: opus, verifier: sonnet; no external executors.
 2. **User**: `~/.claude/orchestra.yaml` (or `.yml`), if present.
-3. **Project**: `.claude/orchestra.yaml` (or `.yml`), if present.
+3. **Project**: `.claude/orchestra.yaml` (or `.yml`), if present — checked into git, shared with the team.
+4. **Project-local**: `.claude/orchestra.local.yaml` (or `.yml`), if present — this developer's personal override for this one project. Mirrors Claude Code's own `settings.json` / `settings.local.json` split; never commit this file (see `setup` SKILL.md §1).
 
 This is a **deep merge**, not a first-found-wins lookup: object/mapping keys are merged recursively key-by-key, so a project file only needs to state the keys it actually wants to change — e.g. a project override of just `external_executors.copilot.enabled: true` inherits everything else (codex's whole block, copilot's `model_policy`, etc.) from the user config or defaults. Scalars and arrays are replaced wholesale by the more specific layer, not concatenated or element-merged. An explicit `null`/`~` is a value, not "reset to default" — omit the key entirely to inherit.
 

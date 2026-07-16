@@ -1,17 +1,21 @@
 # orchestra configuration
 #
 # Copy this file to one of:
-#   .claude/orchestra.yaml    (project scope — checked into the repo, shared with the team)
-#   ~/.claude/orchestra.yaml  (user scope — personal default across all projects)
+#   .claude/orchestra.yaml        (project scope — checked into the repo, shared with the team)
+#   .claude/orchestra.local.yaml  (project-local scope — this repo, this developer only; never
+#                                  commit it. Mirrors Claude Code's own settings.json/
+#                                  settings.local.json split. Add it to the repo's .gitignore.)
+#   ~/.claude/orchestra.yaml      (user scope — personal default across all projects)
 #
-# `.yml` is also recognized as an alias for `.yaml` at either scope.
+# `.yml` is also recognized as an alias for `.yaml` at any of the three scopes.
 #
-# Effective config = deep-merge(built-in defaults, user config, project config), in that
-# order — later layers win key-by-key. A project file only needs to name the keys it wants
-# to override; everything else is inherited from the user config (or the built-in defaults
-# below if there is no user config either). See the `run` skill's SKILL.md §9 for the
-# exact algorithm and `setup` for a skill that can author this file for you interactively
-# (detects Codex/Copilot, asks which scope to write to, edits in place).
+# Effective config = deep-merge(built-in defaults, user config, project config, project-local
+# config), in that order — later layers win key-by-key. Each file only needs to name the keys
+# it wants to override; everything else is inherited from the previous layer (or the built-in
+# defaults below if nothing else sets it). See the `run` skill's SKILL.md §9 for the exact
+# algorithm and `setup` for a skill that can author this file for you interactively (detects
+# Codex/Copilot, asks which scope to write to, edits in place, and offers to gitignore
+# project-local files).
 #
 # Example project override that changes nothing except turning Copilot on for this repo:
 #

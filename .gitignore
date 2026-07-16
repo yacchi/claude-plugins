@@ -12,6 +12,10 @@ Thumbs.db
 # Claude Code local settings
 .claude/settings.local.json
 
+# orchestra: personal project-local config, not shared with the team
+.claude/orchestra.local.yaml
+.claude/orchestra.local.yml
+
 # Node modules (if any plugins use npm)
 node_modules/
 
