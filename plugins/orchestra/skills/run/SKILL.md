@@ -1,10 +1,10 @@
 ---
-name: orchestrate
-description: Playbook for cost-tiered multi-agent delegation. An expensive instructor model (Fable/Opus) only decomposes tasks and writes Workflow scripts; execution is delegated to a cheap tier — Haiku workers, then Sonnet verifiers running adversarial checks, then feedback-driven retries on failure — and only structured verdicts flow back to the instructor. Invoke explicitly with /orchestrate, or whenever cost-tiered delegation or large parallel task execution is called for. Also invoked as the ORCHESTRATED lane by the <orchestra-router> protocol this plugin injects at SessionStart.
+name: run
+description: Playbook for cost-tiered multi-agent delegation. An expensive instructor model (Fable/Opus) only decomposes tasks and writes Workflow scripts; execution is delegated to a cheap tier — Haiku workers, then Sonnet verifiers running adversarial checks, then feedback-driven retries on failure — and only structured verdicts flow back to the instructor. Invoke explicitly with /run (or, cross-plugin, `orchestra:run`), or whenever cost-tiered delegation or large parallel task execution is called for. Also invoked as the ORCHESTRATED lane by the <orchestra-router> protocol this plugin injects at SessionStart.
 when_to_use: Use when delegating multiple tasks in parallel to cheap models, when building a Haiku-worker + Sonnet-adversarial-verifier pipeline, or when the instructor (main session) must receive only structured verdicts — never logs, diffs, or intermediate artifacts — in its context.
 ---
 
-# orchestrate: cost-tiered orchestration
+# run: cost-tiered orchestration
 
 The reader of this skill is the **instructor agent** of the main session (an expensive model such as Fable or Opus). This skill defines the instructor's own code of conduct and how to write the Workflow scripts (or, as a fallback, the nested-subagent hierarchy) that carry out execution.
 
@@ -204,7 +204,7 @@ At the start of every orchestration, the instructor resolves configuration from 
 
 This is a **deep merge**, not a first-found-wins lookup: object/mapping keys are merged recursively key-by-key, so a project file only needs to state the keys it actually wants to change — e.g. a project override of just `external_executors.copilot.enabled: true` inherits everything else (codex's whole block, copilot's `model_policy`, etc.) from the user config or defaults. Scalars and arrays are replaced wholesale by the more specific layer, not concatenated or element-merged. An explicit `null`/`~` is a value, not "reset to default" — omit the key entirely to inherit.
 
-The format is YAML, not JSON, specifically so the file can carry comments (JSON can't). `.claude/orchestra.json` / `~/.claude/orchestra.json` (the pre-YAML format) are no longer read — use the `orchestrate-config` skill to convert an old one.
+The format is YAML, not JSON, specifically so the file can carry comments (JSON can't). `.claude/orchestra.json` / `~/.claude/orchestra.json` (the pre-YAML format) are no longer read — use the `setup` skill (`orchestra:setup`) to convert an old one.
 
 A copy of the schema, fully commented, ships with this plugin at `examples/orchestra.yaml`. Full shape:
 
@@ -243,7 +243,7 @@ external_executors:
       worker: { model: gpt-5.6-luna, effort: medium }
 ```
 
-To set this up interactively (detect whether Codex/Copilot are actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `orchestrate-config` skill instead of hand-editing — see its own SKILL.md.
+To set this up interactively (detect whether Codex/Copilot are actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `setup` skill instead of hand-editing — see its own SKILL.md.
 
 **`tiers`** overrides the model-tier defaults of section 3. Values are model aliases (or full model IDs) used wherever this skill says haiku/opus/sonnet for the respective role.
 

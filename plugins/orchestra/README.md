@@ -21,7 +21,7 @@ Instructor (Fable / Opus) ── classifies each request (router injected at Ses
   │     (haiku/sonnet), instructor reviews, no verifier pipeline.  │
   │   → scope moves mid-flight? abort → re-route to ORCHESTRATED.  │
   │                                                                 │
-  └─ ORCHESTRATED lane (the `orchestrate` skill)                   │
+  └─ ORCHESTRATED lane (the `orchestra:run` skill)                 │
       │  decomposes tasks, defines contracts, writes the script     │
       │  NEVER reads implementation files, NEVER sees logs/diffs    │
       ▼                                                             │
@@ -41,7 +41,7 @@ Instructor (Fable / Opus) ── classifies each request (router injected at Ses
 
 Two execution paths are supported:
 
-1. **Dynamic Workflows** (preferred, when available): the instructor writes a pure-JavaScript workflow script using `agent()` and `pipeline()`. See `skills/orchestrate/SKILL.md` for the template.
+1. **Dynamic Workflows** (preferred, when available): the instructor writes a pure-JavaScript workflow script using `agent()` and `pipeline()`. See `skills/run/SKILL.md` for the template.
 2. **Nested subagents** (fallback, when Workflows are unavailable): the instructor spawns `orchestra-delegate`, which internally spawns `orchestra-worker` and `orchestra-verifier` and manages the retry loop itself, reporting back only a structured verdict.
 
 **The one rule that matters in both paths**: every agent invocation must explicitly set `model` or `agentType`. Omitting both causes the spawned agent to silently inherit the session's (expensive) model, which defeats the entire cost-tiering strategy.
@@ -54,13 +54,13 @@ Two execution paths are supported:
 | `agents/orchestra-hard-worker.md` | Design-sensitive implementation worker for tasks with real design latitude (algorithm choice, API shape, tradeoffs). Decides within the contract's bounds and reports decisions with rationale. | Opus |
 | `agents/orchestra-verifier.md` | Adversarial verifier. Re-runs the worker's tests, writes ≥3 adversarial edge-case tests of its own, returns a strict verdict. | Sonnet |
 | `agents/orchestra-delegate.md` | Middle-manager fallback for environments without Dynamic Workflows. Holds context across retry rounds, drives worker→verifier→retry, escalates only genuine ambiguity. | Sonnet |
-| `skills/orchestrate/SKILL.md` | The playbook. Read by the instructor. Express-lane criteria, model tier table, the workflow template, worker-prompt-writing guidance, the fallback pattern, and a short pointer into the external-executor policy below. Kept deliberately lean (English, for token efficiency) — detail lives in `references/`. | — |
-| `skills/orchestrate-config/SKILL.md` | Companion config skill (`/orchestrate-config`). Detects Codex/Copilot CLI + agent availability, then interactively edits `.claude/orchestra.yaml` (project) or `~/.claude/orchestra.yaml` (user) — enabling/disabling executors, choosing scope, and migrating an old `orchestra.json`. Never runs the pipeline itself. | — |
-| `skills/orchestrate/references/external-executors.md` | Operational reference for external executors (Japanese) — Codex's Sol/Terra/Luna + effort policy, Copilot's model catalog and CLI usage recipes (including session continuation), and official per-token pricing for Codex/Copilot/Claude. Not loaded automatically; read on demand when actually dispatching to Codex/Copilot. | — |
-| `skills/orchestrate/references/poc-findings.md` | The full research log behind the external-executor model policy (Japanese) — every PoC round, bug found, and policy change, with the reasoning. Not loaded automatically; read on demand. | — |
-| `skills/orchestrate/references/poc-fixtures/` | Reusable fixtures for every PoC round (task specs, verification harnesses, reference/buggy implementations) so a new model can be re-tested and compared without rebuilding anything from scratch. See its own `README.md` for exact reproduction commands. | — |
+| `skills/run/SKILL.md` | The playbook (`/run`, or `orchestra:run` cross-plugin). Read by the instructor. Express-lane criteria, model tier table, the workflow template, worker-prompt-writing guidance, the fallback pattern, and a short pointer into the external-executor policy below. Kept deliberately lean (English, for token efficiency) — detail lives in `references/`. | — |
+| `skills/setup/SKILL.md` | Companion config skill (`/setup`, or `orchestra:setup` cross-plugin). Detects Codex/Copilot CLI + agent availability, then interactively edits `.claude/orchestra.yaml` (project) or `~/.claude/orchestra.yaml` (user) — enabling/disabling executors, choosing scope, and migrating an old `orchestra.json`. Never runs the pipeline itself. | — |
+| `skills/run/references/external-executors.md` | Operational reference for external executors (Japanese) — Codex's Sol/Terra/Luna + effort policy, Copilot's model catalog and CLI usage recipes (including session continuation), and official per-token pricing for Codex/Copilot/Claude. Not loaded automatically; read on demand when actually dispatching to Codex/Copilot. | — |
+| `skills/run/references/poc-findings.md` | The full research log behind the external-executor model policy (Japanese) — every PoC round, bug found, and policy change, with the reasoning. Not loaded automatically; read on demand. | — |
+| `skills/run/references/poc-fixtures/` | Reusable fixtures for every PoC round (task specs, verification harnesses, reference/buggy implementations) so a new model can be re-tested and compared without rebuilding anything from scratch. See its own `README.md` for exact reproduction commands. | — |
 | `hooks/hooks.json` + `hooks/inject-router.sh` | Auto-activation. Injects the `<orchestra-router>` lane-classification protocol into context at session start and re-injects it after `/clear`, resume, and compaction. | — |
-| `examples/orchestra.yaml` | Sample configuration file (YAML, fully commented). Copy to `.claude/orchestra.yaml` (project) or `~/.claude/orchestra.yaml` (user) to override model tiers and declare external executors, or use `/orchestrate-config` to author it interactively. | — |
+| `examples/orchestra.yaml` | Sample configuration file (YAML, fully commented). Copy to `.claude/orchestra.yaml` (project) or `~/.claude/orchestra.yaml` (user) to override model tiers and declare external executors, or use `/setup` to author it interactively. | — |
 
 ## Installation
 
@@ -89,7 +89,7 @@ claude plugin validate .
 Once installed and enabled, the plugin's `SessionStart` hook (`hooks/hooks.json`) runs `hooks/inject-router.sh`, whose stdout is added to Claude's context. The injected `<orchestra-router>` block tells the session to classify **each** user request into one of two lanes before acting:
 
 - **EXPRESS**: one self-contained change (or conversational/read-only), no decomposition, no design decisions, small expected context bloat. File count is explicitly *not* a criterion — incidental doc updates may ride along. Handled directly or via a single disposable cheap subagent, with no verifier pipeline. If scope or success criteria move mid-flight, express is aborted and the task re-routes to the orchestrated lane. (Lane criteria ported from `discus0434/customizable-agent-teams`.)
-- **ORCHESTRATED**: everything else, and *whenever in doubt*. The session loads the `orchestrate` skill and follows the full cost-tiered pipeline.
+- **ORCHESTRATED**: everything else, and *whenever in doubt*. The session loads the `run` skill and follows the full cost-tiered pipeline.
 
 Two design notes:
 
@@ -101,7 +101,7 @@ Two design notes:
 Invoke the playbook explicitly:
 
 ```text
-/orchestrate
+/run
 ```
 
 Or just describe a task that needs cost-tiered delegation to many cheap workers with adversarial checking — Claude can invoke the skill automatically when it recognizes that shape of task, since it isn't marked for manual invocation only.
@@ -114,12 +114,12 @@ The skill instructs the instructor to:
 
 ## Configuration
 
-At the start of each orchestration, the instructor resolves config from three layers, deep-merged in this order (later wins): built-in defaults (haiku/opus/sonnet, no external executors) ← user `~/.claude/orchestra.yaml` ← project `.claude/orchestra.yaml`. Because it's a deep merge and not a first-found-wins lookup, a project file only needs to state the keys it wants to change — e.g. just `external_executors.copilot.enabled: true` — and everything else is inherited. See `examples/orchestra.yaml` for the full schema, and `skills/orchestrate/SKILL.md` §9 for the exact merge algorithm.
+At the start of each orchestration, the instructor resolves config from three layers, deep-merged in this order (later wins): built-in defaults (haiku/opus/sonnet, no external executors) ← user `~/.claude/orchestra.yaml` ← project `.claude/orchestra.yaml`. Because it's a deep merge and not a first-found-wins lookup, a project file only needs to state the keys it wants to change — e.g. just `external_executors.copilot.enabled: true` — and everything else is inherited. See `examples/orchestra.yaml` for the full schema, and `skills/run/SKILL.md` §9 for the exact merge algorithm.
 
 - **`tiers`** overrides the default model for each role (`worker`, `hard_worker`, `verifier`).
-- **`external_executors`** lets non-Claude executors (Codex, Copilot, ...) participate as implementation workers and/or independent verifiers. `dispatch: "agent"` routes through an installed plugin subagent (`agentType`/`subagent_type`), falling back to normal model tiers when the name doesn't resolve; `dispatch: "cli"` runs a non-interactive CLI via a cheap Haiku relay agent so the CLI's output never lands in the instructor's context. Each executor's `model_policy` pins a concrete model+effort per role (Codex: Sol/Terra/Luna; Copilot: its own multi-provider catalog) — see `skills/orchestrate/SKILL.md` §9 for the benchmark-sourced policy and a Copilot CLI usage/session-continuation recipe (Copilot has no dedicated Claude Code skill of its own, unlike Codex).
+- **`external_executors`** lets non-Claude executors (Codex, Copilot, ...) participate as implementation workers and/or independent verifiers. `dispatch: "agent"` routes through an installed plugin subagent (`agentType`/`subagent_type`), falling back to normal model tiers when the name doesn't resolve; `dispatch: "cli"` runs a non-interactive CLI via a cheap Haiku relay agent so the CLI's output never lands in the instructor's context. Each executor's `model_policy` pins a concrete model+effort per role (Codex: Sol/Terra/Luna; Copilot: its own multi-provider catalog) — see `skills/run/SKILL.md` §9 for the benchmark-sourced policy and a Copilot CLI usage/session-continuation recipe (Copilot has no dedicated Claude Code skill of its own, unlike Codex).
 - Safety: `cli` dispatch executes only command templates from the user's own config file — the plugin ships no CLI commands of its own.
-- Use `/orchestrate-config` (`skills/orchestrate-config/SKILL.md`) to set this up interactively instead of hand-editing: it detects whether Codex/Copilot are actually available in this environment, asks which scope (project vs user) to write to, and edits in place without disturbing existing comments. It also handles converting a pre-YAML `orchestra.json`, which is no longer read.
+- Use `/setup` (`skills/setup/SKILL.md`, resolvable cross-plugin as `orchestra:setup`) to set this up interactively instead of hand-editing: it detects whether Codex/Copilot are actually available in this environment, asks which scope (project vs user) to write to, and edits in place without disturbing existing comments. It also handles converting a pre-YAML `orchestra.json`, which is no longer read.
 
 ## PoC results
 
@@ -138,7 +138,7 @@ Verifiers cost roughly 2x the workers' output tokens — the adversarial test au
 
 ## External executor PoC (Codex / Copilot / Claude model comparison)
 
-The model policy in `skills/orchestrate/SKILL.md` §9 (which model/effort to use for Codex, Copilot, and Claude in each role) is backed by a 6-round PoC series, escalating from single-function traps up to a real 3-language (Go/Python/TypeScript) full-stack app, plus two follow-up rounds and a 5-run reproducibility check. Headline results:
+The model policy in `skills/run/SKILL.md` §9 (which model/effort to use for Codex, Copilot, and Claude in each role) is backed by a 6-round PoC series, escalating from single-function traps up to a real 3-language (Go/Python/TypeScript) full-stack app, plus two follow-up rounds and a 5-run reproducibility check. Headline results:
 
 - **5 straight rounds at single-file/small-multi-file scope found zero accuracy differentiation** across Codex/Copilot/Claude's cheapest tiers — including against a task deliberately engineered to catch a model proceeding on a mistaken belief. Cost and speed were the only differentiators.
 - **The first round at real feature scope (3 languages, ~10 files, one shared spec) broke that ceiling**: the cheapest tier of two different providers (Codex `gpt-5.6-luna`/high, Claude Haiku) each produced one distinct, real, narrow bug, while their own mid/high tiers and a same-tier competitor (Copilot's `gpt-5.6-luna`) passed clean.
@@ -148,7 +148,7 @@ The model policy in `skills/orchestrate/SKILL.md` §9 (which model/effort to use
 
 **Bottom line:** cost tier reliably predicted speed throughout, but never reliably predicted correctness at single-file/small-multi-file scope — only once task size crossed into real multi-file, multi-language feature territory did cheap tiers (on every provider tested, eventually including Copilot Luna itself once a large-enough sample was taken) start showing real, if narrow, defects. This is a concrete argument for orchestra's own design: treat the adversarial verifier stage as mandatory once a task exceeds "one small self-contained change," regardless of which model, provider, or effort level implemented the work.
 
-**Full methodology, every round-by-round table, and the reasoning behind each policy change:** [`skills/orchestrate/references/poc-findings.md`](skills/orchestrate/references/poc-findings.md) (Japanese). Read that file rather than this summary before making a model-policy decision that depends on the specific numbers.
+**Full methodology, every round-by-round table, and the reasoning behind each policy change:** [`skills/run/references/poc-findings.md`](skills/run/references/poc-findings.md) (Japanese). Read that file rather than this summary before making a model-policy decision that depends on the specific numbers.
 
 ## Notes on schema conformance
 

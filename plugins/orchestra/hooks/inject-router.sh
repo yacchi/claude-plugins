@@ -50,7 +50,7 @@ File count is NOT a criterion; incidental doc updates may ride along.
   (model: haiku or sonnet). No verifier pipeline, no workflow.
 
 ORCHESTRATED — anything else, or WHENEVER IN DOUBT:
-→ Load the `orchestrate` skill (Skill tool) and follow its playbook:
+→ Load the `orchestra:run` skill (Skill tool) and follow its playbook:
   decompose, write contracts, delegate to cheap workers with adversarial
   verifiers, receive only structured verdicts.
 

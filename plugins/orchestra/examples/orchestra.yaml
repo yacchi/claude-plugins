@@ -9,9 +9,9 @@
 # Effective config = deep-merge(built-in defaults, user config, project config), in that
 # order — later layers win key-by-key. A project file only needs to name the keys it wants
 # to override; everything else is inherited from the user config (or the built-in defaults
-# below if there is no user config either). See orchestrate/SKILL.md §9 for the exact
-# algorithm and for the `orchestrate-config` skill that can author this file for you
-# interactively (detects Codex/Copilot, asks which scope to write to, edits in place).
+# below if there is no user config either). See the `run` skill's SKILL.md §9 for the
+# exact algorithm and `setup` for a skill that can author this file for you interactively
+# (detects Codex/Copilot, asks which scope to write to, edits in place).
 #
 # Example project override that changes nothing except turning Copilot on for this repo:
 #
@@ -19,7 +19,7 @@
 #     copilot:
 #       enabled: true
 
-# Model aliases (or full model IDs) used wherever the orchestrate skill says
+# Model aliases (or full model IDs) used wherever the run skill says
 # haiku/opus/sonnet for the respective role.
 tiers:
   worker: haiku
