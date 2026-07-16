@@ -68,12 +68,18 @@ external_executors:
   copilot:
     enabled: false
     dispatch: cli
+    # NOTE: no --allow-all-tools here, on purpose. Claude Code's Bash safety
+    # classifier blocks permission-bypass flags even when `Bash(copilot:*)` is
+    # allowlisted, so the tool grant must come from the equivalent env var
+    # instead: set COPILOT_ALLOW_ALL=true in Claude Code settings.json `env`
+    # (plus the `Bash(copilot:*)` permission rule). Both are required; /setup
+    # offers to add them. See run skill references/external-executors.md §2.
     command: >-
       copilot -p {promptfile} --model {model} --effort {effort}
-      --allow-all-tools --add-dir {workdir} --output-format json
+      --add-dir {workdir} --output-format json
     resume_command: >-
       copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort}
-      --allow-all-tools --add-dir {workdir} --output-format json
+      --add-dir {workdir} --output-format json
     classes:
       - light
       - standard

@@ -29,9 +29,11 @@ codex exec -m <MODEL_ID> -c model_reasoning_effort=<EFFORT> \
 ```bash
 cd <candidate-dir>
 copilot -p "Read <TASK_FILE> in this directory and implement exactly what it describes." \
-  --model <MODEL_ID> --effort <EFFORT> --allow-all-tools --add-dir "$(pwd)" \
+  --model <MODEL_ID> --effort <EFFORT> --add-dir "$(pwd)" \
   --output-format json > run.jsonl 2> run.stderr
 ```
+
+ツール自動許可は`--allow-all-tools`フラグではなく環境変数`COPILOT_ALLOW_ALL=true`で与える(Claude Code内から再試験する場合、フラグ入りコマンドはBash安全クラシファイアにブロックされる — `external-executors.md` §2参照)。素のターミナルから実行するなら`COPILOT_ALLOW_ALL=true copilot ...`の前置でよい。
 
 コストは`run.jsonl`の`outputTokens`合計のみ取得可能(入力トークンは非公開、下限値としてしか算出できない — `poc-findings.md`の各ラウンドの注意点を参照)。`grep -o '"outputTokens":[0-9]*' run.jsonl | awk -F: '{s+=$2} END{print s}'`で合計を取れる。
 
