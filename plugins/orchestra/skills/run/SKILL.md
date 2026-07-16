@@ -241,6 +241,17 @@ external_executors:
     roles: [worker]
     model_policy:
       worker: { model: gpt-5.6-luna, effort: medium }
+
+role_priority:
+  worker:
+    investigation: [copilot, codex, claude]
+    default: [claude, codex]
+  hard_worker:
+    default: [claude, codex]
+  verifier:
+    default: [claude]
+  independent-verifier:
+    default: [codex]
 ```
 
 To set this up interactively (detect whether Codex/Copilot are actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `setup` skill instead of hand-editing — see its own SKILL.md.
@@ -258,6 +269,8 @@ To set this up interactively (detect whether Codex/Copilot are actually availabl
 - `"independent-verifier"`: as a third-party verification pass in addition to the Claude verifier — useful to avoid single-provider model bias. An independent verifier supplements `orchestra-verifier`; it does not replace the structured-verdict contract, so wrap its output into the same verdict shape.
 
 **`model_policy`** maps each role this executor participates in to a concrete `{ model, effort }` pair to pass to that executor. Without it, the executor runs on its own default model, which defeats the purpose of cost-tiering by external provider just as surely as an unpinned Claude `agent()` call does (rule #4, section 4). Treat this the same way: every external-executor role in `roles` should have a matching `model_policy` entry.
+
+**`role_priority`** declares, per role (and, for `worker`, per task archetype — `investigation` vs `default`), an ordered candidate list to try. Each entry is an `external_executors` key or the `claude` sentinel (the built-in `tiers.<role>` model). The instructor tries candidates left-to-right and drops to the next one only on a **reactive fallback signal**: the current executor is *unavailable* — a rate-limit/usage-window cap (Claude, Codex), credit exhaustion (Copilot), `enabled: false`, an agent/CLI that didn't resolve, or a missing `model_policy` entry. This is the crucial **unavailable-vs-failed** distinction: a task that runs but returns a wrong result is NOT a fallback signal — it stays on the same executor and goes through the normal verify/retry loop. Once an executor is found unavailable in a run it stays skipped for every remaining task in that run (**sticky exhaustion**) — no re-probing. `role_priority` **supersedes `roles` for ordering** when present for a role; `roles` remains the legacy fallback when `role_priority` is absent. Operational detail — per-executor unavailable signals, the Haiku relay's `STATUS:` discriminator, and a JS priority-walk helper — lives in `references/external-executors.md`; read it before implementing fallback logic.
 
 **Safety note:** `cli` dispatch only ever executes command templates that come from the user's own configuration file (`.claude/orchestra.yaml` or `~/.claude/orchestra.yaml`). This plugin ships no CLI commands of its own and must never invent one; if no config file declares a CLI executor, `cli` dispatch is unavailable.
 

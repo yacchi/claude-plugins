@@ -72,26 +72,33 @@ copilot --resume="$SESSION_ID" -p "$(cat FEEDBACK.md)" --model gpt-5.6-luna --ef
   --allow-all-tools --add-dir "$WORKDIR" --output-format json > retry.jsonl
 ```
 
-orchestrateパイプラインの`cli`ディスパッチは、リトライラウンドごとに**新しい**リレーエージェントを生成する設計のため(CLIの出力をinstructorのコンテキストから遠ざけるため)、セッションIDは単一のリレーエージェントの記憶にではなく、*Workflowスクリプト*自体を通じて引き継ぐ必要がある。最初のラウンドのリレーに、回答と一緒にセッションIDを返させ(例: 2行の返信 — 回答、次に`SESSION_ID: <id>`)、スクリプト内でパースして、次のラウンドのリレープロンプトに渡し、`command`の代わりに`resume_command`を使わせる:
+orchestrateパイプラインの`cli`ディスパッチは、リトライラウンドごとに**新しい**リレーエージェントを生成する設計のため(CLIの出力をinstructorのコンテキストから遠ざけるため)、セッションIDは単一のリレーエージェントの記憶にではなく、*Workflowスクリプト*自体を通じて引き継ぐ必要がある。最初のラウンドのリレーに、回答と一緒にセッションIDを返させ、スクリプト内でパースして、次のラウンドのリレープロンプトに渡し、`command`の代わりに`resume_command`を使わせる。
+
+**リレーの返信形式(`STATUS:`判別子)**: `role_priority`のリアクティブ・フォールバック(§4)がCopilotの枯渇/認証/quota切れを検知できるように、リレーエージェントの返信は必ず1行目を`STATUS: ok`または`STATUS: unavailable`にする。`ok`ならその後に回答本文と`SESSION_ID: <id>`行を続け、`unavailable`ならその後に一行の短い理由(quota/credits/auth/rate-limitのいずれか)を続ける。生のCLIログ(jsonlの中身そのもの)はinstructorのコンテキストに絶対に渡さないこと — リレーが読んで判定した結果だけを返す:
 
 ```javascript
 // Round 1: セッションがまだ無いので `command` を使う。
 const first = await agent(
   'Run: copilot -p {promptfile} --model gpt-5.6-luna --effort medium ' +
   '--allow-all-tools --add-dir ' + workdir + ' --output-format json > /tmp/run.jsonl ; ' +
-  'then reply with exactly two lines: the answer from ' +
+  'then inspect the result. Reply with STATUS: ok as the first line if it succeeded, or ' +
+  'STATUS: unavailable if the CLI exited nonzero or the output shows a quota/credit/auth/' +
+  'rate-limit error. If ok, on the following lines give the answer from ' +
   '`jq -r \'select(.type=="assistant.message") | .data.content\' /tmp/run.jsonl | tail -1`, ' +
   'then `SESSION_ID: ` followed by ' +
-  '`jq -r \'select(.type=="result") | .sessionId\' /tmp/run.jsonl`.',
+  '`jq -r \'select(.type=="result") | .sessionId\' /tmp/run.jsonl`. ' +
+  'If unavailable, follow with one short line naming the reason. Never paste raw CLI logs.',
   { label: 'copilot-relay-r1', model: 'haiku', effort: 'low' },
 )
+const statusMatch = /^STATUS:\s*(ok|unavailable)/m.exec(first)
 const sessionId = /SESSION_ID:\s*(\S+)/.exec(first)?.[1]
 
 // Round 2+: 同じセッションを再開する。sessionIdを埋め込んだ `resume_command` を使う。
 const retry = await agent(
   'Run: copilot --resume=' + sessionId + ' -p {promptfile} --model gpt-5.6-luna --effort medium ' +
   '--allow-all-tools --add-dir ' + workdir + ' --output-format json > /tmp/run2.jsonl ; ' +
-  'reply with only the final answer, no logs.',
+  'then inspect the result and reply with STATUS: ok or STATUS: unavailable as the first line ' +
+  '(same rule as round 1), followed by the final answer only — no logs.',
   { label: 'copilot-relay-r2', model: 'haiku', effort: 'low' },
 )
 ```
@@ -123,3 +130,141 @@ GitHubはCopilotモデルの単価を[Models and pricing](https://docs.github.co
 | `haiku`(Haiku 4.5) | $1.00 | $1.25 | $0.10 | $5.00 |
 
 Sonnet 5は2026-08-31以降、入力/出力ともに$3/$15に戻る — その日付以降はこの表を信用する前に再確認すること。Codexと異なり、`Agent`ツールの完了結果は入出力の内訳のない`subagent_tokens`という合算値しか返さないため、Claudeサブエージェント実行のコストは(Codexのような点推定ではなく)全て入力/全て出力の両極からの幅としてしか算出できない。
+
+## 4. 優先度とリアクティブ・フォールバック(role_priority)
+
+`role_priority`は、ロール(と`worker`についてはタスクアーキタイプ)ごとに「試す順序」を宣言するトップレベルの設定キーである。値は`external_executors`のキー(`codex`、`copilot`、...)または組み込みClaude実行を表すsentinel `claude`を並べた順序付きリストで、instructorはこれを左から順に試し、あるエグゼキュータが**unavailable**と判定された時点でのみ次の候補に降格する(=**リアクティブ・フォールバック**)。タスクの実行結果が単に誤っていた場合はフォールバックの対象ではない(後述)。
+
+設定のスキーマは次の通り(§1のCodexティア表・§3のClaude/Copilot単価表と対応させて読むこと):
+
+```yaml
+# Ordered executor preference per role (and, for `worker`, per task archetype).
+# The instructor tries candidates left-to-right and drops to the NEXT one on a
+# *reactive fallback signal*: the current executor is unavailable — NOT the task
+# failing. "Unavailable" = hit a rate-limit / usage-window cap (Claude, Codex),
+# ran out of AI credits / premium requests (Copilot), is `enabled: false`, or
+# its agent/CLI did not resolve in this environment. A task that RUNS but returns
+# a wrong result is NOT a fallback signal — that stays on the SAME executor and
+# goes through the normal verify/retry loop.
+#
+# Entries are an `external_executors` key (`codex`, `copilot`, ...) or the
+# sentinel `claude` (the built-in `tiers.<role>` model). An executor named here
+# must have a matching `model_policy.<role>` on its `external_executors` block,
+# or it is skipped as misconfigured. Once an executor is found unavailable during
+# a run it stays skipped for the rest of THAT run (sticky exhaustion) — do not
+# re-probe it per task.
+#
+# Each role's value is a mapping of task-archetype -> ordered list; `default` is
+# the catch-all. `worker` additionally recognizes `investigation` (read-only
+# exploration / research fan-out, no verifier loop) as distinct from `default`
+# (file-changing implementation that goes through the verify/retry loop). Other
+# roles normally only need `default`.
+#
+# Omit `role_priority` entirely to keep the legacy behavior: the Claude
+# `tiers.<role>` model, with external executors woven in ad hoc per their own
+# `roles` list.
+role_priority:
+  worker:
+    # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated worker
+    # for investigation fan-out. NOTE: copilot ships `enabled: false` below, so
+    # as-shipped this list effectively starts at codex; enable copilot to
+    # actually prefer it (that skip IS the reactive fallback in action).
+    investigation: [copilot, codex, claude]
+    default: [claude, codex]
+  hard_worker:
+    default: [claude, codex]
+  verifier:
+    default: [claude]
+  independent-verifier:
+    default: [codex]
+```
+
+**プロアクティブな残量照会は同梱しない。** `cli`ディスパッチと同じ安全原則により、Copilotの残クレジットやCodex/Claudeの使用ウィンドウ残量を事前に問い合わせるコマンドはこのプラグインには存在せず、今後も追加しない。フォールバックの判定材料は、実際にディスパッチした時点で観測される「unavailableシグナル」だけである。
+
+**unavailable と failed の区別(最重要)。** この2つを混同すると降格ロジックが壊れる:
+
+- **unavailable**(→次の優先度候補に降格し、そのランの残り全体でsticky-skip): レートリミット/使用ウィンドウ上限、AIクレジット/premium requestの枯渇(Copilot)、`enabled: false`、agent/CLI名がこの環境で解決しない、`model_policy.<role>`が欠落している、のいずれか。
+- **failed**(→同じエグゼキュータに留まり、通常のverify/retryループに入る): エグゼキュータは実際に走って何らかの出力を返したが、その結果が誤り/不完全だった場合。「動いたが間違えた」はフォールバック理由にならない — それはそのエグゼキュータの検証・再試行の問題であり、別のエグゼキュータに変えても解決するとは限らないため、まずは同じ系統でリトライさせる。
+
+**エグゼキュータ別のunavailableシグナル(§1・§2・§3で説明した各エグゼキュータの実体と対応):**
+
+- **Claude(`claude`sentinel、`agent()`経由)**: `agent()`が`null`を返す(リトライ後も終了しないエラー)場合をunavailableとみなし、次の候補に降格する。(`null`はユーザーによるagentスキップも意味しうるが、いずれも「先に進む」という結論は同じなので、このオーバーロードは許容する。)
+- **Codex(`dispatch: agent`、`codex:codex-rescue`)**: `codex:codex-rescue`エージェントが`null`/エラーを返した場合、またはリレーされたテキストが使用上限/レートリミット/「resets at」/429系のメッセージを報告した場合。
+- **Copilot(`dispatch: cli`)**: §2で示した安価なHaikuの**リレーエージェント**がCopilot CLIを実行し、その結果(終了コード・出力内容)を検査する。終了コードが非ゼロ、またはエラー/quota/credits/premium-request/認証系のリミット表示が見えた場合にunavailableと報告する。このリレーは生のCLIログをinstructorに渡してはならず、判定結果だけを短く返す。
+
+**リレーの`STATUS:`判別子。** Copilotのようにワーカーがモデル自身の判断でエラーを報告するのではなく「リレーエージェントが後からCLIの結果を検査する」構成では、Workflowスクリプトが機械的に分岐できる目印が必要になる。そのためCopilotリレーの返信は必ず1行目を`STATUS: ok`または`STATUS: unavailable`にする。`ok`の場合はそれに続けて回答本文、さらに(セッション継続が必要なら)`SESSION_ID: <id>`行を返す。`unavailable`の場合はそれに続けて一行の短い理由(quota/credits/auth/rate-limitのいずれか)だけを返す。これは§2で示したセッション継続レシピ(`copilot-relay-r1`/`copilot-relay-r2`)と同一の形式であり、実際に§2のリレープロンプトは`STATUS:`行を必ず含めるよう既に更新済みなので、`role_priority`のフォールバックとセッション継続は同じ1本のリレープロンプトから両方読み取れる。
+
+**sticky exhaustion(枯渇の記憶)。** 1回のオーケストレーション実行の中でunavailableと判定されたエグゼキュータは、`Set`などに記録して以降のすべてのタスクでスキップする。タスクごとに毎回同じエグゼキュータを再プローブしない — 一度枯渇したCopilotが同じランの途中で復活していないか確認する意味はない。
+
+**`role_priority`は`roles`より優先してオーダリングを決める。** `role_priority.<role>`が存在する場合、そのロールの候補集合と順序についてはこちらが正となる。`external_executors.<key>.roles`は後方互換のために残されており、`role_priority`がそのロールに存在しない場合にのみ、従来の「各エグゼキュータの`roles`リストから逆引きして織り込む」方式が適用される。いずれの方式でも、実際のモデル/effort/dispatch設定は`model_policy`から取り、`enabled: false`はどちらの方式でもそのエグゼキュータを無条件に除外する。
+
+**タスクアーキタイプの分類**は分解(decomposition)時点でのinstructorの判断であり、実行時に動的に切り替えるものではない: `investigation`は読み取り専用の調査・研究・コードベース探索的なfan-outで、ファイル変更もverifierループも伴わないもの。`default`はそれ以外すべて(verify/retryループを通るファイル変更を伴う実装)。他のロール(`hard_worker`・`verifier`・`independent-verifier`)は通常`default`だけで十分。
+
+**deep-mergeの注意点は他の設定キーと同じ**: `role_priority`のリストはリストとして扱われるため、より詳細なレイヤ(project設定など)で上書きされると要素単位でマージされず丸ごと置き換わる。部分的に変えたいだけでも、そのロール/アーキタイプの配列は全体を書き直す必要がある。
+
+**Workflowスクリプトでの実装イメージ。** 各候補を実際のディスパッチ手段(Claudeの`agent()`、Codexの`codex:codex-rescue`、Copilotのリレーエージェント)にマップし、戻り値を`{ status: 'ok'|'unavailable', answer?, reason?, sessionId? }`という共通の形に正規化してから、フォールバックのループに渡す:
+
+```javascript
+// candidates: 解決済みの、このロール(+アーキタイプ)向け順序リスト
+// 例: ['copilot', 'codex', 'claude']
+const exhausted = new Set() // このランの間だけ有効なsticky exhaustion
+
+async function runOn(exec, taskPrompt, workdir) {
+  if (exec === 'claude') {
+    const answer = await agent(taskPrompt, { label: 'worker', model: tierModelFor('worker') })
+    if (answer === null) {
+      return { status: 'unavailable', reason: 'agent() returned null (terminal error or skip)' }
+    }
+    return { status: 'ok', answer }
+  }
+
+  if (exec === 'codex') {
+    const answer = await agent(taskPrompt, { label: 'codex-rescue', agent: 'codex:codex-rescue' })
+    if (answer === null) {
+      return { status: 'unavailable', reason: 'codex:codex-rescue returned null' }
+    }
+    if (/usage.?limit|rate.?limit|resets at|\b429\b/i.test(answer)) {
+      return { status: 'unavailable', reason: 'codex usage-limit signal in relayed text' }
+    }
+    return { status: 'ok', answer }
+  }
+
+  if (exec === 'copilot') {
+    // §2の copilot-relay レシピと同じ STATUS: 判別子付きリレー。
+    const reply = await agent(
+      'Run: copilot -p {promptfile} --model gpt-5.6-luna --effort medium ' +
+      '--allow-all-tools --add-dir ' + workdir + ' --output-format json > /tmp/run.jsonl ; ' +
+      'then inspect the result and reply with STATUS: ok or STATUS: unavailable as the ' +
+      'first line (unavailable = nonzero exit or a quota/credit/auth/rate-limit signal), ' +
+      'followed by the answer and SESSION_ID: line on ok, or a one-line reason on unavailable.',
+      { label: 'copilot-relay', model: 'haiku', effort: 'low' },
+    )
+    const status = /^STATUS:\s*(ok|unavailable)/m.exec(reply)?.[1]
+    if (status !== 'ok') {
+      const reason = reply.split('\n').slice(1).join(' ').trim() || 'copilot relay reported unavailable'
+      return { status: 'unavailable', reason }
+    }
+    const sessionId = /SESSION_ID:\s*(\S+)/.exec(reply)?.[1]
+    const answer = reply.replace(/^STATUS:.*\n/, '')
+    return { status: 'ok', answer, sessionId }
+  }
+
+  return { status: 'unavailable', reason: 'unknown or misconfigured executor: ' + exec }
+}
+
+async function dispatchWithFallback(candidates, taskPrompt, workdir) {
+  for (const exec of candidates) {
+    if (exhausted.has(exec)) continue
+    const r = await runOn(exec, taskPrompt, workdir)
+    if (r.status === 'unavailable') {
+      exhausted.add(exec)
+      log(exec + ' unavailable (' + r.reason + ') — falling back')
+      continue
+    }
+    return { exec, ...r }
+  }
+  return { status: 'all-exhausted' }
+}
+```
+
+`runOn`が返す`status`が`'unavailable'`のときだけ`exhausted`に加えて次の候補へ進み、それ以外(`'ok'`)は即座にそのエグゼキュータの結果を採用して呼び出し元(verify/retryループ)に返す。タスクが「動いたが結果が誤り」だった場合の再試行は、この`dispatchWithFallback`の外側 — 同じ`exec`に対する通常のverifier/retryロジック側の責務であり、`role_priority`の降格ロジックには一切関与しない。

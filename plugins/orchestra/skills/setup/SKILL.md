@@ -20,7 +20,7 @@ This skill is a small companion to `run` (see its SKILL.md §9 for the config sc
 Effective config = deep-merge(built-in defaults, user config, project config), applied in that order — later layers win. When explaining this to the user or deciding what to write:
 
 - **Mapping keys merge recursively, key by key.** A project file that sets only `external_executors.copilot.enabled: true` does not need to repeat `codex`'s block or copilot's `model_policy` — those are inherited from the user config (or defaults, if the user has no config either).
-- **Scalars and arrays are replaced wholesale** by the more specific layer, never concatenated or merged element-by-element.
+- **Scalars and arrays are replaced wholesale** by the more specific layer, never concatenated or merged element-by-element. `role_priority.<role>.<archetype>` is a list, so this applies to it too: a project override that wants to move one executor must restate the *entire* ordered list for that role/archetype, not just the one entry it's changing — a partial list silently drops the rest of the priority order, it does not merge with the inherited one.
 - **An explicit `null`/`~` is a value, not "reset to default."** To inherit a key, omit it entirely — don't null it out.
 
 Always write the *smallest* diff that expresses the user's intent: a project override file should contain only the keys being changed at that scope, not a full copy of the schema. Dumping the whole schema into a project file defeats the purpose of layered overrides and makes future user-level changes silently stop applying to that project.
@@ -47,7 +47,7 @@ Check for `.claude/orchestra.json` and `~/.claude/orchestra.json`. If either exi
 
 1. Detect availability (step 3) and check for a legacy JSON config (step 4).
 2. Read whatever `.claude/orchestra.yaml` and `~/.claude/orchestra.yaml` currently exist. Compute and show the user the *effective* merged config (step 2's algorithm), noting for each non-default value which layer it actually comes from (project / user / default).
-3. Ask the user (AskUserQuestion) what to change: which executor(s) to enable/disable, whether to touch model tiers, and — this is the important one — **at which scope**. Default guidance: project scope for anything specific to this repo or team (checked into git, shared), user scope for a durable personal default that should apply everywhere. If the user doesn't already have a config at the scope they pick, that's fine — step 4 of §5 creates it.
+3. Ask the user (AskUserQuestion) what to change: which executor(s) to enable/disable, whether to touch model tiers, whether to set or reorder `role_priority` (e.g. prefer Copilot for investigation-style worker fan-out, with reactive fallback to the next entry — see `run` SKILL.md §9), and — this is the important one — **at which scope**. Default guidance: project scope for anything specific to this repo or team (checked into git, shared), user scope for a durable personal default that should apply everywhere. If the user doesn't already have a config at the scope they pick, that's fine — step 4 of §5 creates it.
 4. Apply the change:
    - Target file doesn't exist yet: create it from `examples/orchestra.yaml` (shipped alongside the `orchestra:run` skill), but **trim it down to only the keys actually being set** — see the "smallest diff" rule in step 2. Keep a short comment on any field whose meaning isn't obvious from the key name alone.
    - Target file exists: use `Edit`, touching only the changed lines. Preserve everything else, comments included.

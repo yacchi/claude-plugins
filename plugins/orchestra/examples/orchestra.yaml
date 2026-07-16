@@ -69,3 +69,43 @@ external_executors:
       worker:
         model: gpt-5.6-luna
         effort: medium
+
+# Ordered executor preference per role (and, for `worker`, per task archetype).
+# The instructor tries candidates left-to-right and drops to the NEXT one on a
+# *reactive fallback signal*: the current executor is unavailable — NOT the task
+# failing. "Unavailable" = hit a rate-limit / usage-window cap (Claude, Codex),
+# ran out of AI credits / premium requests (Copilot), is `enabled: false`, or
+# its agent/CLI did not resolve in this environment. A task that RUNS but returns
+# a wrong result is NOT a fallback signal — that stays on the SAME executor and
+# goes through the normal verify/retry loop.
+#
+# Entries are an `external_executors` key (`codex`, `copilot`, ...) or the
+# sentinel `claude` (the built-in `tiers.<role>` model). An executor named here
+# must have a matching `model_policy.<role>` on its `external_executors` block,
+# or it is skipped as misconfigured. Once an executor is found unavailable during
+# a run it stays skipped for the rest of THAT run (sticky exhaustion) — do not
+# re-probe it per task.
+#
+# Each role's value is a mapping of task-archetype -> ordered list; `default` is
+# the catch-all. `worker` additionally recognizes `investigation` (read-only
+# exploration / research fan-out, no verifier loop) as distinct from `default`
+# (file-changing implementation that goes through the verify/retry loop). Other
+# roles normally only need `default`.
+#
+# Omit `role_priority` entirely to keep the legacy behavior: the Claude
+# `tiers.<role>` model, with external executors woven in ad hoc per their own
+# `roles` list.
+role_priority:
+  worker:
+    # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated worker
+    # for investigation fan-out. NOTE: copilot ships `enabled: false` below, so
+    # as-shipped this list effectively starts at codex; enable copilot to
+    # actually prefer it (that skip IS the reactive fallback in action).
+    investigation: [copilot, codex, claude]
+    default: [claude, codex]
+  hard_worker:
+    default: [claude, codex]
+  verifier:
+    default: [claude]
+  independent-verifier:
+    default: [codex]
