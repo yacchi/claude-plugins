@@ -23,12 +23,20 @@
 #     copilot:
 #       enabled: true
 
-# Model aliases (or full model IDs) used wherever the run skill says
-# haiku/opus/sonnet for the respective role.
+# Capability/performance classes and verification roles, each mapped to a Claude
+# model alias (or full model ID). The implementation classes (light/standard/deep)
+# describe how hard the work is; the review role names the verification function.
+# Both live here so the whole tier vocabulary is in one place. Used wherever the
+# run skill routes work by class/role.
 tiers:
-  worker: haiku
-  hard_worker: opus
-  verifier: sonnet
+  # implementation capability classes (cheapest/fastest -> hardest)
+  light: haiku       # fast, mechanical, fully-specified work
+  standard: sonnet   # normal implementation with modest design latitude
+  deep: opus         # design-sensitive / hard problems needing real judgment
+  # verification role
+  review: sonnet     # mandatory same-run adversarial review of the work
+  # `independent-review` has no built-in Claude model on purpose — it exists to
+  # add a DIFFERENT provider's eyes; see `priority.independent-review` below.
 
 # Non-Claude executors (Codex, Copilot, ...) that may be woven into the pipeline.
 # Only entries with `enabled: true` are used.
@@ -37,26 +45,25 @@ external_executors:
     enabled: true
     dispatch: agent
     agent_type: codex:codex-rescue
-    roles:
-      - worker
-      - hard_worker
-      - independent-verifier
-    model_policy:
-      worker:
+    classes:
+      - standard
+      - deep
+      - review
+    class_policy:
+      standard:
         model: gpt-5.6-luna
         effort: medium
-      hard_worker:
+      deep:
         model: gpt-5.6-sol
         effort: xhigh
-      independent-verifier:
+      review:
         model: gpt-5.6-sol
         effort: low
-    # Escalate a nominally worker-tier task to hard_worker when it needs deep
+    # Escalate a nominally light/standard-class task to `deep` when it needs deep
     # traversal of a large repo — Luna's long-context recall is measurably weak.
     long_context_escalation:
       when: task requires deep traversal of a large repo (Luna's long-context recall is weak)
-      model: gpt-5.6-sol
-      effort: xhigh
+      class: deep
 
   copilot:
     enabled: false
@@ -67,49 +74,55 @@ external_executors:
     resume_command: >-
       copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort}
       --allow-all-tools --add-dir {workdir} --output-format json
-    roles:
-      - worker
-    model_policy:
-      worker:
+    classes:
+      - light
+      - standard
+    class_policy:
+      light:
+        model: gpt-5.6-luna
+        effort: medium
+      standard:
         model: gpt-5.6-luna
         effort: medium
 
-# Ordered executor preference per role (and, for `worker`, per task archetype).
-# The instructor tries candidates left-to-right and drops to the NEXT one on a
-# *reactive fallback signal*: the current executor is unavailable — NOT the task
-# failing. "Unavailable" = hit a rate-limit / usage-window cap (Claude, Codex),
-# ran out of AI credits / premium requests (Copilot), is `enabled: false`, or
-# its agent/CLI did not resolve in this environment. A task that RUNS but returns
-# a wrong result is NOT a fallback signal — that stays on the SAME executor and
-# goes through the normal verify/retry loop.
+# Ordered executor preference per class/role (and, for the implementation classes,
+# per task archetype). The instructor tries candidates left-to-right and drops to
+# the NEXT one on a *reactive fallback signal*: the current executor is unavailable
+# — NOT the task failing. "Unavailable" = hit a rate-limit / usage-window cap
+# (Claude, Codex), ran out of AI credits / premium requests (Copilot), is
+# `enabled: false`, or its agent/CLI did not resolve in this environment. A task
+# that RUNS but returns a wrong result is NOT a fallback signal — that stays on the
+# SAME executor and goes through the normal review/retry loop.
 #
-# Entries are an `external_executors` key (`codex`, `copilot`, ...) or the
-# sentinel `claude` (the built-in `tiers.<role>` model). An executor named here
-# must have a matching `model_policy.<role>` on its `external_executors` block,
-# or it is skipped as misconfigured. Once an executor is found unavailable during
-# a run it stays skipped for the rest of THAT run (sticky exhaustion) — do not
-# re-probe it per task.
+# Entries are an `external_executors` key (`codex`, `copilot`, ...) or the sentinel
+# `claude` (the built-in `tiers.<name>` model). An executor named here must have a
+# matching `class_policy.<class>` on its `external_executors` block, or it is
+# skipped as misconfigured. Once an executor is found unavailable during a run it
+# stays skipped for the rest of THAT run (sticky exhaustion) — do not re-probe it
+# per task.
 #
-# Each role's value is a mapping of task-archetype -> ordered list; `default` is
-# the catch-all. `worker` additionally recognizes `investigation` (read-only
-# exploration / research fan-out, no verifier loop) as distinct from `default`
-# (file-changing implementation that goes through the verify/retry loop). Other
-# roles normally only need `default`.
+# Each key's value is a mapping of task-archetype -> ordered list; `default` is the
+# catch-all. `light` additionally recognizes `investigation` (read-only exploration
+# / research fan-out, no review loop) as distinct from `default` (file-changing
+# implementation that goes through the review/retry loop). Other keys normally only
+# need `default`.
 #
-# Omit `role_priority` entirely to keep the legacy behavior: the Claude
-# `tiers.<role>` model, with external executors woven in ad hoc per their own
-# `roles` list.
-role_priority:
-  worker:
-    # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated worker
-    # for investigation fan-out. NOTE: copilot ships `enabled: false` below, so
-    # as-shipped this list effectively starts at codex; enable copilot to
-    # actually prefer it (that skip IS the reactive fallback in action).
-    investigation: [copilot, codex, claude]
+# Omit `priority` entirely to keep the legacy behavior: the Claude `tiers.<name>`
+# model, with external executors woven in ad hoc per their own `classes` list.
+priority:
+  light:
+    # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated executor
+    # for the light band (and for investigation fan-out). NOTE: copilot ships
+    # `enabled: false` below, so as-shipped this list effectively starts at claude;
+    # enable copilot to actually prefer it (that skip IS the reactive fallback in action).
+    investigation: [copilot, claude]
+    default: [copilot, claude]
+  standard:
+    # luna clears sonnet-class work too, so it also leads the standard band.
+    default: [copilot, claude, codex]
+  deep:
     default: [claude, codex]
-  hard_worker:
-    default: [claude, codex]
-  verifier:
+  review:
     default: [claude]
-  independent-verifier:
+  independent-review:
     default: [codex]

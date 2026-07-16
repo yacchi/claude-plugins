@@ -20,8 +20,8 @@ This skill is a small companion to `run` (see its SKILL.md §9 for the config sc
 
 Effective config = deep-merge(built-in defaults, user config, project config, project-local config), applied in that order — later layers win. Project-local sits on top of project scope specifically so one developer can override a team-shared project setting (or add a personal one, e.g. enabling an executor only they have installed) without touching the committed file. When explaining this to the user or deciding what to write:
 
-- **Mapping keys merge recursively, key by key.** A project file that sets only `external_executors.copilot.enabled: true` does not need to repeat `codex`'s block or copilot's `model_policy` — those are inherited from the user config (or defaults, if the user has no config either).
-- **Scalars and arrays are replaced wholesale** by the more specific layer, never concatenated or merged element-by-element. `role_priority.<role>.<archetype>` is a list, so this applies to it too: a project override that wants to move one executor must restate the *entire* ordered list for that role/archetype, not just the one entry it's changing — a partial list silently drops the rest of the priority order, it does not merge with the inherited one.
+- **Mapping keys merge recursively, key by key.** A project file that sets only `external_executors.copilot.enabled: true` does not need to repeat `codex`'s block or copilot's `class_policy` — those are inherited from the user config (or defaults, if the user has no config either).
+- **Scalars and arrays are replaced wholesale** by the more specific layer, never concatenated or merged element-by-element. `priority.<class>.<archetype>` is a list, so this applies to it too: a project override that wants to move one executor must restate the *entire* ordered list for that class/archetype, not just the one entry it's changing — a partial list silently drops the rest of the priority order, it does not merge with the inherited one.
 - **An explicit `null`/`~` is a value, not "reset to default."** To inherit a key, omit it entirely — don't null it out.
 
 Always write the *smallest* diff that expresses the user's intent: a project override file should contain only the keys being changed at that scope, not a full copy of the schema. Dumping the whole schema into a project file defeats the purpose of layered overrides and makes future user-level changes silently stop applying to that project.
@@ -44,11 +44,32 @@ Check for `.claude/orchestra.json` and `~/.claude/orchestra.json`. If either exi
 2. Show the user the equivalent YAML (same keys, structure carried over 1:1 — use `examples/orchestra.yaml`, shipped alongside the `orchestra:run` skill, as the commented template to fill in).
 3. Ask whether to write the new `.yaml` file and remove the old `.json`. Never do this silently or delete the old file without asking — it may not be tracked in git and could be someone else's in-progress edit.
 
+### Pre-0.4 vocabulary migration check
+
+v0.4.0 renamed the config vocabulary from role names to capability classes:
+`tiers.worker/hard_worker/verifier` → `tiers.light/standard/deep` + `review`,
+`external_executors.*.roles` → `external_executors.*.classes`,
+`external_executors.*.model_policy` → `external_executors.*.class_policy`,
+`role_priority` → `priority` (and `role_priority.<role>.<archetype>` →
+`priority.<class>.<archetype>`), and `long_context_escalation.{model,effort}` →
+`long_context_escalation.{class}`. The old keys are **no longer read** by
+`orchestra:run` — a file still using them silently loses that configuration.
+
+Whenever this skill reads an existing `.claude/orchestra.yaml` / `.yml` or
+`~/.claude/orchestra.yaml` / `.yml` (step 5 below always does this), scan it for
+pre-0.4 keys: `role_priority`, `model_policy`, `roles:` under an
+`external_executors` entry, or any of `tiers.worker` / `tiers.hard_worker` /
+`tiers.verifier`. If any are present:
+
+1. Do not rewrite anything yet — this is detection only.
+2. Show the user the specific old keys found and their new-vocabulary equivalents (same mapping as above), scoped to that one file.
+3. Ask whether to convert that file to the new vocabulary now, in place, preserving every other key and comment untouched. Exactly like the JSON case, never rewrite silently — the file may be mid-edit or intentionally pinned.
+
 ## 5. Interactive flow
 
 1. Detect availability (step 3) and check for a legacy JSON config (step 4).
 2. Read whatever `.claude/orchestra.yaml` and `~/.claude/orchestra.yaml` currently exist. Compute and show the user the *effective* merged config (step 2's algorithm), noting for each non-default value which layer it actually comes from (project / user / default).
-3. Ask the user (AskUserQuestion) what to change: which executor(s) to enable/disable, whether to touch model tiers, whether to set or reorder `role_priority` (e.g. prefer Copilot for investigation-style worker fan-out, with reactive fallback to the next entry — see `run` SKILL.md §9), and — this is the important one — **at which scope**. Default guidance: project scope for anything specific to this repo or team that should be checked into git and shared; project-local scope for a change specific to this repo that this one developer does NOT want to share (personal executor availability, a personal preference that would be noise in the shared file); user scope for a durable personal default that should apply everywhere regardless of project. If the user doesn't already have a config at the scope they pick, that's fine — step 4 of §5 creates it.
+3. Ask the user (AskUserQuestion) what to change: which executor(s) to enable/disable, whether to touch model tiers, whether to set or reorder `priority` (e.g. prefer Copilot for investigation-style light-class fan-out, with reactive fallback to the next entry — see `run` SKILL.md §9), and — this is the important one — **at which scope**. Default guidance: project scope for anything specific to this repo or team that should be checked into git and shared; project-local scope for a change specific to this repo that this one developer does NOT want to share (personal executor availability, a personal preference that would be noise in the shared file); user scope for a durable personal default that should apply everywhere regardless of project. If the user doesn't already have a config at the scope they pick, that's fine — step 4 of §5 creates it.
 4. Apply the change:
    - Target file doesn't exist yet: create it from `examples/orchestra.yaml` (shipped alongside the `orchestra:run` skill), but **trim it down to only the keys actually being set** — see the "smallest diff" rule in step 2. Keep a short comment on any field whose meaning isn't obvious from the key name alone.
    - Target file exists: use `Edit`, touching only the changed lines. Preserve everything else, comments included.
