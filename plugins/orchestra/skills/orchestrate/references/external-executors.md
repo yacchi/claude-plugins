@@ -49,7 +49,7 @@ claude-fable-5          claude-opus-4.5        gpt-5.4           kimi-k2.7-code
 | `mai-code-1-flash-picker` | 動作確認済み、安価・高速 — ただし、フルスタックアプリのラウンドで`gpt-5.6-luna`/highと同じ優先度ソートの反転ミスを犯した。有望だが、まだ「一番良い」と証明されたわけではない。 |
 | `claude-haiku-4.5` | Copilot経由でも利用可能だが、これを使うと外部エグゼキュータにディスパッチする目的(プロバイダの多様性)が失われる。Copilotのツールハーネスをどうしても使いたい場合のみ。 |
 
-同梱のサンプル(`examples/orchestra.json`)は、CopilotのCopilotの`worker`ポリシーを`{ "model": "gpt-5.6-luna", "effort": "medium" }`に設定している — 検証済みの実開発向け候補の中で最速。`effort`はCodex側との一貫性のため明示的に設定してある。
+同梱のサンプル(`examples/orchestra.yaml`)は、CopilotのCopilotの`worker`ポリシーを`{ "model": "gpt-5.6-luna", "effort": "medium" }`に設定している — 検証済みの実開発向け候補の中で最速。`effort`はCodex側との一貫性のため明示的に設定してある。
 
 **CLI利用 — 単発実行:**
 

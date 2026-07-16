@@ -196,51 +196,54 @@ When rework needs multiple rounds of back-and-forth, do not spawn a fresh `orche
 
 ## 9. Configuration file and external executors
 
-At the start of every orchestration, the instructor looks for a configuration file, in this priority order:
+At the start of every orchestration, the instructor resolves configuration from up to three layers, merged in this order (later layers win):
 
-1. Project: `.claude/orchestra.json`
-2. User: `~/.claude/orchestra.json`
-3. Neither exists → defaults (worker: haiku, hard_worker: opus, verifier: sonnet; no external executors)
+1. **Defaults**: worker: haiku, hard_worker: opus, verifier: sonnet; no external executors.
+2. **User**: `~/.claude/orchestra.yaml` (or `.yml`), if present.
+3. **Project**: `.claude/orchestra.yaml` (or `.yml`), if present.
 
-A copy of the schema ships with this plugin at `examples/orchestra.json`. Full shape:
+This is a **deep merge**, not a first-found-wins lookup: object/mapping keys are merged recursively key-by-key, so a project file only needs to state the keys it actually wants to change — e.g. a project override of just `external_executors.copilot.enabled: true` inherits everything else (codex's whole block, copilot's `model_policy`, etc.) from the user config or defaults. Scalars and arrays are replaced wholesale by the more specific layer, not concatenated or element-merged. An explicit `null`/`~` is a value, not "reset to default" — omit the key entirely to inherit.
 
-```json
-{
-  "tiers": {
-    "worker": "haiku",
-    "hard_worker": "opus",
-    "verifier": "sonnet"
-  },
-  "external_executors": {
-    "codex": {
-      "enabled": true,
-      "dispatch": "agent",
-      "agent_type": "codex:codex-rescue",
-      "roles": ["worker", "hard_worker", "independent-verifier"],
-      "model_policy": {
-        "worker": { "model": "gpt-5.6-luna", "effort": "medium" },
-        "hard_worker": { "model": "gpt-5.6-sol", "effort": "xhigh" },
-        "independent-verifier": { "model": "gpt-5.6-sol", "effort": "low" }
-      },
-      "long_context_escalation": {
-        "when": "task requires deep traversal of a large repo (Luna's long-context recall is weak)",
-        "model": "gpt-5.6-sol",
-        "effort": "xhigh"
-      }
-    },
-    "copilot": {
-      "enabled": false,
-      "dispatch": "cli",
-      "command": "copilot -p {promptfile} --model {model} --effort {effort} --allow-all-tools --add-dir {workdir} --output-format json",
-      "resume_command": "copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort} --allow-all-tools --add-dir {workdir} --output-format json",
-      "roles": ["worker"],
-      "model_policy": {
-        "worker": { "model": "gpt-5.6-luna", "effort": "medium" }
-      }
-    }
-  }
-}
+The format is YAML, not JSON, specifically so the file can carry comments (JSON can't). `.claude/orchestra.json` / `~/.claude/orchestra.json` (the pre-YAML format) are no longer read — use the `orchestrate-config` skill to convert an old one.
+
+A copy of the schema, fully commented, ships with this plugin at `examples/orchestra.yaml`. Full shape:
+
+```yaml
+tiers:
+  worker: haiku
+  hard_worker: opus
+  verifier: sonnet
+
+external_executors:
+  codex:
+    enabled: true
+    dispatch: agent
+    agent_type: codex:codex-rescue
+    roles: [worker, hard_worker, independent-verifier]
+    model_policy:
+      worker: { model: gpt-5.6-luna, effort: medium }
+      hard_worker: { model: gpt-5.6-sol, effort: xhigh }
+      independent-verifier: { model: gpt-5.6-sol, effort: low }
+    long_context_escalation:
+      when: task requires deep traversal of a large repo (Luna's long-context recall is weak)
+      model: gpt-5.6-sol
+      effort: xhigh
+
+  copilot:
+    enabled: false
+    dispatch: cli
+    command: >-
+      copilot -p {promptfile} --model {model} --effort {effort}
+      --allow-all-tools --add-dir {workdir} --output-format json
+    resume_command: >-
+      copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort}
+      --allow-all-tools --add-dir {workdir} --output-format json
+    roles: [worker]
+    model_policy:
+      worker: { model: gpt-5.6-luna, effort: medium }
 ```
+
+To set this up interactively (detect whether Codex/Copilot are actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `orchestrate-config` skill instead of hand-editing — see its own SKILL.md.
 
 **`tiers`** overrides the model-tier defaults of section 3. Values are model aliases (or full model IDs) used wherever this skill says haiku/opus/sonnet for the respective role.
 
@@ -256,7 +259,7 @@ A copy of the schema ships with this plugin at `examples/orchestra.json`. Full s
 
 **`model_policy`** maps each role this executor participates in to a concrete `{ model, effort }` pair to pass to that executor. Without it, the executor runs on its own default model, which defeats the purpose of cost-tiering by external provider just as surely as an unpinned Claude `agent()` call does (rule #4, section 4). Treat this the same way: every external-executor role in `roles` should have a matching `model_policy` entry.
 
-**Safety note:** `cli` dispatch only ever executes command templates that come from the user's own configuration file (`.claude/orchestra.json` or `~/.claude/orchestra.json`). This plugin ships no CLI commands of its own and must never invent one; if no config file declares a CLI executor, `cli` dispatch is unavailable.
+**Safety note:** `cli` dispatch only ever executes command templates that come from the user's own configuration file (`.claude/orchestra.yaml` or `~/.claude/orchestra.yaml`). This plugin ships no CLI commands of its own and must never invent one; if no config file declares a CLI executor, `cli` dispatch is unavailable.
 
 ### 9.1 External executor model policy (Codex / Copilot), pricing, and CLI usage
 

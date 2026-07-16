@@ -1,0 +1,71 @@
+# orchestra configuration
+#
+# Copy this file to one of:
+#   .claude/orchestra.yaml    (project scope — checked into the repo, shared with the team)
+#   ~/.claude/orchestra.yaml  (user scope — personal default across all projects)
+#
+# `.yml` is also recognized as an alias for `.yaml` at either scope.
+#
+# Effective config = deep-merge(built-in defaults, user config, project config), in that
+# order — later layers win key-by-key. A project file only needs to name the keys it wants
+# to override; everything else is inherited from the user config (or the built-in defaults
+# below if there is no user config either). See orchestrate/SKILL.md §9 for the exact
+# algorithm and for the `orchestrate-config` skill that can author this file for you
+# interactively (detects Codex/Copilot, asks which scope to write to, edits in place).
+#
+# Example project override that changes nothing except turning Copilot on for this repo:
+#
+#   external_executors:
+#     copilot:
+#       enabled: true
+
+# Model aliases (or full model IDs) used wherever the orchestrate skill says
+# haiku/opus/sonnet for the respective role.
+tiers:
+  worker: haiku
+  hard_worker: opus
+  verifier: sonnet
+
+# Non-Claude executors (Codex, Copilot, ...) that may be woven into the pipeline.
+# Only entries with `enabled: true` are used.
+external_executors:
+  codex:
+    enabled: true
+    dispatch: agent
+    agent_type: codex:codex-rescue
+    roles:
+      - worker
+      - hard_worker
+      - independent-verifier
+    model_policy:
+      worker:
+        model: gpt-5.6-luna
+        effort: medium
+      hard_worker:
+        model: gpt-5.6-sol
+        effort: xhigh
+      independent-verifier:
+        model: gpt-5.6-sol
+        effort: low
+    # Escalate a nominally worker-tier task to hard_worker when it needs deep
+    # traversal of a large repo — Luna's long-context recall is measurably weak.
+    long_context_escalation:
+      when: task requires deep traversal of a large repo (Luna's long-context recall is weak)
+      model: gpt-5.6-sol
+      effort: xhigh
+
+  copilot:
+    enabled: false
+    dispatch: cli
+    command: >-
+      copilot -p {promptfile} --model {model} --effort {effort}
+      --allow-all-tools --add-dir {workdir} --output-format json
+    resume_command: >-
+      copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort}
+      --allow-all-tools --add-dir {workdir} --output-format json
+    roles:
+      - worker
+    model_policy:
+      worker:
+        model: gpt-5.6-luna
+        effort: medium
