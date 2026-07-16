@@ -199,6 +199,8 @@ priority:
 
 **プロアクティブな残量照会は同梱しない。** `cli`ディスパッチと同じ安全原則により、Copilotの残クレジットやCodex/Claudeの使用ウィンドウ残量を事前に問い合わせるコマンドはこのプラグインには存在せず、今後も追加しない。フォールバックの判定材料は、実際にディスパッチした時点で観測される「unavailableシグナル」だけである。
 
+**認可(authorization)の事前チェックは残量照会とは別物で、こちらは推奨する。** 上の「残量照会を同梱しない」は、リモートで変動する*残量*(クレジット/使用ウィンドウ)を事前問い合わせしない、という意味であって*認可*には当てはまらない。`dispatch: cli`のエグゼキュータ(Copilot)は、セッションに該当するBash許可ルール(例 `Bash(copilot:*)`)が無ければ**この実行では絶対に成功しない** — 残量と違って一過性ではなく、リレーを起動しても自動モード分類器/パーミッションに即拒否され`STATUS: unavailable`が返るだけである。したがってinstructorは、`priority`の候補に`dispatch: cli`エグゼキュータを含める前に認可の有無を確認し(自身のセッションの`permissions.allow`を`.claude/settings.json`/`~/.claude/settings.json`で読むだけのローカルな静的チェックで、リモート問い合わせではない)、無ければそのランでは最初からunavailable扱いにして次候補へ降格させる。これは無駄なリレー起動を省く最適化であり、仮にチェックを省いても下記のリアクティブなフォールバック(リレーの`STATUS: unavailable`)が同じ結論に達するバックストップとして残る。
+
 **unavailable と failed の区別(最重要)。** この2つを混同すると降格ロジックが壊れる:
 
 - **unavailable**(→次の優先度候補に降格し、そのランの残り全体でsticky-skip): レートリミット/使用ウィンドウ上限、AIクレジット/premium requestの枯渇(Copilot)、`enabled: false`、agent/CLI名がこの環境で解決しない、`class_policy.<class>`が欠落している、のいずれか。
@@ -237,7 +239,7 @@ async function runOn(exec, taskPrompt, workdir) {
   }
 
   if (exec === 'codex') {
-    const answer = await agent(taskPrompt, { label: 'codex-rescue', agent: 'codex:codex-rescue' })
+    const answer = await agent(taskPrompt, { label: 'codex-rescue', agentType: 'codex:codex-rescue' })
     if (answer === null) {
       return { status: 'unavailable', reason: 'codex:codex-rescue returned null' }
     }
@@ -248,6 +250,9 @@ async function runOn(exec, taskPrompt, workdir) {
   }
 
   if (exec === 'copilot') {
+    // 認可の事前チェック(§4冒頭)で copilot が未認可と判明していれば、instructor は
+    // そもそも candidates から外しているはず。ここに到達した時点でもし未認可なら、
+    // リレーは即 STATUS: unavailable を返す — それがランタイム側のバックストップ。
     // §2の copilot-relay レシピと同じ STATUS: 判別子付きリレー。
     const reply = await agent(
       'Run: copilot -p {promptfile} --model gpt-5.6-luna --effort medium ' +
@@ -286,3 +291,27 @@ async function dispatchWithFallback(candidates, taskPrompt, workdir) {
 ```
 
 `runOn`が返す`status`が`'unavailable'`のときだけ`exhausted`に加えて次の候補へ進み、それ以外(`'ok'`)は即座にそのエグゼキュータの結果を採用して呼び出し元(review/retryループ)に返す。タスクが「動いたが結果が誤り」だった場合の再試行は、この`dispatchWithFallback`の外側 — 同じ`exec`に対する通常のreview/retryロジック側の責務であり、`priority`の降格ロジックには一切関与しない。
+
+**外部エグゼキュータの自由文出力をJSONに正規化する(特にCodexの`independent-review`)。** Claudeの`agent()`は`schema`オプションでStructuredOutputツールを強制できるが、`dispatch: agent`の外部エグゼキュータ(CLI裏付けの`codex:codex-rescue`など)はそのツールを必ずしも尊重せず、自由文を返しうる。そこで外部エグゼキュータにverdict/レビューを求めるときは、(1)プロンプトで明示的にJSONだけを出力させ(スキーマ例を本文に埋め込み、「JSON以外は出力するな」と指示する)、(2)戻り値を寛容にパースして`VERDICT_SCHEMA`(run SKILL.md §5)と同じ形に正規化する。生の自由文をそのまま`verdict.pass`として扱わないこと — 独立レビューであってもフォールバック契約(structured verdict)と同じ形に畳んでからinstructorに返す:
+
+```javascript
+// 外部エグゼキュータの自由文から verdict JSON を取り出して VERDICT_SCHEMA 形に正規化する。
+// モデルがコードフェンスで包んでも、貪欲な波括弧マッチが中のオブジェクトを拾う。
+function parseExternalVerdict(text) {
+  if (text == null) return null
+  const braced = /\{[\s\S]*\}/.exec(text) // 最初の { から最後の } まで
+  if (braced) {
+    try {
+      const v = JSON.parse(braced[0])
+      if (typeof v.pass === 'boolean') {
+        return { pass: v.pass, summary: String(v.summary ?? ''), feedback: v.feedback ?? [] }
+      }
+    } catch (_) { /* パース失敗 → 下の安全側フォールバックへ */ }
+  }
+  // JSONを取り出せなかった = レビューが形式に従わなかった。安全側に倒して
+  // pass=false + 生テキスト先頭をsummaryに入れて返し、retry/降格判断はループ側に委ねる。
+  return { pass: false, summary: 'unparseable external verdict: ' + text.slice(0, 500), feedback: [] }
+}
+```
+
+Codex independent-reviewに渡すプロンプト末尾の指示例: 『Reply with ONLY a JSON object of the form {"pass": boolean, "summary": string, "feedback": [{"case","expected","actual"}]}. Output nothing else — no prose, no explanation.』
