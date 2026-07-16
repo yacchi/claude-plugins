@@ -103,6 +103,22 @@ const retry = await agent(
 )
 ```
 
+### 必須: `copilot` を許可するBashパーミッション
+
+`dispatch: cli`のCopilotは、Haikuリレーエージェントが`copilot ... --allow-all-tools ...`をBashで実行することで動く。ここで拒否されるのはcopilot CLIの`--allow-all-tools`フラグ自体ではなく、**Claude Code側のBashパーミッション**である。Claude Codeは各Bashツール呼び出しのトップレベルコマンドを`permissions.allow`と照合するが、リレーはサブエージェント／非対話で走るため、未許可のコマンドは**承認プロンプトを出せず即座に拒否**される(ユーザーが対話的に許可することもできない)。結果として、CLIが起動する前にディスパッチが失敗する。
+
+そのため、Copilotを有効化する前(または初回失敗後)に、次のルールを`permissions.allow`へ追加しておく必要がある:
+
+```
+Bash(copilot:*)
+```
+
+- 追加先は、Copilotを有効化したスコープに合わせる: プロジェクトなら`.claude/settings.json`、ユーザー個人なら`~/.claude/settings.json`。`/permissions`または`update-config`スキルで追加する。
+- パーミッションのマッチはトップレベルコマンドの前方一致で、**子プロセスは対象外**。そのため`--allow-all-tools`や`--add-dir`の付与を許可ルール側で強制することはできない(ルールは`copilot`で始まる任意の呼び出しを許可する)。`--add-dir <workdir>`によるファイルアクセス限定は`command`テンプレート(§2)側で担保する。
+- **プラグイン同梱スクリプトでこれを透過的に回避することはできない**: パーミッションルール内で`${CLAUDE_PLUGIN_ROOT}`は展開されず、プラグインのキャッシュパスはバージョンで変わる。`bash <script>`経由での実行は`Bash(bash:*)`にマッチしてしまい、`Bash(copilot:*)`より遥かに広く危険。またプラグインはユーザー同意なしにデフォルトのBashパーミッションを同梱・マージできない。したがって、この1行のルール追加が最小かつ安定な正攻法である。
+
+Codexの`dispatch: agent`(codex:codex-rescueサブエージェント経由)はこのルールを必要としない — 生のBashコマンドではなくサブエージェント呼び出しだからである。
+
 ## 3. 公式の単価表と、実際の請求に関する注意
 
 GitHubはCopilotモデルの単価を[Models and pricing](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)で公開している(2026-07-16確認。価格は変動するため、重要な判断の前に再取得すること)。デフォルトコンテキストでの100万トークンあたりの単価:
