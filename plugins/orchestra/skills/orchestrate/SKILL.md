@@ -216,13 +216,27 @@ A copy of the schema ships with this plugin at `examples/orchestra.json`. Full s
       "enabled": true,
       "dispatch": "agent",
       "agent_type": "codex:codex-rescue",
-      "roles": ["worker", "independent-verifier"]
+      "roles": ["worker", "hard_worker", "independent-verifier"],
+      "model_policy": {
+        "worker": { "model": "gpt-5.6-luna", "effort": "medium" },
+        "hard_worker": { "model": "gpt-5.6-sol", "effort": "xhigh" },
+        "independent-verifier": { "model": "gpt-5.6-sol", "effort": "low" }
+      },
+      "long_context_escalation": {
+        "when": "task requires deep traversal of a large repo (Luna's long-context recall is weak)",
+        "model": "gpt-5.6-sol",
+        "effort": "xhigh"
+      }
     },
     "copilot": {
       "enabled": false,
       "dispatch": "cli",
-      "command": "copilot -p {promptfile} --allow-all-tools",
-      "roles": ["worker"]
+      "command": "copilot -p {promptfile} --model {model} --effort {effort} --allow-all-tools --add-dir {workdir} --output-format json",
+      "resume_command": "copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort} --allow-all-tools --add-dir {workdir} --output-format json",
+      "roles": ["worker"],
+      "model_policy": {
+        "worker": { "model": "gpt-5.6-luna", "effort": "medium" }
+      }
     }
   }
 }
@@ -233,23 +247,24 @@ A copy of the schema ships with this plugin at `examples/orchestra.json`. Full s
 **`external_executors`** declares non-Claude executors (Codex, Copilot, etc.) that may be woven into the pipeline. Only entries with `"enabled": true` are used. Two dispatch mechanisms:
 
 - **`dispatch: "agent"`** — the executor is an installed plugin subagent. Pass `agent_type`'s value as `agentType` in Workflow `agent()` calls, or as `subagent_type` in the Agent tool. If the name doesn't resolve in this environment, fall back to the normal model tier for that role.
-- **`dispatch: "cli"`** — the executor is a non-interactive CLI. Write the task prompt to a temp file, substitute `{promptfile}` in `command`, and have a **cheap relay agent** (`model: haiku`, with Bash) run the command and return only its final output. The instructor must never run the CLI via Bash itself — the relay exists to keep CLI stdout/stderr out of the instructor's context. Pattern:
-
-```javascript
-// CLI dispatch via a cheap relay agent. `taskPrompt` is the full task spec;
-// the command template comes from the user's orchestra.json.
-const out = await agent(
-  'You are a relay. Steps: (1) write the TASK PROMPT below verbatim to a temp file; ' +
-  '(2) run exactly this command, substituting {promptfile} with that file path: ' +
-  'copilot -p {promptfile} --allow-all-tools ; ' +
-  '(3) reply with ONLY the command final output - no logs, no commentary.\n\n' +
-  '--- TASK PROMPT ---\n' + taskPrompt,
-  { label: 'copilot-relay', model: 'haiku', effort: 'low' },
-)
-```
+- **`dispatch: "cli"`** — the executor is a non-interactive CLI. Write the task prompt to a temp file, substitute `{promptfile}` (and, if the config declares them, `{model}`/`{effort}`/`{workdir}`/`{session_id}`) in `command`, and have a **cheap relay agent** (`model: haiku`, with Bash) run the command and return only its final output. The instructor must never run the CLI via Bash itself — the relay exists to keep CLI stdout/stderr out of the instructor's context.
 
 **`roles`** controls where the executor is used:
 - `"worker"`: as an implementation worker (in place of, or alongside, the Claude worker tier).
+- `"hard_worker"`: as a design-latitude implementation tier (in place of, or alongside, `orchestra-hard-worker`/Opus) — only meaningful for an executor whose `model_policy` names a model strong enough for that tier (see the Codex policy below; Copilot's shipped example intentionally omits this role — see the Copilot section).
 - `"independent-verifier"`: as a third-party verification pass in addition to the Claude verifier — useful to avoid single-provider model bias. An independent verifier supplements `orchestra-verifier`; it does not replace the structured-verdict contract, so wrap its output into the same verdict shape.
 
+**`model_policy`** maps each role this executor participates in to a concrete `{ model, effort }` pair to pass to that executor. Without it, the executor runs on its own default model, which defeats the purpose of cost-tiering by external provider just as surely as an unpinned Claude `agent()` call does (rule #4, section 4). Treat this the same way: every external-executor role in `roles` should have a matching `model_policy` entry.
+
 **Safety note:** `cli` dispatch only ever executes command templates that come from the user's own configuration file (`.claude/orchestra.json` or `~/.claude/orchestra.json`). This plugin ships no CLI commands of its own and must never invent one; if no config file declares a CLI executor, `cli` dispatch is unavailable.
+
+### 9.1 External executor model policy (Codex / Copilot), pricing, and CLI usage
+
+Full detail lives in `references/external-executors.md` (Japanese) — Codex's Sol/Terra/Luna + effort policy and role assignment, Copilot's model catalog and `worker`-role candidates, exact CLI usage recipes (one-shot and session-continuation for retry rounds), and official per-token pricing for Codex/Copilot/Claude. Read it before dispatching to an external executor, and before second-guessing any model/effort choice in the example config.
+
+In brief, as of this plugin's own validation (full reasoning and every round-by-round result: `references/poc-findings.md`):
+
+- **Codex `worker`** → `gpt-5.6-luna` at **`effort: medium`** (not `high` — this plugin's own PoC found `high` produced a real bug on a realistic task that `medium` did not, cheaper and faster besides). **`hard_worker`** → `gpt-5.6-sol`/`xhigh`. **`independent-verifier`** → `gpt-5.6-sol`/`low`. `gpt-5.6-terra` is not in the default policy but hasn't been shown to be dominated either — worth reconsidering for `independent-verifier` if cost is a concern.
+- **Copilot `worker`** → `gpt-5.6-luna` at `effort: medium`, the fastest/cheapest validated candidate; `kimi-k2.7-code` and the newly-resolved `mai-code-1-flash-picker` are viable alternatives (see the reference doc for what's been observed about each).
+- **Long-context caveat:** Luna has measurably weak long-context recall. Escalate a nominally `worker`-tier task to `hard_worker` if it requires deep traversal of a large repository — the `long_context_escalation` field in the example config documents this trigger.
+- Across 6 rounds of escalating task difficulty, no accuracy differentiation was observed until task size crossed into genuine multi-file, multi-language feature territory — at which point every cheap tier tested eventually showed at least one real, narrow defect. Treat the adversarial verifier stage as mandatory beyond a trivially small change, regardless of which model/provider/effort level is implementing the work — this holds for external executors exactly as much as for Claude's own tiers.

@@ -1,0 +1,7 @@
+# Bug report
+
+This directory contains a small token-bucket rate limiter: `bucket.js` (the `TokenBucket` class), `limiter.js` (the `RateLimiter` class that wraps one bucket per key), and `index.js` (re-exports `limiter.js`). Read the existing files first.
+
+**Symptom:** under bursty traffic, the rate limiter denies requests it should be allowing. Concretely: a limiter configured with `capacity=5, refillRatePerSec=10` (i.e. it should refill 10 tokens/sec — twice its own capacity every second) is seeing roughly 12 consecutive denials when a caller consumes 1 token every 50ms, even though 10 tokens/sec of refill should easily keep up with a consumption rate of 20 tokens/sec... actually even faster: the math says it should recover almost immediately, not stay denied for over half a second straight.
+
+**Task:** find the root cause in the existing code and fix it with the smallest correct change. Do not rewrite the classes from scratch, do not change any constructor signature or public method signature (`new TokenBucket(capacity, refillRatePerSec, now)`, `new RateLimiter(capacity, refillRatePerSec, now)`, `.tryConsume(key, cost)` / `.tryConsume(cost)` must keep working exactly as before — an injectable `now` clock function is part of the existing public API and must be preserved), do not create new files, do not add a test file, do not run `git`. Just fix the bug in place in the existing file(s).

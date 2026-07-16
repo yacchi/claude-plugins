@@ -1,0 +1,8 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+dist/
+node_modules/
+*/backend/server
+*/reference/backend/server
+*/scaffold/backend/server
