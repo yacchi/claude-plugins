@@ -171,6 +171,18 @@ Mandatory requirements when writing each task's `workerPrompt`:
 3. **Constrain the response format.** Explicitly forbid pasting code, logs, and diffs (the `orchestra-light` agent's system prompt already enforces this, but restating it in the prompt is safer when calling `agent()` directly from a Workflow).
 4. **On retry, say that the previous files are still on disk.** The template's `workerPrompt` assembly adds this automatically ("Your previous attempt already wrote files to disk... Read those files first"). When writing prompts by hand, always include an equivalent sentence.
 
+### 6.1 Prompt density: compress the scaffolding, never the spec
+
+Worker and verifier prompts are read by cheap models, not humans. They owe nothing to readability, politeness, or a target language — write them terse, imperative, and in **English** (more token-efficient than Japanese for the same content, and the workers need no Japanese). Drop honorifics, hedges, and prose transitions; nominal/telegraphic style is fine. This trims the instructor's authoring output and the worker's input at essentially no risk.
+
+**But this applies only to the scaffolding — never to the contract itself.** The token-compression techniques that circulate for chat replies (caveman/genshijin-style particle-dropping, "essence only") are an *output*-compression trick, and their own authors report the catch: on complex tasks completeness drops and internal thinking tokens balloon (+200–400%), erasing most of the nominal saving. A worker's job *is* the complex-task case, so:
+
+- **Do NOT compress the spec.** The `formatBytes(1048575) → "1 MiB"` boundary example (requirement 1 above) cannot lose a character without losing meaning, and the one example you delete to save tokens is exactly where §7's rounding-carry class of bug hides. Enumerated I/O examples, boundary values, and the verification command are compression-exempt.
+- **Reduce variance with structure, not with prose compression.** Terse natural language is *more* ambiguous, not less. When you want to pin down behaviour and kill wording drift, reach for tables, enumerated example rows, and the response `schema` — structure removes ambiguity; dropping particles adds it.
+- **Do NOT compress worker/verifier *output*.** It is already lean: the verdict is forced into `VERDICT_SCHEMA` JSON and code/log/diff pasting is already forbidden (§6-3). The review pass's main output is adversarial *test code*, which does not compress. Haiku workers at `effort: low` think little, so the thinking-inflation risk is low there — but never ask the Sonnet reviewer to write tersely at the cost of the tests it authors.
+
+Rule of thumb: **strip everything a human would want and a machine does not; keep every concrete fact the worker must reproduce exactly.**
+
 ## 7. Findings proven by the PoC
 
 From the measured PoC (3 tasks in parallel, 8 agents, 4 min 23 s, 246k total subagent tokens):
