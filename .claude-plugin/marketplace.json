@@ -26,6 +26,14 @@
       "tags": ["orchestration", "subagents", "cost-optimization", "workflow", "multi-agent"]
     },
     {
+      "name": "compact-companion",
+      "source": "./plugins/compact-companion",
+      "description": "Preserve decision rationale across context compaction: journal adopted/rejected/constraint/abandoned decisions and re-inject them after compact",
+      "version": "1.0.0",
+      "category": "productivity",
+      "tags": ["compact", "compaction", "context", "decision-log", "hooks"]
+    },
+    {
       "name": "backlog-cli",
       "source": {
         "source": "url",

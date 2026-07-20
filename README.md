@@ -22,6 +22,7 @@ Or via git URL:
 |--------|-------------|---------|
 | [hello-world](./plugins/hello-world) | A simple example plugin demonstrating the plugin structure | 1.0.0 |
 | [orchestra](./plugins/orchestra) | Cost-tiered multi-agent orchestration: expensive instructor, cheap workers, adversarial verifiers | 0.1.0 |
+| [compact-companion](./plugins/compact-companion) | Preserve decision rationale across context compaction: journal adopted/rejected/constraint/abandoned decisions and re-inject them after compact | 1.0.0 |
 
 ## Usage
 
