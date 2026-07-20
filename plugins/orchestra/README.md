@@ -59,7 +59,8 @@ Two execution paths are supported:
 | `skills/run/references/external-executors.md` | Operational reference for external executors (Japanese) — Codex's Sol/Terra/Luna + effort policy, Copilot's model catalog and CLI usage recipes (including session continuation), and official per-token pricing for Codex/Copilot/Claude. Not loaded automatically; read on demand when actually dispatching to Codex/Copilot. | — |
 | `skills/run/references/poc-findings.md` | The full research log behind the external-executor model policy (Japanese) — every PoC round, bug found, and policy change, with the reasoning. Not loaded automatically; read on demand. | — |
 | `skills/run/references/poc-fixtures/` | Reusable fixtures for every PoC round (task specs, verification harnesses, reference/buggy implementations) so a new model can be re-tested and compared without rebuilding anything from scratch. See its own `README.md` for exact reproduction commands. | — |
-| `hooks/hooks.json` + `hooks/inject-router.sh` | Auto-activation. Injects the `<orchestra-router>` lane-classification protocol into context at session start and re-injects it after `/clear`, resume, and compaction. | — |
+| `hooks/hooks.json` + `hooks/inject-router.sh` | Auto-activation. Injects the `<orchestra-router>` lane-classification protocol into context at session start and re-injects it after `/clear`, resume, and compaction. Also persists the model-gate verdict to a per-session state file for the reminder hook. | — |
+| `hooks/remind-router.sh` | Per-prompt recency. A `UserPromptSubmit` hook that appends a ~70-token router reminder on every user prompt of instructor-model sessions, so the classification step stays adjacent to the request it must classify even in very long sessions. Gated via the state file written by `inject-router.sh`; emits nothing on cheap-model sessions. | — |
 | `examples/orchestra.yaml` | Sample configuration file (YAML, fully commented). Copy to `.claude/orchestra.yaml` (project) or `~/.claude/orchestra.yaml` (user) to override model tiers and declare external executors, or use `/setup` to author it interactively. | — |
 
 ## Installation
@@ -91,10 +92,13 @@ Once installed and enabled, the plugin's `SessionStart` hook (`hooks/hooks.json`
 - **EXPRESS**: one self-contained change (or conversational/read-only), no decomposition, no design decisions, small expected context bloat. File count is explicitly *not* a criterion — incidental doc updates may ride along. Handled directly or via a single disposable cheap subagent, with no review pipeline. If scope or success criteria move mid-flight, express is aborted and the task re-routes to the orchestrated lane. (Lane criteria ported from `discus0434/customizable-agent-teams`.)
 - **ORCHESTRATED**: everything else, and *whenever in doubt*. The session loads the `run` skill and follows the full cost-tiered pipeline.
 
-Two design notes:
+The router block also lists explicit **tripwires** that force a mid-conversation re-route to ORCHESTRATED: hand-writing substantive code in 2+ files, a design discussion turning into an implementation request, or the session planning a multi-step implement-then-verify sequence for itself. Lane choices never persist across requests.
+
+Three design notes:
 
 - **Hybrid gating**: the hook first tries to read the top-level `model` field from the SessionStart input JSON (via `python3`; the field is officially omittable). When the model is identified as Opus/Fable (case-insensitive substring match), the router is injected without its self-gate paragraph; when it's identifiably a cheaper model (Sonnet/Haiku), nothing is injected at all — zero context cost. Only when the model can't be determined (missing field, bad JSON, no `python3`) does it fall back to injecting the full self-gated text, which tells the session itself to ignore the block unless its main model is Opus or Fable. The script never exits nonzero, so a parsing failure can't disrupt session startup.
 - **Compaction-proof**: injected context is not automatically re-added after compaction, so the hook registers the `SessionStart` matchers `startup|resume|clear|compact` — the router survives new sessions, resumes, `/clear`, and context compaction.
+- **Recency-proof**: a single SessionStart injection sits at the very top of the context and decays in long sessions — transcript analysis found instructor-model sessions doing 200+ direct edits with zero mention of the lane classification. The `UserPromptSubmit` hook (`hooks/remind-router.sh`) therefore re-surfaces a short reminder next to every new prompt. Since UserPromptSubmit input is not guaranteed to carry a `model` field, `inject-router.sh` persists its gate verdict (`instructor`/`cheap`/`unknown`) to `${TMPDIR:-/tmp}/orchestra-router-state-<session_id>`; the reminder hook reads that file, staying silent on cheap-model sessions and falling back to a self-gated reminder when the verdict is unknown.
 
 ## Usage
 
