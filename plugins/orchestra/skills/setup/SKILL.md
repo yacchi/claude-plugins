@@ -29,21 +29,21 @@ Always write the *smallest* diff that expresses the user's intent: a project ove
 
 ## 3. Detection
 
-**Start with a single `agent-exec doctor --json` call** (if the shim isn't installed yet, invoke doctor via the bootstrap path — see step 5). It is the one source for the shim (installed / on-`PATH` / anchor), `uv`, the merged config layers, per-executor `enabled`/`available`, the best-effort `Bash(agent-exec:*)` permission scan, and a per-executor `ready.<name>.ok` verdict — so `executors.copilot.available` already **is** the Copilot-CLI presence check and the `config` section already **is** the merged layers. Do **not** re-derive any of that with separate `command -v copilot`, `ls`, or config-file reads. The only detection doctor does **not** cover is Codex (it uses `dispatch: agent`, not a CLI), so run just the Codex checks below separately.
+**Start with a single `agent-exec doctor --json` call** (if the shim isn't installed yet, invoke doctor via the bootstrap path — see step 5). It is the one source for the shim (installed / on-`PATH` / anchor), `uv`, the merged config layers, a `config.warnings` array (legacy JSON / pre-0.4 vocabulary — see step 4), and, for **every known executor** (not just enabled `dispatch: cli` ones) an `executors.<name>` block with `enabled`, `dispatch`, `binary`, `available` (CLI-binary-on-`PATH` check via `shutil.which`), and — for `dispatch: agent` executors like Codex — a `note` explaining that `available` is only informational there. A separate `ready.<name>.ok` + `missing[]` verdict is still emitted only for enabled `dispatch: cli` executors (agent-dispatch readiness is session-scoped and doctor cannot determine it). Do **not** re-derive any of this with separate `command -v codex`, `command -v copilot`, `ls`, or raw config-file reads — a single `agent-exec doctor --json` call now covers Codex's CLI-presence check too, which older revisions of this skill had to do separately.
 
-Do this before asking the user anything, and report the findings plainly (e.g. "Codex CLI: found at /usr/local/bin/codex. codex:codex-rescue agent: available in this session. Copilot: ready (doctor)." ) before proceeding to step 5:
+Do this before asking the user anything, and report the findings plainly (e.g. "Codex: enabled=false, dispatch=agent, CLI binary found at /usr/local/bin/codex (informational — see below). codex:codex-rescue agent: available in this session. Copilot: ready (doctor)." ) before proceeding to step 5:
 
 - **Codex** — two independent checks, since they gate different things:
-  - `command -v codex` — whether the Codex CLI binary itself is installed. Informational only: `external_executors.codex` in this plugin's schema uses `dispatch: agent` (routes through the `codex:codex-rescue` subagent), not this CLI directly.
-  - Whether `codex:codex-rescue` / `codex:setup` currently resolve as available agent/skill names in this session (check the available-agents system reminder or the skills list). This is what actually determines whether `dispatch: agent` will work right now — if it doesn't resolve, `orchestra:run` falls back to normal Claude tiers for that role automatically (SKILL.md §9), so this is a soft signal, not a hard gate.
+  - `executors.codex.available` from `agent-exec doctor --json` (do **not** run `command -v codex` yourself — doctor already reports the Codex CLI binary's `PATH` presence, alongside every other known executor). This is informational only: `external_executors.codex` in this plugin's schema uses `dispatch: agent` (routes through the `codex:codex-rescue` subagent), not this CLI directly — doctor's `note` field on the codex entry says exactly this.
+  - Whether `codex:codex-rescue` / `codex:setup` currently resolve as available agent/skill names in this session (check the available-agents system reminder or the skills list). This is the one thing doctor genuinely cannot see (it has no visibility into this session's resolved agent/skill list), and it's what actually determines whether `dispatch: agent` will work right now — if it doesn't resolve, `orchestra:run` falls back to normal Claude tiers for that role automatically (SKILL.md §9), so this is a soft signal, not a hard gate.
 - **Copilot** — its CLI presence is already reported by doctor's `executors.copilot.available` (no separate `command -v copilot`). It *is* invoked directly via `dispatch: cli`, so that presence is the real functional gate: enabling `external_executors.copilot` without the CLI installed will fail loudly the first time it's dispatched. Its `dispatch: cli` needs only a single authorization path: installing the `agent-exec` wrapper, which needs only a single `Bash(agent-exec:*)` rule in `permissions.allow`. Measurement on Copilot CLI 1.0.74 established that `copilot -p` runs file/shell/network tool calls autonomously in non-interactive mode without any allow-all flag or env var — `COPILOT_ALLOW_ALL` is no longer required for headless dispatch, and this skill no longer offers it as a setup path. Everything else about Copilot's readiness (shim install + anchor, `uv`, merged config layers, the best-effort `Bash(agent-exec:*)` permission scan — which does not see enterprise policy or CLI `--allowedTools`, so a `false` is not conclusive — and the overall `ready.copilot.ok` + `missing[]` verdict) comes from the single `agent-exec doctor` call above; report those findings plainly instead of re-deriving them from separate reads.
 - Absence of either is informational, never a reason to silently refuse to enable something the user asked for — just tell them what will happen (soft fallback for Codex, hard failure at call time for Copilot) and let them decide.
 
 ## 4. Legacy JSON migration check
 
-Check for `.claude/orchestra.json` and `~/.claude/orchestra.json`. If either exists and there is no sibling `.yaml`/`.yml` at that same scope:
+Detection for this comes from the SAME `agent-exec doctor --json` call made in step 3 (or a plain `agent-exec config --json`, which reports the identical `warnings` array) — do **not** separately `Read` raw `orchestra.json`/`orchestra.yaml` files to detect this; that reasoning already lives in `agent-exec` and this skill should not re-derive it. Look at `config.warnings` (doctor) / top-level `warnings` (config) for entries of `{"type": "legacy_json", "file": <abspath>}`:
 
-1. Read the JSON file.
+1. For each such entry, `Read` that one specific JSON file (this is the genuine special case: doctor/config only tells you *that* a legacy file exists and *where*, not its contents, since migrating it is an authoring action, not a diagnostic one).
 2. Show the user the equivalent YAML (same keys, structure carried over 1:1 — use `examples/orchestra.yaml`, shipped alongside the `orchestra:run` skill, as the commented template to fill in).
 3. Ask whether to write the new `.yaml` file and remove the old `.json`. Never do this silently or delete the old file without asking — it may not be tracked in git and could be someone else's in-progress edit.
 
@@ -58,20 +58,24 @@ v0.4.0 renamed the config vocabulary from role names to capability classes:
 `long_context_escalation.{class}`. The old keys are **no longer read** by
 `orchestra:run` — a file still using them silently loses that configuration.
 
-Whenever this skill reads an existing `.claude/orchestra.yaml` / `.yml` or
-`~/.claude/orchestra.yaml` / `.yml` (step 5 below always does this), scan it for
-pre-0.4 keys: `role_priority`, `model_policy`, `roles:` under an
-`external_executors` entry, or any of `tiers.worker` / `tiers.hard_worker` /
-`tiers.verifier`. If any are present:
+Detection for this is also carried in the same `warnings` array (doctor's
+`config.warnings` / `agent-exec config`'s top-level `warnings`), as entries of
+`{"type": "legacy_vocab", "file": <abspath>, "keys": [...]}` — one entry per
+layer file that still uses old-vocabulary keys (`role_priority`, `model_policy`,
+`roles:` under an `external_executors` entry, or any of `tiers.worker` /
+`tiers.hard_worker` / `tiers.verifier`). This skill should **not** load and scan
+raw layer files itself to find these; `agent-exec` already scans the same
+deduped layer set it merges and reports the hits. If any `legacy_vocab` entries
+are present:
 
 1. Do not rewrite anything yet — this is detection only.
-2. Show the user the specific old keys found and their new-vocabulary equivalents (same mapping as above), scoped to that one file.
-3. Ask whether to convert that file to the new vocabulary now, in place, preserving every other key and comment untouched. Exactly like the JSON case, never rewrite silently — the file may be mid-edit or intentionally pinned.
+2. Show the user the specific old keys found (from the warning's `keys` list) and their new-vocabulary equivalents (same mapping as above), scoped to that one file (the warning's `file`).
+3. Ask whether to convert that file to the new vocabulary now, in place, preserving every other key and comment untouched. Exactly like the JSON case, never rewrite silently — the file may be mid-edit or intentionally pinned. Converting the file (once approved) requires reading it — that's a normal `Read`+`Edit`, not the routine-detection read this section is telling you to skip.
 
 ## 5. Interactive flow
 
-1. Detect availability (step 3) and check for a legacy JSON config (step 4).
-2. Read whatever `.claude/orchestra.yaml` and `~/.claude/orchestra.yaml` currently exist. Compute and show the user the *effective* merged config (step 2's algorithm), noting for each non-default value which layer it actually comes from (project / user / default).
+1. Detect availability (step 3) and check for legacy JSON / pre-0.4 vocabulary warnings (step 4) — both come from `agent-exec doctor --json` / `agent-exec config --json`.
+2. Run `agent-exec config --json` (or reuse step 3's doctor output, whose `config` section is the same merged result) to get the *effective* deep-merged config directly — do not `Read` `.claude/orchestra.yaml` / `~/.claude/orchestra.yaml` and merge them in-context for routine setup; that duplicates logic `agent-exec` already owns and can drift from it. Show the user the effective config, noting for each non-default value which layer it actually comes from (project / user / default) — infer the owning layer by diffing against each layer's own file only if you need to pinpoint it precisely, otherwise the merged result plus the `warnings` array is normally enough to drive the conversation. The one case that genuinely needs a raw file read is step 4's file-content read to build a migration diff (config/doctor can say a legacy file exists, not offer to rewrite it) — call that out explicitly when you do it, rather than treating raw reads as the default path.
 3. Ask the user (AskUserQuestion) what to change: which executor(s) to enable/disable, whether to touch model tiers, whether to set or reorder `priority` (e.g. prefer Copilot for investigation-style light-class fan-out, with reactive fallback to the next entry — see `run` SKILL.md §9), and — this is the important one — **at which scope**. Default guidance: project scope for anything specific to this repo or team that should be checked into git and shared; project-local scope for a change specific to this repo that this one developer does NOT want to share (personal executor availability, a personal preference that would be noise in the shared file); user scope for a durable personal default that should apply everywhere regardless of project. If the user doesn't already have a config at the scope they pick, that's fine — step 4 of §5 creates it.
 4. Apply the change:
    - Target file doesn't exist yet: create it from `examples/orchestra.yaml` (shipped alongside the `orchestra:run` skill), but **trim it down to only the keys actually being set** — see the "smallest diff" rule in step 2. Keep a short comment on any field whose meaning isn't obvious from the key name alone.

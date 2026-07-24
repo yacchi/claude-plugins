@@ -40,6 +40,15 @@ PROFILES = {
     },
 }
 
+# Registry of executors agent-exec knows about even when they have no CLI
+# passthrough profile (e.g. codex, which is dispatch: agent and never gets
+# exec'd directly by agent-exec). Used so `doctor` can report presence/
+# absence for every known executor, not just ones enabled with dispatch=cli.
+KNOWN_EXECUTORS = {
+    "copilot": {"binary": "copilot", "default_dispatch": "cli"},
+    "codex": {"binary": "codex", "default_dispatch": "agent"},
+}
+
 DEFAULTS = {
     "tiers": {
         "light": "haiku",
@@ -385,6 +394,71 @@ def _load_yaml_layer(path):
     return data, None
 
 
+_LEGACY_TIER_KEYS = ("worker", "hard_worker", "verifier")
+
+
+def _detect_config_warnings():
+    """Detect legacy config artifacts (pre-0.4 vocabulary, legacy
+    orchestra.json) across the same deduped layer files used for merge, plus
+    the legacy JSON locations. Never raises; malformed/unreadable files are
+    skipped."""
+    warnings = []
+
+    # legacy JSON: orchestra.json with no sibling orchestra.yaml/.yml
+    json_seen = set()
+    for directory in (os.path.expanduser("~/.claude"), os.path.join(".", ".claude")):
+        jpath = os.path.join(directory, "orchestra.json")
+        if not os.path.isfile(jpath):
+            continue
+        key = os.path.realpath(jpath)
+        if key in json_seen:
+            continue
+        json_seen.add(key)
+        if _config_layer_path(directory) is None:
+            warnings.append({"type": "legacy_json", "file": os.path.abspath(jpath)})
+
+    # pre-0.4 vocabulary in any layer file (raw yaml, independent of merge)
+    for path in _ordered_layer_paths():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+        except (yaml.YAMLError, OSError):
+            continue
+        if not isinstance(data, dict):
+            continue
+
+        keys_found = []
+        if "role_priority" in data:
+            keys_found.append("role_priority")
+
+        external = data.get("external_executors")
+        if isinstance(external, dict):
+            for name, cfg in external.items():
+                if not isinstance(cfg, dict):
+                    continue
+                if "model_policy" in cfg:
+                    keys_found.append("external_executors.%s.model_policy" % name)
+                if "roles" in cfg:
+                    keys_found.append("external_executors.%s.roles" % name)
+
+        tiers = data.get("tiers")
+        if isinstance(tiers, dict):
+            for tier_key in _LEGACY_TIER_KEYS:
+                if tier_key in tiers:
+                    keys_found.append("tiers.%s" % tier_key)
+
+        if keys_found:
+            warnings.append(
+                {
+                    "type": "legacy_vocab",
+                    "file": os.path.abspath(path),
+                    "keys": keys_found,
+                }
+            )
+
+    return warnings
+
+
 def _builtin_exec_for(name):
     profile = PROFILES.get(name)
     if profile is None:
@@ -430,7 +504,9 @@ def cmd_config(args):
         sys.stderr.write(err + "\n")
         return 1
 
-    print(json.dumps(resolved, indent=2, ensure_ascii=False))
+    output = dict(resolved)
+    output["warnings"] = _detect_config_warnings()
+    print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0
 
 
@@ -759,6 +835,7 @@ def _build_doctor_report():
         "layers_found": [],
         "resolved": err is None,
         "error": err,
+        "warnings": _detect_config_warnings(),
     }
     executors = {}
     ready = {}
@@ -769,37 +846,59 @@ def _build_doctor_report():
         ]
 
         external = resolved.get("external_executors") or {}
-        if isinstance(external, dict):
-            for name, cfg in external.items():
-                if not isinstance(cfg, dict):
-                    continue
-                if cfg.get("enabled") is True and cfg.get("dispatch") == "cli":
-                    binary = _builtin_exec_for(name)
-                    available = cfg.get("available")
-                    executors[name] = {
-                        "enabled": True,
-                        "dispatch": "cli",
-                        "binary": binary,
-                        "available": available,
-                    }
+        external_dict = external if isinstance(external, dict) else {}
 
-                    missing = []
-                    if not shim.get("installed"):
-                        missing.append("shim-not-installed")
-                    if not shim.get("on_path"):
-                        missing.append("agent-exec-not-on-path")
-                    if not permission.get("found"):
-                        missing.append("permission-rule-absent")
-                    if available is not True:
-                        missing.append("executor-binary-unavailable")
+        names = set(external_dict.keys()) | set(KNOWN_EXECUTORS.keys())
+        for name in sorted(names):
+            cfg = external_dict.get(name)
+            cfg = cfg if isinstance(cfg, dict) else {}
+            known = KNOWN_EXECUTORS.get(name, {})
 
-                    ok = bool(
-                        available is True
-                        and permission.get("found")
-                        and shim.get("installed")
-                        and shim.get("on_path")
-                    )
-                    ready[name] = {"ok": ok, "missing": missing}
+            enabled = cfg.get("enabled") is True
+            dispatch = cfg.get("dispatch")
+            if dispatch is None:
+                dispatch = known.get("default_dispatch")
+
+            binary = known.get("binary")
+            if binary is None:
+                binary = _builtin_exec_for(name)
+            if binary is None:
+                binary = name
+
+            available = shutil.which(binary) is not None
+
+            entry = {
+                "enabled": enabled,
+                "dispatch": dispatch,
+                "binary": binary,
+                "available": available,
+            }
+            if dispatch == "agent":
+                entry["note"] = (
+                    "dispatch: agent — CLI binary presence is informational; "
+                    "actual availability is the subagent's session "
+                    "resolution, which agent-exec cannot determine"
+                )
+            executors[name] = entry
+
+            if enabled and dispatch == "cli":
+                missing = []
+                if not shim.get("installed"):
+                    missing.append("shim-not-installed")
+                if not shim.get("on_path"):
+                    missing.append("agent-exec-not-on-path")
+                if not permission.get("found"):
+                    missing.append("permission-rule-absent")
+                if available is not True:
+                    missing.append("executor-binary-unavailable")
+
+                ok = bool(
+                    available is True
+                    and permission.get("found")
+                    and shim.get("installed")
+                    and shim.get("on_path")
+                )
+                ready[name] = {"ok": ok, "missing": missing}
 
     return {
         "shim": shim,
@@ -831,6 +930,14 @@ def _print_doctor_text(report):
             print("  - %s" % p)
     else:
         print("config: FAILED to resolve: %s" % cfg["error"])
+    for w in cfg.get("warnings", []):
+        if w["type"] == "legacy_json":
+            print("  WARNING: legacy orchestra.json found: %s" % w["file"])
+        elif w["type"] == "legacy_vocab":
+            print(
+                "  WARNING: pre-0.4 config vocabulary in %s (keys: %s)"
+                % (w["file"], ", ".join(w["keys"]))
+            )
 
     perm = report["permission"]
     print("permission rule %s: %s" % (perm["rule"], "found" if perm["found"] else "NOT found"))
@@ -841,11 +948,13 @@ def _print_doctor_text(report):
         print("executors:")
         for name, info in report["executors"].items():
             print(
-                "  - %s: binary=%s available=%s"
-                % (name, info["binary"], info["available"])
+                "  - %s: enabled=%s dispatch=%s binary=%s available=%s"
+                % (name, info["enabled"], info["dispatch"], info["binary"], info["available"])
             )
+            if info.get("note"):
+                print("      note: %s" % info["note"])
     else:
-        print("executors: none enabled with dispatch=cli")
+        print("executors: none known")
 
     if report["ready"]:
         print("ready:")
