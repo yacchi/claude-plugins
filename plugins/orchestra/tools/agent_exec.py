@@ -344,6 +344,33 @@ def _config_layer_path(directory):
     return None
 
 
+def _ordered_layer_paths():
+    """Ordered, de-duplicated orchestra config layer files (user, project,
+    project-local), lowest->highest precedence. When two logical layers resolve
+    to the same physical file (e.g. cwd is $HOME, so ./.claude == ~/.claude),
+    the file is included once, at its first (lower-precedence) position."""
+    raw = []
+    for directory in (os.path.expanduser("~/.claude"),
+                      os.path.join(".", ".claude")):
+        p = _config_layer_path(directory)
+        if p is not None:
+            raw.append(p)
+    for local_name in ("orchestra.local.yaml", "orchestra.local.yml"):
+        p = os.path.join(".", ".claude", local_name)
+        if os.path.isfile(p):
+            raw.append(p)
+            break
+    deduped = []
+    seen = set()
+    for p in raw:
+        key = os.path.realpath(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(p)
+    return deduped
+
+
 def _load_yaml_layer(path):
     """Load a YAML layer file. Returns (dict_or_None, error_message_or_None)."""
     try:
@@ -370,31 +397,10 @@ def resolve_config():
     error_message_or_None)."""
     resolved = copy.deepcopy(DEFAULTS)
 
-    layer_dirs = [
-        os.path.expanduser("~/.claude"),
-        os.path.join(".", ".claude"),
-    ]
-
-    for directory in layer_dirs:
-        path = _config_layer_path(directory)
-        if path is None:
-            continue
+    for path in _ordered_layer_paths():
         data, err = _load_yaml_layer(path)
         if err is not None:
             return None, "agent-exec: invalid YAML in %s: %s" % (path, err)
-        resolved = _deep_merge(resolved, data)
-
-    local_path = os.path.join(".", ".claude", "orchestra.local.yaml")
-    local_path_yml = os.path.join(".", ".claude", "orchestra.local.yml")
-    chosen_local = None
-    if os.path.isfile(local_path):
-        chosen_local = local_path
-    elif os.path.isfile(local_path_yml):
-        chosen_local = local_path_yml
-    if chosen_local is not None:
-        data, err = _load_yaml_layer(chosen_local)
-        if err is not None:
-            return None, "agent-exec: invalid YAML in %s: %s" % (chosen_local, err)
         resolved = _deep_merge(resolved, data)
 
     external = resolved.get("external_executors") or {}
@@ -712,9 +718,14 @@ def _scan_permission_rule():
         os.path.join(".", ".claude", "settings.local.json"),
     ]
     sources = []
+    seen = set()
     for path in candidates:
         if not os.path.isfile(path):
             continue
+        key = os.path.realpath(path)
+        if key in seen:
+            continue
+        seen.add(key)
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -753,17 +764,9 @@ def _build_doctor_report():
     ready = {}
 
     if err is None and isinstance(resolved, dict):
-        layer_paths = []
-        for directory in [os.path.expanduser("~/.claude"), os.path.join(".", ".claude")]:
-            p = _config_layer_path(directory)
-            if p is not None:
-                layer_paths.append(os.path.abspath(p))
-        for local_name in ("orchestra.local.yaml", "orchestra.local.yml"):
-            p = os.path.join(".", ".claude", local_name)
-            if os.path.isfile(p):
-                layer_paths.append(os.path.abspath(p))
-                break
-        config_section["layers_found"] = layer_paths
+        config_section["layers_found"] = [
+            os.path.abspath(p) for p in _ordered_layer_paths()
+        ]
 
         external = resolved.get("external_executors") or {}
         if isinstance(external, dict):
