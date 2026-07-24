@@ -125,6 +125,21 @@ external_executors:
 #
 # Omit `priority` entirely to keep the legacy behavior: the Claude `tiers.<name>`
 # model, with external executors woven in ad hoc per their own `classes` list.
+# Opt-in, anonymized telemetry. Default OFF. When enabled, `agent-exec run
+# --capture` self-logs one sanitized `dispatch` record per dispatch, and the
+# instructor emits one `run_summary` record per orchestration (via a cheap
+# haiku relay, never the instructor itself). Redaction is enforced by an
+# ALLOWLIST inside `agent-exec` itself, not by trusting callers — only
+# enumerated categorical values and non-negative integers can ever be stored,
+# so it is structurally impossible for a telemetry record to contain prompts,
+# task text, file paths, task ids, summaries, code, or error text. See the
+# `run` skill's SKILL.md §10 for the full field list and `agent-exec telemetry
+# show|archive|clear`. Toggle with `agent-exec telemetry enable/disable [--scope
+# user|project|local]` instead of hand-editing.
+telemetry:
+  enabled: false
+  dir: ~/.claude/orchestra/telemetry
+
 priority:
   light:
     # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated executor

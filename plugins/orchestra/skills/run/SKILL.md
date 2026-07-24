@@ -156,11 +156,70 @@ const results = await pipeline(tasks, runTask)
 return results
 ```
 
+**At run end:** if telemetry is enabled (check `doctor`'s `config.values.telemetry.enabled`), have a cheap haiku relay agent emit one `run_summary` record via `agent-exec telemetry record --json '...'` — never the instructor itself. If disabled, skip silently. See section 10.
+
 **Same-tree parallelism safety.** `pipeline()` and `parallel()` run their file-changing workers concurrently against the **same working tree** — there is no worktree isolation unless you explicitly pass `isolation: 'worktree'` on the `agent()` call (and that spins up a fresh worktree per agent, so it only pays off for genuinely parallel file mutation; a sequential same-tree phase can't use it at all). Two file-changing workers whose file ownership overlaps will silently corrupt each other's writes. Guard against it two ways: (1) **assign disjoint file ownership up front** — pin each parallel worker's target files in its prompt so no two can touch the same path, and fix shared contracts/types in the prompts too; and (2) **keep workers small and watch the early spawns** — short-lived, narrowly-scoped workers shrink the overlap window, and a quick check that you haven't spawned two workers keyed to the same task/target catches an accidental duplicate before it reaches its write stage, while it's still harmless. When parallel file mutation genuinely can't be partitioned, use `isolation: 'worktree'` and merge afterward; when the phase is really sequential on one tree, run the workers in sequence rather than racing them.
 
 **On `agentType`:** this plugin ships `agents/orchestra-light.md`, `agents/orchestra-deep.md`, and `agents/orchestra-review.md`. Whether the plugin-scoped names (e.g. `orchestra:orchestra-light`) resolve as the `agentType` option of `agent()` is environment-dependent and unconfirmed. Before relying on it, check the list of available subagents (the @-mention typeahead, or the names visible to the Agent tool); if `orchestra:orchestra-light` / `orchestra:orchestra-deep` / `orchestra:orchestra-review` resolve, pass e.g. `agentType: 'orchestra:orchestra-light'`. If they don't resolve, or you must run before confirming, fall back to explicit `model: 'haiku'` / `'opus'` / `'sonnet'` (the template's default). Either way, rule #4 stands: exactly one of `model` or `agentType` must always be explicit. The `standard` class has no dedicated Claude agent definition — dispatch it with `model: 'sonnet'` inline instead of an `agentType`.
 
 For design-latitude tasks, route the work stage to `orchestra-deep` (Opus) instead of the `light`-class agent: `agentType: 'orchestra:orchestra-deep'` or `model: 'opus'`.
+
+### 5.1 Shorten the per-task critical path — overlap authoring
+
+`pipeline()` already runs tasks concurrently, so the latency you actually feel is not "tasks aren't parallel" — it is (a) the **sequential `work → verify → retry` chain inside a single task**, and (b) **barriers that serialize work with no real dependency** (§5.2). This subsection cuts (a).
+
+**Overlap adversarial-test authoring with implementation, and author once.** §7 measured that the review pass's dominant cost is *authoring* adversarial tests — and those tests derive from the **spec, not the implementation** (the `formatBytes(1048575) → "1 MiB"` boundary test that caught the PoC bug is fully spec-derivable). So author them *concurrently with* the first implementation, and author them **once** — the spec doesn't change across retries, only the implementation does. Each verify step then merely *runs* the pre-authored tests plus a whitebox glance, which is cheap. The pre-authored tests are exactly `orchestra-review`'s "≥3 additional adversarial tests"; only their authoring moves earlier.
+
+This restructures `runTask` (author-tests worker owns the `tests/` paths, impl worker owns the `src/` paths — disjoint, per the same-tree safety rule above):
+
+```javascript
+async function runTask(task) {
+  // Author adversarial tests from the SPEC, concurrently with the first
+  // implementation. Disjoint paths (tests/ vs src/), so no write conflict.
+  await parallel([
+    () => agent(task.workerPrompt,      { label: task.id + '-work-1',   model: 'haiku',  effort: 'low' }),
+    () => agent(task.authorTestsPrompt, { label: task.id + '-authtests', model: 'sonnet' }),
+  ])
+
+  let feedback = null
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    if (feedback) {
+      // Re-implement only. Tests are already on disk from the concurrent
+      // author step and are NOT re-written across retries.
+      await agent(
+        task.workerPrompt +
+          '\n\nThis is retry ' + attempt + ' of ' + MAX_RETRIES + '. Your previous ' +
+          'attempt already wrote source files at the paths you used before. Read them ' +
+          'first, then apply this feedback exactly, changing only what it names:\n' +
+          JSON.stringify(feedback),
+        { label: task.id + '-work-' + attempt, model: 'haiku', effort: 'low' },
+      )
+    }
+    // Verify = RUN the pre-authored tests + whitebox glance. No re-authoring.
+    const verdict = await agent(task.runTestsPrompt, {
+      label: task.id + '-verify-' + attempt, model: 'sonnet', schema: VERDICT_SCHEMA,
+    })
+    if (!verdict) return { id: task.id, pass: false, summary: 'review unavailable (skipped or errored)', rounds: attempt }
+    if (verdict.pass) return { id: task.id, pass: true, summary: verdict.summary, rounds: attempt }
+    feedback = verdict.feedback
+  }
+  return { id: task.id, pass: false, summary: 'exhausted retries without a pass', rounds: MAX_RETRIES }
+}
+```
+
+**Trade-off:** this adds one agent (the test author) and thus one spawn's overhead, so it pays off when authoring latency exceeds spawn overhead — true whenever the reviewer writes non-trivial tests, and the win *grows with retry depth* because authoring no longer repeats per round. For a change so small its review is a single obvious assertion, keep the plain §5 `runTask` instead. Split `task.verifierPrompt` into `task.authorTestsPrompt` (write spec-derived adversarial tests to `tests/`, do not run them) and `task.runTestsPrompt` (run the worker's tests **and** the pre-authored `tests/`, whitebox-inspect the diff, return `VERDICT_SCHEMA`).
+
+### 5.2 Never serialize independent work behind a barrier
+
+The most common reason an orchestration "feels sequential" is a barrier — a `parallel()` between phases, or an `await` — placed where there is no real dependency. The runtime does not add these; the instructor does, by writing phase-by-phase code. Guard against it:
+
+- **Default to `pipeline()`, not phase-by-phase `parallel()`.** Writing `const impls = await parallel(tasks.map(work)); const revs = await parallel(impls.map(verify))` forces *every* implementation to finish before *any* verify starts — the single slowest task stalls all reviews. `pipeline(tasks, runTask)` lets each task's verify start the instant *its own* work is done. A barrier between stages is justified ONLY when stage N genuinely needs the whole of stage N-1: dedup/merge across all results, a global early-exit (`0 findings → skip`), or a synthesis that literally reads every task.
+- **A "final review" is per-task unless it truly reads all tasks.** If a final check only re-validates task A, it belongs *inside* task A's pipeline chain, not in a global barrier that runs after every task finishes. Reserve a single whole-set barrier for a real cross-task synthesis, and scope it to the minimal set of tasks it actually consumes — not "all of them" by reflex.
+- **Independent review passes run concurrently, not one after another.** When a task gets both a Claude `review` and an `independent-review` (§9 — a different provider's eyes), the two share no dependency. Dispatch them together — `await parallel([() => claudeReview(...), () => independentReview(...)])` — and merge the two verdicts, rather than `await`-ing one and then the other.
+
+### 5.3 Size tasks to fill the concurrency width
+
+`pipeline()`/`parallel()` run at most `min(16, cores − 2)` agents at once. Two failure modes waste that width: **too few, too coarse tasks** (three 10-minute tasks can occupy at most three slots — split independent sub-parts into separate pipeline items *when their file ownership is disjoint*), and **too many trivial tasks** (fixed spawn overhead then dominates useful work). Aim for tasks large enough to amortize a spawn yet numerous and independent enough to keep the slots full. Splitting helps *only* when the parts are genuinely independent and touch disjoint paths — a split that introduces a cross-task dependency just re-adds the barrier §5.2 told you to avoid.
 
 ## 6. Writing worker prompts
 
@@ -221,7 +280,7 @@ This is a **deep merge**, not a first-found-wins lookup: object/mapping keys are
 
 The format is YAML, not JSON, specifically so the file can carry comments (JSON can't). `.claude/orchestra.json` / `~/.claude/orchestra.json` (the pre-YAML format) are no longer read — use the `setup` skill (`orchestra:setup`) to convert an old one.
 
-Instead of merging these four layers in-context, the instructor can obtain the already-resolved configuration deterministically via **`agent-exec config [--json]`** — it deep-merges the same four layers with the same precedence/merge rules described above and additionally reports, per `external_executors.<name>` with `enabled: true` and `dispatch: cli`, whether its executable resolves on `PATH` (`"available": true/false`, or `null` if the name has no built-in profile). This keeps the merge logic out of the instructor's own context. Likewise, Copilot's `dispatch: cli` invocation may use **`agent-exec run copilot --model M --effort E --workdir W --prompt-file F [--resume SID] [--capture]`** as a normalized entry point that centralizes the `--disable-builtin-mcps`/`--add-dir`/`--output-format` conventions instead of assembling the raw `agent-exec copilot ...` command by hand each time; with `--capture`, it also does what the relay used to hand-parse: it runs copilot as a subprocess and prints one normalized `{ status, answer, session_id, reason, exit_code }` JSON object to stdout instead of handing off via `execvpe`, so the relay just reads that JSON — see `references/external-executors.md` §5 for details.
+Instead of merging these four layers in-context, the instructor can obtain the already-resolved configuration deterministically via **`agent-exec config [--json]`** — it deep-merges the same four layers with the same precedence/merge rules described above and additionally reports, per `external_executors.<name>` with `enabled: true` and `dispatch: cli`, whether its executable resolves on `PATH` (`"available": true/false`, or `null` if the name has no built-in profile). This keeps the merge logic out of the instructor's own context. **Prefer a single startup call, though:** `agent-exec doctor --json` (needed anyway for the `dispatch: cli` pre-flight below) now embeds this exact resolved config under `config.values` alongside its readiness report, so one `doctor` call yields both the `ready.<executor>.ok` verdicts *and* the resolved `tiers` / `external_executors` / `priority` — a standalone `config` call is only worth it when you want the config and nothing else. Likewise, Copilot's `dispatch: cli` invocation may use **`agent-exec run copilot --model M --effort E --workdir W --prompt-file F [--resume SID] [--capture]`** as a normalized entry point that centralizes the `--disable-builtin-mcps`/`--add-dir`/`--output-format` conventions instead of assembling the raw `agent-exec copilot ...` command by hand each time; with `--capture`, it also does what the relay used to hand-parse: it runs copilot as a subprocess and prints one normalized `{ status, answer, session_id, reason, exit_code }` JSON object to stdout instead of handing off via `execvpe`, so the relay just reads that JSON — see `references/external-executors.md` §5 for details.
 
 As of v0.4.0, the configuration vocabulary itself was renamed from role names to capability/performance classes: `tiers.worker/hard_worker/verifier` → `tiers.light/standard/deep` + `review`, `external_executors.*.roles` → `classes`, `model_policy` → `class_policy`, `role_priority` → `priority`, and `long_context_escalation.{model, effort}` → `long_context_escalation.{class}`. Pre-0.4 keys using the old role vocabulary are no longer read — use the `setup` skill (`orchestra:setup`) to convert an old config to the new vocabulary, the same way it converts legacy JSON to YAML.
 
@@ -335,3 +394,55 @@ In brief, as of this plugin's own validation (full reasoning and every round-by-
 - **Copilot `light`/`standard`** → `gpt-5.6-luna` at `effort: medium`, the fastest/cheapest validated candidate — luna leads the `priority` list for both the `light` and `standard` classes (see `examples/orchestra.yaml`); `kimi-k2.7-code` and the newly-resolved `mai-code-1-flash-picker` are viable alternatives (see the reference doc for what's been observed about each).
 - **Long-context caveat:** Luna has measurably weak long-context recall. Escalate a nominally `light`/`standard`-class task to `deep` if it requires deep traversal of a large repository — the `long_context_escalation` field (`{ class: deep }`) in the example config documents this trigger.
 - Across 6 rounds of escalating task difficulty, no accuracy differentiation was observed until task size crossed into genuine multi-file, multi-language feature territory — at which point every cheap tier tested eventually showed at least one real, narrow defect. Treat the adversarial review stage as mandatory beyond a trivially small change, regardless of which model/provider/effort level is implementing the work — this holds for external executors exactly as much as for Claude's own tiers.
+
+## 10. Telemetry (opt-in, anonymized)
+
+Orchestra can optionally emit a small, anonymized telemetry stream so the maintainer can see how the pipeline behaves in practice — class usage, executor fallback rates, dispatch outcomes — without ever seeing what any of it was about.
+
+**Default off.** Telemetry is opt-in via `telemetry.enabled: true` in `orchestra.yaml` (see `examples/orchestra.yaml`). The resolved value surfaces at `doctor`'s `config.values.telemetry.enabled`, same as any other config key (section 9) — check that field rather than re-reading the YAML layers yourself. When disabled (the default, and the as-shipped state), nothing is written, and every `telemetry` subcommand that would record data is a silent no-op. To toggle without hand-editing YAML, use `agent-exec telemetry enable [--scope user|project|local]` or `agent-exec telemetry disable [--scope user|project|local]` — these perform a comment-preserving surgical edit of the scope's orchestra.yaml (creating a stub if absent) and require no manual YAML work.
+
+**Crash-dump-style, allowlist-enforced.** Redaction is not a matter of callers behaving — `agent-exec` itself enforces an ALLOWLIST of field names and enumerated values; only enumerated categorical strings and non-negative integers can ever be stored, and `schema_version`/`ts`/`os` are stamped by `agent-exec` itself, never supplied by the caller. It is structurally impossible to record prompts, task text, file names, paths, task ids, `summary` strings, code, or error-message text: no field accepts free text, and enum fields are checked by exact match, so free text placed in an enum field is silently dropped rather than stored.
+
+Allowed fields:
+- `event`: `run_summary` | `dispatch`
+- `lane`: `express` | `orchestrated`
+- `orchestra_version`: semver
+- `executor`: `claude` | `copilot` | `codex`
+- `cls`: `light` | `standard` | `deep` | `review`
+- `status`: `ok` | `unavailable`
+- `reason`: `quota` | `rate-limit` | `credits` | `auth` | `nonzero-exit` | `error`
+- `resumed`: boolean
+- `run_summary`-only numerics: `task_count`, `pass`, `fail`, `exhausted`, `fallbacks`
+- `run_summary`-only histograms (dict): `classes`, `rounds`, `executors_used`, `external_enabled`
+
+**Two emission sources:**
+- **AUTO — per dispatch.** `agent-exec run ... --capture` self-logs one `dispatch` record after printing its result (status/reason, and `cls` if `--cls` was passed to tag the dispatch's capability class). This is LLM-independent — it happens inside `agent-exec` regardless of who called it, and is a no-op when telemetry is disabled.
+- **RUN SUMMARY — once per orchestration.** At run end, if telemetry is enabled (visible via `doctor`'s `config.values.telemetry.enabled`), the instructor emits exactly one `run_summary` record through a cheap **haiku relay agent** that calls `agent-exec telemetry record --json '...'` — never the instructor directly. This keeps the instructor's own context clean, and `record` only accepts categorical/numeric fields regardless of who calls it. Skip silently when disabled.
+
+Example `run_summary` payload — categorical/numeric fields only, no ids or free text:
+
+```json
+{
+  "event": "run_summary",
+  "lane": "orchestrated",
+  "orchestra_version": "0.9.0",
+  "task_count": 3,
+  "pass": 2,
+  "fail": 1,
+  "exhausted": 1,
+  "fallbacks": 1,
+  "classes": { "light": 2, "standard": 1 },
+  "rounds": { "1": 2, "3": 1 },
+  "executors_used": { "claude": 2, "copilot": 1 },
+  "external_enabled": { "copilot": 1 }
+}
+```
+
+**Storage and CLI.** Records accumulate under `telemetry.dir` (default `~/.claude/orchestra/telemetry`, see `examples/orchestra.yaml`). CLI surface:
+
+- **`agent-exec telemetry record (--json STR | --file F)`** — appends ONE sanitized record; no-op + exit 0 when telemetry is disabled; never echoes the record's content to stdout.
+- **`agent-exec telemetry show [--json]`** — inspect what's stored.
+- **`agent-exec telemetry archive [--out FILE]`** — bundle stored records into a `.tar.gz`.
+- **`agent-exec telemetry clear`** — delete stored records.
+
+`show` / `archive` / `clear` work regardless of `enabled` — disabling telemetry only stops new records from being written, it does not hide or lock what is already on disk. `agent-exec run ... --cls CLASS` optionally tags a dispatch with its capability class for the auto-logged record. The Copilot relay's `answer` is never logged, under any circumstance.

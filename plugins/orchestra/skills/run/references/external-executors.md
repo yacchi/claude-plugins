@@ -363,5 +363,42 @@ Codex independent-reviewに渡すプロンプト末尾の指示例: 『Reply wit
 - **`agent-exec config [--json]`** — 4層のorchestra設定(built-in defaults → `~/.claude/orchestra.yaml` → `./.claude/orchestra.yaml` → `./.claude/orchestra.local.yaml`)を、SKILL.md §9と同じ規則(mapping key-by-keyでマージ、スカラー/リストは丸ごと置換、明示的な`null`は値として扱う)で決定的にdeep-mergeし、`external_executors.<name>`のうち`enabled: true`かつ`dispatch: cli`のものについては実行ファイルの`shutil.which`可否を`"available"`として付与したうえで、解決済み設定をJSONとしてstdoutに出す。これにより、instructorがYAMLレイヤをコンテキスト内でマージする必要がなくなる。トップレベルには`warnings`配列(pre-0.4語彙検出`legacy_vocab`、`orchestra.json`検出`legacy_json`。無ければ`[]`)も含まれるため、`setup`スキルはレガシー検出のために生のレイヤファイルを読む必要がない。
 - **`agent-exec run <profile> --model M --effort E --workdir W --prompt-file F [--resume SID] [--output FMT] [--capture]`** — profile(現状`copilot`)ごとのCLIフラグ規約と安全側デフォルト(`--disable-builtin-mcps`・`--add-dir`・`--output-format`)を一本化した、正規化ずみのディスパッチ入口。§2で示した生の`agent-exec copilot -p ... --model ... --effort ... --add-dir ... --output-format json --disable-builtin-mcps`と等価なコマンドを、`agent-exec run copilot --model gpt-5.6-luna --effort medium --workdir "$WORKDIR" --prompt-file TASK.md`のように短く書けるようにするもの。allow-allの注入は無い(M1のまま)。
   - **`--capture`を付けると、`os.execvpe`によるプロセス置換ではなく、copilotをサブプロセスとして起動してstdout/stderrをキャプチャし、そのJSONLをパースして`{ status, answer, session_id, reason, exit_code }`という正規化JSONオブジェクトを1つ、agent-exec自身のstdoutに出して終了コード0で返す。** `status`は`"ok"`または`"unavailable"`(quota/credits/auth/rate-limit/nonzero-exit/errorのいずれかが`reason`に入る)。エグゼキュータ側のunavailableは非ゼロ終了で表現されず、この`status`フィールドで表現される点に注意 — Haikuリレーはこの1つのJSONを読むだけでよく、jqでのJSONLパースはリレー側にはもう不要(§2)。`--capture`を付けない場合は従来どおり`os.execvpe`によるハンドオフのままで、挙動に変化はない。
-- **`agent-exec doctor [--json | --text]`**(既定`--json`)— シム自身のインストール状況(パス・PATH上か・マーケットプレイス/cacheどちらを指しているか)、`uv`の有無、`agent-exec config`と同じ4層configマージ結果(同じ`warnings`配列を`config.warnings`として含む)、`permissions.allow`中の`Bash(agent-exec:*)`ルールの有無(ベストエフォート)、そして各cliエグゼキュータの総合可否`ready.<name>.ok`(未充足の`missing[]`付き)を1回でまとめて返す、読み取り専用の診断サブコマンド。上記§4の認可事前チェックはこれ1本に集約する。シムが未インストールでもブートストラップパス経由で直接呼び出せ、レポート自体が「未準備」を表現するため、内部エラーでない限り常に終了コード0。
+- **`agent-exec doctor [--json | --text]`**(既定`--json`)— シム自身のインストール状況(パス・PATH上か・マーケットプレイス/cacheどちらを指しているか)、`uv`の有無、`agent-exec config`と同じ4層configマージ結果(同じ`warnings`配列を`config.warnings`として含む)、`permissions.allow`中の`Bash(agent-exec:*)`ルールの有無(ベストエフォート)、そして各cliエグゼキュータの総合可否`ready.<name>.ok`(未充足の`missing[]`付き)を1回でまとめて返す、読み取り専用の診断サブコマンド。上記§4の認可事前チェックはこれ1本に集約する。**解決済みのconfig全体(`tiers`/`available`注記つき`external_executors`/`priority`)を`config.values`として同梱する**(解決失敗時は`null`、理由は`config.error`)ため、instructorは起動時の`doctor`1回で「可否verdict」と「解決済みモデルポリシー」の両方を得られ、`agent-exec config`を別途呼ぶ必要はない(config単体が欲しいときだけ`config`を使う)。シムが未インストールでもブートストラップパス経由で直接呼び出せ、レポート自体が「未準備」を表現するため、内部エラーでない限り常に終了コード0。
   - `executors`セクションは、有効化済み`dispatch: cli`のものだけでなく**既知の全エグゼキュータ**(`codex`・`copilot`)を`enabled`/`dispatch`/`binary`/`available`つきで網羅する — `dispatch: agent`のCodexも`available`(バイナリのPATH上の有無、参考情報)と、実際の可否はサブエージェントのセッション解決に依存し`agent-exec`からは判定不能である旨の`note`付きで含まれる。`ready.<name>.ok`は従来どおり有効化済み`dispatch: cli`エグゼキュータのみに付与され、Codexのようなagent dispatchには`ready`の verdict を作らない(判定不能なため)。`setup`スキルはこれにより、`codex`/`copilot`いずれについても個別の`command -v`を実行する必要がない。
+
+## 6. `agent-exec telemetry` — オプトインの匿名テレメトリ
+
+`agent-exec`にはメンテナがorchestraを改善するための、オプトイン・匿名化された「クラッシュダンプ的」テレメトリ機構がある。設定・意味論の全体像は`run`スキルのSKILL.md §10を参照。ここではCLIサブコマンドと、`run --capture`側の自動ログの仕様のみを記す。
+
+**既定はOFF。** `orchestra.yaml`の`telemetry.enabled`が`true`の場合のみ有効になる(`examples/orchestra.yaml`参照)。解決済みの値は`doctor`の`config.values.telemetry.enabled`にも現れる(§5の`config.values`と同じ仕組み)。無効時は、記録系サブコマンドはすべて何もせず終了コード0を返す(サイレントno-op)。
+
+**サブコマンド:**
+
+- **`agent-exec telemetry enable [--scope user|project|local]`** / **`disable [--scope user|project|local]`** — 指定スコープ(既定: user = `~/.claude/orchestra.yaml`)のorchestra.yamlの`telemetry.enabled`をトグルする。コメント保存型の手術的編集で、ファイルが無ければスタブを作成する — YAMLの手編集は不要。
+- **`agent-exec telemetry record (--json STR | --file F)`** — サニタイズ済みレコードを1件だけ追記する。telemetryが無効なら何もせず終了コード0(no-op)。レコードの内容をstdoutにエコーすることは絶対にない。
+- **`agent-exec telemetry show [--json]`** — 蓄積済みレコードを確認する。
+- **`agent-exec telemetry archive [--out FILE]`** — 蓄積済みレコードを`.tar.gz`にまとめる。
+- **`agent-exec telemetry clear`** — 蓄積済みレコードを削除する。
+
+`show`/`archive`/`clear`の3つは、`enabled`の値に関わらず常に動作する — telemetryを無効化しても、既に書かれたレコードの閲覧・アーカイブ・削除は妨げられない(無効化が止めるのは新規書き込みだけ)。
+
+**redactionはallowlistで担保される — 呼び出し側の申告を信用しない。** `agent-exec`のコード内に、フィールド名と許容される列挙値のALLOWLISTがあり、これを通過するのはenumで列挙済みのカテゴリ値と非負整数だけである。`schema_version`/`ts`/`os`は`agent-exec`自身がスタンプする(呼び出し側からは渡せない)。この結果、プロンプト・タスク本文・ファイル名・パス・タスクID・`summary`文字列・コード・エラーメッセージ文字列を保存することは構造的に不可能になる — 自由記述を受け付けるフィールドが存在せず、かつenumフィールドは完全一致でチェックされるため、enum欄に自由文を紛れ込ませても黙って弾かれるだけで記録はされない。
+
+許容フィールド一覧:
+
+| フィールド | 値 |
+|---|---|
+| `event` | `run_summary` \| `dispatch` |
+| `lane` | `express` \| `orchestrated` |
+| `orchestra_version` | semver |
+| `executor` | `claude` \| `copilot` \| `codex` |
+| `cls` | `light` \| `standard` \| `deep` \| `review` |
+| `status` | `ok` \| `unavailable` |
+| `reason` | `quota` \| `rate-limit` \| `credits` \| `auth` \| `nonzero-exit` \| `error` |
+| `resumed` | boolean |
+| `task_count`/`pass`/`fail`/`exhausted`/`fallbacks` | 非負整数(`run_summary`専用) |
+| `classes`/`rounds`/`executors_used`/`external_enabled` | dict型ヒストグラム(`run_summary`専用) |
+
+**`agent-exec run ... --capture`の自動ログ。** §5の`run`サブコマンドに`--cls CLASS`(`light`/`standard`/`deep`/`review`)を渡すと、そのディスパッチの能力クラスとしてタグ付けされる。`--capture`を付けたときは、結果を出力した後に`event: dispatch`のレコードを1件、`agent-exec`自身が自動でtelemetryに追記する(`status`/`reason`/`cls`など)。これはLLMを介さず`agent-exec`内部で完結する。Copilotの`answer`(回答本文)がtelemetryに記録されることは絶対にない。
+
+**run_summaryはinstructor自身ではなくリレー経由。** 1回のオーケストレーション実行の終わりに、telemetryが有効なら(`doctor`の`config.values.telemetry.enabled`で判定)、instructorは安価なHaikuリレーエージェントに`agent-exec telemetry record --json '...'`を1回実行させ、`run_summary`レコードを1件だけ記録する — instructor自身が直接実行することは絶対にない。無効なら何もせずスキップする。これはinstructorのコンテキストを汚さないための設計であり、また`record`はどのみちカテゴリ値/数値フィールドしか受け付けないため、instructorが直接叩いても得られる自由度は無い。

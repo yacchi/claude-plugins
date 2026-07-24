@@ -23,10 +23,13 @@ import copy
 import glob
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -57,6 +60,10 @@ DEFAULTS = {
         "review": "sonnet",
     },
     "external_executors": {},
+    "telemetry": {
+        "enabled": False,
+        "dir": "~/.claude/orchestra/telemetry",
+    },
 }
 
 USAGE = """\
@@ -70,19 +77,39 @@ Usage:
                                   ./.claude/orchestra.yaml +
                                   ./.claude/orchestra.local.yaml)
   agent-exec run <profile> --model M --effort E --workdir W --prompt-file F
-                                  [--resume SID] [--output FMT] [--capture]
+                                  [--resume SID] [--output FMT] [--cls CLASS]
+                                  [--capture]
                                   normalized, config-driven dispatch. With
                                   --capture, runs the executor as a subprocess,
                                   captures + parses its JSONL output, and
                                   prints a normalized result JSON to stdout
                                   (status/answer/session_id/reason/exit_code)
-                                  instead of exec-replacing the process.
+                                  instead of exec-replacing the process. Also
+                                  self-logs an anonymized "dispatch" telemetry
+                                  record (see `agent-exec telemetry`) if
+                                  telemetry is enabled in config.
   agent-exec doctor [--json|--text]
                                   emit a structured readiness report covering
                                   the shim, uv, config, executors, the
                                   Bash(agent-exec:*) permission rule, and an
                                   overall ready/missing verdict per executor
                                   (--json is the default)
+  agent-exec telemetry record (--json STR | --file F)
+                                  append an anonymized telemetry record
+                                  (allowlist-sanitized; enabled/disabled via
+                                  config's telemetry.enabled)
+  agent-exec telemetry show [--json]
+                                  print recorded telemetry (raw JSONL with
+                                  --json, else a short aggregate)
+  agent-exec telemetry archive [--out FILE]
+                                  tar.gz the telemetry directory to FILE
+  agent-exec telemetry clear     delete all recorded telemetry
+  agent-exec telemetry enable [--scope user|project|local]
+                                  surgically set telemetry.enabled: true in
+                                  the scope's orchestra.yaml (default: user),
+                                  preserving all other content/comments
+  agent-exec telemetry disable [--scope user|project|local]
+                                  same, but sets telemetry.enabled: false
   agent-exec <profile> [args...] dispatch: inject profile env, exec the
                                   target CLI with args passed through verbatim
   agent-exec -h | --help          show this help
@@ -353,6 +380,163 @@ def _config_layer_path(directory):
     return None
 
 
+_TELEMETRY_TOP_LEVEL_RE = re.compile(r"^telemetry:\s*(#.*)?$")
+_TELEMETRY_ENABLED_CHILD_RE = re.compile(r"^(\s+enabled\s*:\s*)(\S+)(.*)$")
+_LEADING_WS_RE = re.compile(r"^(\s+)")
+
+_TELEMETRY_STUB_COMMENT = (
+    "# orchestra config\n"
+    "# telemetry is opt-in and anonymized\n"
+)
+_TELEMETRY_BLOCK_TEMPLATE = (
+    "telemetry:\n"
+    "  enabled: %s  # opt-in, anonymized (see orchestra:run SKILL §10)\n"
+)
+
+
+def set_telemetry_enabled_in_text(text, value):
+    """Pure helper: given the current content of an orchestra.yaml layer file
+    (or None if the file does not exist yet), return the new file content
+    with telemetry.enabled surgically set to `value` (bool).
+
+    Does a LINE-ORIENTED edit rather than a yaml.safe_load+dump round-trip,
+    so every other line, comment, key, and formatting detail is preserved
+    byte-for-byte. Only a zero-indent `telemetry:` key is treated as the
+    block anchor; occurrences indented under another key, or inside
+    comments, are ignored."""
+    bool_str = "true" if value else "false"
+
+    if text is None:
+        return _TELEMETRY_STUB_COMMENT + "\n" + (_TELEMETRY_BLOCK_TEMPLATE % bool_str)
+
+    lines = text.splitlines(keepends=True)
+
+    telemetry_idx = None
+    for i, line in enumerate(lines):
+        stripped = line.rstrip("\r\n")
+        if _TELEMETRY_TOP_LEVEL_RE.match(stripped):
+            telemetry_idx = i
+            break
+
+    if telemetry_idx is None:
+        new_text = text
+        if new_text and not new_text.endswith("\n"):
+            new_text += "\n"
+        new_text += "\n" + (_TELEMETRY_BLOCK_TEMPLATE % bool_str)
+        return new_text
+
+    # Block runs from just after the telemetry: line until the next
+    # zero-indent, non-blank line (or EOF).
+    end_idx = len(lines)
+    for j in range(telemetry_idx + 1, len(lines)):
+        raw = lines[j].rstrip("\r\n")
+        if raw.strip() == "":
+            continue
+        if raw[0] not in (" ", "\t"):
+            end_idx = j
+            break
+
+    enabled_idx = None
+    for j in range(telemetry_idx + 1, end_idx):
+        raw = lines[j].rstrip("\r\n")
+        if _TELEMETRY_ENABLED_CHILD_RE.match(raw):
+            enabled_idx = j
+            break
+
+    if enabled_idx is not None:
+        line = lines[enabled_idx]
+        if line.endswith("\r\n"):
+            body, eol = line[:-2], "\r\n"
+        elif line.endswith("\n"):
+            body, eol = line[:-1], "\n"
+        else:
+            body, eol = line, ""
+        m = _TELEMETRY_ENABLED_CHILD_RE.match(body)
+        lines[enabled_idx] = m.group(1) + bool_str + m.group(3) + eol
+        return "".join(lines)
+
+    child_indent = "  "
+    for j in range(telemetry_idx + 1, end_idx):
+        raw = lines[j].rstrip("\r\n")
+        if raw.strip() == "":
+            continue
+        m2 = _LEADING_WS_RE.match(raw)
+        if m2:
+            child_indent = m2.group(1)
+        break
+
+    insert_line = "%senabled: %s\n" % (child_indent, bool_str)
+    lines.insert(telemetry_idx + 1, insert_line)
+    return "".join(lines)
+
+
+def _telemetry_scope_target_path(scope):
+    """Return the on-disk path to edit for `agent-exec telemetry
+    enable|disable --scope <scope>`. Prefers .yaml; falls back to an
+    existing .yml only if the .yaml variant is absent. If neither exists,
+    returns the .yaml path (a new file will be created there)."""
+    if scope == "user":
+        directory = os.path.expanduser("~/.claude")
+        yaml_name, yml_name = "orchestra.yaml", "orchestra.yml"
+    elif scope == "project":
+        directory = os.path.join(".", ".claude")
+        yaml_name, yml_name = "orchestra.yaml", "orchestra.yml"
+    elif scope == "local":
+        directory = os.path.join(".", ".claude")
+        yaml_name, yml_name = "orchestra.local.yaml", "orchestra.local.yml"
+    else:
+        raise ValueError("unknown scope: %s" % scope)
+
+    yaml_path = os.path.join(directory, yaml_name)
+    yml_path = os.path.join(directory, yml_name)
+    if os.path.isfile(yaml_path):
+        return yaml_path
+    if os.path.isfile(yml_path):
+        return yml_path
+    return yaml_path
+
+
+def _cmd_telemetry_toggle(value, args):
+    scope = "user"
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--scope":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: telemetry: missing value for --scope\n")
+                return 2
+            scope = args[i + 1]
+            if scope not in ("user", "project", "local"):
+                sys.stderr.write(
+                    "agent-exec: telemetry: invalid --scope: %s\n" % scope
+                )
+                return 2
+            i += 2
+        else:
+            sys.stderr.write("agent-exec: telemetry: unknown option: %s\n" % tok)
+            return 2
+
+    path = _telemetry_scope_target_path(scope)
+
+    text = None
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+    else:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    new_text = set_telemetry_enabled_in_text(text, value)
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new_text)
+
+    print(
+        "telemetry %s -> %s"
+        % ("enabled" if value else "disabled", os.path.abspath(path))
+    )
+    return 0
+
+
 def _ordered_layer_paths():
     """Ordered, de-duplicated orchestra config layer files (user, project,
     project-local), lowest->highest precedence. When two logical layers resolve
@@ -510,6 +694,360 @@ def cmd_config(args):
     return 0
 
 
+# --- telemetry -----------------------------------------------------------
+#
+# Crash-dump-style anonymized telemetry. Enforcement is by ALLOWLIST in code:
+# sanitize_telemetry_record only ever copies a fixed, fully-enumerated set of
+# keys whose values pass an exact-match / type check into a brand new dict.
+# There is no code path that copies caller-supplied free text (prompts, task
+# text, file names, paths, task ids, code, error message text) into a record.
+
+_TELEMETRY_EVENTS = ("run_summary", "dispatch")
+_TELEMETRY_LANES = ("express", "orchestrated")
+_TELEMETRY_EXECUTORS = ("claude", "copilot", "codex")
+_TELEMETRY_CLASSES = ("light", "standard", "deep", "review")
+_TELEMETRY_STATUSES = ("ok", "unavailable")
+_TELEMETRY_REASONS = (
+    "quota",
+    "rate-limit",
+    "credits",
+    "auth",
+    "nonzero-exit",
+    "error",
+)
+_TELEMETRY_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+_TELEMETRY_ROUND_KEY_RE = re.compile(r"^[1-9][0-9]*$")
+
+_TELEMETRY_MAX_LINES = 10000
+
+
+def _is_nonneg_int(v):
+    # bool is a subclass of int in Python; explicitly reject it here so a
+    # stray True/False is never mistaken for 0/1.
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+
+
+def _sanitize_count_dict(value, allowed_keys):
+    if not isinstance(value, dict):
+        return None
+    out = {}
+    for k, v in value.items():
+        if k in allowed_keys and _is_nonneg_int(v):
+            out[k] = v
+    return out
+
+
+def sanitize_telemetry_record(raw):
+    """Pure function: raw (caller-supplied) dict -> a NEW dict containing
+    ONLY allowlisted keys with valid values, or None if the record must be
+    rejected outright (missing/invalid event).
+
+    This is the sole enforcement point for the "no free text ever leaks"
+    guarantee: every key copied out is named explicitly below, and every
+    value is checked against an exact enum/type before being copied. Any key
+    not listed here, and any value that fails its check, is silently
+    dropped rather than passed through."""
+    if not isinstance(raw, dict):
+        return None
+
+    event = raw.get("event")
+    if event not in _TELEMETRY_EVENTS:
+        return None
+
+    out = {
+        "event": event,
+        "schema_version": 1,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "os": platform.system().lower(),
+    }
+
+    v = raw.get("orchestra_version")
+    if isinstance(v, str) and _TELEMETRY_VERSION_RE.match(v):
+        out["orchestra_version"] = v
+
+    v = raw.get("lane")
+    if v in _TELEMETRY_LANES:
+        out["lane"] = v
+
+    v = raw.get("executor")
+    if v in _TELEMETRY_EXECUTORS:
+        out["executor"] = v
+
+    v = raw.get("cls")
+    if v in _TELEMETRY_CLASSES:
+        out["cls"] = v
+
+    v = raw.get("status")
+    if v in _TELEMETRY_STATUSES:
+        out["status"] = v
+
+    v = raw.get("reason")
+    if v is not None and v in _TELEMETRY_REASONS:
+        out["reason"] = v
+
+    if "resumed" in raw:
+        v = raw.get("resumed")
+        if isinstance(v, bool):
+            out["resumed"] = v
+
+    for key in ("task_count", "pass", "fail", "exhausted", "fallbacks"):
+        if key in raw and _is_nonneg_int(raw.get(key)):
+            out[key] = raw[key]
+
+    if "classes" in raw:
+        sanitized = _sanitize_count_dict(raw.get("classes"), _TELEMETRY_CLASSES)
+        if sanitized is not None:
+            out["classes"] = sanitized
+
+    if "executors_used" in raw:
+        sanitized = _sanitize_count_dict(
+            raw.get("executors_used"), _TELEMETRY_EXECUTORS
+        )
+        if sanitized is not None:
+            out["executors_used"] = sanitized
+
+    if "rounds" in raw:
+        value = raw.get("rounds")
+        if isinstance(value, dict):
+            sanitized = {}
+            for k, v in value.items():
+                if isinstance(k, str) and _TELEMETRY_ROUND_KEY_RE.match(k) and _is_nonneg_int(v):
+                    sanitized[k] = v
+            out["rounds"] = sanitized
+
+    if "external_enabled" in raw:
+        value = raw.get("external_enabled")
+        if isinstance(value, dict):
+            sanitized = {}
+            for k, v in value.items():
+                if k in ("copilot", "codex") and isinstance(v, bool):
+                    sanitized[k] = v
+            out["external_enabled"] = sanitized
+
+    return out
+
+
+def _telemetry_dir_from_cfg(cfg):
+    telemetry_cfg = (cfg or {}).get("telemetry")
+    if not isinstance(telemetry_cfg, dict):
+        telemetry_cfg = {}
+    directory = telemetry_cfg.get("dir") or DEFAULTS["telemetry"]["dir"]
+    return os.path.expanduser(directory)
+
+
+def _telemetry_enabled(cfg):
+    telemetry_cfg = (cfg or {}).get("telemetry")
+    if not isinstance(telemetry_cfg, dict):
+        return False
+    return telemetry_cfg.get("enabled") is True
+
+
+def telemetry_append(record, cfg):
+    """Sanitize + append a telemetry record as one compact JSON line, subject
+    to a hard size cap. Never raises to the caller: any failure (disk full,
+    permission error, bad input) is swallowed after being sanitized away."""
+    try:
+        if not _telemetry_enabled(cfg):
+            return
+        sanitized = sanitize_telemetry_record(record)
+        if sanitized is None:
+            return
+
+        directory = _telemetry_dir_from_cfg(cfg)
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, "records.jsonl")
+
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(sanitized, ensure_ascii=False) + "\n")
+
+        _telemetry_enforce_cap(path)
+    except Exception:
+        # Telemetry must never break the caller.
+        pass
+
+
+def _telemetry_enforce_cap(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return
+    if len(lines) > _TELEMETRY_MAX_LINES:
+        keep = lines[-_TELEMETRY_MAX_LINES:]
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(keep)
+
+
+def build_dispatch_record(profile_name, result, resume, cls):
+    """Pure helper: build the (pre-sanitize) telemetry record for a single
+    `run --capture` dispatch. `result` is the dict returned by
+    parse_copilot_jsonl; only its status/reason fields (already
+    enum-constrained) are used — never `answer` or any other field that
+    could contain free text."""
+    record = {
+        "event": "dispatch",
+        "executor": profile_name,
+        "status": result.get("status"),
+        "reason": result.get("reason"),
+        "resumed": resume is not None,
+    }
+    if cls is not None:
+        record["cls"] = cls
+    return record
+
+
+def _read_telemetry_lines(path):
+    if not os.path.isfile(path):
+        return []
+    records = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except (ValueError, TypeError):
+                continue
+    return records
+
+
+def cmd_telemetry(args):
+    if len(args) == 0:
+        sys.stderr.write("agent-exec: telemetry: missing subcommand\n")
+        return 2
+
+    sub = args[0]
+    rest = args[1:]
+
+    if sub == "enable":
+        return _cmd_telemetry_toggle(True, rest)
+    if sub == "disable":
+        return _cmd_telemetry_toggle(False, rest)
+
+    resolved, err = resolve_config()
+    cfg = resolved if err is None and isinstance(resolved, dict) else DEFAULTS
+    directory = _telemetry_dir_from_cfg(cfg)
+    path = os.path.join(directory, "records.jsonl")
+
+    if sub == "record":
+        json_str = None
+        file_path = None
+        i = 0
+        while i < len(rest):
+            tok = rest[i]
+            if tok == "--json":
+                if i + 1 >= len(rest):
+                    sys.stderr.write("agent-exec: telemetry: missing value for --json\n")
+                    return 2
+                json_str = rest[i + 1]
+                i += 2
+            elif tok == "--file":
+                if i + 1 >= len(rest):
+                    sys.stderr.write("agent-exec: telemetry: missing value for --file\n")
+                    return 2
+                file_path = rest[i + 1]
+                i += 2
+            else:
+                sys.stderr.write("agent-exec: telemetry: unknown option: %s\n" % tok)
+                return 2
+
+        if json_str is None and file_path is None:
+            sys.stderr.write("agent-exec: telemetry: record requires --json or --file\n")
+            return 2
+
+        try:
+            if file_path is not None:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+            else:
+                raw = json.loads(json_str)
+        except (OSError, ValueError):
+            sys.stderr.write("agent-exec: telemetry: invalid JSON input\n")
+            return 2
+
+        if not isinstance(raw, dict) or raw.get("event") not in _TELEMETRY_EVENTS:
+            sys.stderr.write("agent-exec: telemetry: record missing valid 'event'\n")
+            return 2
+
+        telemetry_append(raw, cfg)
+        return 0
+
+    if sub == "show":
+        as_json = "--json" in rest
+        records = _read_telemetry_lines(path)
+        if as_json:
+            for r in records:
+                print(json.dumps(r, ensure_ascii=False))
+            return 0
+
+        by_event = {}
+        by_status = {}
+        by_reason = {}
+        for r in records:
+            if not isinstance(r, dict):
+                continue
+            ev = r.get("event")
+            if ev is not None:
+                by_event[ev] = by_event.get(ev, 0) + 1
+            st = r.get("status")
+            if st is not None:
+                by_status[st] = by_status.get(st, 0) + 1
+            rs = r.get("reason")
+            if rs is not None:
+                by_reason[rs] = by_reason.get(rs, 0) + 1
+
+        print("total records: %d" % len(records))
+        print("by event: %s" % json.dumps(by_event, ensure_ascii=False))
+        print("by status: %s" % json.dumps(by_status, ensure_ascii=False))
+        print("by reason: %s" % json.dumps(by_reason, ensure_ascii=False))
+        return 0
+
+    if sub == "archive":
+        out_path = None
+        i = 0
+        while i < len(rest):
+            tok = rest[i]
+            if tok == "--out":
+                if i + 1 >= len(rest):
+                    sys.stderr.write("agent-exec: telemetry: missing value for --out\n")
+                    return 2
+                out_path = rest[i + 1]
+                i += 2
+            else:
+                sys.stderr.write("agent-exec: telemetry: unknown option: %s\n" % tok)
+                return 2
+
+        if not os.path.isdir(directory):
+            sys.stderr.write(
+                "agent-exec: telemetry: directory does not exist: %s\n" % directory
+            )
+            return 1
+
+        if out_path is None:
+            out_path = os.path.join(
+                os.path.dirname(os.path.abspath(directory)),
+                "orchestra-telemetry-archive.tgz",
+            )
+        out_path = os.path.abspath(out_path)
+
+        with tarfile.open(out_path, "w:gz") as tar:
+            tar.add(directory, arcname=os.path.basename(directory.rstrip("/")))
+
+        print(out_path)
+        return 0
+
+    if sub == "clear":
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return 0
+
+    sys.stderr.write("agent-exec: telemetry: unknown subcommand: %s\n" % sub)
+    return 2
+
+
 # --- run subcommand ----------------------------------------------------------
 
 
@@ -609,6 +1147,7 @@ def cmd_run(args):
         "--prompt-file": None,
         "--resume": None,
         "--output": "json",
+        "--cls": None,
     }
     capture = False
 
@@ -652,6 +1191,7 @@ def cmd_run(args):
     prompt_file = opts["--prompt-file"]
     resume = opts["--resume"]
     output_fmt = opts["--output"]
+    cls = opts["--cls"]
 
     def build_argv(prompt_value):
         argv = [exec_name, "--disable-builtin-mcps"]
@@ -701,6 +1241,15 @@ def cmd_run(args):
         )
         result = parse_copilot_jsonl(proc.stdout, proc.stderr, proc.returncode)
         print(json.dumps(result, ensure_ascii=False))
+        try:
+            record = build_dispatch_record(profile_name, result, resume, cls)
+            telemetry_cfg, telemetry_err = resolve_config()
+            if telemetry_err is not None or not isinstance(telemetry_cfg, dict):
+                telemetry_cfg = DEFAULTS
+            telemetry_append(record, telemetry_cfg)
+        except Exception:
+            # Telemetry must never break dispatch.
+            pass
         return 0
 
     os.execvpe(exec_name, argv, env)  # never returns
@@ -836,6 +1385,12 @@ def _build_doctor_report():
         "resolved": err is None,
         "error": err,
         "warnings": _detect_config_warnings(),
+        # Fully-resolved 4-layer config (tiers / external_executors with
+        # `available` annotated / priority), so the instructor gets both the
+        # readiness verdict AND the resolved model policy from a single doctor
+        # call instead of also running `agent-exec config`. None on resolve
+        # failure (the `error` field carries the reason).
+        "values": resolved if err is None else None,
     }
     executors = {}
     ready = {}
@@ -1003,6 +1558,9 @@ def main(argv):
 
     if tok == "doctor":
         return cmd_doctor(argv[1:])
+
+    if tok == "telemetry":
+        return cmd_telemetry(argv[1:])
 
     return cmd_dispatch(tok, argv[1:])
 
