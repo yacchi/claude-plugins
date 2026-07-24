@@ -14,6 +14,7 @@ Usage:
   agent-exec list                print known profile names
   agent-exec config [--json]     print resolved orchestra config
   agent-exec run <profile> ...   normalized, config-driven dispatch
+  agent-exec doctor [--json|--text]  structured readiness report
   agent-exec <profile> [args..]  dispatch to the profile's executor
   agent-exec -h | --help          show this help
 """
@@ -22,7 +23,9 @@ import copy
 import glob
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -58,8 +61,19 @@ Usage:
                                   ./.claude/orchestra.yaml +
                                   ./.claude/orchestra.local.yaml)
   agent-exec run <profile> --model M --effort E --workdir W --prompt-file F
-                                  [--resume SID] [--output FMT]
-                                  normalized, config-driven dispatch
+                                  [--resume SID] [--output FMT] [--capture]
+                                  normalized, config-driven dispatch. With
+                                  --capture, runs the executor as a subprocess,
+                                  captures + parses its JSONL output, and
+                                  prints a normalized result JSON to stdout
+                                  (status/answer/session_id/reason/exit_code)
+                                  instead of exec-replacing the process.
+  agent-exec doctor [--json|--text]
+                                  emit a structured readiness report covering
+                                  the shim, uv, config, executors, the
+                                  Bash(agent-exec:*) permission rule, and an
+                                  overall ready/missing verdict per executor
+                                  (--json is the default)
   agent-exec <profile> [args...] dispatch: inject profile env, exec the
                                   target CLI with args passed through verbatim
   agent-exec -h | --help          show this help
@@ -417,6 +431,79 @@ def cmd_config(args):
 # --- run subcommand ----------------------------------------------------------
 
 
+_UNAVAILABLE_PATTERNS = [
+    ("quota", re.compile(r"quota|usage limit|premium request", re.IGNORECASE)),
+    ("rate-limit", re.compile(r"rate limit|rate-limit| 429", re.IGNORECASE)),
+    ("credits", re.compile(r"insufficient|credit|out of credits", re.IGNORECASE)),
+    (
+        "auth",
+        re.compile(
+            r"unauthor|authenticat| 401|not logged in|login", re.IGNORECASE
+        ),
+    ),
+]
+
+
+def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
+    """Pure parser: copilot JSONL stdout + stderr + subprocess exit code ->
+    normalized result dict. No I/O, no subprocess calls; unit-testable with
+    fixtures."""
+    last_content = None
+    last_final_content = None
+    session_id = None
+
+    for line in (stdout_text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(event, dict):
+            continue
+
+        etype = event.get("type")
+        data = event.get("data")
+
+        if etype == "assistant.message" and isinstance(data, dict):
+            content = data.get("content")
+            if isinstance(content, str) and content != "":
+                last_content = content
+                if data.get("phase") == "final_answer":
+                    last_final_content = content
+
+        if etype == "result":
+            sid = event.get("sessionId")
+            if isinstance(sid, str) and sid != "":
+                session_id = sid
+
+    answer = last_final_content if last_final_content is not None else last_content
+
+    combined_text = (stdout_text or "") + "\n" + (stderr_text or "")
+    reason = None
+    for candidate_reason, pattern in _UNAVAILABLE_PATTERNS:
+        if pattern.search(combined_text):
+            reason = candidate_reason
+            break
+
+    if reason is not None:
+        status = "unavailable"
+    elif exit_code != 0:
+        status = "unavailable"
+        reason = "nonzero-exit"
+    else:
+        status = "ok"
+
+    return {
+        "status": status,
+        "answer": answer,
+        "session_id": session_id,
+        "reason": reason,
+        "exit_code": exit_code,
+    }
+
+
 def cmd_run(args):
     if len(args) == 0:
         sys.stderr.write("agent-exec: run: missing profile\n")
@@ -441,11 +528,15 @@ def cmd_run(args):
         "--resume": None,
         "--output": "json",
     }
+    capture = False
 
     i = 0
     while i < len(rest):
         tok = rest[i]
-        if tok in opts:
+        if tok == "--capture":
+            capture = True
+            i += 1
+        elif tok in opts:
             if i + 1 >= len(rest):
                 sys.stderr.write("agent-exec: run: missing value for %s\n" % tok)
                 return 2
@@ -454,6 +545,9 @@ def cmd_run(args):
         else:
             sys.stderr.write("agent-exec: run: unknown option: %s\n" % tok)
             return 2
+
+    if capture:
+        opts["--output"] = "json"
 
     required = ["--model", "--effort", "--workdir", "--prompt-file"]
     for r in required:
@@ -496,6 +590,11 @@ def cmd_run(args):
         print("MODE: %s" % mode)
         print("ENV: (none)")
         print("EXEC: %s" % " ".join(argv))
+        if capture:
+            print(
+                "CAPTURE: yes (would subprocess-run copilot and emit "
+                "normalized JSON)"
+            )
         return 0
 
     resolved = shutil.which(exec_name)
@@ -510,7 +609,265 @@ def cmd_run(args):
 
     argv = build_argv(prompt_text)
     env = dict(os.environ)
+
+    if capture:
+        proc = subprocess.run(
+            argv,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        result = parse_copilot_jsonl(proc.stdout, proc.stderr, proc.returncode)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
     os.execvpe(exec_name, argv, env)  # never returns
+
+
+# --- doctor subcommand -------------------------------------------------------
+
+
+_KNOWN_BINDIRS = ["~/.local/bin", "/usr/local/bin", "~/bin", "~/.claude/bin"]
+
+_SHIM_EXEC_RE = re.compile(r'exec\s+"([^"]+)"\s+"\$@"')
+
+
+def _is_executable_file(path):
+    try:
+        return os.path.isfile(path) and os.access(path, os.X_OK)
+    except OSError:
+        return False
+
+
+def _candidate_shim_dirs():
+    path_dirs = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+    known = [os.path.expanduser(p) for p in _KNOWN_BINDIRS]
+    seen = set()
+    ordered = []
+    for d in path_dirs + known:
+        key = os.path.abspath(d)
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(d)
+    return ordered
+
+
+def _classify_anchor(target):
+    if not target:
+        return None
+    if "/marketplaces/" in target:
+        return "marketplace-clone"
+    if "/cache/" in target:
+        return "cache"
+    return "other"
+
+
+def _find_shim():
+    """Search PATH dirs + known bindirs for an executable 'agent-exec'.
+
+    Returns a dict: installed, path, target, anchored_to, on_path."""
+    path_dirs_abs = {
+        os.path.abspath(p) for p in os.environ.get("PATH", "").split(os.pathsep) if p
+    }
+
+    for d in _candidate_shim_dirs():
+        candidate = os.path.join(d, "agent-exec")
+        if not _is_executable_file(candidate):
+            continue
+        target = None
+        try:
+            with open(candidate, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            m = _SHIM_EXEC_RE.search(content)
+            if m:
+                target = m.group(1)
+        except OSError:
+            pass
+        on_path = os.path.abspath(d) in path_dirs_abs
+        return {
+            "installed": True,
+            "path": os.path.abspath(candidate),
+            "target": target,
+            "anchored_to": _classify_anchor(target),
+            "on_path": on_path,
+        }
+
+    return {
+        "installed": False,
+        "path": None,
+        "target": None,
+        "anchored_to": None,
+        "on_path": False,
+    }
+
+
+def _scan_permission_rule():
+    """Best-effort scan of known settings.json files for the
+    Bash(agent-exec:*) permission rule. Never raises."""
+    rule = "Bash(agent-exec:*)"
+    candidates = [
+        os.path.expanduser("~/.claude/settings.json"),
+        os.path.join(".", ".claude", "settings.json"),
+        os.path.join(".", ".claude", "settings.local.json"),
+    ]
+    sources = []
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        allow = (data.get("permissions") or {}).get("allow")
+        if isinstance(allow, list) and rule in allow:
+            sources.append(os.path.abspath(path))
+
+    return {
+        "rule": rule,
+        "found": len(sources) > 0,
+        "sources": sources,
+        "best_effort_note": (
+            "best-effort scan of ~/.claude/settings.json and "
+            "./.claude/settings.json(.local); does not see enterprise "
+            "policy or CLI --allowedTools"
+        ),
+    }
+
+
+def _build_doctor_report():
+    shim = _find_shim()
+    uv_present = shutil.which("uv") is not None
+    permission = _scan_permission_rule()
+
+    resolved, err = resolve_config()
+    config_section = {
+        "layers_found": [],
+        "resolved": err is None,
+        "error": err,
+    }
+    executors = {}
+    ready = {}
+
+    if err is None and isinstance(resolved, dict):
+        layer_paths = []
+        for directory in [os.path.expanduser("~/.claude"), os.path.join(".", ".claude")]:
+            p = _config_layer_path(directory)
+            if p is not None:
+                layer_paths.append(os.path.abspath(p))
+        for local_name in ("orchestra.local.yaml", "orchestra.local.yml"):
+            p = os.path.join(".", ".claude", local_name)
+            if os.path.isfile(p):
+                layer_paths.append(os.path.abspath(p))
+                break
+        config_section["layers_found"] = layer_paths
+
+        external = resolved.get("external_executors") or {}
+        if isinstance(external, dict):
+            for name, cfg in external.items():
+                if not isinstance(cfg, dict):
+                    continue
+                if cfg.get("enabled") is True and cfg.get("dispatch") == "cli":
+                    binary = _builtin_exec_for(name)
+                    available = cfg.get("available")
+                    executors[name] = {
+                        "enabled": True,
+                        "dispatch": "cli",
+                        "binary": binary,
+                        "available": available,
+                    }
+
+                    missing = []
+                    if not shim.get("installed"):
+                        missing.append("shim-not-installed")
+                    if not shim.get("on_path"):
+                        missing.append("agent-exec-not-on-path")
+                    if not permission.get("found"):
+                        missing.append("permission-rule-absent")
+                    if available is not True:
+                        missing.append("executor-binary-unavailable")
+
+                    ok = bool(
+                        available is True
+                        and permission.get("found")
+                        and shim.get("installed")
+                        and shim.get("on_path")
+                    )
+                    ready[name] = {"ok": ok, "missing": missing}
+
+    return {
+        "shim": shim,
+        "uv": {"present": uv_present},
+        "config": config_section,
+        "executors": executors,
+        "permission": permission,
+        "ready": ready,
+    }
+
+
+def _print_doctor_text(report):
+    shim = report["shim"]
+    print("agent-exec doctor")
+    print("-----------------")
+    if shim["installed"]:
+        print("shim: installed at %s (on PATH: %s)" % (shim["path"], shim["on_path"]))
+        if shim["target"]:
+            print("  target: %s (%s)" % (shim["target"], shim["anchored_to"]))
+    else:
+        print("shim: NOT installed")
+
+    print("uv: %s" % ("present" if report["uv"]["present"] else "NOT found"))
+
+    cfg = report["config"]
+    if cfg["resolved"]:
+        print("config: resolved (%d layer(s) found)" % len(cfg["layers_found"]))
+        for p in cfg["layers_found"]:
+            print("  - %s" % p)
+    else:
+        print("config: FAILED to resolve: %s" % cfg["error"])
+
+    perm = report["permission"]
+    print("permission rule %s: %s" % (perm["rule"], "found" if perm["found"] else "NOT found"))
+    for s in perm["sources"]:
+        print("  - %s" % s)
+
+    if report["executors"]:
+        print("executors:")
+        for name, info in report["executors"].items():
+            print(
+                "  - %s: binary=%s available=%s"
+                % (name, info["binary"], info["available"])
+            )
+    else:
+        print("executors: none enabled with dispatch=cli")
+
+    if report["ready"]:
+        print("ready:")
+        for name, info in report["ready"].items():
+            status = "OK" if info["ok"] else "NOT READY"
+            print("  - %s: %s%s" % (name, status, (" (missing: %s)" % ", ".join(info["missing"])) if info["missing"] else ""))
+
+
+def cmd_doctor(args):
+    fmt = "--json"
+    for a in args:
+        if a in ("--json", "--text"):
+            fmt = a
+        else:
+            sys.stderr.write("agent-exec: doctor: unknown option: %s\n" % a)
+            return 2
+
+    report = _build_doctor_report()
+
+    if fmt == "--text":
+        _print_doctor_text(report)
+    else:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+
+    return 0
 
 
 def main(argv):
@@ -531,6 +888,9 @@ def main(argv):
 
     if tok == "run":
         return cmd_run(argv[1:])
+
+    if tok == "doctor":
+        return cmd_doctor(argv[1:])
 
     return cmd_dispatch(tok, argv[1:])
 

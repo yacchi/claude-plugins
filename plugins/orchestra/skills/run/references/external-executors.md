@@ -64,47 +64,46 @@ agent-exec copilot -p "$(cat TASK.md)" --model gpt-5.6-luna --effort medium \
 
 **封じ込め(containment)に関する注意(実測: M2) — 重要。** `copilot -p`は自身のツール許可フラグ(`--allow-tool`/`--deny-tool`/`--excluded-tools`)では確実に閉じ込められない。実測では、`--excluded-tools='bash'`でbashツールを除外しても、エージェントは**`task`ツール経由で同じシェルコマンドを実行するよう迂回した**。つまりこれらのフラグは個別ツール名単位の除外であり、エージェントがそれを回避する経路(サブタスク委譲など)を持っている限り、セキュリティ境界にはならない。これらは多層防御(defense-in-depth)の一枚であって境界(boundary)ではない — 真の最小権限を実現するには、コンテナ・`sandbox-exec`・制限ユーザー・ネットワーク egress 制御・使い捨てworktreeのような**OS外部のサンドボックス**が必要であり、これは本プラグインでは未実装(将来課題)である。
 
-`--add-dir`は、`--allow-all-paths`の代わりにファイルアクセスを作業ディレクトリに限定する(ただしこれもプロセス内の制御であり、M2の外部サンドボックスに置き換わるものではない)。`--output-format json`はJSONLイベントを出力し、最終的な人間可読の回答とセッションIDの両方がそこに含まれる:
+`--add-dir`は、`--allow-all-paths`の代わりにファイルアクセスを作業ディレクトリに限定する(ただしこれもプロセス内の制御であり、M2の外部サンドボックスに置き換わるものではない)。`--output-format json`はJSONLイベントを出力し、最終的な人間可読の回答とセッションIDの両方がそこに含まれる。
 
-```bash
-jq -r 'select(.type=="assistant.message") | .data.content' run.jsonl | tail -1   # 回答
-jq -r 'select(.type=="result") | .sessionId' run.jsonl                          # セッションID
-```
+**このJSONLを`jq`で手動パースする必要はもうない。** `agent-exec run copilot --capture ...`(§5)がこのパース(回答の抽出・セッションIDの抽出・quota/credits/auth/rate-limitシグナルからのok/unavailable判定)を1コマンドに集約し、`{ status, answer, session_id, reason, exit_code }`という正規化されたJSONオブジェクトをstdoutにそのまま出す。リレーエージェントはこのJSONを読むだけでよく、jqでイベント種別ごとに`select`する処理はリレー側にはもう残っていない。
 
 **CLI利用 — リトライラウンドをまたいでセッションを継続する**(Codexの`--resume-last`に相当。このプラグイン自身のPoCで実際に動作を確認済み — 再開したセッションは前ターンの指示を正しく想起した):
 
 ```bash
-agent-exec copilot --resume="$SESSION_ID" -p "$(cat FEEDBACK.md)" --model gpt-5.6-luna --effort medium \
-  --add-dir "$WORKDIR" --output-format json --disable-builtin-mcps > retry.jsonl
+agent-exec run copilot --capture --resume "$SESSION_ID" --model gpt-5.6-luna --effort medium \
+  --workdir "$WORKDIR" --prompt-file FEEDBACK.md
 ```
 
 orchestrateパイプラインの`cli`ディスパッチは、リトライラウンドごとに**新しい**リレーエージェントを生成する設計のため(CLIの出力をinstructorのコンテキストから遠ざけるため)、セッションIDは単一のリレーエージェントの記憶にではなく、*Workflowスクリプト*自体を通じて引き継ぐ必要がある。最初のラウンドのリレーに、回答と一緒にセッションIDを返させ、スクリプト内でパースして、次のラウンドのリレープロンプトに渡し、`command`の代わりに`resume_command`を使わせる。
 
-**リレーの返信形式(`STATUS:`判別子)**: `priority`のリアクティブ・フォールバック(§4)がCopilotの枯渇/認証/quota切れを検知できるように、リレーエージェントの返信は必ず1行目を`STATUS: ok`または`STATUS: unavailable`にする。`ok`ならその後に回答本文と`SESSION_ID: <id>`行を続け、`unavailable`ならその後に一行の短い理由(quota/credits/auth/rate-limitのいずれか)を続ける。生のCLIログ(jsonlの中身そのもの)はinstructorのコンテキストに絶対に渡さないこと — リレーが読んで判定した結果だけを返す:
+**リレーの返信形式(`STATUS:`判別子)**: `priority`のリアクティブ・フォールバック(§4)がCopilotの枯渇/認証/quota切れを検知できるように、リレーエージェントの返信は必ず1行目を`STATUS: ok`または`STATUS: unavailable`にする。`ok`ならその後に回答本文と`SESSION_ID: <id>`行を続け、`unavailable`ならその後に一行の短い理由(quota/credits/auth/rate-limitのいずれか)を続ける。生のCLIログ(jsonlの中身そのもの)はinstructorのコンテキストに絶対に渡さないこと — リレーが読んで判定した結果だけを返す。
+
+**`agent-exec run copilot --capture`が正規化済みJSONを直接返すため、リレーはもうJSONLをパースしない。** リレーが実行するコマンドは`{ status, answer, session_id, reason, exit_code }`という1つのJSONオブジェクトをstdoutに出すので、リレーの仕事は「そのJSONを読んで`STATUS:`行に転記するだけ」になる — `jq`によるイベント種別ごとの`select`は不要:
 
 ```javascript
-// Round 1: セッションがまだ無いので `command` を使う。(agent-exec 経由で呼ぶ)
+// Round 1: セッションがまだ無いので --resume を付けない。(agent-exec run copilot --capture 経由)
 const first = await agent(
-  'Run: agent-exec copilot -p {promptfile} --model gpt-5.6-luna --effort medium ' +
-  '--add-dir ' + workdir + ' --output-format json --disable-builtin-mcps > /tmp/run.jsonl ; ' +
-  'then inspect the result. Reply with STATUS: ok as the first line if it succeeded, or ' +
-  'STATUS: unavailable if the CLI exited nonzero or the output shows a quota/credit/auth/' +
-  'rate-limit error. If ok, on the following lines give the answer from ' +
-  '`jq -r \'select(.type=="assistant.message") | .data.content\' /tmp/run.jsonl | tail -1`, ' +
-  'then `SESSION_ID: ` followed by ' +
-  '`jq -r \'select(.type=="result") | .sessionId\' /tmp/run.jsonl`. ' +
-  'If unavailable, follow with one short line naming the reason. Never paste raw CLI logs.',
+  'Run: agent-exec run copilot --capture --model gpt-5.6-luna --effort medium ' +
+  '--workdir ' + workdir + ' --prompt-file {promptfile} ; ' +
+  'this prints one normalized JSON object { status, answer, session_id, reason, exit_code } ' +
+  'to stdout — parse it directly (no jq, no manual JSONL inspection needed). Reply with ' +
+  'STATUS: ok as the first line if status=="ok", or STATUS: unavailable if status=="unavailable". ' +
+  'If ok, on the following lines give the `answer` value, then `SESSION_ID: ` followed by the ' +
+  '`session_id` value. If unavailable, follow with one short line naming the `reason` value. ' +
+  'Never paste raw CLI logs.',
   { label: 'copilot-relay-r1', model: 'haiku', effort: 'low' },
 )
 const statusMatch = /^STATUS:\s*(ok|unavailable)/m.exec(first)
 const sessionId = /SESSION_ID:\s*(\S+)/.exec(first)?.[1]
 
-// Round 2+: 同じセッションを再開する。sessionIdを埋め込んだ `resume_command` を使う。
+// Round 2+: 同じセッションを再開する。sessionIdを --resume に渡す。
 const retry = await agent(
-  'Run: agent-exec copilot --resume=' + sessionId + ' -p {promptfile} --model gpt-5.6-luna --effort medium ' +
-  '--add-dir ' + workdir + ' --output-format json --disable-builtin-mcps > /tmp/run2.jsonl ; ' +
-  'then inspect the result and reply with STATUS: ok or STATUS: unavailable as the first line ' +
-  '(same rule as round 1), followed by the final answer only — no logs.',
+  'Run: agent-exec run copilot --capture --resume ' + sessionId + ' --model gpt-5.6-luna --effort medium ' +
+  '--workdir ' + workdir + ' --prompt-file {promptfile} ; ' +
+  'this prints the same normalized JSON object — parse it and reply with STATUS: ok or ' +
+  'STATUS: unavailable as the first line (same rule as round 1), followed by the `answer` ' +
+  'value only — no logs.',
   { label: 'copilot-relay-r2', model: 'haiku', effort: 'low' },
 )
 ```
@@ -237,7 +236,9 @@ priority:
 
 **プロアクティブな残量照会は同梱しない。** `cli`ディスパッチと同じ安全原則により、Copilotの残クレジットやCodex/Claudeの使用ウィンドウ残量を事前に問い合わせるコマンドはこのプラグインには存在せず、今後も追加しない。フォールバックの判定材料は、実際にディスパッチした時点で観測される「unavailableシグナル」だけである。
 
-**認可(authorization)の事前チェックは残量照会とは別物で、こちらは推奨する。** 上の「残量照会を同梱しない」は、リモートで変動する*残量*(クレジット/使用ウィンドウ)を事前問い合わせしない、という意味であって*認可*には当てはまらない。`dispatch: cli`のエグゼキュータ(Copilot)は、セッションに該当するBash許可ルール(`agent-exec`利用時は`Bash(agent-exec:*)`、手動セットアップ時は`Bash(copilot:*)`)が欠けていれば**この実行では絶対に成功しない**(M1により、これ以外に必要な環境変数はない — `COPILOT_ALLOW_ALL`は`agent-exec`利用・手動セットアップのいずれでも不要)。許可ルールが欠けている場合、残量と違って一過性ではなく、リレーを起動してもパーミッションに即拒否される。したがってinstructorは、`priority`の候補に`dispatch: cli`エグゼキュータを含める前に認可の有無を確認し(自身のセッションの`permissions.allow`を`.claude/settings.json`/`~/.claude/settings.json`で読むだけのローカルな静的チェックで、リモート問い合わせではない)、欠けていればそのランでは最初からunavailable扱いにして次候補へ降格させる。これは無駄なリレー起動を省く最適化であり、仮にチェックを省いても下記のリアクティブなフォールバック(リレーの`STATUS: unavailable`)が同じ結論に達するバックストップとして残る。
+**認可(authorization)の事前チェックは残量照会とは別物で、こちらは推奨する。** 上の「残量照会を同梱しない」は、リモートで変動する*残量*(クレジット/使用ウィンドウ)を事前問い合わせしない、という意味であって*認可*には当てはまらない。`dispatch: cli`のエグゼキュータ(Copilot)は、セッションに該当するBash許可ルール(`agent-exec`利用時は`Bash(agent-exec:*)`、手動セットアップ時は`Bash(copilot:*)`)が欠けていれば**この実行では絶対に成功しない**(M1により、これ以外に必要な環境変数はない — `COPILOT_ALLOW_ALL`は`agent-exec`利用・手動セットアップのいずれでも不要)。許可ルールが欠けている場合、残量と違って一過性ではなく、リレーを起動してもパーミッションに即拒否される。
+
+**この事前チェックは`agent-exec doctor`を1回呼ぶだけで済む。** シム(`agent-exec`本体)がPATH上にインストールされているか・どのターゲット(マーケットプレイス・クローンか、壊れやすいcacheパスか)を指しているか、`uv`の有無、4層configのマージ結果、各`external_executors.<name>`の`enabled`/`available`、`permissions.allow`中の`Bash(agent-exec:*)`ルールの有無(ベストエフォート — `~/.claude/settings.json`と`./.claude/settings.json(.local)`のみを走査し、enterprise policyやCLIの`--allowedTools`は見えない)、そして各cliエグゼキュータの総合可否`ready.<name>.ok`(と未充足の`missing[]`)を、`agent-exec doctor`(人間向け`--text`、instructor向け`--json`)の1回の呼び出しでまとめて返す。instructorは`priority`の候補に`dispatch: cli`エグゼキュータを含める前にこれを実行し、`ready.<name>.ok`が`false`ならそのランでは最初からunavailable扱いにして次候補へ降格させる — 個別に`settings.json`を読んだり`which`を叩いたりする必要はない。これは無駄なリレー起動を省く最適化であり、仮にチェックを省いても下記のリアクティブなフォールバック(リレーの`STATUS: unavailable`)が同じ結論に達するバックストップとして残る。`doctor`はシムが未インストールでも(ブートストラップパス経由で直接)呼び出せるため、シムのインストール前診断にも使える。
 
 **unavailable と failed の区別(最重要)。** この2つを混同すると降格ロジックが壊れる:
 
@@ -293,11 +294,12 @@ async function runOn(exec, taskPrompt, workdir) {
     // リレーは即 STATUS: unavailable を返す — それがランタイム側のバックストップ。
     // §2の copilot-relay レシピと同じ STATUS: 判別子付きリレー。
     const reply = await agent(
-      'Run: agent-exec copilot -p {promptfile} --model gpt-5.6-luna --effort medium ' +
-      '--add-dir ' + workdir + ' --output-format json --disable-builtin-mcps > /tmp/run.jsonl ; ' +
-      'then inspect the result and reply with STATUS: ok or STATUS: unavailable as the ' +
-      'first line (unavailable = nonzero exit or a quota/credit/auth/rate-limit signal), ' +
-      'followed by the answer and SESSION_ID: line on ok, or a one-line reason on unavailable.',
+      'Run: agent-exec run copilot --capture --model gpt-5.6-luna --effort medium ' +
+      '--workdir ' + workdir + ' --prompt-file {promptfile} ; this prints one normalized JSON ' +
+      'object { status, answer, session_id, reason, exit_code } to stdout — parse it directly. ' +
+      'Reply with STATUS: ok or STATUS: unavailable as the first line (mirroring the JSON\'s ' +
+      '`status`), followed by the `answer` and SESSION_ID: line on ok, or the `reason` value ' +
+      'on unavailable.',
       { label: 'copilot-relay', model: 'haiku', effort: 'low' },
     )
     const status = /^STATUS:\s*(ok|unavailable)/m.exec(reply)?.[1]
@@ -359,4 +361,6 @@ Codex independent-reviewに渡すプロンプト末尾の指示例: 『Reply wit
 `agent-exec copilot [raw args...]`のパススルーは変わらず残る。以下の2つは、その上に足された**追加的**なサブコマンドで、これまでinstructorがコンテキスト内で行っていた作業を`agent-exec`側に寄せるためのものである。
 
 - **`agent-exec config [--json]`** — 4層のorchestra設定(built-in defaults → `~/.claude/orchestra.yaml` → `./.claude/orchestra.yaml` → `./.claude/orchestra.local.yaml`)を、SKILL.md §9と同じ規則(mapping key-by-keyでマージ、スカラー/リストは丸ごと置換、明示的な`null`は値として扱う)で決定的にdeep-mergeし、`external_executors.<name>`のうち`enabled: true`かつ`dispatch: cli`のものについては実行ファイルの`shutil.which`可否を`"available"`として付与したうえで、解決済み設定をJSONとしてstdoutに出す。これにより、instructorがYAMLレイヤをコンテキスト内でマージする必要がなくなる。
-- **`agent-exec run <profile> --model M --effort E --workdir W --prompt-file F [--resume SID] [--output FMT]`** — profile(現状`copilot`)ごとのCLIフラグ規約と安全側デフォルト(`--disable-builtin-mcps`・`--add-dir`・`--output-format`)を一本化した、正規化ずみのディスパッチ入口。§2で示した生の`agent-exec copilot -p ... --model ... --effort ... --add-dir ... --output-format json --disable-builtin-mcps`と等価なコマンドを、`agent-exec run copilot --model gpt-5.6-luna --effort medium --workdir "$WORKDIR" --prompt-file TASK.md`のように短く書けるようにするもの。allow-allの注入は無い(M1のまま)。
+- **`agent-exec run <profile> --model M --effort E --workdir W --prompt-file F [--resume SID] [--output FMT] [--capture]`** — profile(現状`copilot`)ごとのCLIフラグ規約と安全側デフォルト(`--disable-builtin-mcps`・`--add-dir`・`--output-format`)を一本化した、正規化ずみのディスパッチ入口。§2で示した生の`agent-exec copilot -p ... --model ... --effort ... --add-dir ... --output-format json --disable-builtin-mcps`と等価なコマンドを、`agent-exec run copilot --model gpt-5.6-luna --effort medium --workdir "$WORKDIR" --prompt-file TASK.md`のように短く書けるようにするもの。allow-allの注入は無い(M1のまま)。
+  - **`--capture`を付けると、`os.execvpe`によるプロセス置換ではなく、copilotをサブプロセスとして起動してstdout/stderrをキャプチャし、そのJSONLをパースして`{ status, answer, session_id, reason, exit_code }`という正規化JSONオブジェクトを1つ、agent-exec自身のstdoutに出して終了コード0で返す。** `status`は`"ok"`または`"unavailable"`(quota/credits/auth/rate-limit/nonzero-exit/errorのいずれかが`reason`に入る)。エグゼキュータ側のunavailableは非ゼロ終了で表現されず、この`status`フィールドで表現される点に注意 — Haikuリレーはこの1つのJSONを読むだけでよく、jqでのJSONLパースはリレー側にはもう不要(§2)。`--capture`を付けない場合は従来どおり`os.execvpe`によるハンドオフのままで、挙動に変化はない。
+- **`agent-exec doctor [--json | --text]`**(既定`--json`)— シム自身のインストール状況(パス・PATH上か・マーケットプレイス/cacheどちらを指しているか)、`uv`の有無、`agent-exec config`と同じ4層configマージ結果、各cliエグゼキュータの`enabled`/`available`、`permissions.allow`中の`Bash(agent-exec:*)`ルールの有無(ベストエフォート)、そして各cliエグゼキュータの総合可否`ready.<name>.ok`(未充足の`missing[]`付き)を1回でまとめて返す、読み取り専用の診断サブコマンド。上記§4の認可事前チェックはこれ1本に集約する。シムが未インストールでもブートストラップパス経由で直接呼び出せ、レポート自体が「未準備」を表現するため、内部エラーでない限り常に終了コード0。
