@@ -51,14 +51,20 @@ claude-fable-5          claude-opus-4.5        gpt-5.4           kimi-k2.7-code
 
 同梱のサンプル(`examples/orchestra.yaml`)は、Copilotの`light`/`standard`クラスの`class_policy`を`{ "model": "gpt-5.6-luna", "effort": "medium" }`に設定している — 検証済みの実開発向け候補の中で最速。`effort`はCodex側との一貫性のため明示的に設定してある。
 
-**CLI利用 — 単発実行**(推奨は`agent-exec`ラッパー経由 — ツール自動許可の環境変数`COPILOT_ALLOW_ALL=true`はラッパーが内部で注入するので、呼び出し側は`agent-exec copilot ...`と書くだけでよい。理由・セットアップ手順は後述の「必須: Copilotディスパッチの認可設定」を参照):
+**CLI利用 — 単発実行**(推奨は`agent-exec`ラッパー経由 — 呼び出し側は`agent-exec copilot ...`と書くだけでよい。理由・セットアップ手順は後述の「必須: Copilotディスパッチの認可設定」を参照):
 
 ```bash
 agent-exec copilot -p "$(cat TASK.md)" --model gpt-5.6-luna --effort medium \
-  --add-dir "$WORKDIR" --output-format json > run.jsonl
+  --add-dir "$WORKDIR" --output-format json --disable-builtin-mcps > run.jsonl
 ```
 
-`--add-dir`は、`--allow-all-paths`の代わりにファイルアクセスを作業ディレクトリに限定する。`--output-format json`はJSONLイベントを出力し、最終的な人間可読の回答とセッションIDの両方がそこに含まれる:
+**`COPILOT_ALLOW_ALL`/`--allow-all-tools`は不要(実測: M1)。** Copilot CLI 1.0.74で再測定した結果、`copilot -p`は非対話モードで、上記コマンドのように`--add-dir`と`--output-format json`だけを渡した状態でも、ファイル書き込み(`apply_patch`)・シェル実行(`bash`)・ネットワークアクセス(`bash`経由の`curl`が`example.com`へHTTP 200)を**確認なしに自律的に実行する**。旧版のこのファイルにあった「非対話実行には`COPILOT_ALLOW_ALL`/`--allow-all-tools`が必須」という記述はCLI 1.0.71での検証によるもので、1.0.74では成立しない — allow-allフラグ/環境変数はヘッドレスディスパッチに不要であり、`agent-exec`はもう注入しない。
+
+`--disable-builtin-mcps`はハードニング目的のデフォルトフラグとして追加した。ビルトインMCPツール(`github-mcp-server`・`customize-cloud-agent`)をツール面から外し、トークン・レイテンシも削減する。
+
+**封じ込め(containment)に関する注意(実測: M2) — 重要。** `copilot -p`は自身のツール許可フラグ(`--allow-tool`/`--deny-tool`/`--excluded-tools`)では確実に閉じ込められない。実測では、`--excluded-tools='bash'`でbashツールを除外しても、エージェントは**`task`ツール経由で同じシェルコマンドを実行するよう迂回した**。つまりこれらのフラグは個別ツール名単位の除外であり、エージェントがそれを回避する経路(サブタスク委譲など)を持っている限り、セキュリティ境界にはならない。これらは多層防御(defense-in-depth)の一枚であって境界(boundary)ではない — 真の最小権限を実現するには、コンテナ・`sandbox-exec`・制限ユーザー・ネットワーク egress 制御・使い捨てworktreeのような**OS外部のサンドボックス**が必要であり、これは本プラグインでは未実装(将来課題)である。
+
+`--add-dir`は、`--allow-all-paths`の代わりにファイルアクセスを作業ディレクトリに限定する(ただしこれもプロセス内の制御であり、M2の外部サンドボックスに置き換わるものではない)。`--output-format json`はJSONLイベントを出力し、最終的な人間可読の回答とセッションIDの両方がそこに含まれる:
 
 ```bash
 jq -r 'select(.type=="assistant.message") | .data.content' run.jsonl | tail -1   # 回答
@@ -69,7 +75,7 @@ jq -r 'select(.type=="result") | .sessionId' run.jsonl                          
 
 ```bash
 agent-exec copilot --resume="$SESSION_ID" -p "$(cat FEEDBACK.md)" --model gpt-5.6-luna --effort medium \
-  --add-dir "$WORKDIR" --output-format json > retry.jsonl
+  --add-dir "$WORKDIR" --output-format json --disable-builtin-mcps > retry.jsonl
 ```
 
 orchestrateパイプラインの`cli`ディスパッチは、リトライラウンドごとに**新しい**リレーエージェントを生成する設計のため(CLIの出力をinstructorのコンテキストから遠ざけるため)、セッションIDは単一のリレーエージェントの記憶にではなく、*Workflowスクリプト*自体を通じて引き継ぐ必要がある。最初のラウンドのリレーに、回答と一緒にセッションIDを返させ、スクリプト内でパースして、次のラウンドのリレープロンプトに渡し、`command`の代わりに`resume_command`を使わせる。
@@ -77,11 +83,10 @@ orchestrateパイプラインの`cli`ディスパッチは、リトライラウ�
 **リレーの返信形式(`STATUS:`判別子)**: `priority`のリアクティブ・フォールバック(§4)がCopilotの枯渇/認証/quota切れを検知できるように、リレーエージェントの返信は必ず1行目を`STATUS: ok`または`STATUS: unavailable`にする。`ok`ならその後に回答本文と`SESSION_ID: <id>`行を続け、`unavailable`ならその後に一行の短い理由(quota/credits/auth/rate-limitのいずれか)を続ける。生のCLIログ(jsonlの中身そのもの)はinstructorのコンテキストに絶対に渡さないこと — リレーが読んで判定した結果だけを返す:
 
 ```javascript
-// Round 1: セッションがまだ無いので `command` を使う。
-// (agent-exec 経由で呼ぶ — ツール自動許可の COPILOT_ALLOW_ALL はラッパーが内部で注入する)
+// Round 1: セッションがまだ無いので `command` を使う。(agent-exec 経由で呼ぶ)
 const first = await agent(
   'Run: agent-exec copilot -p {promptfile} --model gpt-5.6-luna --effort medium ' +
-  '--add-dir ' + workdir + ' --output-format json > /tmp/run.jsonl ; ' +
+  '--add-dir ' + workdir + ' --output-format json --disable-builtin-mcps > /tmp/run.jsonl ; ' +
   'then inspect the result. Reply with STATUS: ok as the first line if it succeeded, or ' +
   'STATUS: unavailable if the CLI exited nonzero or the output shows a quota/credit/auth/' +
   'rate-limit error. If ok, on the following lines give the answer from ' +
@@ -97,7 +102,7 @@ const sessionId = /SESSION_ID:\s*(\S+)/.exec(first)?.[1]
 // Round 2+: 同じセッションを再開する。sessionIdを埋め込んだ `resume_command` を使う。
 const retry = await agent(
   'Run: agent-exec copilot --resume=' + sessionId + ' -p {promptfile} --model gpt-5.6-luna --effort medium ' +
-  '--add-dir ' + workdir + ' --output-format json > /tmp/run2.jsonl ; ' +
+  '--add-dir ' + workdir + ' --output-format json --disable-builtin-mcps > /tmp/run2.jsonl ; ' +
   'then inspect the result and reply with STATUS: ok or STATUS: unavailable as the first line ' +
   '(same rule as round 1), followed by the final answer only — no logs.',
   { label: 'copilot-relay-r2', model: 'haiku', effort: 'low' },
@@ -108,7 +113,7 @@ const retry = await agent(
 
 `dispatch: cli`のCopilotは、HaikuリレーエージェントがBashで`copilot ...`(または`agent-exec copilot ...`)を実行することで動く。非対話のリレーでこれが安定して通るには、Claude Code側の許可設定が必要になる。
 
-**推奨: `agent-exec`ラッパーをインストールする。** `agent-exec`は、Copilot CLI公式のツール自動許可用環境変数`COPILOT_ALLOW_ALL=true`(`copilot help environment`に記載)をラッパー内部で注入してから実際のCLIをexecする薄いシェル/Pythonラッパーである。これにより、ユーザーが用意する設定は次の1行だけになる:
+**推奨: `agent-exec`ラッパーをインストールする。** `agent-exec`は、`--add-dir`/`--output-format json`/`--disable-builtin-mcps`を付けて実際のCLIをexecする薄いシェル/Pythonラッパーである。M1により`COPILOT_ALLOW_ALL`のようなツール自動許可の注入は不要になったため、ラッパーはもう何も注入しない — ユーザーが用意する設定は次の1行だけになる:
 
 ```jsonc
 // settings.json (Copilotを有効化したスコープと同じファイル)
@@ -117,7 +122,7 @@ const retry = await agent(
 }
 ```
 
-`env`ブロックに`COPILOT_ALLOW_ALL`を書く必要はない — ラッパーが自分のプロセス内で設定してから`copilot`をexecするため、環境変数はラッパーの外(呼び出し元のBashコマンド文字列やsettings.json)に一切現れず、Claude CodeのBash安全クラシファイアが検査する文字列にも`--allow-all-tools`のようなパーミッションバイパス系フラグは現れない。
+`env`ブロックに何かを書く必要はない。ラッパーは`--allow-all-tools`のようなパーミッションバイパス系フラグも一切使わないため、Claude CodeのBash安全クラシファイアが検査する文字列にそうしたフラグは現れない。
 
 セットアップは`agent-exec install`(インタラクティブインストーラ)で、PATH上のディレクトリ(既定`~/.local/bin/agent-exec`)に1行のPOSIX shシムを設置する。このシムはプラグインの**マーケットプレイス・クローンパス**(`~/.claude/plugins/marketplaces/<マーケットプレイス名>/plugins/orchestra/tools/agent-exec`)を絶対パスで指す — このパスは`git pull`で中身が更新されるだけで場所自体は変わらず安定しているため、`/plugin update`するだけでラッパーの中身も追従し、シムを再生成する必要がない。**変わってはいけないのは、バージョンでパスが変わるプラグインの`cache`側installPath**(`~/.claude/plugins/cache/<マーケットプレイス名>/orchestra/<version>/...`)の方であり、シムはそちらを指してはならない — マーケットプレイス・クローン側のパスは安定した正当な解決先である。
 
@@ -125,33 +130,30 @@ const retry = await agent(
 
 ```bash
 agent-exec copilot -p {promptfile} --model {model} --effort {effort} \
-  --add-dir {workdir} --output-format json
+  --add-dir {workdir} --output-format json --disable-builtin-mcps
 # resume:
 agent-exec copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort} \
-  --add-dir {workdir} --output-format json
+  --add-dir {workdir} --output-format json --disable-builtin-mcps
 ```
 
-**代替: `agent-exec`を使わない手動セットアップ。** `agent-exec`をインストールしない場合は、従来通り2つの設定が**セットで**必要になる。どちらか一方では動かない:
+**代替: `agent-exec`を使わない手動セットアップ。** `agent-exec`をインストールしない場合でも、必要な設定は1つだけである(以前のように環境変数とのセットは不要 — M1によりallow-all自体が不要になったため):
 
-**(1) `permissions.allow`に`Bash(copilot:*)`。** Claude Codeは各Bashツール呼び出しのトップレベルコマンドを`permissions.allow`と照合するが、リレーはサブエージェント／非対話で走るため、未許可のコマンドは**承認プロンプトを出せず即座に拒否**される(ユーザーが対話的に許可することもできない)。
-
-**(2) settings.jsonの`env`ブロックに`"COPILOT_ALLOW_ALL": "true"`。** 許可ルールだけでは足りない — Claude CodeのBash安全クラシファイアは許可ルールのマッチ**より優先して**コマンド文字列を検査し、`--allow-all-tools`のようなパーミッションバイパス系フラグを含むコマンドをブロックする(`Bash(copilot:*)`にマッチしていても、である)。そのため`command`テンプレートからこのフラグを外し、Copilot CLI公式の等価な環境変数`COPILOT_ALLOW_ALL=true`で同じ効果を得る。環境変数はsettings.jsonの`env`に置くこと — `COPILOT_ALLOW_ALL=true copilot ...`のようなインライン前置は、トップレベルコマンドが環境変数代入になって`Bash(copilot:*)`の前方一致を壊す上、クラシファイアにも文字列として見えるので**使ってはならない**。
+**`permissions.allow`に`Bash(copilot:*)`。** Claude Codeは各Bashツール呼び出しのトップレベルコマンドを`permissions.allow`と照合するが、リレーはサブエージェント／非対話で走るため、未許可のコマンドは**承認プロンプトを出せず即座に拒否**される(ユーザーが対話的に許可することもできない)。
 
 ```jsonc
 // settings.json (Copilotを有効化したスコープと同じファイル)
 {
-  "env": { "COPILOT_ALLOW_ALL": "true" },
   "permissions": { "allow": ["Bash(copilot:*)"] }
 }
 ```
 
-**検証済み**(2026-07-17、Copilot CLI 1.0.71): `COPILOT_ALLOW_ALL=true`環境変数のみ(フラグなし)でファイル書き込みを伴う非対話実行が確認なしに完了し(`exitCode: 0`)、フラグを外した`copilot -p ...`コマンドはサブエージェントのBashからクラシファイアを通過して正常実行された。フラグ付きの旧テンプレートは、`Bash(copilot:*)`を許可済みのセッションでもクラシファイアにブロックされ、CLIが起動する前にディスパッチが失敗する — これがこの構成に変更した理由である。
+**検証済み**(2026-07-24、Copilot CLI 1.0.74、M1/M2): `--allow-all-tools`も`COPILOT_ALLOW_ALL`も付けない`copilot -p ...`が、`Bash(copilot:*)`/`Bash(agent-exec:*)`を許可済みのサブエージェントBashから正常に実行され、ファイル書き込み・シェル実行・ネットワークアクセスを確認なしに完了した(`apply_patch`/`bash`ツール経由)。旧版のこのファイルにあった「`COPILOT_ALLOW_ALL=true`環境変数が必須」という2026-07-17付・CLI 1.0.71での検証結果は、現行の1.0.74では再現しない(もはや不要)。
 
 補足:
 
-- 追加先は、Copilotを有効化したスコープに合わせる: プロジェクトなら`.claude/settings.json`、ユーザー個人なら`~/.claude/settings.json`。`/permissions`または`update-config`スキルで追加する。`env`は次セッションの開始時から有効になる(設定はセッション起動時に読まれる)。`agent-exec`を使う場合はこの`env`エントリ自体が不要になる。
+- 追加先は、Copilotを有効化したスコープに合わせる: プロジェクトなら`.claude/settings.json`、ユーザー個人なら`~/.claude/settings.json`。`/permissions`または`update-config`スキルで追加する。
 - パーミッションのマッチはトップレベルコマンドの前方一致で、**子プロセスは対象外**。そのため`--add-dir`の付与を許可ルール側で強制することはできない(ルールは`copilot`/`agent-exec`で始まる任意の呼び出しを許可する)。`--add-dir <workdir>`によるファイルアクセス限定は`command`テンプレート(§2)側で担保する。
-- `COPILOT_ALLOW_ALL`は「全ツール自動許可」であって全権ではない: パス制限(`--add-dir`/cwd既定)とURL確認は別軸で生きている。さらに絞りたい場合、Copilotの`--deny-tool`は`--allow-all-tools`(=この環境変数)より**常に優先**されるため、`command`テンプレートに`--deny-tool 'shell(git push:*)'`のような否定ルールを足す形で強化できる — 否定フラグはクラシファイア的にも「制限を加える」方向なので安全に併用できる。
+- **`--deny-tool`はオプションの参考程度の知見であって、境界(boundary)ではない(M2)。** さらに絞りたい向きに`--deny-tool 'shell(git push:*)'`のような否定ルールを`command`テンプレートに足す運用は可能だが、M2で実測した通りCopilotのツール除外系フラグ(`--allow-tool`/`--deny-tool`/`--excluded-tools`)はエージェントによる迂回(別ツール経由の再実行)を防げない。これは安全側の追加ヒントであって、これに依存した権限設計をしないこと。真の封じ込めは外部OSサンドボックス側の課題(§2冒頭のM2の注記、future work)である。
 
 Codexの`dispatch: agent`(codex:codex-rescueサブエージェント経由)はこれらの設定を必要としない — 生のBashコマンドではなくサブエージェント呼び出しだからである。
 
@@ -235,7 +237,7 @@ priority:
 
 **プロアクティブな残量照会は同梱しない。** `cli`ディスパッチと同じ安全原則により、Copilotの残クレジットやCodex/Claudeの使用ウィンドウ残量を事前に問い合わせるコマンドはこのプラグインには存在せず、今後も追加しない。フォールバックの判定材料は、実際にディスパッチした時点で観測される「unavailableシグナル」だけである。
 
-**認可(authorization)の事前チェックは残量照会とは別物で、こちらは推奨する。** 上の「残量照会を同梱しない」は、リモートで変動する*残量*(クレジット/使用ウィンドウ)を事前問い合わせしない、という意味であって*認可*には当てはまらない。`dispatch: cli`のエグゼキュータ(Copilot)は、セッションに該当するBash許可ルール(`agent-exec`利用時は`Bash(agent-exec:*)`、手動セットアップ時は`Bash(copilot:*)`)と、手動セットアップの場合に必要な環境変数(`env`ブロックの`COPILOT_ALLOW_ALL=true` — §2参照。`agent-exec`利用時はラッパーが内部で注入するため不要)のどちらかが欠けていれば**この実行では絶対に成功しない** — 残量と違って一過性ではなく、リレーを起動してもパーミッション/クラシファイアに即拒否されるか、CLIがツール承認待ちで進めず`STATUS: unavailable`が返るだけである。したがってinstructorは、`priority`の候補に`dispatch: cli`エグゼキュータを含める前に認可の有無を確認し(自身のセッションの`permissions.allow`と`env`を`.claude/settings.json`/`~/.claude/settings.json`で読むだけのローカルな静的チェックで、リモート問い合わせではない)、欠けていればそのランでは最初からunavailable扱いにして次候補へ降格させる。これは無駄なリレー起動を省く最適化であり、仮にチェックを省いても下記のリアクティブなフォールバック(リレーの`STATUS: unavailable`)が同じ結論に達するバックストップとして残る。
+**認可(authorization)の事前チェックは残量照会とは別物で、こちらは推奨する。** 上の「残量照会を同梱しない」は、リモートで変動する*残量*(クレジット/使用ウィンドウ)を事前問い合わせしない、という意味であって*認可*には当てはまらない。`dispatch: cli`のエグゼキュータ(Copilot)は、セッションに該当するBash許可ルール(`agent-exec`利用時は`Bash(agent-exec:*)`、手動セットアップ時は`Bash(copilot:*)`)が欠けていれば**この実行では絶対に成功しない**(M1により、これ以外に必要な環境変数はない — `COPILOT_ALLOW_ALL`は`agent-exec`利用・手動セットアップのいずれでも不要)。許可ルールが欠けている場合、残量と違って一過性ではなく、リレーを起動してもパーミッションに即拒否される。したがってinstructorは、`priority`の候補に`dispatch: cli`エグゼキュータを含める前に認可の有無を確認し(自身のセッションの`permissions.allow`を`.claude/settings.json`/`~/.claude/settings.json`で読むだけのローカルな静的チェックで、リモート問い合わせではない)、欠けていればそのランでは最初からunavailable扱いにして次候補へ降格させる。これは無駄なリレー起動を省く最適化であり、仮にチェックを省いても下記のリアクティブなフォールバック(リレーの`STATUS: unavailable`)が同じ結論に達するバックストップとして残る。
 
 **unavailable と failed の区別(最重要)。** この2つを混同すると降格ロジックが壊れる:
 
@@ -292,7 +294,7 @@ async function runOn(exec, taskPrompt, workdir) {
     // §2の copilot-relay レシピと同じ STATUS: 判別子付きリレー。
     const reply = await agent(
       'Run: agent-exec copilot -p {promptfile} --model gpt-5.6-luna --effort medium ' +
-      '--add-dir ' + workdir + ' --output-format json > /tmp/run.jsonl ; ' +
+      '--add-dir ' + workdir + ' --output-format json --disable-builtin-mcps > /tmp/run.jsonl ; ' +
       'then inspect the result and reply with STATUS: ok or STATUS: unavailable as the ' +
       'first line (unavailable = nonzero exit or a quota/credit/auth/rate-limit signal), ' +
       'followed by the answer and SESSION_ID: line on ok, or a one-line reason on unavailable.',
@@ -351,3 +353,10 @@ function parseExternalVerdict(text) {
 ```
 
 Codex independent-reviewに渡すプロンプト末尾の指示例: 『Reply with ONLY a JSON object of the form {"pass": boolean, "summary": string, "feedback": [{"case","expected","actual"}]}. Output nothing else — no prose, no explanation.』
+
+## 5. `agent-exec config` / `agent-exec run` (追加サブコマンド)
+
+`agent-exec copilot [raw args...]`のパススルーは変わらず残る。以下の2つは、その上に足された**追加的**なサブコマンドで、これまでinstructorがコンテキスト内で行っていた作業を`agent-exec`側に寄せるためのものである。
+
+- **`agent-exec config [--json]`** — 4層のorchestra設定(built-in defaults → `~/.claude/orchestra.yaml` → `./.claude/orchestra.yaml` → `./.claude/orchestra.local.yaml`)を、SKILL.md §9と同じ規則(mapping key-by-keyでマージ、スカラー/リストは丸ごと置換、明示的な`null`は値として扱う)で決定的にdeep-mergeし、`external_executors.<name>`のうち`enabled: true`かつ`dispatch: cli`のものについては実行ファイルの`shutil.which`可否を`"available"`として付与したうえで、解決済み設定をJSONとしてstdoutに出す。これにより、instructorがYAMLレイヤをコンテキスト内でマージする必要がなくなる。
+- **`agent-exec run <profile> --model M --effort E --workdir W --prompt-file F [--resume SID] [--output FMT]`** — profile(現状`copilot`)ごとのCLIフラグ規約と安全側デフォルト(`--disable-builtin-mcps`・`--add-dir`・`--output-format`)を一本化した、正規化ずみのディスパッチ入口。§2で示した生の`agent-exec copilot -p ... --model ... --effort ... --add-dir ... --output-format json --disable-builtin-mcps`と等価なコマンドを、`agent-exec run copilot --model gpt-5.6-luna --effort medium --workdir "$WORKDIR" --prompt-file TASK.md`のように短く書けるようにするもの。allow-allの注入は無い(M1のまま)。

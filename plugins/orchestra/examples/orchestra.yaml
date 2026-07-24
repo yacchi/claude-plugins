@@ -68,19 +68,28 @@ external_executors:
   copilot:
     enabled: false
     dispatch: cli
-    # Dispatched through the `agent-exec` wrapper (see `agent-exec install`),
-    # which injects Copilot's tool-auto-allow env var (COPILOT_ALLOW_ALL=true)
-    # internally before exec-ing the real CLI. No --allow-all-tools flag and no
-    # env block in settings.json are needed for this — the only permission
-    # rule required is `Bash(agent-exec:*)`; /setup offers to add it. See run
-    # skill references/external-executors.md §2 for the manual env+permission
-    # setup, kept as an alternative for users who don't install agent-exec.
+    # Dispatched through the `agent-exec` wrapper (see `agent-exec install`).
+    # Measured on Copilot CLI 1.0.74: `copilot -p` runs file-write/shell/network
+    # tool calls autonomously in non-interactive mode with just --add-dir +
+    # --output-format json — no allow-all flag/env var needed for headless
+    # dispatch, so agent-exec no longer injects COPILOT_ALLOW_ALL and none is
+    # needed in settings.json. --disable-builtin-mcps is a hardening default
+    # (drops the github-mcp-server/customize-cloud-agent builtin MCP tools,
+    # cuts token/latency). The only permission rule required is
+    # `Bash(agent-exec:*)`; /setup offers to add it. NOTE: Copilot's own
+    # tool-permission flags (--allow-tool/--deny-tool/--excluded-tools) are
+    # NOT a security boundary — the agent has been observed rerouting a
+    # denied tool call through a different tool. Real containment needs an
+    # external OS sandbox (container/sandbox-exec/restricted user/egress
+    # control/disposable worktree) — future work, not implemented here. See
+    # run skill references/external-executors.md §2 for details and the
+    # manual permission-only setup for users who don't install agent-exec.
     command: >-
       agent-exec copilot -p {promptfile} --model {model} --effort {effort}
-      --add-dir {workdir} --output-format json
+      --add-dir {workdir} --output-format json --disable-builtin-mcps
     resume_command: >-
       agent-exec copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort}
-      --add-dir {workdir} --output-format json
+      --add-dir {workdir} --output-format json --disable-builtin-mcps
     classes:
       - light
       - standard
