@@ -68,17 +68,18 @@ external_executors:
   copilot:
     enabled: false
     dispatch: cli
-    # NOTE: no --allow-all-tools here, on purpose. Claude Code's Bash safety
-    # classifier blocks permission-bypass flags even when `Bash(copilot:*)` is
-    # allowlisted, so the tool grant must come from the equivalent env var
-    # instead: set COPILOT_ALLOW_ALL=true in Claude Code settings.json `env`
-    # (plus the `Bash(copilot:*)` permission rule). Both are required; /setup
-    # offers to add them. See run skill references/external-executors.md §2.
+    # Dispatched through the `agent-exec` wrapper (see `agent-exec install`),
+    # which injects Copilot's tool-auto-allow env var (COPILOT_ALLOW_ALL=true)
+    # internally before exec-ing the real CLI. No --allow-all-tools flag and no
+    # env block in settings.json are needed for this — the only permission
+    # rule required is `Bash(agent-exec:*)`; /setup offers to add it. See run
+    # skill references/external-executors.md §2 for the manual env+permission
+    # setup, kept as an alternative for users who don't install agent-exec.
     command: >-
-      copilot -p {promptfile} --model {model} --effort {effort}
+      agent-exec copilot -p {promptfile} --model {model} --effort {effort}
       --add-dir {workdir} --output-format json
     resume_command: >-
-      copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort}
+      agent-exec copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort}
       --add-dir {workdir} --output-format json
     classes:
       - light

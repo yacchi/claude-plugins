@@ -1,0 +1,18 @@
+#!/bin/sh
+# agent-exec bootstrap — stable entry point shipped inside the orchestra plugin.
+# The installed shim (~/.local/bin/agent-exec or similar) execs this file by
+# absolute path, so it must resolve its own directory and hand off to the
+# PEP723 Python implementation via `uv run`.
+#
+# This is the seam where a future compiled-binary swap would replace the
+# `uv run` line below; keep this file minimal.
+
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if ! command -v uv >/dev/null 2>&1; then
+    echo "agent-exec: 'uv' is required but was not found on PATH." >&2
+    echo "Install uv: https://docs.astral.sh/uv/" >&2
+    exit 127
+fi
+
+exec uv run --quiet "$DIR/agent_exec.py" "$@"
