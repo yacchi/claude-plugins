@@ -6,7 +6,7 @@ when_to_use: Use when the user asks to configure orchestra, turn Codex or Copilo
 
 # setup: configuration skill
 
-This skill is a small companion to `run` (see its SKILL.md §9 for the config schema this file edits). It exists to make setting up `.claude/orchestra.yaml` / `~/.claude/orchestra.yaml` interactive and safe — detect what's actually available, ask where to write the change, and edit without clobbering the user's existing comments. It does not relitigate the schema itself, and it does not run the orchestration pipeline.
+This skill is a small companion to `run` (see its `references/config.md` for the config schema this file edits). It exists to make setting up `.claude/orchestra.yaml` / `~/.claude/orchestra.yaml` interactive and safe — detect what's actually available, ask where to write the change, and edit without clobbering the user's existing comments. It does not relitigate the schema itself, and it does not run the orchestration pipeline.
 
 ## 1. Config file locations & format
 

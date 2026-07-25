@@ -6,7 +6,7 @@
 # sessions (hundreds of turns) that single injection decays — transcripts
 # show instructor-model sessions doing 200+ direct Edits with zero mention
 # of the EXPRESS/ORCHESTRATED classification. Recency is the fix: this hook
-# appends a ~70-token reminder on EVERY user prompt so the classification
+# appends a ~45-token reminder on EVERY user prompt so the classification
 # step is adjacent to the request it must classify.
 #
 # Gating: UserPromptSubmit input is not guaranteed to carry a model field,
@@ -44,11 +44,10 @@ fi
 
 print_reminder() {
 cat <<'EOF'
-<orchestra-router-reminder>Re-classify THIS request before acting (rules in
-<orchestra-router>): EXPRESS only if it is ONE small self-contained change.
-Hand-writing substantive code in 2+ files yourself — including when a design
-discussion turns into implementation — is the ORCHESTRATED tripwire: STOP and
-load the `orchestra:run` skill instead.</orchestra-router-reminder>
+<orchestra-router-reminder>Classify THIS request (see <orchestra-router>):
+EXPRESS only if ONE small self-contained change, or if you already hold the
+whole content in context. Otherwise hand-writing code in 2+ files yourself →
+load `orchestra:run` first.</orchestra-router-reminder>
 EOF
 }
 

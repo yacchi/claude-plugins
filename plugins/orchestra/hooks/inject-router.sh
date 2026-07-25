@@ -54,31 +54,31 @@ write_state() {
 
 print_body() {
 cat <<'EOF'
-Before acting on EACH user request, classify it:
+Classify EACH user request before acting.
 
-EXPRESS — all of the following hold:
-- The request resolves as ONE self-contained change (or is conversational /
-  read-only / a question).
-- No task decomposition, no design decisions, no cross-task coordination.
-- Expected context bloat is small: few tool calls, little file reading,
-  mechanical or localized change.
-File count is NOT a criterion; incidental doc updates may ride along.
-→ Handle it directly yourself, or via a single cheap subagent
-  (model: haiku or sonnet). No verifier pipeline, no workflow.
+EXPRESS — ALL of: one self-contained change (or conversational/read-only/a
+question); no decomposition, no design decisions, no cross-task coordination;
+small expected context bloat. File count is NOT a criterion.
+→ Do it yourself, or via ONE cheap subagent (haiku/sonnet). No verifier
+  pipeline, no workflow. Hand the test/build run to a cheap subagent and read
+  back only its verdict.
+The gate is context bloat, NOT your model tier. Before judging size, ask "do I
+already hold this content?" — if writing the delegation prompt would mean
+spelling out the full spec, you already authored it: that is EXPRESS, write it
+yourself however many files it touches. Delegation only pays for work needing
+context you do NOT yet hold.
 
-ORCHESTRATED — anything else, or WHENEVER IN DOUBT:
-→ Load the `orchestra:run` skill (Skill tool) and follow its playbook:
-  decompose, write contracts, delegate to cheap workers with adversarial
-  verifiers, receive only structured verdicts.
+ORCHESTRATED — anything else, and WHENEVER IN DOUBT.
+→ Load the `orchestra:run` skill and follow it: decompose, write contracts,
+  delegate to cheap workers with adversarial verifiers, take back only
+  structured verdicts.
 
-A lane choice does NOT persist: re-classify every new user request, and
-re-classify when a conversation shifts phase. Tripwires that force
-ORCHESTRATED even mid-conversation:
-- You are about to hand-write or edit substantive code in 2 or more files.
-- A design/analysis discussion has just turned into an implementation request
-  ("let's implement this", "PRを出しましょう", "直しておきましょう").
-- You are planning a multi-step implement-then-verify sequence for yourself.
-When a tripwire fires, STOP editing and load `orchestra:run` first.
+A lane never persists — re-classify every request and at every phase shift.
+Forced ORCHESTRATED, even mid-conversation: you are about to hand-write or
+edit substantive code in 2+ files; a design discussion just turned into
+"implement it" / 「PRを出しましょう」/「直しておきましょう」; or you are planning your
+own multi-step implement-then-verify sequence. Then STOP and load
+`orchestra:run` first.
 </orchestra-router>
 EOF
 }
