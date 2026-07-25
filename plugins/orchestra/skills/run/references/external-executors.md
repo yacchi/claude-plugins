@@ -51,6 +51,8 @@ claude-fable-5          claude-opus-4.5        gpt-5.4           kimi-k2.7-code
 
 同梱のサンプル(`examples/orchestra.yaml`)は、Copilotの`light`/`standard`クラスの`class_policy`を`{ "model": "gpt-5.6-luna", "effort": "medium" }`に設定している — 検証済みの実開発向け候補の中で最速。`effort`はCodex側との一貫性のため明示的に設定してある。
 
+**(v0.11.0以降の位置づけ)** 以下の`agent-exec copilot`/`agent-exec run copilot`の生コマンドは、Copilotへのディスパッチが実際には何をしているかを示す下層のメカニクスであり、手動テストやワンオフ実行には今もそのまま使える。だが**orchestrateパイプライン(`run` SKILL.md §5)からは、これらを直接組み立てるのではなく`agent-exec dispatch --class light`(または`standard`)を使うこと** — `dispatch`は`route`によるエグゼキュータ選択(Copilotが未認可/未準備なら自動的にClaudeへフォールバック)とtelemetryの自動記録を内包した1回の呼び出しであり、下記の`--model`/`--effort`/`--add-dir`等を毎回手で組み立てる必要がない。
+
 **CLI利用 — 単発実行**(推奨は`agent-exec`ラッパー経由 — 呼び出し側は`agent-exec copilot ...`と書くだけでよい。理由・セットアップ手順は後述の「必須: Copilotディスパッチの認可設定」を参照):
 
 ```bash
@@ -186,7 +188,9 @@ Sonnet 5は2026-08-31以降、入力/出力ともに$3/$15に戻る — その�
 
 ## 4. 優先度とリアクティブ・フォールバック(priority)
 
-`priority`は、クラス/ロール(と`light`についてはタスクアーキタイプ)ごとに「試す順序」を宣言するトップレベルの設定キーである。値は`external_executors`のキー(`codex`、`copilot`、...)または組み込みClaude実行を表すsentinel `claude`を並べた順序付きリストで、instructorはこれを左から順に試し、あるエグゼキュータが**unavailable**と判定された時点でのみ次の候補に降格する(=**リアクティブ・フォールバック**)。タスクの実行結果が単に誤っていた場合はフォールバックの対象ではない(後述)。
+`priority`は、クラス/ロール(と`light`についてはタスクアーキタイプ)ごとに「試す順序」を宣言するトップレベルの設定キーである。値は`external_executors`のキー(`codex`、`copilot`、...)または組み込みClaude実行を表すsentinel `claude`を並べた順序付きリストで、あるエグゼキュータが**unavailable**と判定された時点でのみ次の候補に降格する(=**リアクティブ・フォールバック**)。タスクの実行結果が単に誤っていた場合はフォールバックの対象ではない(後述)。
+
+**この左から右への降格ウォークは、instructorが手で行うものではなく、`agent-exec route --class <cls> [--archetype A] [--exhausted a,b]`(と、それを内包する`agent-exec dispatch`)がコード側で実行する。** `route`は4層configをマージした上で各候補を`enabled`・binary/agent解決可否・`doctor`の`ready.<x>.ok`・`class_policy`該当有無・呼び出し側が渡した`--exhausted`でゲートし、生き残った先頭候補を返す。instructor側に残る唯一の手作業は、あるタスクで`dispatch`が`unavailable`を報告したエグゼキュータを、同じラン内の以降すべての`route`/`dispatch`呼び出しに`--exhausted`として持ち越すこと(sticky exhaustion)だけである — `run` SKILL.md §5の`dispatchClass()`はこれをモジュールレベルの`Set`で自動的に行う。以下のスキーマとJS実装イメージは、`route`が内部で何をしているかを理解するためのものであり、現在ではこれを手で書き写す必要はない。
 
 設定のスキーマは次の通り(§1のCodexティア表・§3のClaude/Copilot単価表と対応させて読むこと):
 
@@ -218,9 +222,10 @@ Sonnet 5は2026-08-31以降、入力/出力ともに$3/$15に戻る — その�
 priority:
   light:
     # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated executor
-    # for the light band (and for investigation fan-out). NOTE: copilot ships
-    # `enabled: false` below, so as-shipped this list effectively starts at claude;
-    # enable copilot to actually prefer it (that skip IS the reactive fallback in action).
+    # for the light band (and for investigation fan-out). copilot ships
+    # `enabled: true` below (as of v0.11.0), so this list actually prefers it
+    # whenever `agent-exec route` finds it ready; a genuine unavailable signal
+    # is what makes it drop to claude, not a config default.
     investigation: [copilot, claude]
     default: [copilot, claude]
   standard:
@@ -238,7 +243,7 @@ priority:
 
 **認可(authorization)の事前チェックは残量照会とは別物で、こちらは推奨する。** 上の「残量照会を同梱しない」は、リモートで変動する*残量*(クレジット/使用ウィンドウ)を事前問い合わせしない、という意味であって*認可*には当てはまらない。`dispatch: cli`のエグゼキュータ(Copilot)は、セッションに該当するBash許可ルール(`agent-exec`利用時は`Bash(agent-exec:*)`、手動セットアップ時は`Bash(copilot:*)`)が欠けていれば**この実行では絶対に成功しない**(M1により、これ以外に必要な環境変数はない — `COPILOT_ALLOW_ALL`は`agent-exec`利用・手動セットアップのいずれでも不要)。許可ルールが欠けている場合、残量と違って一過性ではなく、リレーを起動してもパーミッションに即拒否される。
 
-**この事前チェックは`agent-exec doctor`を1回呼ぶだけで済む。** シム(`agent-exec`本体)がPATH上にインストールされているか・どのターゲット(マーケットプレイス・クローンか、壊れやすいcacheパスか)を指しているか、`uv`の有無、4層configのマージ結果、各`external_executors.<name>`の`enabled`/`available`、`permissions.allow`中の`Bash(agent-exec:*)`ルールの有無(ベストエフォート — `~/.claude/settings.json`と`./.claude/settings.json(.local)`のみを走査し、enterprise policyやCLIの`--allowedTools`は見えない)、そして各cliエグゼキュータの総合可否`ready.<name>.ok`(と未充足の`missing[]`)を、`agent-exec doctor`(人間向け`--text`、instructor向け`--json`)の1回の呼び出しでまとめて返す。instructorは`priority`の候補に`dispatch: cli`エグゼキュータを含める前にこれを実行し、`ready.<name>.ok`が`false`ならそのランでは最初からunavailable扱いにして次候補へ降格させる — 個別に`settings.json`を読んだり`which`を叩いたりする必要はない。これは無駄なリレー起動を省く最適化であり、仮にチェックを省いても下記のリアクティブなフォールバック(リレーの`STATUS: unavailable`)が同じ結論に達するバックストップとして残る。`doctor`はシムが未インストールでも(ブートストラップパス経由で直接)呼び出せるため、シムのインストール前診断にも使える。
+**この事前チェックは`agent-exec doctor`を1回呼ぶだけで済む。** シム(`agent-exec`本体)がPATH上にインストールされているか・どのターゲット(マーケットプレイス・クローンか、壊れやすいcacheパスか)を指しているか、`uv`の有無、4層configのマージ結果、各`external_executors.<name>`の`enabled`/`available`、`permissions.allow`中の`Bash(agent-exec:*)`ルールの有無(ベストエフォート — `~/.claude/settings.json`と`./.claude/settings.json(.local)`のみを走査し、enterprise policyやCLIの`--allowedTools`は見えない)、そして各cliエグゼキュータの総合可否`ready.<name>.ok`(と未充足の`missing[]`)を、`agent-exec doctor`(人間向け`--text`、instructor向け`--json`)の1回の呼び出しでまとめて返す。instructorは`priority`の候補に`dispatch: cli`エグゼキュータを含める前にこれを実行し、`ready.<name>.ok`が`false`ならそのランでは最初からunavailable扱いにして次候補へ降格させる — 個別に`settings.json`を読んだり`which`を叩いたりする必要はない。これは無駄なリレー起動を省く最適化であり、仮にチェックを省いても下記のリアクティブなフォールバック(リレーの`STATUS: unavailable`)が同じ結論に達するバックストップとして残る。`doctor`はシムが未インストールでも(ブートストラップパス経由で直接)呼び出せるため、シムのインストール前診断にも使える。**(v0.11.0以降の補足)** この事前チェック自体は今や`agent-exec route`/`dispatch`が内部で毎回自動的に行うため、instructorが`priority`候補を組み立てる前に別途`doctor`を呼んでフィルタする、という手順はもう不要になった — `route`/`dispatch`を呼ぶだけで、この段落が説明する`ready.<name>.ok`ゲートは常に適用済みの状態になる。`doctor`単体は、セットアップ診断(シムの設置状況の確認)や`config.values.telemetry.enabled`の確認など、他の目的でなお有用。
 
 **unavailable と failed の区別(最重要)。** この2つを混同すると降格ロジックが壊れる:
 
@@ -261,7 +266,7 @@ priority:
 
 **deep-mergeの注意点は他の設定キーと同じ**: `priority`のリストはリストとして扱われるため、より詳細なレイヤ(project設定など)で上書きされると要素単位でマージされず丸ごと置き換わる。部分的に変えたいだけでも、そのクラス/ロール/アーキタイプの配列は全体を書き直す必要がある。
 
-**Workflowスクリプトでの実装イメージ。** 各候補を実際のディスパッチ手段(Claudeの`agent()`、Codexの`codex:codex-rescue`、Copilotのリレーエージェント)にマップし、戻り値を`{ status: 'ok'|'unavailable', answer?, reason?, sessionId? }`という共通の形に正規化してから、フォールバックのループに渡す:
+**Workflowスクリプトでの実装イメージ(参考 — v0.11.0以降は不要な手書きロジック)。** 以下は`agent-exec route`/`dispatch`が存在する前に、instructorがこのフォールバック・ウォークを自前で実装するとしたら何をする必要があったかを示す参考コードであり、`route`が内部で行っているマッピング・正規化・降格判定の意味論を理解するために残している。**実際にWorkflowスクリプトを書くときは、これを書き写すのではなく`run` SKILL.md §5の`dispatchClass()`(1回の`agent-exec dispatch --class <cls> ... --capture`呼び出しを1つの安価なリレーエージェントに任せるだけの実装)を使うこと。** 各候補を実際のディスパッチ手段(Claudeの`agent()`、Codexの`codex:codex-rescue`、Copilotのリレーエージェント)にマップし、戻り値を`{ status: 'ok'|'unavailable', answer?, reason?, sessionId? }`という共通の形に正規化してから、フォールバックのループに渡す、という考え方自体は`route`/`dispatch`の内部実装と同じである:
 
 ```javascript
 // candidates: 解決済みの、このクラス/ロール(+アーキタイプ)向け順序リスト
@@ -356,13 +361,15 @@ function parseExternalVerdict(text) {
 
 Codex independent-reviewに渡すプロンプト末尾の指示例: 『Reply with ONLY a JSON object of the form {"pass": boolean, "summary": string, "feedback": [{"case","expected","actual"}]}. Output nothing else — no prose, no explanation.』
 
-## 5. `agent-exec config` / `agent-exec run` (追加サブコマンド)
+## 5. `agent-exec config` / `run` / `route` / `dispatch` (追加サブコマンド)
 
-`agent-exec copilot [raw args...]`のパススルーは変わらず残る。以下の2つは、その上に足された**追加的**なサブコマンドで、これまでinstructorがコンテキスト内で行っていた作業を`agent-exec`側に寄せるためのものである。
+`agent-exec copilot [raw args...]`のパススルーは変わらず残る。以下は、その上に足された**追加的**なサブコマンド群で、これまでinstructorがコンテキスト内で行っていた作業(configのマージ、`priority`の降格ウォーク、可否の事前チェック)を`agent-exec`側に寄せるためのものである。特に`route`/`dispatch`(v0.11.0で追加)により、エグゼキュータ選択はinstructorの判断ではなく`agent-exec`が実行するコードになった。
 
 - **`agent-exec config [--json]`** — 4層のorchestra設定(built-in defaults → `~/.claude/orchestra.yaml` → `./.claude/orchestra.yaml` → `./.claude/orchestra.local.yaml`)を、SKILL.md §9と同じ規則(mapping key-by-keyでマージ、スカラー/リストは丸ごと置換、明示的な`null`は値として扱う)で決定的にdeep-mergeし、`external_executors.<name>`のうち`enabled: true`かつ`dispatch: cli`のものについては実行ファイルの`shutil.which`可否を`"available"`として付与したうえで、解決済み設定をJSONとしてstdoutに出す。これにより、instructorがYAMLレイヤをコンテキスト内でマージする必要がなくなる。トップレベルには`warnings`配列(pre-0.4語彙検出`legacy_vocab`、`orchestra.json`検出`legacy_json`。無ければ`[]`)も含まれるため、`setup`スキルはレガシー検出のために生のレイヤファイルを読む必要がない。
 - **`agent-exec run <profile> --model M --effort E --workdir W --prompt-file F [--resume SID] [--output FMT] [--capture]`** — profile(現状`copilot`)ごとのCLIフラグ規約と安全側デフォルト(`--disable-builtin-mcps`・`--add-dir`・`--output-format`)を一本化した、正規化ずみのディスパッチ入口。§2で示した生の`agent-exec copilot -p ... --model ... --effort ... --add-dir ... --output-format json --disable-builtin-mcps`と等価なコマンドを、`agent-exec run copilot --model gpt-5.6-luna --effort medium --workdir "$WORKDIR" --prompt-file TASK.md`のように短く書けるようにするもの。allow-allの注入は無い(M1のまま)。
   - **`--capture`を付けると、`os.execvpe`によるプロセス置換ではなく、copilotをサブプロセスとして起動してstdout/stderrをキャプチャし、そのJSONLをパースして`{ status, answer, session_id, reason, exit_code }`という正規化JSONオブジェクトを1つ、agent-exec自身のstdoutに出して終了コード0で返す。** `status`は`"ok"`または`"unavailable"`(quota/credits/auth/rate-limit/nonzero-exit/errorのいずれかが`reason`に入る)。エグゼキュータ側のunavailableは非ゼロ終了で表現されず、この`status`フィールドで表現される点に注意 — Haikuリレーはこの1つのJSONを読むだけでよく、jqでのJSONLパースはリレー側にはもう不要(§2)。`--capture`を付けない場合は従来どおり`os.execvpe`によるハンドオフのままで、挙動に変化はない。
+- **`agent-exec route --class <light|standard|deep|review|independent-review> [--archetype default|investigation] [--exhausted a,b] [--json|--text]`**(v0.11.0で追加)— §4の`priority`ウォークをコード側で実行する読み取り専用サブコマンド。4層configをマージし、各候補を`enabled`・binary/agent解決可否・`doctor`相当の`ready.<x>.ok`・`class_policy`該当有無・呼び出し側の`--exhausted`でゲートしたうえで、生き残った先頭候補を`{ class, archetype, executor, dispatch, model, effort, agent_type, candidates, remaining, skipped, source }`として返す(`skipped`には各候補が外れた理由が`{executor, reason}`で入る)。instructorはこれを呼ぶだけで、`priority`リストを手で読んで降格判定する作業から解放される。
+- **`agent-exec dispatch --class <cls> [--archetype A] [--exhausted a,b] --prompt-file F --workdir W [--resume SID] [--capture]`**(v0.11.0で追加)— `route`をさらに一歩進めた、実際にディスパッチまで行うサブコマンド。内部で`route`を呼び、勝者が`dispatch: cli`のエグゼキュータ(Copilot)なら実際に実行して`{ status: "ok"|"unavailable", answer, session_id, reason, exit_code, executor, model, effort, route }`を返す。勝者がClaudeまたは`dispatch: agent`のエグゼキュータ(Codex)なら、実行はinstructor自身の`agent()`/Agentツール呼び出しでしか行えないため`{ status: "delegate", executor, model, effort, agent_type, route }`を返すに留める。有効な候補が一つも残らなければ`{ status: "unroutable", route }`。**これが`run` SKILL.md §5の`dispatchClass()`が包んでいる1回の呼び出しそのものであり、instructorが`light`/`standard`タスクのエグゼキュータを自分で決めることは無くなった — 1つの安価なリレーエージェント経由でこれを尋ね、返ってきたJSONで分岐するだけになる。**
 - **`agent-exec doctor [--json | --text]`**(既定`--json`)— シム自身のインストール状況(パス・PATH上か・マーケットプレイス/cacheどちらを指しているか)、`uv`の有無、`agent-exec config`と同じ4層configマージ結果(同じ`warnings`配列を`config.warnings`として含む)、`permissions.allow`中の`Bash(agent-exec:*)`ルールの有無(ベストエフォート)、そして各cliエグゼキュータの総合可否`ready.<name>.ok`(未充足の`missing[]`付き)を1回でまとめて返す、読み取り専用の診断サブコマンド。上記§4の認可事前チェックはこれ1本に集約する。**解決済みのconfig全体(`tiers`/`available`注記つき`external_executors`/`priority`)を`config.values`として同梱する**(解決失敗時は`null`、理由は`config.error`)ため、instructorは起動時の`doctor`1回で「可否verdict」と「解決済みモデルポリシー」の両方を得られ、`agent-exec config`を別途呼ぶ必要はない(config単体が欲しいときだけ`config`を使う)。シムが未インストールでもブートストラップパス経由で直接呼び出せ、レポート自体が「未準備」を表現するため、内部エラーでない限り常に終了コード0。
   - `executors`セクションは、有効化済み`dispatch: cli`のものだけでなく**既知の全エグゼキュータ**(`codex`・`copilot`)を`enabled`/`dispatch`/`binary`/`available`つきで網羅する — `dispatch: agent`のCodexも`available`(バイナリのPATH上の有無、参考情報)と、実際の可否はサブエージェントのセッション解決に依存し`agent-exec`からは判定不能である旨の`note`付きで含まれる。`ready.<name>.ok`は従来どおり有効化済み`dispatch: cli`エグゼキュータのみに付与され、Codexのようなagent dispatchには`ready`の verdict を作らない(判定不能なため)。`setup`スキルはこれにより、`codex`/`copilot`いずれについても個別の`command -v`を実行する必要がない。
 
@@ -399,6 +406,6 @@ Codex independent-reviewに渡すプロンプト末尾の指示例: 『Reply wit
 | `task_count`/`pass`/`fail`/`exhausted`/`fallbacks` | 非負整数(`run_summary`専用) |
 | `classes`/`rounds`/`executors_used`/`external_enabled` | dict型ヒストグラム(`run_summary`専用) |
 
-**`agent-exec run ... --capture`の自動ログ。** §5の`run`サブコマンドに`--cls CLASS`(`light`/`standard`/`deep`/`review`)を渡すと、そのディスパッチの能力クラスとしてタグ付けされる。`--capture`を付けたときは、結果を出力した後に`event: dispatch`のレコードを1件、`agent-exec`自身が自動でtelemetryに追記する(`status`/`reason`/`cls`など)。これはLLMを介さず`agent-exec`内部で完結する。Copilotの`answer`(回答本文)がtelemetryに記録されることは絶対にない。
+**`agent-exec run ... --capture`の自動ログ。** §5の`run`サブコマンドに`--cls CLASS`(`light`/`standard`/`deep`/`review`)を渡すと、そのディスパッチの能力クラスとしてタグ付けされる。`--capture`を付けたときは、結果を出力した後に`event: dispatch`のレコードを1件、`agent-exec`自身が自動でtelemetryに追記する(`status`/`reason`/`cls`など)。これはLLMを介さず`agent-exec`内部で完結する。Copilotの`answer`(回答本文)がtelemetryに記録されることは絶対にない。`agent-exec dispatch --class <cls> ... --capture`(§5)も内部で`run`と同じCLI実行パスを通るため、`--class`から`cls`が自動的に埋まった同じ`dispatch`レコードが同様に自動で記録される — instructor側で`--cls`を別途渡す必要はない。
 
 **run_summaryはinstructor自身ではなくリレー経由。** 1回のオーケストレーション実行の終わりに、telemetryが有効なら(`doctor`の`config.values.telemetry.enabled`で判定)、instructorは安価なHaikuリレーエージェントに`agent-exec telemetry record --json '...'`を1回実行させ、`run_summary`レコードを1件だけ記録する — instructor自身が直接実行することは絶対にない。無効なら何もせずスキップする。これはinstructorのコンテキストを汚さないための設計であり、また`record`はどのみちカテゴリ値/数値フィールドしか受け付けないため、instructorが直接叩いても得られる自由度は無い。

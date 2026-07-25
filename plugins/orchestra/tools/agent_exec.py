@@ -15,6 +15,10 @@ Usage:
   agent-exec config [--json]     print resolved orchestra config
   agent-exec run <profile> ...   normalized, config-driven dispatch
   agent-exec doctor [--json|--text]  structured readiness report
+  agent-exec route --class <cls> [--archetype A] [--exhausted a,b] [--json|--text]
+                                  resolve a class to a concrete executor
+  agent-exec dispatch --class <cls> --prompt-file F --workdir W ...
+                                  one-call resolve + dispatch
   agent-exec <profile> [args..]  dispatch to the profile's executor
   agent-exec -h | --help          show this help
 """
@@ -59,7 +63,77 @@ DEFAULTS = {
         "deep": "opus",
         "review": "sonnet",
     },
-    "external_executors": {},
+    # Enabled by default: `route`/`resolve_route` hard-gates every non-claude
+    # candidate on real availability (doctor's `ready.<x>.ok`), so a machine
+    # without the Copilot CLI or Codex agent still resolves to claude
+    # automatically. Defaulting to enabled here only changes behavior on a
+    # machine where the executor is actually ready.
+    "external_executors": {
+        "copilot": {
+            "enabled": True,
+            "dispatch": "cli",
+            "classes": ["light", "standard"],
+            "class_policy": {
+                "light": {"model": "gpt-5.6-luna", "effort": "medium"},
+                "standard": {"model": "gpt-5.6-luna", "effort": "medium"},
+            },
+        },
+        "codex": {
+            "enabled": True,
+            "dispatch": "agent",
+            "agent_type": "codex:codex-rescue",
+            "classes": ["standard", "deep", "review"],
+            "class_policy": {
+                "standard": {"model": "gpt-5.6-luna", "effort": "medium"},
+                "deep": {"model": "gpt-5.6-sol", "effort": "xhigh"},
+                "review": {"model": "gpt-5.6-sol", "effort": "low"},
+            },
+            # Escalate a nominally light/standard-class task to `deep` when it
+            # needs deep traversal of a large repo — Luna's long-context
+            # recall is measurably weak.
+            "long_context_escalation": {
+                "when": (
+                    "task requires deep traversal of a large repo "
+                    "(Luna's long-context recall is weak)"
+                ),
+                "class": "deep",
+            },
+        },
+    },
+    # Ordered executor preference per class/role (and, for the implementation
+    # classes, per task archetype). See `resolve_route()` for the algorithm
+    # and the `run` skill's SKILL.md §9 for the human-readable version this
+    # mirrors. Omit `priority.<class>` entirely (not possible via the
+    # defaults, but possible via a user override that sets `priority: {}`) to
+    # fall back to the legacy `classes`-membership scan.
+    "priority": {
+        "light": {
+            "investigation": ["copilot", "claude"],
+            "default": ["copilot", "claude"],
+        },
+        "standard": {
+            "default": ["copilot", "claude", "codex"],
+        },
+        "deep": {
+            "default": ["claude", "codex"],
+        },
+        "review": {
+            "default": ["claude"],
+        },
+        "independent-review": {
+            "default": ["codex"],
+        },
+    },
+    # "off": route/dispatch only ever advise; nothing nudges a light-class
+    # task away from Claude. "block": the PreToolUse hook
+    # (hooks/enforce-router.sh) nudges a generic Haiku implementation
+    # subagent toward `agent-exec dispatch` instead, at most once per
+    # session, with documented escape hatches. Consumed by that hook (and by
+    # `agent-exec config`/`doctor`'s reflection of resolved config), not
+    # enforced by agent-exec's own subcommands.
+    "enforcement": {
+        "light_class": "off",
+    },
     "telemetry": {
         "enabled": False,
         "dir": "~/.claude/orchestra/telemetry",
@@ -91,9 +165,43 @@ Usage:
   agent-exec doctor [--json|--text]
                                   emit a structured readiness report covering
                                   the shim, uv, config, executors, the
-                                  Bash(agent-exec:*) permission rule, and an
-                                  overall ready/missing verdict per executor
-                                  (--json is the default)
+                                  Bash(agent-exec:*) permission rule, an
+                                  overall ready/missing verdict per executor,
+                                  and a `route` preview (the resolved
+                                  executor for each of light/standard/deep/
+                                  review) (--json is the default)
+  agent-exec route --class <light|standard|deep|review|independent-review>
+                  [--archetype default|investigation] [--exhausted a,b,c]
+                  [--json|--text]
+                                  resolve a capability class (+ optional task
+                                  archetype) to a concrete executor by
+                                  walking config `priority` and gating each
+                                  candidate on doctor-report readiness (see
+                                  `resolve_route`); prints the resolved route
+                                  (--json is the default). `--exhausted`
+                                  drops the given comma-separated executor
+                                  names as already-tried/unavailable.
+  agent-exec dispatch --class <cls> [--archetype A] [--exhausted a,b]
+                  --prompt-file F --workdir W [--resume SID] [--capture]
+                                  one-call resolve + dispatch: resolves the
+                                  route, then runs it. If the winning
+                                  executor is `dispatch: cli` (e.g. copilot),
+                                  runs it exactly as `run --capture` does and
+                                  prints its normalized result plus
+                                  executor/model/effort/route. If the winner
+                                  is `dispatch: agent` (e.g. codex) or the
+                                  `claude` fallback, agent-exec cannot spawn
+                                  subagents itself, so it prints
+                                  {{"status":"delegate", executor, model,
+                                  effort, agent_type, route}} for the caller
+                                  to make the Agent-tool call itself. If
+                                  nothing resolves, prints
+                                  {{"status":"unroutable", route}}. Exits 0 in
+                                  all of these cases — status/reason ride in
+                                  the payload, same convention as `run
+                                  --capture`. Also self-logs a "dispatch"
+                                  telemetry record for the cli branch, same
+                                  as `run --capture`.
   agent-exec telemetry record (--json STR | --file F)
                                   append an anonymized telemetry record
                                   (allowlist-sanitized; enabled/disabled via
@@ -673,6 +781,21 @@ def resolve_config():
                 else:
                     cfg["available"] = shutil.which(builtin_exec) is not None
 
+    # Normalize enforcement.light_class to always be one of the two known
+    # strings. YAML 1.1 (what yaml.safe_load implements) parses a bareword
+    # `off`/`on`/`yes`/`no` as a bool, not a string -- so a config author
+    # writing unquoted `off` gets Python `False` here, not `"off"`. Fail
+    # safe: any non-"block" value (False, None, True, a stray bool from a
+    # future on/yes/no typo, or any other unrecognized string) normalizes to
+    # "off" rather than being silently treated as "block". An ambiguous
+    # value must never silently mean "block".
+    enforcement = resolved.get("enforcement")
+    if not isinstance(enforcement, dict):
+        enforcement = {}
+        resolved["enforcement"] = enforcement
+    if enforcement.get("light_class") != "block":
+        enforcement["light_class"] = "off"
+
     return resolved, None
 
 
@@ -1124,6 +1247,62 @@ def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
     }
 
 
+def _build_copilot_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt):
+    """Build the copilot CLI argv for a single headless invocation. Shared by
+    `run`'s dry-run preview / exec-replace path and `_run_copilot_capture`
+    (used by both `run --capture` and `dispatch`'s cli branch), so there is
+    exactly one place that knows copilot's flag shape."""
+    argv = [exec_name, "--disable-builtin-mcps"]
+    if resume is not None:
+        argv.append("--resume=%s" % resume)
+    argv += [
+        "-p", prompt_value,
+        "--model", model,
+        "--effort", effort,
+        "--add-dir", workdir,
+        "--output-format", output_fmt,
+    ]
+    return argv
+
+
+def _run_copilot_capture(profile_name, model, effort, workdir, prompt_file, resume, output_fmt="json"):
+    """Shared core of `run --capture` / `dispatch` (cli-dispatch route): build
+    the executor's argv, run it as a subprocess, and parse its JSONL output.
+
+    Returns (exit_code, result_or_None):
+      - (127, None) if the executor binary is not on PATH (mirrors the
+        existing 127 convention for a missing executor).
+      - (0, result_dict) otherwise, where result_dict is the normalized
+        dict from parse_copilot_jsonl. Its own "status" field (ok/
+        unavailable), not this exit code, carries the executor's own
+        availability signal.
+
+    Does not print anything and does not touch telemetry — callers do both,
+    since `dispatch` needs to fold in extra keys (executor/model/effort/
+    route) before printing."""
+    profile = PROFILES[profile_name]
+    exec_name = profile["exec"]
+
+    resolved = shutil.which(exec_name)
+    if resolved is None:
+        return 127, None
+
+    with open(prompt_file, "r", encoding="utf-8") as f:
+        prompt_text = f.read()
+
+    argv = _build_copilot_argv(exec_name, model, effort, workdir, prompt_text, resume, output_fmt)
+    env = dict(os.environ)
+
+    proc = subprocess.run(
+        argv,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    result = parse_copilot_jsonl(proc.stdout, proc.stderr, proc.returncode)
+    return 0, result
+
+
 def cmd_run(args):
     if len(args) == 0:
         sys.stderr.write("agent-exec: run: missing profile\n")
@@ -1194,17 +1373,7 @@ def cmd_run(args):
     cls = opts["--cls"]
 
     def build_argv(prompt_value):
-        argv = [exec_name, "--disable-builtin-mcps"]
-        if resume is not None:
-            argv.append("--resume=%s" % resume)
-        argv += [
-            "-p", prompt_value,
-            "--model", model,
-            "--effort", effort,
-            "--add-dir", workdir,
-            "--output-format", output_fmt,
-        ]
-        return argv
+        return _build_copilot_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt)
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
         argv = build_argv("@%s" % prompt_file)
@@ -1219,6 +1388,27 @@ def cmd_run(args):
             )
         return 0
 
+    if capture:
+        exit_code, result = _run_copilot_capture(
+            profile_name, model, effort, workdir, prompt_file, resume, output_fmt
+        )
+        if result is None:
+            sys.stderr.write(
+                "agent-exec: executor '%s' not found on PATH\n" % exec_name
+            )
+            return exit_code
+        print(json.dumps(result, ensure_ascii=False))
+        try:
+            record = build_dispatch_record(profile_name, result, resume, cls)
+            telemetry_cfg, telemetry_err = resolve_config()
+            if telemetry_err is not None or not isinstance(telemetry_cfg, dict):
+                telemetry_cfg = DEFAULTS
+            telemetry_append(record, telemetry_cfg)
+        except Exception:
+            # Telemetry must never break dispatch.
+            pass
+        return 0
+
     resolved = shutil.which(exec_name)
     if resolved is None:
         sys.stderr.write(
@@ -1231,26 +1421,6 @@ def cmd_run(args):
 
     argv = build_argv(prompt_text)
     env = dict(os.environ)
-
-    if capture:
-        proc = subprocess.run(
-            argv,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        result = parse_copilot_jsonl(proc.stdout, proc.stderr, proc.returncode)
-        print(json.dumps(result, ensure_ascii=False))
-        try:
-            record = build_dispatch_record(profile_name, result, resume, cls)
-            telemetry_cfg, telemetry_err = resolve_config()
-            if telemetry_err is not None or not isinstance(telemetry_cfg, dict):
-                telemetry_cfg = DEFAULTS
-            telemetry_append(record, telemetry_cfg)
-        except Exception:
-            # Telemetry must never break dispatch.
-            pass
-        return 0
 
     os.execvpe(exec_name, argv, env)  # never returns
 
@@ -1455,6 +1625,16 @@ def _build_doctor_report():
                 )
                 ready[name] = {"ok": ok, "missing": missing}
 
+    route_preview = {}
+    if err is None and isinstance(resolved, dict):
+        # Reuse the `ready` section just computed above rather than calling
+        # `_build_doctor_report()` again (which would recurse forever) — a
+        # synthetic mini-report with only `ready` is all `resolve_route`
+        # needs.
+        interim_report = {"ready": ready}
+        for preview_cls in ("light", "standard", "deep", "review"):
+            route_preview[preview_cls] = resolve_route(resolved, interim_report, preview_cls)
+
     return {
         "shim": shim,
         "uv": {"present": uv_present},
@@ -1462,6 +1642,7 @@ def _build_doctor_report():
         "executors": executors,
         "permission": permission,
         "ready": ready,
+        "route": route_preview,
     }
 
 
@@ -1517,6 +1698,24 @@ def _print_doctor_text(report):
             status = "OK" if info["ok"] else "NOT READY"
             print("  - %s: %s%s" % (name, status, (" (missing: %s)" % ", ".join(info["missing"])) if info["missing"] else ""))
 
+    if report.get("route"):
+        print("route (preview):")
+        for cls_name, route in report["route"].items():
+            if route.get("executor"):
+                print(
+                    "  - %s: %s (dispatch=%s model=%s effort=%s source=%s)"
+                    % (
+                        cls_name,
+                        route["executor"],
+                        route["dispatch"],
+                        route["model"],
+                        route["effort"],
+                        route["source"],
+                    )
+                )
+            else:
+                print("  - %s: UNROUTABLE" % cls_name)
+
 
 def cmd_doctor(args):
     fmt = "--json"
@@ -1534,6 +1733,432 @@ def cmd_doctor(args):
     else:
         print(json.dumps(report, indent=2, ensure_ascii=False))
 
+    return 0
+
+
+# --- route / dispatch subcommands --------------------------------------------
+#
+# `resolve_route` moves "which executor should handle this class of work"
+# out of the instructor's judgment (previously pure English prose in
+# SKILL.md) and into code: it walks the same `priority` list the skill
+# documents, dropping each candidate on the same reactive-fallback signals
+# (disabled / misconfigured / not actually ready) the skill's prose already
+# describes, and returns the first survivor. `claude` is always the terminal
+# fallback, so a machine with no external executors configured/ready still
+# resolves every class.
+
+
+def _legacy_classes_scan(cfg, cls):
+    """Pre-`priority` fallback: scan `external_executors` for any executor
+    whose own `classes` list names `cls`, in config order, then append
+    `claude` as the terminal fallback. This is the "external executors woven
+    in ad hoc per their own classes list" legacy behavior the example config
+    documents for when `priority` is omitted entirely."""
+    external = cfg.get("external_executors")
+    candidates = []
+    if isinstance(external, dict):
+        for name, ecfg in external.items():
+            if not isinstance(ecfg, dict):
+                continue
+            classes = ecfg.get("classes")
+            if isinstance(classes, list) and cls in classes:
+                candidates.append(name)
+    candidates.append("claude")
+    return candidates
+
+
+def _route_candidates(cfg, cls, archetype):
+    """Return (ordered_candidate_names, source) for `cls`/`archetype`:
+    `priority[cls][archetype]`, falling back to `priority[cls]["default"]`,
+    then to the legacy classes-membership scan (when `external_executors` is
+    at least present to scan), then to bare `claude`."""
+    priority = cfg.get("priority")
+    if isinstance(priority, dict):
+        cls_priority = priority.get(cls)
+        if isinstance(cls_priority, dict):
+            candidates = cls_priority.get(archetype)
+            if isinstance(candidates, list) and candidates:
+                return list(candidates), "priority"
+            candidates = cls_priority.get("default")
+            if isinstance(candidates, list) and candidates:
+                return list(candidates), "priority"
+
+    external_executors = cfg.get("external_executors")
+    if isinstance(external_executors, dict) and external_executors:
+        return _legacy_classes_scan(cfg, cls), "classes-legacy"
+
+    return ["claude"], "tiers-default"
+
+
+def _route_skip_reason(name, cls, exhausted_set, external_executors, ready):
+    """Return a skip reason string for candidate `name`, or None if it
+    survives and should win. Order matters: exhaustion first (cheapest,
+    caller-supplied), then configuration checks, then live readiness."""
+    if name in exhausted_set:
+        return "exhausted"
+
+    if name == "claude":
+        return None
+
+    ecfg = external_executors.get(name)
+    if not isinstance(ecfg, dict):
+        return "not-configured"
+
+    if ecfg.get("enabled") is not True:
+        return "disabled"
+
+    class_policy = ecfg.get("class_policy")
+    policy = class_policy.get(cls) if isinstance(class_policy, dict) else None
+    if not isinstance(policy, dict):
+        return "no-class-policy"
+
+    dispatch = ecfg.get("dispatch")
+    if dispatch == "cli":
+        entry = ready.get(name)
+        if not isinstance(entry, dict) or entry.get("ok") is not True:
+            missing = entry.get("missing") if isinstance(entry, dict) else None
+            if isinstance(missing, list) and missing:
+                return "not-ready:%s" % ",".join(missing)
+            return "not-ready:unknown"
+        return None
+
+    if dispatch == "agent":
+        # Binary presence is only informational for agent-dispatch executors
+        # (see the doctor report's own note on this) — real availability is
+        # the subagent's session resolution, which agent-exec cannot
+        # determine. Do not hard-gate on it.
+        return None
+
+    return "unknown-dispatch:%s" % dispatch
+
+
+def resolve_route(cfg, doctor_report, cls, archetype="default", exhausted=()):
+    """Pure resolver: map a capability class (+ optional task archetype) to a
+    concrete executor.
+
+    Walks `priority[cls][archetype]` (falling back to `priority[cls]
+    ["default"]`, then to the legacy `classes`-membership scan when
+    `priority` has nothing for that class, then to bare `claude`). For each
+    candidate in order, skips it (with a recorded reason) if it is already
+    `exhausted`, unconfigured, disabled, missing a `class_policy` entry for
+    `cls`, or (for `dispatch: cli` only) not actually ready per
+    `doctor_report["ready"]`. The first survivor wins; `claude` never gets a
+    readiness/config check of its own (model = `tiers[cls]`, effort left
+    None), so it is the terminal fallback UNLESS the caller explicitly lists
+    it in `exhausted` too -- in which case this returns unroutable
+    (executor/dispatch None) rather than looping. That exhaustion check is
+    intentionally evaluated before the `claude`-is-always-fine special case:
+    it is what lets a caller-side retry loop (e.g. `dispatchClass()` in the
+    `run` skill) terminate after actually trying every candidate, instead of
+    recursing forever because claude "always" resolves.
+
+    `cfg` is a resolved orchestra config dict (as returned by
+    `resolve_config()`). `doctor_report` is a dict with a `"ready"` key
+    shaped like `_build_doctor_report()`'s `ready` section (only that key is
+    read). Returns a dict; `executor`/`dispatch` are None when nothing
+    resolves at all (unroutable)."""
+    if not isinstance(cfg, dict):
+        cfg = {}
+    exhausted_set = set(exhausted or ())
+
+    candidates, source = _route_candidates(cfg, cls, archetype)
+
+    external_executors = cfg.get("external_executors")
+    if not isinstance(external_executors, dict):
+        external_executors = {}
+    tiers = cfg.get("tiers")
+    if not isinstance(tiers, dict):
+        tiers = {}
+    ready = {}
+    if isinstance(doctor_report, dict):
+        ready_section = doctor_report.get("ready")
+        if isinstance(ready_section, dict):
+            ready = ready_section
+
+    skipped = []
+    winner = None
+    winner_idx = None
+
+    for idx, name in enumerate(candidates):
+        reason = _route_skip_reason(name, cls, exhausted_set, external_executors, ready)
+        if reason is None:
+            winner = name
+            winner_idx = idx
+            break
+        skipped.append({"executor": name, "reason": reason})
+
+    result = {
+        "class": cls,
+        "archetype": archetype,
+        "candidates": list(candidates),
+        "skipped": skipped,
+        "source": source,
+    }
+
+    if winner is None:
+        result.update({
+            "executor": None,
+            "dispatch": None,
+            "model": None,
+            "effort": None,
+            "agent_type": None,
+            "remaining": [],
+        })
+        return result
+
+    result["remaining"] = list(candidates[winner_idx + 1:])
+
+    if winner == "claude":
+        result.update({
+            "executor": "claude",
+            "dispatch": "claude",
+            "model": tiers.get(cls),
+            "effort": None,
+            "agent_type": None,
+        })
+        return result
+
+    ecfg = external_executors.get(winner) or {}
+    dispatch = ecfg.get("dispatch")
+    class_policy = ecfg.get("class_policy")
+    policy = class_policy.get(cls) if isinstance(class_policy, dict) else None
+    if not isinstance(policy, dict):
+        policy = {}
+    result.update({
+        "executor": winner,
+        "dispatch": dispatch,
+        "model": policy.get("model"),
+        "effort": policy.get("effort"),
+        "agent_type": ecfg.get("agent_type") if dispatch == "agent" else None,
+    })
+    return result
+
+
+def _print_route_text(route):
+    print("agent-exec route")
+    print("-----------------")
+    print("class: %s (archetype: %s)" % (route["class"], route["archetype"]))
+    print("candidates: %s" % ", ".join(route["candidates"]))
+    if route["executor"]:
+        print(
+            "resolved: %s (dispatch=%s model=%s effort=%s)"
+            % (route["executor"], route["dispatch"], route["model"], route["effort"])
+        )
+    else:
+        print("resolved: UNROUTABLE")
+    if route["skipped"]:
+        print("skipped:")
+        for s in route["skipped"]:
+            print("  - %s: %s" % (s["executor"], s["reason"]))
+    if route["remaining"]:
+        print("remaining: %s" % ", ".join(route["remaining"]))
+    print("source: %s" % route["source"])
+
+
+def cmd_route(args):
+    cls = None
+    archetype = "default"
+    exhausted = []
+    fmt = "--json"
+
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--class":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: route: missing value for --class\n")
+                return 2
+            cls = args[i + 1]
+            i += 2
+        elif tok == "--archetype":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: route: missing value for --archetype\n")
+                return 2
+            archetype = args[i + 1]
+            i += 2
+        elif tok == "--exhausted":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: route: missing value for --exhausted\n")
+                return 2
+            exhausted = [x for x in args[i + 1].split(",") if x]
+            i += 2
+        elif tok in ("--json", "--text"):
+            fmt = tok
+            i += 1
+        else:
+            sys.stderr.write("agent-exec: route: unknown option: %s\n" % tok)
+            return 2
+
+    if cls is None:
+        sys.stderr.write("agent-exec: route: missing required option: --class\n")
+        return 2
+
+    resolved, err = resolve_config()
+    if err is not None:
+        sys.stderr.write(err + "\n")
+        return 1
+
+    doctor_report = _build_doctor_report()
+    route = resolve_route(resolved, doctor_report, cls, archetype=archetype, exhausted=exhausted)
+
+    if fmt == "--text":
+        _print_route_text(route)
+    else:
+        print(json.dumps(route, indent=2, ensure_ascii=False))
+
+    return 0
+
+
+def cmd_dispatch_route(args):
+    cls = None
+    archetype = "default"
+    exhausted = []
+    prompt_file = None
+    workdir = None
+    resume = None
+    # Accepted for parity with `run --capture`; the cli branch below always
+    # runs in capture style (never exec-replaces) since it must print the
+    # combined result+route JSON rather than replace this process.
+    capture = False
+
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--capture":
+            capture = True
+            i += 1
+        elif tok == "--class":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --class\n")
+                return 2
+            cls = args[i + 1]
+            i += 2
+        elif tok == "--archetype":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --archetype\n")
+                return 2
+            archetype = args[i + 1]
+            i += 2
+        elif tok == "--exhausted":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --exhausted\n")
+                return 2
+            exhausted = [x for x in args[i + 1].split(",") if x]
+            i += 2
+        elif tok == "--prompt-file":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --prompt-file\n")
+                return 2
+            prompt_file = args[i + 1]
+            i += 2
+        elif tok == "--workdir":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --workdir\n")
+                return 2
+            workdir = args[i + 1]
+            i += 2
+        elif tok == "--resume":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --resume\n")
+                return 2
+            resume = args[i + 1]
+            i += 2
+        else:
+            sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
+            return 2
+
+    if cls is None:
+        sys.stderr.write("agent-exec: dispatch: missing required option: --class\n")
+        return 2
+    if prompt_file is None:
+        sys.stderr.write("agent-exec: dispatch: missing required option: --prompt-file\n")
+        return 2
+    if workdir is None:
+        sys.stderr.write("agent-exec: dispatch: missing required option: --workdir\n")
+        return 2
+
+    resolved, err = resolve_config()
+    if err is not None:
+        sys.stderr.write(err + "\n")
+        return 1
+
+    doctor_report = _build_doctor_report()
+    route = resolve_route(resolved, doctor_report, cls, archetype=archetype, exhausted=exhausted)
+
+    if route["executor"] is None:
+        print(json.dumps({"status": "unroutable", "route": route}, ensure_ascii=False))
+        return 0
+
+    if route["dispatch"] != "cli":
+        # agent (codex) or claude: agent-exec cannot spawn subagents itself
+        # -- the caller (the instructor) makes the Agent-tool call.
+        output = {
+            "status": "delegate",
+            "executor": route["executor"],
+            "model": route["model"],
+            "effort": route["effort"],
+            "agent_type": route["agent_type"],
+            "route": route,
+        }
+        print(json.dumps(output, ensure_ascii=False))
+        return 0
+
+    profile_name = route["executor"]
+    model = route["model"]
+    effort = route["effort"]
+
+    profile = PROFILES.get(profile_name)
+    if profile is None:
+        # A user config can in principle declare a `dispatch: cli` executor
+        # agent-exec has no built-in invocation profile for (only `copilot`
+        # has one today). Surface as unavailable rather than crashing.
+        output = {
+            "status": "unavailable",
+            "answer": None,
+            "session_id": None,
+            "reason": None,
+            "exit_code": None,
+            "executor": profile_name,
+            "model": model,
+            "effort": effort,
+            "route": route,
+        }
+        print(json.dumps(output, ensure_ascii=False))
+        return 0
+
+    exec_name = profile["exec"]
+
+    if os.environ.get("AGENT_EXEC_DRYRUN"):
+        argv = _build_copilot_argv(exec_name, model, effort, workdir, "@%s" % prompt_file, resume, "json")
+        print("PROFILE: %s" % profile_name)
+        print("MODE: headless")
+        print("ENV: (none)")
+        print("EXEC: %s" % " ".join(argv))
+        print(
+            "CAPTURE: yes (would subprocess-run %s and emit normalized "
+            "JSON + route)" % profile_name
+        )
+        return 0
+
+    exit_code, result = _run_copilot_capture(profile_name, model, effort, workdir, prompt_file, resume, "json")
+    if result is None:
+        sys.stderr.write("agent-exec: executor '%s' not found on PATH\n" % exec_name)
+        return exit_code
+
+    try:
+        record = build_dispatch_record(profile_name, result, resume, cls)
+        telemetry_cfg = resolved if isinstance(resolved, dict) else DEFAULTS
+        telemetry_append(record, telemetry_cfg)
+    except Exception:
+        # Telemetry must never break dispatch.
+        pass
+
+    output = dict(result)
+    output["executor"] = profile_name
+    output["model"] = model
+    output["effort"] = effort
+    output["route"] = route
+    print(json.dumps(output, ensure_ascii=False))
     return 0
 
 
@@ -1558,6 +2183,12 @@ def main(argv):
 
     if tok == "doctor":
         return cmd_doctor(argv[1:])
+
+    if tok == "route":
+        return cmd_route(argv[1:])
+
+    if tok == "dispatch":
+        return cmd_dispatch_route(argv[1:])
 
     if tok == "telemetry":
         return cmd_telemetry(argv[1:])

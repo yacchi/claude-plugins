@@ -1,5 +1,5 @@
 {
-  "description": "Injects the orchestra routing protocol (express vs orchestrated lane) at session start, re-injects it after /clear, resume, and compaction, and appends a short per-prompt reminder so the router survives long sessions",
+  "description": "Injects the orchestra routing protocol (express vs orchestrated lane) at session start, re-injects it after /clear, resume, and compaction, appends a short per-prompt reminder so the router survives long sessions, and (opt-in, off by default) nudges a direct Claude Haiku subagent spawn toward `agent-exec dispatch` once per task when enforcement.light_class=block, with four independent escape hatches so it can never become a hard wall",
   "hooks": {
     "SessionStart": [
       {
@@ -23,6 +23,20 @@
             "command": "bash",
             "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/remind-router.sh"],
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/enforce-router.sh"],
+            "timeout": 15,
+            "statusMessage": "Checking light-class enforcement policy..."
           }
         ]
       }

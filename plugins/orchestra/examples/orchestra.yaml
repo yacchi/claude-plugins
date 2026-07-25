@@ -17,11 +17,14 @@
 # Codex/Copilot, asks which scope to write to, edits in place, and offers to gitignore
 # project-local files).
 #
-# Example project override that changes nothing except turning Copilot on for this repo:
+# Example project override that changes nothing except turning Copilot back OFF for
+# this repo (it ships `enabled: true` by default as of v0.11.0 - see below; every
+# candidate is still gated on real availability by `agent-exec route`, so this is
+# only needed to opt out entirely, e.g. on a machine that must never shell out):
 #
 #   external_executors:
 #     copilot:
-#       enabled: true
+#       enabled: false
 
 # Capability/performance classes and verification roles, each mapped to a Claude
 # model alias (or full model ID). The implementation classes (light/standard/deep)
@@ -66,7 +69,7 @@ external_executors:
       class: deep
 
   copilot:
-    enabled: false
+    enabled: true
     dispatch: cli
     # Dispatched through the `agent-exec` wrapper (see `agent-exec install`).
     # Measured on Copilot CLI 1.0.74: `copilot -p` runs file-write/shell/network
@@ -102,20 +105,24 @@ external_executors:
         effort: medium
 
 # Ordered executor preference per class/role (and, for the implementation classes,
-# per task archetype). The instructor tries candidates left-to-right and drops to
-# the NEXT one on a *reactive fallback signal*: the current executor is unavailable
-# — NOT the task failing. "Unavailable" = hit a rate-limit / usage-window cap
-# (Claude, Codex), ran out of AI credits / premium requests (Copilot), is
-# `enabled: false`, or its agent/CLI did not resolve in this environment. A task
-# that RUNS but returns a wrong result is NOT a fallback signal — that stays on the
-# SAME executor and goes through the normal review/retry loop.
+# per task archetype) — this list is still the single source of truth for
+# preference order, but the WALK ITSELF is executed by `agent-exec route` /
+# `agent-exec dispatch`, not by the instructor reading this list by hand. `route`
+# tries candidates left-to-right and drops to the NEXT one on a *reactive fallback
+# signal*: the current executor is unavailable — NOT the task failing. "Unavailable"
+# = hit a rate-limit / usage-window cap (Claude, Codex), ran out of AI credits /
+# premium requests (Copilot), is `enabled: false`, its agent/CLI did not resolve in
+# this environment, or the caller passed it in `--exhausted`. A task that RUNS but
+# returns a wrong result is NOT a fallback signal — that stays on the SAME executor
+# and goes through the normal review/retry loop.
 #
 # Entries are an `external_executors` key (`codex`, `copilot`, ...) or the sentinel
 # `claude` (the built-in `tiers.<name>` model). An executor named here must have a
-# matching `class_policy.<class>` on its `external_executors` block, or it is
-# skipped as misconfigured. Once an executor is found unavailable during a run it
-# stays skipped for the rest of THAT run (sticky exhaustion) — do not re-probe it
-# per task.
+# matching `class_policy.<class>` on its `external_executors` block, or `route`
+# skips it as misconfigured. Once `route`/`dispatch` finds an executor unavailable
+# during a run, the instructor's only job is to keep passing it in `--exhausted` on
+# every later call so it stays skipped for the rest of THAT run (sticky exhaustion)
+# — `route` never re-probes it on its own.
 #
 # Each key's value is a mapping of task-archetype -> ordered list; `default` is the
 # catch-all. `light` additionally recognizes `investigation` (read-only exploration
@@ -143,9 +150,9 @@ telemetry:
 priority:
   light:
     # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated executor
-    # for the light band (and for investigation fan-out). NOTE: copilot ships
-    # `enabled: false` below, so as-shipped this list effectively starts at claude;
-    # enable copilot to actually prefer it (that skip IS the reactive fallback in action).
+    # for the light band (and for investigation fan-out). copilot ships
+    # `enabled: true` above, so this actually prefers it whenever `agent-exec
+    # route` finds it ready; only drops to claude on a genuine unavailable signal.
     investigation: [copilot, claude]
     default: [copilot, claude]
   standard:
@@ -157,3 +164,28 @@ priority:
     default: [claude]
   independent-review:
     default: [codex]
+
+# Opt-in guardrail against defaulting to a direct Claude Haiku implementer when a
+# ready external executor exists — a NUDGE WITH A GUARANTEED ESCAPE, never a hard
+# wall. NOTE: quote the value ("off"/"block") - YAML 1.1 (what PyYAML's
+# safe_load implements) parses a bareword `off` as boolean False, not a string.
+# When `light_class: "block"`, a PreToolUse hook (`hooks/enforce-router.sh`)
+# fires only on a GENERIC Claude implementer call (no `subagent_type` at all,
+# or `subagent_type` in general-purpose/claude, at a Haiku-class model) while
+# `agent-exec route --class light` reports a non-claude executor ready.
+# Naming any OTHER specific `subagent_type` is itself a carve-out: the Agent
+# tool has no per-call tool-restriction params (its schema is only
+# description/isolation/model/prompt/run_in_background/subagent_type), so a
+# named agent is how tool access and a specialized system prompt get pinned,
+# and Copilot can't substitute for either - `orchestra:orchestra-light` stays
+# a deny target, since redirecting it to `agent-exec dispatch` is the point.
+# Escape hatches: (1) a HARD CAP of one deny per session, full stop - after
+# the first nudge the hook goes inert for the rest of the session regardless
+# of prompt content (this plugin's own retry convention appends new feedback
+# text every round, so a prompt-keyed fingerprint would just re-deny every
+# round; the bound is session-wide instead), (2) an explicit
+# `[orchestra:allow-claude: <reason>]` marker anywhere in the prompt/description,
+# (3) the named-subagent_type carve-out above, and (4) ORCHESTRA_ENFORCEMENT=off
+# plus fail-open on any uncertainty. Ships "off"; see `run` skill's SKILL.md §9.
+enforcement:
+  light_class: "off"

@@ -1,6 +1,6 @@
 ---
 name: run
-description: Playbook for cost-tiered multi-agent delegation. An expensive instructor model (Fable/Opus) only decomposes tasks and writes Workflow scripts; execution is delegated to a cheap tier — light-class (Haiku) implementation, then a Sonnet review pass running adversarial checks, then feedback-driven retries on failure — and only structured verdicts flow back to the instructor. Invoke explicitly with /run (or, cross-plugin, `orchestra:run`), or whenever cost-tiered delegation or large parallel task execution is called for. Also invoked as the ORCHESTRATED lane by the <orchestra-router> protocol this plugin injects at SessionStart.
+description: Playbook for cost-tiered multi-agent delegation. An expensive instructor model (Fable/Opus) only decomposes tasks and writes Workflow scripts; execution is delegated to a cheap tier — light-class implementation (resolved by `agent-exec route`, which prefers a ready external executor like Copilot over Claude Haiku), then a Sonnet review pass running adversarial checks, then feedback-driven retries on failure — and only structured verdicts flow back to the instructor. Invoke explicitly with /run (or, cross-plugin, `orchestra:run`), or whenever cost-tiered delegation or large parallel task execution is called for. Also invoked as the ORCHESTRATED lane by the <orchestra-router> protocol this plugin injects at SessionStart.
 when_to_use: Use when delegating multiple tasks in parallel to cheap models, when building a light-class-implementation + Sonnet-review adversarial pipeline, or when the instructor (main session) must receive only structured verdicts — never logs, diffs, or intermediate artifacts — in its context.
 ---
 
@@ -39,21 +39,21 @@ Applying the full pipeline to every request is overkill. Route lightweight tasks
 
 **Express execution shape:**
 
-- No verification pipeline (no orchestra-review). Delegate to ONE disposable implementer (explicit `model: 'haiku'` or `'sonnet'` — i.e. the `light` or `standard` class), or handle it directly yourself (subject to your usual direct-edit criteria, e.g. CLAUDE.md rules). The instructor reviews the result itself. At most one express task runs at a time.
+- No verification pipeline (no orchestra-review). Delegate to ONE disposable implementer at the `light` or `standard` class — prefer resolving the executor via `agent-exec route`/`dispatch` (§5's `dispatchClass()`) over assuming a Claude model; fall back to explicit `model: 'haiku'`/`'sonnet'` only when that helper isn't wired into this Workflow. Or handle it directly yourself (subject to your usual direct-edit criteria, e.g. CLAUDE.md rules). The instructor reviews the result itself. At most one express task runs at a time.
 - The justification for skipping verification is the same as the conclusion of section 7: skipping adversarial review is only acceptable for tasks whose verification is completely self-evident and low-risk. The express criteria exist precisely to carve out that subset.
 
 **Abort rule:** the moment scope or success criteria turn out to move mid-flight (decomposition became necessary, a design decision surfaced, the blast radius is wider than assumed), **abort express immediately** and re-route to the orchestrated lane, carrying over the state so far. Never push through on express.
 
 ## 3. Model tiers
 
-| Tier | Model | Role |
+| Tier | Resolved via | Role |
 |---|---|---|
-| Instructor | Fable / Opus | Decomposition, contracts, script writing, exception judgment ONLY. Never implements or reviews |
-| `deep` — design-latitude implementation | Opus (`orchestra-deep`) | Implementation where the spec leaves real design latitude: algorithm choice, API shape, tradeoffs |
-| `standard` implementation / judgment-based `review` | Sonnet | Ordinary implementation, or review requiring adversarial test design and failure interpretation |
-| `light` implementation / fully-scripted `review` | Haiku | Implementation or review whose procedure is 100% prescribed |
+| Instructor | Fable / Opus — fixed, never routed | Decomposition, contracts, script writing, exception judgment ONLY. Never implements or reviews |
+| `deep` — design-latitude implementation | `agent-exec route --class deep` — Opus (`orchestra-deep`) by design; Codex Sol/xhigh only if Claude itself is unavailable | Implementation where the spec leaves real design latitude: algorithm choice, API shape, tradeoffs |
+| `standard` implementation / judgment-based `review` | `agent-exec route --class standard` — Copilot `gpt-5.6-luna`/medium by default, Sonnet if unavailable | Ordinary implementation, or review requiring adversarial test design and failure interpretation |
+| `light` implementation / fully-scripted `review` | `agent-exec route --class light` — Copilot `gpt-5.6-luna`/medium by default, Haiku if unavailable | Implementation or review whose procedure is 100% prescribed |
 
-**Review class selection:** if the review procedure is fully prescribed (exact commands and pass criteria given), the `light` class (Haiku) suffices. If failure interpretation, adversarial test design, or spec-ambiguity judgment is needed, use the `standard` class (Sonnet) — this is the default review class. For review requiring heavy design judgment, use the `deep` class (pass `model: 'opus'` inline) — there is deliberately no separate `deep`-class review agent definition.
+**Review class selection:** if the review procedure is fully prescribed (exact commands and pass criteria given), the `light` class suffices. If failure interpretation, adversarial test design, or spec-ambiguity judgment is needed, use the `standard` class — this is the default review class. For review requiring heavy design judgment, use the `deep` class (pass `model: 'opus'` inline) — there is deliberately no separate `deep`-class review agent definition. The one exception left permanently un-routed is the Workflow template's own same-run adversarial `review` *stage* (§5): `priority.review` is `[claude]`-only by design, so it stays pinned to Sonnet rather than calling through `agent-exec route` — see §5's note on why.
 
 These defaults can be overridden per project/user via a configuration file — see section 9.
 
@@ -72,7 +72,7 @@ Where Dynamic Workflows (`/en/workflows`) are available, adapt this template per
 ```javascript
 export const meta = {
   name: 'cost-tiered-pipeline',
-  description: 'Light-class (Haiku) implementation for each task, a Sonnet review pass adversarially checks the result, failures retry with precise feedback up to 3 rounds, and only structured pass/fail verdicts are returned.',
+  description: 'Light-class implementation for each task (executor resolved by agent-exec route/dispatch - Copilot by default, Haiku as fallback), a Sonnet review pass adversarially checks the result, failures retry with precise feedback up to 3 rounds, and only structured pass/fail verdicts are returned.',
 }
 
 // --- Verdict schema: forces the review reply into structured JSON ---
@@ -99,6 +99,51 @@ const VERDICT_SCHEMA = {
 
 const MAX_RETRIES = 3
 
+// Sticky exhaustion for this run: an executor found `unavailable` stays
+// skipped for every remaining task/retry (§9). This Set is the instructor's
+// ONLY manual job in selection - the walk itself runs inside `agent-exec
+// route`/`dispatch`, never in this script's own logic.
+const exhausted = new Set()
+
+// Dispatch one task at a capability class ('light' | 'standard' | 'deep').
+// Selection is made by `agent-exec route`, NOT by this function and NOT by
+// the instructor. On a Copilot-equipped machine this resolves to
+// gpt-5.6-luna/medium; on a plain Claude Code install it resolves to the
+// matching Claude tier (haiku/sonnet/opus) automatically - same call shape
+// either way, so nothing here needs to know which one it got.
+async function dispatchClass(cls, promptText, opts = {}) {
+  const relayPrompt =
+    'Write the task text below to a new temp file, then run `agent-exec dispatch --class ' + cls +
+    (opts.archetype ? ' --archetype ' + opts.archetype : '') +
+    (exhausted.size ? ' --exhausted ' + [...exhausted].join(',') : '') +
+    ' --workdir ' + (opts.workdir || '.') + ' --prompt-file <that path> --capture`, ' +
+    'then print its stdout JSON verbatim - nothing else.\n\n--- TASK ---\n' + promptText
+
+  const raw = await agent(relayPrompt, { label: (opts.label || cls) + '-dispatch', model: 'haiku', effort: 'low' })
+  const r = JSON.parse(raw)
+
+  if (r.status === 'ok') return r.answer // a CLI executor (e.g. Copilot) already ran the task.
+  if (r.status === 'delegate') {
+    // route picked Claude, or an agent-dispatch executor (e.g. Codex) - only
+    // the instructor's own agent() call can actually spawn either one, so ITS
+    // unavailability (agent() returning null - §9's Claude/Codex signal) is on
+    // us to detect and feed back into `exhausted`, same as the branch below.
+    const answer = r.agent_type
+      ? await agent(promptText, { label: opts.label || cls, agentType: r.agent_type })
+      : await agent(promptText, { label: opts.label || cls, model: r.model, effort: r.effort })
+    if (answer === null) {
+      exhausted.add(r.executor)
+      return dispatchClass(cls, promptText, opts)
+    }
+    return answer
+  }
+  if (r.status === 'unavailable') {
+    exhausted.add(r.executor) // sticky for the rest of THIS run - never re-probed
+    return dispatchClass(cls, promptText, opts)
+  }
+  throw new Error('agent-exec dispatch: unroutable for class ' + cls + ' - ' + JSON.stringify(r.route))
+}
+
 // `tasks` comes from the `args` parameter when this workflow is saved and
 // re-run. Each task needs: id, workerPrompt (literal spec + edge cases +
 // verify command), verifierPrompt (what to re-check + what adversarial
@@ -117,15 +162,16 @@ async function runTask(task) {
         JSON.stringify(feedback)
       : task.workerPrompt
 
-    // Light tier: cheap, mechanical, literal implementation.
-    // ALWAYS pass model or agentType explicitly - see rule #4 above.
-    await agent(workerPrompt, {
-      label: task.id + '-work-' + attempt,
-      model: 'haiku',
-      effort: 'low',
-    })
+    // Light tier: cheap, mechanical, literal implementation. Executor choice
+    // is `agent-exec route`'s job (see dispatchClass above), never this
+    // line's - swap 'light' for 'standard' here for tasks with modest
+    // design latitude (see the note below the template for 'deep').
+    await dispatchClass('light', workerPrompt, { label: task.id + '-work-' + attempt, workdir: task.workdir })
 
-    // Review tier: adversarial, structured verdict.
+    // Review tier: adversarial, structured verdict. Stays pinned to Sonnet,
+    // unrouted - `priority.review` is `[claude]`-only by design (§9), so
+    // sending it through dispatchClass would add a relay hop for a class
+    // that only ever resolves to Claude anyway.
     const verdict = await agent(task.verifierPrompt, {
       label: task.id + '-verify-' + attempt,
       model: 'sonnet',
@@ -160,9 +206,9 @@ return results
 
 **Same-tree parallelism safety.** `pipeline()` and `parallel()` run their file-changing workers concurrently against the **same working tree** — there is no worktree isolation unless you explicitly pass `isolation: 'worktree'` on the `agent()` call (and that spins up a fresh worktree per agent, so it only pays off for genuinely parallel file mutation; a sequential same-tree phase can't use it at all). Two file-changing workers whose file ownership overlaps will silently corrupt each other's writes. Guard against it two ways: (1) **assign disjoint file ownership up front** — pin each parallel worker's target files in its prompt so no two can touch the same path, and fix shared contracts/types in the prompts too; and (2) **keep workers small and watch the early spawns** — short-lived, narrowly-scoped workers shrink the overlap window, and a quick check that you haven't spawned two workers keyed to the same task/target catches an accidental duplicate before it reaches its write stage, while it's still harmless. When parallel file mutation genuinely can't be partitioned, use `isolation: 'worktree'` and merge afterward; when the phase is really sequential on one tree, run the workers in sequence rather than racing them.
 
-**On `agentType`:** this plugin ships `agents/orchestra-light.md`, `agents/orchestra-deep.md`, and `agents/orchestra-review.md`. Whether the plugin-scoped names (e.g. `orchestra:orchestra-light`) resolve as the `agentType` option of `agent()` is environment-dependent and unconfirmed. Before relying on it, check the list of available subagents (the @-mention typeahead, or the names visible to the Agent tool); if `orchestra:orchestra-light` / `orchestra:orchestra-deep` / `orchestra:orchestra-review` resolve, pass e.g. `agentType: 'orchestra:orchestra-light'`. If they don't resolve, or you must run before confirming, fall back to explicit `model: 'haiku'` / `'opus'` / `'sonnet'` (the template's default). Either way, rule #4 stands: exactly one of `model` or `agentType` must always be explicit. The `standard` class has no dedicated Claude agent definition — dispatch it with `model: 'sonnet'` inline instead of an `agentType`.
+**On `agentType`:** this plugin ships `agents/orchestra-light.md`, `agents/orchestra-deep.md`, and `agents/orchestra-review.md`. These matter only on `dispatchClass`'s fallback branch (`status: 'delegate'` with no `agent_type`, i.e. Claude was the routed candidate) or when writing the express lane / §8 fallback pattern by hand — whether the plugin-scoped names (e.g. `orchestra:orchestra-light`) resolve as the `agentType` option of `agent()` is environment-dependent and unconfirmed. Before relying on it, check the list of available subagents (the @-mention typeahead, or the names visible to the Agent tool); if `orchestra:orchestra-light` / `orchestra:orchestra-deep` / `orchestra:orchestra-review` resolve, pass e.g. `agentType: 'orchestra:orchestra-light'`. If they don't resolve, fall back further to explicit `model: 'haiku'` / `'opus'` / `'sonnet'`. Either way, rule #4 stands: exactly one of `model` or `agentType` must always be explicit — `dispatchClass`'s own branches already guarantee this on the routed path. The `standard` class has no dedicated Claude agent definition — its Claude-side fallback is `model: 'sonnet'` inline instead of an `agentType`.
 
-For design-latitude tasks, route the work stage to `orchestra-deep` (Opus) instead of the `light`-class agent: `agentType: 'orchestra:orchestra-deep'` or `model: 'opus'`.
+For tasks with modest design latitude, call `dispatchClass('standard', workerPrompt, opts)` instead of `'light'` — same helper; `agent-exec route --class standard` resolves it (Copilot Luna by default, Sonnet otherwise). For tasks with real design latitude, route the work stage to `orchestra-deep` (Opus) instead: `dispatchClass('deep', workerPrompt, opts)`, or, on the fallback branch, `agentType: 'orchestra:orchestra-deep'` / `model: 'opus'` directly.
 
 ### 5.1 Shorten the per-task critical path — overlap authoring
 
@@ -173,11 +219,15 @@ For design-latitude tasks, route the work stage to `orchestra-deep` (Opus) inste
 This restructures `runTask` (author-tests worker owns the `tests/` paths, impl worker owns the `src/` paths — disjoint, per the same-tree safety rule above):
 
 ```javascript
+// (dispatchClass() and the module-level `exhausted` Set are defined in §5 above -
+// this restructuring only changes runTask, not the rest of the script.)
 async function runTask(task) {
   // Author adversarial tests from the SPEC, concurrently with the first
   // implementation. Disjoint paths (tests/ vs src/), so no write conflict.
+  // The test-authoring side stays pinned to Sonnet, same reasoning as the
+  // review stage below (`priority.review` is `[claude]`-only, §9).
   await parallel([
-    () => agent(task.workerPrompt,      { label: task.id + '-work-1',   model: 'haiku',  effort: 'low' }),
+    () => dispatchClass('light', task.workerPrompt, { label: task.id + '-work-1', workdir: task.workdir }),
     () => agent(task.authorTestsPrompt, { label: task.id + '-authtests', model: 'sonnet' }),
   ])
 
@@ -186,16 +236,18 @@ async function runTask(task) {
     if (feedback) {
       // Re-implement only. Tests are already on disk from the concurrent
       // author step and are NOT re-written across retries.
-      await agent(
+      await dispatchClass(
+        'light',
         task.workerPrompt +
           '\n\nThis is retry ' + attempt + ' of ' + MAX_RETRIES + '. Your previous ' +
           'attempt already wrote source files at the paths you used before. Read them ' +
           'first, then apply this feedback exactly, changing only what it names:\n' +
           JSON.stringify(feedback),
-        { label: task.id + '-work-' + attempt, model: 'haiku', effort: 'low' },
+        { label: task.id + '-work-' + attempt, workdir: task.workdir },
       )
     }
     // Verify = RUN the pre-authored tests + whitebox glance. No re-authoring.
+    // Unrouted, same as §5's review stage and for the same reason.
     const verdict = await agent(task.runTestsPrompt, {
       label: task.id + '-verify-' + attempt, model: 'sonnet', schema: VERDICT_SCHEMA,
     })
@@ -238,7 +290,7 @@ Worker and verifier prompts are read by cheap models, not humans. They owe nothi
 
 - **Do NOT compress the spec.** The `formatBytes(1048575) → "1 MiB"` boundary example (requirement 1 above) cannot lose a character without losing meaning, and the one example you delete to save tokens is exactly where §7's rounding-carry class of bug hides. Enumerated I/O examples, boundary values, and the verification command are compression-exempt.
 - **Reduce variance with structure, not with prose compression.** Terse natural language is *more* ambiguous, not less. When you want to pin down behaviour and kill wording drift, reach for tables, enumerated example rows, and the response `schema` — structure removes ambiguity; dropping particles adds it.
-- **Do NOT compress worker/verifier *output*.** It is already lean: the verdict is forced into `VERDICT_SCHEMA` JSON and code/log/diff pasting is already forbidden (§6-3). The review pass's main output is adversarial *test code*, which does not compress. Haiku workers at `effort: low` think little, so the thinking-inflation risk is low there — but never ask the Sonnet reviewer to write tersely at the cost of the tests it authors.
+- **Do NOT compress worker/verifier *output*.** It is already lean: the verdict is forced into `VERDICT_SCHEMA` JSON and code/log/diff pasting is already forbidden (§6-3). The review pass's main output is adversarial *test code*, which does not compress. Light-class workers (Copilot Luna/medium, or Haiku when routed there as fallback) think little at their cheapest effort setting, so the thinking-inflation risk is low there — but never ask the Sonnet reviewer to write tersely at the cost of the tests it authors.
 
 Rule of thumb: **strip everything a human would want and a machine does not; keep every concrete fact the worker must reproduce exactly.**
 
@@ -259,9 +311,11 @@ Where Dynamic Workflows are unavailable or disabled, fall back to a 3-level nest
 ```
 Instructor (Fable/Opus)
   └─ Agent tool: launch orchestra-delegate (no model needed - pinned to sonnet in its own frontmatter)
-       └─ orchestra-delegate internally launches orchestra-light (haiku) via the Agent tool
+       └─ orchestra-delegate itself runs `agent-exec dispatch --class light --capture` per round
+            (no relay needed - it already has Bash) - Copilot by default, orchestra-light/haiku
+            only on that call's own "delegate" fallback, never launched directly
        └─ orchestra-delegate internally launches orchestra-review (sonnet) via the Agent tool
-       └─ on FAIL, orchestra-delegate relaunches orchestra-light with feedback (cap: 3 rounds)
+       └─ on FAIL, orchestra-delegate re-dispatches with feedback (cap: 3 rounds)
   └─ instructor receives only the structured verdict from orchestra-delegate
 ```
 
@@ -271,16 +325,20 @@ When rework needs multiple rounds of back-and-forth, do not spawn a fresh `orche
 
 At the start of every orchestration, the instructor resolves configuration from up to four layers, merged in this order (later layers win):
 
-1. **Defaults**: light: haiku, standard: sonnet, deep: opus, review: sonnet; no external executors.
+1. **Defaults**: `tiers` — light: haiku, standard: sonnet, deep: opus, review: sonnet (unchanged — these remain the Claude-side fallback models `agent-exec route` resolves to). `external_executors.copilot` and `external_executors.codex` now ship **`enabled: true`** out of the box, each with its `class_policy` (Copilot: `gpt-5.6-luna`/medium for `light`+`standard`; Codex: `gpt-5.6-luna`/medium `standard`, `gpt-5.6-sol`/xhigh `deep`, `gpt-5.6-sol`/low `review`) and a built-in `priority` (`light: [copilot, claude]`, `standard: [copilot, claude, codex]`, `deep: [claude, codex]`, `review: [claude]`, `independent-review: [codex]`), plus `enforcement.light_class: off`. Shipping external executors enabled by default is safe because `agent-exec route` gates every candidate on actual availability (below) — on a machine with neither CLI installed, every call still resolves to `claude`.
 2. **User**: `~/.claude/orchestra.yaml` (or `.yml`), if present.
 3. **Project**: `.claude/orchestra.yaml` (or `.yml`), if present — checked into git, shared with the team.
 4. **Project-local**: `.claude/orchestra.local.yaml` (or `.yml`), if present — this developer's personal override for this one project. Mirrors Claude Code's own `settings.json` / `settings.local.json` split; never commit this file (see `setup` SKILL.md §1).
 
 This is a **deep merge**, not a first-found-wins lookup: object/mapping keys are merged recursively key-by-key, so a project file only needs to state the keys it actually wants to change — e.g. a project override of just `external_executors.copilot.enabled: true` inherits everything else (codex's whole block, copilot's `class_policy`, etc.) from the user config or defaults. Scalars and arrays are replaced wholesale by the more specific layer, not concatenated or element-merged. An explicit `null`/`~` is a value, not "reset to default" — omit the key entirely to inherit.
 
+**Upgrade trap for existing configs:** the key-by-key merge means a *partial* `priority` override does not insulate the untouched classes from new built-in defaults. A config written before v0.11.0 that overrides only, say, `priority.deep` (to add Codex there) will, after upgrading, silently inherit the *entire new* `priority.light`/`priority.standard` maps from the v0.11.0 defaults — i.e. the new copilot-first ordering — because those keys were never stated in the user's own file and so were never "theirs" to keep frozen. If you want to keep pre-v0.11.0 behavior for a class you didn't mean to touch, state that class's `priority` list explicitly in your own config, or set `external_executors.copilot.enabled: false` to opt out of external executors altogether.
+
 The format is YAML, not JSON, specifically so the file can carry comments (JSON can't). `.claude/orchestra.json` / `~/.claude/orchestra.json` (the pre-YAML format) are no longer read — use the `setup` skill (`orchestra:setup`) to convert an old one.
 
 Instead of merging these four layers in-context, the instructor can obtain the already-resolved configuration deterministically via **`agent-exec config [--json]`** — it deep-merges the same four layers with the same precedence/merge rules described above and additionally reports, per `external_executors.<name>` with `enabled: true` and `dispatch: cli`, whether its executable resolves on `PATH` (`"available": true/false`, or `null` if the name has no built-in profile). This keeps the merge logic out of the instructor's own context. **Prefer a single startup call, though:** `agent-exec doctor --json` (needed anyway for the `dispatch: cli` pre-flight below) now embeds this exact resolved config under `config.values` alongside its readiness report, so one `doctor` call yields both the `ready.<executor>.ok` verdicts *and* the resolved `tiers` / `external_executors` / `priority` — a standalone `config` call is only worth it when you want the config and nothing else. Likewise, Copilot's `dispatch: cli` invocation may use **`agent-exec run copilot --model M --effort E --workdir W --prompt-file F [--resume SID] [--capture]`** as a normalized entry point that centralizes the `--disable-builtin-mcps`/`--add-dir`/`--output-format` conventions instead of assembling the raw `agent-exec copilot ...` command by hand each time; with `--capture`, it also does what the relay used to hand-parse: it runs copilot as a subprocess and prints one normalized `{ status, answer, session_id, reason, exit_code }` JSON object to stdout instead of handing off via `execvpe`, so the relay just reads that JSON — see `references/external-executors.md` §5 for details.
+
+**`agent-exec route` / `agent-exec dispatch`: the walk itself is code, not instructor judgment.** `agent-exec route --class <light|standard|deep|review|independent-review> [--archetype default|investigation] [--exhausted a,b] [--json|--text]` runs the entire `priority` walk described below in one call: it deep-merges the four config layers, then hard-gates each candidate on reality — dropping it if `enabled: false`, its binary/agent doesn't resolve, `doctor`'s own `ready.<x>.ok` is false, it has no `class_policy` entry for the class, or the caller listed it in `--exhausted` — and returns the surviving top candidate (`executor`, `dispatch`, `model`, `effort`, `agent_type`) plus the full `candidates`/`remaining`/`skipped` trail. The pre-flight `doctor` check described above is folded into this call; it is no longer a separate step the instructor performs before building a `priority` candidate list. `agent-exec dispatch --class <cls> [--archetype A] [--exhausted a,b] --prompt-file F --workdir W [--resume SID] [--capture]` goes one step further: it calls `route` internally, and if the winning candidate is a `dispatch: cli` executor it also runs it, returning `{status: 'ok'|'unavailable', answer, session_id, reason, exit_code, executor, model, effort, route}`; if the winner is Claude or a `dispatch: agent` executor (Codex), it returns `{status: 'delegate', executor, model, effort, agent_type, route}` instead, since only the instructor's own `agent()`/Agent-tool call can spawn a Claude or plugin subagent. With nothing viable it returns `{status: 'unroutable', route}`. This is exactly what §5's `dispatchClass()` helper wraps: **the instructor never decides which executor runs a `light`/`standard` task — it asks, via one relay agent, and branches on the answer.** This availability gate is exactly what makes shipping external executors `enabled: true` by default safe (point 1 above).
 
 As of v0.4.0, the configuration vocabulary itself was renamed from role names to capability/performance classes: `tiers.worker/hard_worker/verifier` → `tiers.light/standard/deep` + `review`, `external_executors.*.roles` → `classes`, `model_policy` → `class_policy`, `role_priority` → `priority`, and `long_context_escalation.{model, effort}` → `long_context_escalation.{class}`. Pre-0.4 keys using the old role vocabulary are no longer read — use the `setup` skill (`orchestra:setup`) to convert an old config to the new vocabulary, the same way it converts legacy JSON to YAML.
 
@@ -288,7 +346,10 @@ A copy of the schema, fully commented, ships with this plugin at `examples/orche
 
 ```yaml
 tiers:
-  # implementation capability classes (cheapest/fastest -> hardest)
+  # implementation capability classes (cheapest/fastest -> hardest). These
+  # are the CLAUDE-side fallback models `agent-exec route` resolves to when
+  # no external executor is enabled/ready for the class - see `priority`
+  # below for what actually gets tried first.
   light: haiku       # fast, mechanical, fully-specified work
   standard: sonnet   # normal implementation with modest design latitude
   deep: opus         # design-sensitive / hard problems needing real judgment
@@ -321,7 +382,7 @@ external_executors:
       class: deep
 
   copilot:
-    enabled: false
+    enabled: true  # ships true by default; gated on binary+doctor readiness, see §9 below
     dispatch: cli
     # dispatched via the agent-exec wrapper: copilot -p 1.0.74 runs file/shell/
     # network tools autonomously in non-interactive mode without any allow-all
@@ -347,6 +408,9 @@ external_executors:
         model: gpt-5.6-luna
         effort: medium
 
+# copilot ships `enabled: true` above, so this list actually prefers it
+# when ready - `agent-exec route`/`dispatch` execute the walk, not the
+# instructor (see the route/dispatch paragraph above).
 priority:
   light:
     investigation: [copilot, claude]
@@ -359,16 +423,22 @@ priority:
     default: [claude]
   independent-review:
     default: [codex]
+
+# Opt-in nudge, never a hard wall - see the `enforcement.light_class`
+# paragraph below for the escape hatches. Ships "off". NOTE: quote the value -
+# YAML 1.1 parses a bareword `off` as boolean False, not the string "off".
+enforcement:
+  light_class: "off"
 ```
 
 To set this up interactively (detect whether Codex/Copilot are actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `setup` skill instead of hand-editing — see its own SKILL.md.
 
-**`tiers`** overrides the model-class defaults of section 3. Values are model aliases (or full model IDs) used wherever this skill says haiku/opus/sonnet for the respective class or role.
+**`tiers`** overrides the model-class defaults of section 3. Values are model aliases (or full model IDs) used whenever this skill — or `agent-exec route` — resolves a class/role to a Claude model: the `claude` candidate in `priority`, or any class/role with no external executor configured for it.
 
 **`external_executors`** declares non-Claude executors (Codex, Copilot, etc.) that may be woven into the pipeline. Only entries with `"enabled": true` are used. Two dispatch mechanisms:
 
 - **`dispatch: "agent"`** — the executor is an installed plugin subagent. Pass `agent_type`'s value as `agentType` in Workflow `agent()` calls, or as `subagent_type` in the Agent tool. If the name doesn't resolve in this environment, fall back to the normal model tier for that class/role.
-- **`dispatch: "cli"`** — the executor is a non-interactive CLI. Write the task prompt to a temp file, substitute `{promptfile}` (and, if the config declares them, `{model}`/`{effort}`/`{workdir}`/`{session_id}`) in `command`, and have a **cheap relay agent** (`model: haiku`, with Bash) run the command and return only its final output. The instructor must never run the CLI via Bash itself — the relay exists to keep CLI stdout/stderr out of the instructor's context. For Copilot, the command is `agent-exec run copilot --capture ...`: it parses the CLI's JSONL itself and hands the relay one normalized `{ status, answer, session_id, reason }` JSON object, so the relay no longer parses JSONL or judges ok/unavailable by hand — it just reads that JSON and echoes it into the `STATUS:` reply (see `references/external-executors.md` §2, §5). **Because the relay runs non-interactively, the CLI command must already be allowlisted in Claude Code's Bash permissions** — an un-allowlisted call is denied outright (a subagent can't surface an approval prompt at call time), so the dispatch fails before the CLI ever runs. **Setup for Copilot: install the `agent-exec` wrapper** (via the `setup` skill, or `agent-exec install` directly). Measurement on Copilot CLI 1.0.74 found `copilot -p` runs file/shell/network tool calls autonomously in non-interactive mode with no allow-all flag or env var needed, so `agent-exec` injects nothing — the only permission rule needed is a single `Bash(agent-exec:*)` in `permissions.allow` (project `.claude/settings.json` or user `~/.claude/settings.json`, matching the scope where you enabled Copilot). The shipped command templates dispatch through it (`agent-exec copilot ... --add-dir {workdir} --output-format json --disable-builtin-mcps`, see the example config above): `--add-dir` scopes the filesystem, `--disable-builtin-mcps` drops the builtin `github-mcp-server`/`customize-cloud-agent` tools from the surface (lower token/latency cost). There is no `COPILOT_ALLOW_ALL` env var and no manual `Bash(copilot:*)` fallback path anymore — `Bash(agent-exec:*)` is the single authorization rule. Codex's `dispatch: "agent"` needs none of this, since it routes through a subagent rather than a raw Bash command. Treat that authorization as a **pre-flight availability check**, but determine it with a single call rather than separate reads: before including a `dispatch: cli` executor in a `priority` candidate list, the instructor runs **`agent-exec doctor --json`** once and reads `ready.<executor>.ok` (backed by `permission.found`, `shim.installed`, `shim.on_path`, and the executor's own `enabled`/`available` state — see `references/external-executors.md` §4 for the report shape) instead of separately reading `settings.json` and running `which` per executor. If `ready.<executor>.ok` is false, drop it to a later candidate (or out) for this run — an unauthorized/unavailable cli executor can never succeed here, so discovering it through a failed dispatch merely wastes a relay round (the relay's `STATUS: unavailable` stays as the runtime backstop). `doctor`'s permission scan is best-effort (it does not see enterprise policy or CLI `--allowedTools`), so a `false` there means "not confirmed," not "definitely absent" — this pre-flight call is a cheap local check and is explicitly exempt from the "no proactive quota probing" rule (quota is transient and remote; this readiness check is static and local).
+- **`dispatch: "cli"`** — the executor is a non-interactive CLI (Copilot today). The instructor does not assemble the raw command, write a temp file by hand, or read `settings.json`/run `which` itself: **one call** — `dispatchClass()` (§5), which spawns **one cheap relay agent** (`model: 'haiku'`, with Bash) whose entire job is to run `agent-exec dispatch --class <cls> ... --prompt-file F --workdir W --capture` and hand back its JSON verbatim. `dispatch` calls `route` internally, so the `ready.<executor>.ok` gate — backed by `permission.found`, `shim.installed`, `shim.on_path`, and the executor's own `enabled`/`available` state (see `references/external-executors.md` §4 for the report shape) — has already been applied before the CLI ever runs; an unauthorized/unavailable candidate is simply never selected. The CLI command must still be allowlisted in Claude Code's Bash permissions — a single `Bash(agent-exec:*)` rule (or `Bash(copilot:*)` for the no-wrapper manual path) — since an un-allowlisted call is denied outright before it can even reach `route`'s gating; `agent-exec install` (or the `setup` skill) sets this up. See `references/external-executors.md` §2/§5 for the exact recipe, session-resume flow, and Copilot-specific setup notes.
   **Not a security boundary (M2):** `copilot -p` is not reliably confinable by its own tool-permission flags — excluding a named tool (e.g. `--excluded-tools=bash`) has been observed to be routed around via the `task` tool rather than actually blocked. `--allow-tool`/`--deny-tool`/`--excluded-tools` are defense-in-depth at best, never treat them as a containment guarantee; real containment needs an external OS sandbox (container, `sandbox-exec`, restricted user, network egress control) or a disposable worktree, which this plugin does not implement — treat any `dispatch: cli` Copilot task as an autonomous, directory-scoped agent, and prefer a disposable workdir (a scratch clone or worktree it can freely write/execute in) over the user's primary working tree when the task doesn't need to persist there. A `--deny-tool` list may still be set by the user as an optional, explicitly-advisory knob, but document it to them as narrowing the *named* surface only, not as a boundary.
 
 **`classes`** controls where the executor is used:
@@ -380,7 +450,16 @@ To set this up interactively (detect whether Codex/Copilot are actually availabl
 
 **`class_policy`** maps each class this executor participates in to a concrete `{ model, effort }` pair to pass to that executor. Without it, the executor runs on its own default model, which defeats the purpose of cost-tiering by external provider just as surely as an unpinned Claude `agent()` call does (rule #4, section 4). Treat this the same way: every external-executor class in `classes` should have a matching `class_policy` entry.
 
-**`priority`** declares, per class/role (and, for `light`, per task archetype — `investigation` vs `default`), an ordered candidate list to try. Each entry is an `external_executors` key or the `claude` sentinel (the built-in `tiers.<class>` model). The instructor tries candidates left-to-right and drops to the next one only on a **reactive fallback signal**: the current executor is *unavailable* — a rate-limit/usage-window cap (Claude, Codex), credit exhaustion (Copilot), `enabled: false`, an agent/CLI that didn't resolve, or a missing `class_policy` entry. This is the crucial **unavailable-vs-failed** distinction: a task that runs but returns a wrong result is NOT a fallback signal — it stays on the same executor and goes through the normal review/retry loop. Once an executor is found unavailable in a run it stays skipped for every remaining task in that run (**sticky exhaustion**) — no re-probing. `priority` **supersedes `classes` for ordering** when present for a class/role; `classes` remains the legacy fallback when `priority` is absent. Operational detail — per-executor unavailable signals, the Haiku relay's `STATUS:` discriminator, and a JS priority-walk helper — lives in `references/external-executors.md`; read it before implementing fallback logic.
+**`priority`** declares, per class/role (and, for `light`, per task archetype — `investigation` vs `default`), an ordered candidate list to try — this list is still the single source of truth for preference order. What changed is *who walks it*: **`agent-exec route`/`dispatch` execute the walk**, not the instructor. `route` tries candidates left-to-right and drops one only on a **reactive fallback signal** — the executor is *unavailable*: `enabled: false`, its binary/agent doesn't resolve, `doctor`'s `ready.<x>.ok` is false, it has no `class_policy` entry for the class, or the caller passed it in `--exhausted`. This is the crucial **unavailable-vs-failed** distinction: a task that runs but returns a wrong result is NOT a fallback signal — it stays on the same executor and goes through the normal review/retry loop; only a genuinely unavailable executor (rate-limit/usage-window cap, credit exhaustion, auth failure) makes `route` drop to the next candidate. Once `dispatch` reports an executor `unavailable` for a task, the instructor's one remaining manual job is to **carry that executor forward in `--exhausted` for every subsequent `route`/`dispatch` call in the same run** (§5's `dispatchClass()` does this automatically via its module-level `exhausted` Set) — this is sticky exhaustion, and it is the instructor's only bookkeeping in the whole selection process. `priority` **supersedes `classes` for ordering** when present for a class/role; `classes` remains the legacy fallback when `priority` is absent (`route`/`dispatch` apply this same fallback internally). Operational detail — per-executor unavailable signals and the priority-walk logic `route` implements — lives in `references/external-executors.md`; read it before second-guessing a fallback decision.
+
+**`enforcement.light_class`** (`"off"` default | `"block"` — quote the value; YAML 1.1 parses a bareword `off` as boolean `False`, not the string) is a **nudge with a guaranteed escape, not a hard wall**. When set to `"block"`, a `PreToolUse` hook (`hooks/enforce-router.sh`) fires only when `agent-exec route --class light` reports a non-`claude` executor ready — i.e. only when there's genuinely something better to redirect to — and the call would spawn a **generic** Claude implementer: no `subagent_type` at all, or `subagent_type` in `general-purpose`/`claude`, at a Haiku-class model. **Naming any other specific `subagent_type` is itself the carve-out**: the Agent tool has no per-call tool-restriction parameters — its schema is only `description`/`isolation`/`model`/`prompt`/`run_in_background`/`subagent_type` — so a named agent is how tool access and a specialized system prompt actually get pinned, and Copilot can substitute for neither; `orchestra:orchestra-light` itself stays a deny target, since redirecting it to `agent-exec dispatch` is the whole point. Escape hatches:
+
+1. **Hard cap: one deny per session, full stop.** Not a per-task or per-prompt cap — after the first nudge the hook goes inert for the rest of the session regardless of what's asked next. (A prompt-keyed fingerprint doesn't work here: this plugin's own retry convention appends new feedback text to the prompt every round (§5), which would re-deny every round of the same task — so the bound is session-wide instead.)
+2. **Explicit escape marker.** `[orchestra:allow-claude: <reason>]` anywhere in the prompt/description allows immediately, no deny recorded — for a deliberate choice to stay on Claude.
+3. **Named-subagent carve-out.** Any call naming a specific `subagent_type` other than `general-purpose`/`claude` is always allowed (see above) — `Explore`, `Plan`, `statusline-setup`, `claude-code-guide`, `orchestra-review`, and any other installed agent all qualify; only a generic/anonymous Haiku-class call (or `orchestra:orchestra-light` itself) is a deny candidate.
+4. **Kill switch + fail-open.** `ORCHESTRA_ENFORCEMENT=off` short-circuits to allow, and every uncertainty (`agent-exec` missing, `config` failing/slow, no `python3`, unparseable stdin, anything unexpected) fails open — it never denies on doubt.
+
+Ships **`"off"`** — turning it on is a deliberate opt-in via the `setup` skill or by hand-editing `orchestra.yaml`, not a default behavior change.
 
 **Safety note:** `cli` dispatch only ever executes command templates that come from the user's own configuration file (`.claude/orchestra.yaml` or `~/.claude/orchestra.yaml`). This plugin ships no CLI commands of its own and must never invent one; if no config file declares a CLI executor, `cli` dispatch is unavailable. The `agent-exec` binary those templates call through is not part of this plugin either — it's a separate tool the user explicitly installs and authorizes via their own `Bash(agent-exec:*)` permission rule (see the `setup` skill); this plugin only ever writes the command template that invokes it, never runs it directly, and never grants it permission on the user's behalf.
 
@@ -425,7 +504,7 @@ Example `run_summary` payload — categorical/numeric fields only, no ids or fre
 {
   "event": "run_summary",
   "lane": "orchestrated",
-  "orchestra_version": "0.9.0",
+  "orchestra_version": "0.11.0",
   "task_count": 3,
   "pass": 2,
   "fail": 1,
