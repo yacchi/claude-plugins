@@ -107,6 +107,13 @@ const MAX_RETRIES = 3
 // selection - the priority walk itself runs inside `agent-exec route`.
 const exhausted = new Set()
 
+// Trailing runtime controls for an agent-dispatch executor. Codex's rescue
+// agent strips `--model`/`--effort` out of the task text and forwards them to
+// the CLI; anything the route left null is simply omitted.
+function routingFlags(r) {
+  return (r.model ? '\n\n--model ' + r.model : '') + (r.effort ? ' --effort ' + r.effort : '')
+}
+
 // Dispatch one task at a capability class ('light' | 'standard' | 'deep').
 // Selection is `agent-exec route`'s job, not this function's and not yours.
 // Same call shape whether it resolves to Copilot or to a Claude tier.
@@ -126,8 +133,14 @@ async function dispatchClass(cls, promptText, opts = {}) {
     // route picked Claude or an agent-dispatch executor (e.g. Codex) - only
     // your own agent() call can spawn either, so detecting ITS unavailability
     // (agent() returning null) and feeding it back into `exhausted` is on you.
+    // For an agent-dispatch executor, `model`/`effort` are NOT agent() options
+    // (those pick a Claude tier) - they belong to the executor behind the
+    // subagent, which reads them off the prompt text. Codex's rescue agent
+    // leaves both unset unless the request names them, so dropping them here
+    // silently runs Codex at whatever ~/.codex/config.toml defaults to instead
+    // of the class_policy this route just resolved.
     const answer = r.agent_type
-      ? await agent(promptText, { label: opts.label || cls, agentType: r.agent_type })
+      ? await agent(promptText + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type })
       : await agent(promptText, { label: opts.label || cls, model: r.model, effort: r.effort })
     if (answer === null) {
       exhausted.add(r.executor)

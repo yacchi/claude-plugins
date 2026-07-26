@@ -898,5 +898,74 @@ class MainRoutingTests(unittest.TestCase):
             agent_exec.cmd_dispatch = orig_cmd_dispatch
 
 
+class ParseCopilotJsonlAvailabilityScanTests(unittest.TestCase):
+    """The availability scan must read executor health signals only. A
+    worker's own answer routinely contains the very words the patterns look
+    for -- flagging those marks the executor exhausted for the whole run."""
+
+    @staticmethod
+    def _msg(content, phase="final_answer"):
+        return json.dumps({
+            "type": "assistant.message",
+            "data": {"content": content, "phase": phase},
+        })
+
+    def _parse(self, stdout, stderr="", exit_code=0):
+        return agent_exec.parse_copilot_jsonl(stdout, stderr, exit_code)
+
+    def test_answer_text_never_triggers_unavailable(self):
+        for phrase, label in [
+            ("Here is the rate limit implementation you asked for.", "rate-limit"),
+            ("The login flow now refreshes the token.", "auth"),
+            ("Deducts one credit per premium request.", "quota/credits"),
+            ("Returns 429 when the quota is exhausted.", "rate-limit/quota"),
+        ]:
+            with self.subTest(label=label):
+                result = self._parse(self._msg(phrase))
+                self.assertEqual(result["status"], "ok")
+                self.assertIsNone(result["reason"])
+                self.assertEqual(result["answer"], phrase)
+
+    def test_non_final_answer_text_is_also_out_of_scope(self):
+        result = self._parse(self._msg("rate limit", phase="thinking"))
+        self.assertEqual(result["status"], "ok")
+        self.assertIsNone(result["reason"])
+
+    def test_stderr_still_triggers_unavailable(self):
+        result = self._parse(self._msg("all good"), stderr="error: rate limit exceeded")
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "rate-limit")
+
+    def test_non_assistant_event_still_triggers_unavailable(self):
+        stdout = "\n".join([
+            json.dumps({"type": "session.error", "data": {"message": "usage limit reached"}}),
+            self._msg("partial work"),
+        ])
+        result = self._parse(stdout)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "quota")
+
+    def test_unparseable_stdout_still_triggers_unavailable(self):
+        result = self._parse("not logged in\n" + self._msg("hi"))
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "auth")
+
+    def test_answer_and_session_id_survive_the_narrowed_scan(self):
+        stdout = "\n".join([
+            self._msg("draft about rate limit", phase="thinking"),
+            self._msg("final about rate limit"),
+            json.dumps({"type": "result", "sessionId": "sid-1"}),
+        ])
+        result = self._parse(stdout)
+        self.assertEqual(result["answer"], "final about rate limit")
+        self.assertEqual(result["session_id"], "sid-1")
+        self.assertEqual(result["status"], "ok")
+
+    def test_nonzero_exit_still_wins_when_output_is_clean(self):
+        result = self._parse(self._msg("rate limit"), exit_code=1)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "nonzero-exit")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1190,10 +1190,22 @@ _UNAVAILABLE_PATTERNS = [
 def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
     """Pure parser: copilot JSONL stdout + stderr + subprocess exit code ->
     normalized result dict. No I/O, no subprocess calls; unit-testable with
-    fixtures."""
+    fixtures.
+
+    The `_UNAVAILABLE_PATTERNS` scan deliberately excludes `assistant.message`
+    events -- the answer text is worker output, not an executor health signal.
+    Everything else (other event types, unparseable stdout, all of stderr)
+    remains in scope."""
     last_content = None
     last_final_content = None
     session_id = None
+    # Lines eligible for the availability scan below: everything EXCEPT the
+    # assistant's own answer. A worker asked to implement a rate limiter, fix
+    # a login flow, or price out credits legitimately echoes those words back,
+    # and scanning its answer would flag a perfectly good run as
+    # `unavailable` -- which makes the caller mark the executor exhausted for
+    # the rest of the run.
+    scannable_lines = []
 
     for line in (stdout_text or "").splitlines():
         line = line.strip()
@@ -1202,12 +1214,19 @@ def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
         try:
             event = json.loads(line)
         except (ValueError, TypeError):
+            # Unparseable output is exactly where a plain-text quota/auth
+            # error surfaces, so it stays in scope for the scan.
+            scannable_lines.append(line)
             continue
         if not isinstance(event, dict):
+            scannable_lines.append(line)
             continue
 
         etype = event.get("type")
         data = event.get("data")
+
+        if etype != "assistant.message":
+            scannable_lines.append(line)
 
         if etype == "assistant.message" and isinstance(data, dict):
             content = data.get("content")
@@ -1223,7 +1242,7 @@ def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
 
     answer = last_final_content if last_final_content is not None else last_content
 
-    combined_text = (stdout_text or "") + "\n" + (stderr_text or "")
+    combined_text = "\n".join(scannable_lines) + "\n" + (stderr_text or "")
     reason = None
     for candidate_reason, pattern in _UNAVAILABLE_PATTERNS:
         if pattern.search(combined_text):
