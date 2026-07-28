@@ -33,6 +33,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -134,6 +136,19 @@ DEFAULTS = {
     "enforcement": {
         "light_class": "off",
     },
+    # auth and nonzero-exit are transient, not resource exhaustion, so 0 means
+    # "no cooldown" for those reasons.
+    "cooldown": {
+        "enabled": True,
+        "path": "~/.claude/orchestra/executor-state.json",
+        "seconds": {
+            "rate-limit": 900,
+            "quota": 3600,
+            "credits": 3600,
+            "auth": 0,
+            "nonzero-exit": 0,
+        },
+    },
     "telemetry": {
         "enabled": False,
         "dir": "~/.claude/orchestra/telemetry",
@@ -172,6 +187,7 @@ Usage:
                                   review) (--json is the default)
   agent-exec route --class <light|standard|deep|review|independent-review>
                   [--archetype default|investigation] [--exhausted a,b,c]
+                  [--no-cooldown]
                   [--json|--text]
                                   resolve a capability class (+ optional task
                                   archetype) to a concrete executor by
@@ -182,6 +198,7 @@ Usage:
                                   drops the given comma-separated executor
                                   names as already-tried/unavailable.
   agent-exec dispatch --class <cls> [--archetype A] [--exhausted a,b]
+                  [--no-cooldown]
                   --prompt-file F --workdir W [--resume SID] [--capture]
                                   one-call resolve + dispatch: resolves the
                                   route, then runs it. If the winning
@@ -202,6 +219,10 @@ Usage:
                                   --capture`. Also self-logs a "dispatch"
                                   telemetry record for the cli branch, same
                                   as `run --capture`.
+  agent-exec cooldown [--json|--text]
+                                  show active executor cooldowns
+  agent-exec cooldown clear [<executor>]
+                                  clear all, or one, persisted cooldown
   agent-exec telemetry record (--json STR | --file F)
                                   append an anonymized telemetry record
                                   (allowlist-sanitized; enabled/disabled via
@@ -1171,6 +1192,72 @@ def cmd_telemetry(args):
     return 2
 
 
+def cmd_cooldown(args):
+    fmt = "--json"
+    clear = False
+    executor = None
+    for tok in args:
+        if tok in ("--json", "--text"):
+            fmt = tok
+        elif tok == "clear":
+            clear = True
+        elif clear and executor is None:
+            executor = tok
+        else:
+            sys.stderr.write("agent-exec: cooldown: unknown option: %s\n" % tok)
+            return 2
+
+    resolved, err = resolve_config()
+    cfg = resolved if err is None and isinstance(resolved, dict) else DEFAULTS
+    path = cooldown_state_path(cfg)
+    if clear:
+        if executor is None:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        else:
+            state = load_cooldown_state(path)
+            if executor in state:
+                del state[executor]
+                save_cooldown_state(path, state, time.time())
+        return 0
+
+    now = time.time()
+    state = load_cooldown_state(path)
+    active = active_cooldowns(state, now)
+    if fmt == "--json":
+        output = {
+            "path": path,
+            "now": now,
+            "active": {
+                name: {
+                    "reason": entry.get("reason", "unknown"),
+                    "until": entry.get("until"),
+                    "remaining_seconds": int(entry.get("until") - now),
+                }
+                for name, entry in active.items()
+            },
+        }
+        print(json.dumps(output, indent=2, ensure_ascii=False))
+    else:
+        print("cooldowns: %s" % path)
+        if not active:
+            print("none active")
+        else:
+            for name, entry in active.items():
+                print(
+                    "- %s: %s (until %s, %ss remaining)"
+                    % (
+                        name,
+                        entry.get("reason", "unknown"),
+                        entry.get("until"),
+                        int(entry.get("until") - now),
+                    )
+                )
+    return 0
+
+
 # --- run subcommand ----------------------------------------------------------
 
 
@@ -1187,24 +1274,65 @@ _UNAVAILABLE_PATTERNS = [
 ]
 
 
+def _is_error_bearing_event(event):
+    """True iff a parsed JSONL event is a source of genuine executor-health
+    signal, i.e. it is plausibly the CLI reporting on itself rather than
+    relaying worker/tool text. This is the default-deny gate for the
+    availability scan below: an event type we don't recognize is NOT
+    scanned, on the theory that new/unknown event shapes are far more likely
+    to be worker output (tool calls, tool results, reasoning, request
+    echoes) than a new way for copilot to report quota/auth failure. The
+    three cases let through:
+
+      1. `type` contains "error" (e.g. "session.error", "auth.error") --
+         copilot's own naming convention for CLI-level failures.
+      2. a truthy top-level `error` field -- present on failure regardless
+         of `type`.
+      3. an explicit terminal/result event (`type == "result"`) whose own
+         fields say the run did not succeed (`success`/`ok` is False, or an
+         `isError` flag is truthy). A `result` event that doesn't say this
+         (e.g. one only carrying a `sessionId`) is not error-bearing.
+
+    Tool-call bodies, tool-result bodies, reasoning traces and request
+    echoes are deliberately NOT matched here even though they can contain
+    the literal words the patterns look for -- that text is the worker's
+    prompt/output, not the executor reporting on itself."""
+    etype = event.get("type")
+    if isinstance(etype, str) and "error" in etype.lower():
+        return True
+    if event.get("error"):
+        return True
+    if etype == "result":
+        if event.get("success") is False or event.get("ok") is False:
+            return True
+        if event.get("isError"):
+            return True
+    return False
+
+
 def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
     """Pure parser: copilot JSONL stdout + stderr + subprocess exit code ->
     normalized result dict. No I/O, no subprocess calls; unit-testable with
     fixtures.
 
-    The `_UNAVAILABLE_PATTERNS` scan deliberately excludes `assistant.message`
-    events -- the answer text is worker output, not an executor health signal.
-    Everything else (other event types, unparseable stdout, all of stderr)
-    remains in scope."""
+    The `_UNAVAILABLE_PATTERNS` scan is default-deny: only stderr, stdout
+    lines that failed to parse as JSON, and parsed JSON events that
+    `_is_error_bearing_event` recognizes as carrying genuine executor-health
+    signal are in scope. `assistant.message` events, and every other event
+    type/shape this parser doesn't specifically recognize as error-bearing
+    (tool calls, tool results, reasoning, request echoes, unknown event
+    types), are never scanned -- they are worker text, not executor
+    health."""
     last_content = None
     last_final_content = None
     session_id = None
     # Lines eligible for the availability scan below: everything EXCEPT the
-    # assistant's own answer. A worker asked to implement a rate limiter, fix
-    # a login flow, or price out credits legitimately echoes those words back,
-    # and scanning its answer would flag a perfectly good run as
-    # `unavailable` -- which makes the caller mark the executor exhausted for
-    # the rest of the run.
+    # assistant's own answer and other worker-text-bearing events. A worker
+    # asked to implement a rate limiter, fix a login flow, or price out
+    # credits legitimately echoes those words back -- in its answer, in a
+    # tool call it makes, or in a tool result it receives -- and scanning
+    # any of that would flag a perfectly good run as `unavailable`, which
+    # makes the caller mark the executor exhausted for the rest of the run.
     scannable_lines = []
 
     for line in (stdout_text or "").splitlines():
@@ -1219,13 +1347,14 @@ def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
             scannable_lines.append(line)
             continue
         if not isinstance(event, dict):
-            scannable_lines.append(line)
+            # A bare JSON scalar/list has no `type` to judge -- default-deny
+            # means we don't guess at its meaning.
             continue
 
         etype = event.get("type")
         data = event.get("data")
 
-        if etype != "assistant.message":
+        if _is_error_bearing_event(event):
             scannable_lines.append(line)
 
         if etype == "assistant.message" and isinstance(data, dict):
@@ -1418,10 +1547,19 @@ def cmd_run(args):
             return exit_code
         print(json.dumps(result, ensure_ascii=False))
         try:
-            record = build_dispatch_record(profile_name, result, resume, cls)
             telemetry_cfg, telemetry_err = resolve_config()
             if telemetry_err is not None or not isinstance(telemetry_cfg, dict):
                 telemetry_cfg = DEFAULTS
+            if result.get("status") == "unavailable":
+                record_unavailable_cooldown(
+                    telemetry_cfg,
+                    profile_name,
+                    result.get("reason"),
+                    time.time(),
+                    exit_code=result.get("exit_code"),
+                    answer=result.get("answer"),
+                )
+            record = build_dispatch_record(profile_name, result, resume, cls)
             telemetry_append(record, telemetry_cfg)
         except Exception:
             # Telemetry must never break dispatch.
@@ -1569,6 +1707,15 @@ def _build_doctor_report():
     permission = _scan_permission_rule()
 
     resolved, err = resolve_config()
+    doctor_now = time.time()
+    doctor_cfg = resolved if err is None and isinstance(resolved, dict) else DEFAULTS
+    doctor_state_path = cooldown_state_path(doctor_cfg)
+    doctor_cooldowns = {}
+    cooldown_cfg = doctor_cfg.get("cooldown")
+    if isinstance(cooldown_cfg, dict) and cooldown_cfg.get("enabled") is True:
+        doctor_cooldowns = active_cooldowns(
+            load_cooldown_state(doctor_state_path), doctor_now
+        )
     config_section = {
         "layers_found": [],
         "resolved": err is None,
@@ -1652,7 +1799,12 @@ def _build_doctor_report():
         # needs.
         interim_report = {"ready": ready}
         for preview_cls in ("light", "standard", "deep", "review"):
-            route_preview[preview_cls] = resolve_route(resolved, interim_report, preview_cls)
+            route_preview[preview_cls] = resolve_route(
+                resolved,
+                interim_report,
+                preview_cls,
+                cooldowns=doctor_cooldowns,
+            )
 
     return {
         "shim": shim,
@@ -1662,6 +1814,7 @@ def _build_doctor_report():
         "permission": permission,
         "ready": ready,
         "route": route_preview,
+        "cooldowns": {"path": doctor_state_path, "active": doctor_cooldowns},
     }
 
 
@@ -1734,6 +1887,14 @@ def _print_doctor_text(report):
                 )
             else:
                 print("  - %s: UNROUTABLE" % cls_name)
+    cooldowns = report.get("cooldowns", {})
+    if cooldowns.get("active"):
+        print("cooldowns:")
+        for name, entry in cooldowns.get("active", {}).items():
+            print(
+                "  - %s: %s (until %s)"
+                % (name, entry.get("reason", "unknown"), entry.get("until"))
+            )
 
 
 def cmd_doctor(args):
@@ -1809,12 +1970,19 @@ def _route_candidates(cfg, cls, archetype):
     return ["claude"], "tiers-default"
 
 
-def _route_skip_reason(name, cls, exhausted_set, external_executors, ready):
+def _route_skip_reason(
+    name, cls, exhausted_set, external_executors, ready, cooldown_map=None
+):
     """Return a skip reason string for candidate `name`, or None if it
     survives and should win. Order matters: exhaustion first (cheapest,
     caller-supplied), then configuration checks, then live readiness."""
     if name in exhausted_set:
         return "exhausted"
+
+    if cooldown_map and name in cooldown_map:
+        entry = cooldown_map.get(name)
+        reason = entry.get("reason") if isinstance(entry, dict) else None
+        return "cooldown:" + (reason or "unknown")
 
     if name == "claude":
         return None
@@ -1851,7 +2019,148 @@ def _route_skip_reason(name, cls, exhausted_set, external_executors, ready):
     return "unknown-dispatch:%s" % dispatch
 
 
-def resolve_route(cfg, doctor_report, cls, archetype="default", exhausted=()):
+def cooldown_seconds_for(cfg, reason):
+    """Pure helper: return the configured positive cooldown for `reason`."""
+    if not isinstance(cfg, dict):
+        return 0
+    cooldown = cfg.get("cooldown")
+    if not isinstance(cooldown, dict) or cooldown.get("enabled") is not True:
+        return 0
+    if not isinstance(reason, str):
+        return 0
+    seconds = cooldown.get("seconds")
+    if not isinstance(seconds, dict) or reason not in seconds:
+        return 0
+    value = seconds.get(reason)
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        return 0
+    return value
+
+
+def apply_cooldown(state, executor, reason, now, cfg):
+    """Pure helper: return a new state with one unavailable executor recorded."""
+    result = dict(state) if isinstance(state, dict) else {}
+    secs = cooldown_seconds_for(cfg, reason)
+    if secs <= 0 or not isinstance(executor, str) or not executor:
+        return result
+
+    until = now + secs
+    existing = result.get(executor)
+    existing_until = existing.get("until") if isinstance(existing, dict) else None
+    if (
+        isinstance(existing_until, (int, float))
+        and not isinstance(existing_until, bool)
+        and existing_until > until
+    ):
+        return result
+    result[executor] = {"reason": reason, "until": until}
+    return result
+
+
+def active_cooldowns(state, now):
+    """Pure helper: return only well-formed cooldown entries still active."""
+    if not isinstance(state, dict):
+        return {}
+    return {
+        executor: entry
+        for executor, entry in state.items()
+        if isinstance(entry, dict)
+        and isinstance(entry.get("until"), (int, float))
+        and not isinstance(entry.get("until"), bool)
+        and entry.get("until") > now
+    }
+
+
+def cooldown_state_path(cfg):
+    """Return the expanded absolute cooldown state path, failing safe."""
+    path = None
+    if isinstance(cfg, dict):
+        cooldown = cfg.get("cooldown")
+        if isinstance(cooldown, dict) and isinstance(cooldown.get("path"), str):
+            if cooldown.get("path"):
+                path = cooldown.get("path")
+    if path is None:
+        path = DEFAULTS["cooldown"]["path"]
+    return os.path.abspath(os.path.expanduser(path))
+
+
+def load_cooldown_state(path):
+    """Best-effort state load; a broken file must never block routing."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            state = json.load(f)
+        return state if isinstance(state, dict) else {}
+    except (OSError, TypeError, ValueError):
+        return {}
+
+
+def save_cooldown_state(path, state, now):
+    """Best-effort atomic state write with expiry pruning."""
+    temporary_path = None
+    try:
+        pruned = {}
+        if isinstance(state, dict):
+            for executor, entry in state.items():
+                until = entry.get("until") if isinstance(entry, dict) else None
+                if (
+                    isinstance(until, (int, float))
+                    and not isinstance(until, bool)
+                    and until > now
+                ):
+                    pruned[executor] = entry
+        directory = os.path.dirname(os.path.abspath(path))
+        os.makedirs(directory, exist_ok=True)
+        fd, temporary_path = tempfile.mkstemp(
+            prefix=".executor-state-", dir=directory
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(pruned, f, ensure_ascii=False)
+        os.replace(temporary_path, path)
+        temporary_path = None
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+    finally:
+        if temporary_path is not None:
+            try:
+                os.remove(temporary_path)
+            except OSError:
+                pass
+
+
+def record_unavailable_cooldown(cfg, executor, reason, now, exit_code=None, answer=None):
+    """Record one unavailable executor -- unless the run it's being asked to
+    penalize evidently succeeded.
+
+    `exit_code`/`answer` are the observed outcome of the same run whose
+    `status` triggered this call (from `parse_copilot_jsonl`'s result dict,
+    when there was an actual subprocess run to observe). A process that
+    exited 0 AND produced a real (non-empty) answer completed and answered
+    -- that is direct evidence it was NOT out of quota/credits/rate-limited/
+    unauthenticated, whatever an availability-scan false positive might have
+    concluded upstream. This is a belt-and-braces guard: it exists so that
+    any future gap in that scan can't silently cost the executor an hour of
+    availability, not as a substitute for getting the scan right. Callers
+    that have no run to observe (e.g. a route that never got as far as
+    invoking the executor) simply omit `exit_code`/`answer`, and this
+    behaves exactly as before.
+
+    Never allowed to raise or change the caller's outcome -- always returns
+    a bool, fails closed to False (no cooldown written) on any error."""
+    if exit_code == 0 and isinstance(answer, str) and answer.strip() != "":
+        return False
+    try:
+        path = cooldown_state_path(cfg)
+        state = load_cooldown_state(path)
+        updated = apply_cooldown(state, executor, reason, now, cfg)
+        if updated == state and cooldown_seconds_for(cfg, reason) <= 0:
+            return False
+        return save_cooldown_state(path, updated, now)
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def resolve_route(cfg, doctor_report, cls, archetype="default", exhausted=(), cooldowns=None):
     """Pure resolver: map a capability class (+ optional task archetype) to a
     concrete executor.
 
@@ -1894,17 +2203,26 @@ def resolve_route(cfg, doctor_report, cls, archetype="default", exhausted=()):
         if isinstance(ready_section, dict):
             ready = ready_section
 
-    skipped = []
-    winner = None
-    winner_idx = None
+    def walk(cooldown_map):
+        skipped = []
+        winner = None
+        winner_idx = None
+        for idx, name in enumerate(candidates):
+            reason = _route_skip_reason(
+                name, cls, exhausted_set, external_executors, ready, cooldown_map
+            )
+            if reason is None:
+                winner = name
+                winner_idx = idx
+                break
+            skipped.append({"executor": name, "reason": reason})
+        return winner, winner_idx, skipped
 
-    for idx, name in enumerate(candidates):
-        reason = _route_skip_reason(name, cls, exhausted_set, external_executors, ready)
-        if reason is None:
-            winner = name
-            winner_idx = idx
-            break
-        skipped.append({"executor": name, "reason": reason})
+    winner, winner_idx, skipped = walk(cooldowns)
+    cooldown_bypassed = False
+    if winner is None and cooldowns:
+        winner, winner_idx, skipped = walk(None)
+        cooldown_bypassed = True
 
     result = {
         "class": cls,
@@ -1912,6 +2230,17 @@ def resolve_route(cfg, doctor_report, cls, archetype="default", exhausted=()):
         "candidates": list(candidates),
         "skipped": skipped,
         "source": source,
+        "cooldowns_applied": [
+            {
+                "executor": item["executor"],
+                "reason": cooldowns[item["executor"]].get("reason", "unknown"),
+                "until": cooldowns[item["executor"]].get("until"),
+            }
+            for item in skipped
+            if item["reason"].startswith("cooldown:")
+            and isinstance(cooldowns.get(item["executor"]), dict)
+        ] if cooldowns else [],
+        "cooldown_bypassed": cooldown_bypassed,
     }
 
     if winner is None:
@@ -1956,22 +2285,29 @@ def resolve_route(cfg, doctor_report, cls, archetype="default", exhausted=()):
 def _print_route_text(route):
     print("agent-exec route")
     print("-----------------")
-    print("class: %s (archetype: %s)" % (route["class"], route["archetype"]))
-    print("candidates: %s" % ", ".join(route["candidates"]))
-    if route["executor"]:
+    print("class: %s (archetype: %s)" % (route.get("class"), route.get("archetype")))
+    print("candidates: %s" % ", ".join(route.get("candidates", [])))
+    if route.get("executor"):
         print(
             "resolved: %s (dispatch=%s model=%s effort=%s)"
-            % (route["executor"], route["dispatch"], route["model"], route["effort"])
+            % (route.get("executor"), route.get("dispatch"), route.get("model"), route.get("effort"))
         )
     else:
         print("resolved: UNROUTABLE")
-    if route["skipped"]:
+    if route.get("skipped"):
         print("skipped:")
-        for s in route["skipped"]:
-            print("  - %s: %s" % (s["executor"], s["reason"]))
-    if route["remaining"]:
-        print("remaining: %s" % ", ".join(route["remaining"]))
-    print("source: %s" % route["source"])
+        for s in route.get("skipped", []):
+            print("  - %s: %s" % (s.get("executor"), s.get("reason")))
+    for item in route.get("cooldowns_applied", []):
+        print(
+            "cooldown: %s (%s) until %s"
+            % (item.get("executor"), item.get("reason"), item.get("until"))
+        )
+    if route.get("cooldown_bypassed"):
+        print("cooldown: BYPASSED (all candidates were cooled down)")
+    if route.get("remaining"):
+        print("remaining: %s" % ", ".join(route.get("remaining", [])))
+    print("source: %s" % route.get("source"))
 
 
 def cmd_route(args):
@@ -1979,6 +2315,7 @@ def cmd_route(args):
     archetype = "default"
     exhausted = []
     fmt = "--json"
+    no_cooldown = False
 
     i = 0
     while i < len(args):
@@ -2004,6 +2341,9 @@ def cmd_route(args):
         elif tok in ("--json", "--text"):
             fmt = tok
             i += 1
+        elif tok == "--no-cooldown":
+            no_cooldown = True
+            i += 1
         else:
             sys.stderr.write("agent-exec: route: unknown option: %s\n" % tok)
             return 2
@@ -2018,7 +2358,20 @@ def cmd_route(args):
         return 1
 
     doctor_report = _build_doctor_report()
-    route = resolve_route(resolved, doctor_report, cls, archetype=archetype, exhausted=exhausted)
+    cooldowns = None
+    cooldown_cfg = resolved.get("cooldown")
+    if not no_cooldown and isinstance(cooldown_cfg, dict) and cooldown_cfg.get("enabled") is True:
+        cooldowns = active_cooldowns(
+            load_cooldown_state(cooldown_state_path(resolved)), time.time()
+        )
+    route = resolve_route(
+        resolved,
+        doctor_report,
+        cls,
+        archetype=archetype,
+        exhausted=exhausted,
+        cooldowns=cooldowns,
+    )
 
     if fmt == "--text":
         _print_route_text(route)
@@ -2039,6 +2392,7 @@ def cmd_dispatch_route(args):
     # runs in capture style (never exec-replaces) since it must print the
     # combined result+route JSON rather than replace this process.
     capture = False
+    no_cooldown = False
 
     i = 0
     while i < len(args):
@@ -2082,6 +2436,9 @@ def cmd_dispatch_route(args):
                 return 2
             resume = args[i + 1]
             i += 2
+        elif tok == "--no-cooldown":
+            no_cooldown = True
+            i += 1
         else:
             sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
             return 2
@@ -2102,7 +2459,20 @@ def cmd_dispatch_route(args):
         return 1
 
     doctor_report = _build_doctor_report()
-    route = resolve_route(resolved, doctor_report, cls, archetype=archetype, exhausted=exhausted)
+    cooldowns = None
+    cooldown_cfg = resolved.get("cooldown")
+    if not no_cooldown and isinstance(cooldown_cfg, dict) and cooldown_cfg.get("enabled") is True:
+        cooldowns = active_cooldowns(
+            load_cooldown_state(cooldown_state_path(resolved)), time.time()
+        )
+    route = resolve_route(
+        resolved,
+        doctor_report,
+        cls,
+        archetype=archetype,
+        exhausted=exhausted,
+        cooldowns=cooldowns,
+    )
 
     if route["executor"] is None:
         print(json.dumps({"status": "unroutable", "route": route}, ensure_ascii=False))
@@ -2143,6 +2513,9 @@ def cmd_dispatch_route(args):
             "route": route,
         }
         print(json.dumps(output, ensure_ascii=False))
+        record_unavailable_cooldown(
+            resolved, profile_name, output.get("reason"), time.time()
+        )
         return 0
 
     exec_name = profile["exec"]
@@ -2165,6 +2538,15 @@ def cmd_dispatch_route(args):
         return exit_code
 
     try:
+        if result.get("status") == "unavailable":
+            record_unavailable_cooldown(
+                resolved,
+                profile_name,
+                result.get("reason"),
+                time.time(),
+                exit_code=result.get("exit_code"),
+                answer=result.get("answer"),
+            )
         record = build_dispatch_record(profile_name, result, resume, cls)
         telemetry_cfg = resolved if isinstance(resolved, dict) else DEFAULTS
         telemetry_append(record, telemetry_cfg)
@@ -2211,6 +2593,9 @@ def main(argv):
 
     if tok == "telemetry":
         return cmd_telemetry(argv[1:])
+
+    if tok == "cooldown":
+        return cmd_cooldown(argv[1:])
 
     return cmd_dispatch(tok, argv[1:])
 

@@ -92,6 +92,20 @@ external_executors:
         model: gpt-5.6-luna
         effort: medium
 
+# Persisted, time-decaying executor cooldown. Entries are written automatically
+# when `agent-exec run --capture` or `agent-exec dispatch` parses
+# `status: unavailable`; routing loads active entries as an additional candidate
+# gate. `0` means no cooldown.
+cooldown:
+  enabled: true
+  path: ~/.claude/orchestra/executor-state.json
+  seconds:
+    rate-limit: 900
+    quota: 3600
+    credits: 3600
+    auth: 0
+    nonzero-exit: 0
+
 # copilot ships `enabled: true` above, so this list actually prefers it
 # when ready - `agent-exec route`/`dispatch` execute the walk, not the
 # instructor (see the route/dispatch paragraph above).
@@ -135,6 +149,8 @@ To set this up interactively (detect whether Codex/Copilot are actually availabl
 **`class_policy`** maps each class this executor participates in to a concrete `{ model, effort }` pair to pass to that executor. Without it, the executor runs on its own default model, which defeats the purpose of cost-tiering by external provider just as surely as an unpinned Claude `agent()` call does (rule #4, section 4). Treat this the same way: every external-executor class in `classes` should have a matching `class_policy` entry.
 
 **`priority`** declares, per class/role (and, for `light`, per task archetype — `investigation` vs `default`), an ordered candidate list to try — this list is still the single source of truth for preference order. What changed is *who walks it*: **`agent-exec route`/`dispatch` execute the walk**, not the instructor. `route` tries candidates left-to-right and drops one only on a **reactive fallback signal** — the executor is *unavailable*: `enabled: false`, its binary/agent doesn't resolve, `doctor`'s `ready.<x>.ok` is false, it has no `class_policy` entry for the class, or the caller passed it in `--exhausted`. This is the crucial **unavailable-vs-failed** distinction: a task that runs but returns a wrong result is NOT a fallback signal — it stays on the same executor and goes through the normal review/retry loop; only a genuinely unavailable executor (rate-limit/usage-window cap, credit exhaustion, auth failure) makes `route` drop to the next candidate. Once `dispatch` reports an executor `unavailable` for a task, the instructor's one remaining manual job is to **carry that executor forward in `--exhausted` for every subsequent `route`/`dispatch` call in the same run** (§5's `dispatchClass()` does this automatically via its module-level `exhausted` Set) — this is sticky exhaustion, and it is the instructor's only bookkeeping in the whole selection process. `priority` **supersedes `classes` for ordering** when present for a class/role; `classes` remains the legacy fallback when `priority` is absent (`route`/`dispatch` apply this same fallback internally). Operational detail — per-executor unavailable signals and the priority-walk logic `route` implements — lives in `references/external-executors.md`; read it before second-guessing a fallback decision.
+
+**`cooldown`** enables the persisted, time-decaying cross-run layer beneath the in-run `--exhausted`/sticky exhaustion `Set`. `seconds` is a mapping, so deep-merge combines it per key; unlike the `priority` lists, it is not replaced wholesale. The CLI surface is `agent-exec cooldown` to inspect state, `agent-exec cooldown clear [executor]` to reset it, and `--no-cooldown` on `route`/`dispatch` to bypass it for one call.
 
 **`enforcement.light_class`** (`"off"` default | `"block"` — quote the value; YAML 1.1 parses a bareword `off` as boolean `False`, not the string) is a **nudge with a guaranteed escape, not a hard wall**. When set to `"block"`, a `PreToolUse` hook (`hooks/enforce-router.sh`) fires only when `agent-exec route --class light` reports a non-`claude` executor ready — i.e. only when there's genuinely something better to redirect to — and the call would spawn a **generic** Claude implementer: no `subagent_type` at all, or `subagent_type` in `general-purpose`/`claude`, at a Haiku-class model. **Naming any other specific `subagent_type` is itself the carve-out**: the Agent tool has no per-call tool-restriction parameters — its schema is only `description`/`isolation`/`model`/`prompt`/`run_in_background`/`subagent_type` — so a named agent is how tool access and a specialized system prompt actually get pinned, and Copilot can substitute for neither; `orchestra:orchestra-light` itself stays a deny target, since redirecting it to `agent-exec dispatch` is the whole point. Escape hatches:
 

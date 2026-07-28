@@ -147,6 +147,20 @@ telemetry:
   enabled: false
   dir: ~/.claude/orchestra/telemetry
 
+# Persisted, time-decaying executor cooldown. Entries are written automatically
+# when `agent-exec run --capture` or `agent-exec dispatch` parses
+# `status: unavailable`; routing loads active entries as an additional candidate
+# gate. `0` means no cooldown.
+cooldown:
+  enabled: true
+  path: ~/.claude/orchestra/executor-state.json
+  seconds:
+    rate-limit: 900
+    quota: 3600
+    credits: 3600
+    auth: 0
+    nonzero-exit: 0
+
 priority:
   light:
     # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated executor

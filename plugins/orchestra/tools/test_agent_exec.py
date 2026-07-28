@@ -609,6 +609,127 @@ class ResolveConfigBackwardCompatTests(_IsolatedConfigMixin, unittest.TestCase):
         self.assertIn("enforcement", resolved)
 
 
+class CooldownPureFunctionTests(unittest.TestCase):
+    def _cfg(self, **seconds):
+        cfg = copy.deepcopy(agent_exec.DEFAULTS)
+        for key, value in seconds.items():
+            cfg["cooldown"]["seconds"][key.replace("_", "-")] = value
+        return cfg
+
+    def test_cooldown_seconds_validation(self):
+        cfg = self._cfg(rate_limit=12, quota=0, credits=-1, auth=True)
+        self.assertEqual(agent_exec.cooldown_seconds_for(None, "rate-limit"), 0)
+        disabled = self._cfg(rate_limit=12)
+        disabled["cooldown"]["enabled"] = False
+        self.assertEqual(agent_exec.cooldown_seconds_for(disabled, "rate-limit"), 0)
+        self.assertEqual(agent_exec.cooldown_seconds_for(cfg, "unknown"), 0)
+        self.assertEqual(agent_exec.cooldown_seconds_for(cfg, None), 0)
+        self.assertEqual(agent_exec.cooldown_seconds_for(cfg, "rate-limit"), 12)
+        self.assertEqual(agent_exec.cooldown_seconds_for(cfg, "quota"), 0)
+        self.assertEqual(agent_exec.cooldown_seconds_for(cfg, "credits"), 0)
+        self.assertEqual(agent_exec.cooldown_seconds_for(cfg, "auth"), 0)
+
+    def test_apply_cooldown_is_copy_and_later_wins(self):
+        cfg = self._cfg(rate_limit=10)
+        state = {"copilot": {"reason": "quota", "until": 120}}
+        original = copy.deepcopy(state)
+        kept = agent_exec.apply_cooldown(state, "copilot", "rate-limit", 100, cfg)
+        self.assertEqual(state, original)
+        self.assertEqual(kept["copilot"]["reason"], "quota")
+        overwritten = agent_exec.apply_cooldown(state, "copilot", "rate-limit", 200, cfg)
+        self.assertEqual(overwritten["copilot"], {"reason": "rate-limit", "until": 210})
+        self.assertEqual(agent_exec.apply_cooldown(state, "x", "auth", 100, cfg), state)
+        self.assertEqual(agent_exec.apply_cooldown(state, 1, "rate-limit", 100, cfg), state)
+
+    def test_active_cooldowns_filters_malformed_and_expired(self):
+        state = {
+            "expired": {"until": 10},
+            "boundary": {"until": 100},
+            "active": {"reason": "quota", "until": 101},
+            "bad": {"until": True},
+            "not-entry": "bad",
+        }
+        self.assertEqual(agent_exec.active_cooldowns(state, 100), {"active": state["active"]})
+        self.assertEqual(agent_exec.active_cooldowns(None, 100), {})
+
+
+class CooldownPersistenceTests(unittest.TestCase):
+    def test_load_variants_never_raise(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            missing = os.path.join(tmpdir, "missing.json")
+            self.assertEqual(agent_exec.load_cooldown_state(missing), {})
+            invalid = os.path.join(tmpdir, "invalid.json")
+            with open(invalid, "w", encoding="utf-8") as f:
+                f.write("{")
+            self.assertEqual(agent_exec.load_cooldown_state(invalid), {})
+            with open(invalid, "w", encoding="utf-8") as f:
+                f.write("[]")
+            self.assertEqual(agent_exec.load_cooldown_state(invalid), {})
+            with open(invalid, "w", encoding="utf-8") as f:
+                json.dump({"copilot": {"reason": "quota", "until": 200}}, f)
+            self.assertEqual(agent_exec.load_cooldown_state(invalid)["copilot"]["reason"], "quota")
+
+    def test_save_round_trip_prunes_and_fails_open(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "nested", "state.json")
+            state = {
+                "expired": {"reason": "quota", "until": 10},
+                "active": {"reason": "quota", "until": 200},
+            }
+            self.assertTrue(agent_exec.save_cooldown_state(path, state, 100))
+            self.assertNotIn("expired", agent_exec.load_cooldown_state(path))
+            self.assertIn("active", agent_exec.load_cooldown_state(path))
+            parent_file = os.path.join(tmpdir, "not-a-directory")
+            with open(parent_file, "w", encoding="utf-8") as f:
+                f.write("x")
+            self.assertFalse(
+                agent_exec.save_cooldown_state(
+                    os.path.join(parent_file, "state.json"), state, 100
+                )
+            )
+
+
+class ResolveRouteCooldownTests(unittest.TestCase):
+    def _cfg(self):
+        return copy.deepcopy(agent_exec.DEFAULTS)
+
+    def test_none_preserves_route_except_new_fields(self):
+        cfg = self._cfg()
+        report = {"ready": {"copilot": {"ok": True, "missing": []}}}
+        route = agent_exec.resolve_route(cfg, report, "light")
+        self.assertEqual(route["executor"], "copilot")
+        self.assertEqual(route["cooldowns_applied"], [])
+        self.assertFalse(route["cooldown_bypassed"])
+
+    def test_cooldown_falls_through_to_claude(self):
+        cfg = self._cfg()
+        report = {"ready": {"copilot": {"ok": True, "missing": []}}}
+        route = agent_exec.resolve_route(
+            cfg,
+            report,
+            "light",
+            cooldowns={"copilot": {"reason": "rate-limit", "until": 200}},
+        )
+        self.assertEqual(route["executor"], "claude")
+        self.assertEqual(route["skipped"], [{"executor": "copilot", "reason": "cooldown:rate-limit"}])
+        self.assertEqual(route["cooldowns_applied"], [{"executor": "copilot", "reason": "rate-limit", "until": 200}])
+        self.assertFalse(route["cooldown_bypassed"])
+
+    def test_all_candidates_cooled_down_are_bypassed(self):
+        cfg = self._cfg()
+        cfg["priority"]["light"]["default"] = ["copilot"]
+        report = {"ready": {"copilot": {"ok": True, "missing": []}}}
+        route = agent_exec.resolve_route(
+            cfg,
+            report,
+            "light",
+            cooldowns={"copilot": {"reason": "quota", "until": 200}},
+        )
+        self.assertEqual(route["executor"], "copilot")
+        self.assertTrue(route["cooldown_bypassed"])
+        self.assertEqual(route["cooldowns_applied"], [])
+
+
 class EnforcementLightClassNormalizationTests(_IsolatedConfigMixin, unittest.TestCase):
     """YAML 1.1 (what yaml.safe_load implements) parses a bareword
     off/on/yes/no as a bool, not a string. resolve_config() must normalize
@@ -965,6 +1086,171 @@ class ParseCopilotJsonlAvailabilityScanTests(unittest.TestCase):
         result = self._parse(self._msg("rate limit"), exit_code=1)
         self.assertEqual(result["status"], "unavailable")
         self.assertEqual(result["reason"], "nonzero-exit")
+
+
+class ParseCopilotJsonlDefaultDenyRegressionTests(unittest.TestCase):
+    """The reproduced production regression: a tool-call/tool-result event
+    body containing an availability-pattern word, alongside a clean final
+    answer and exit_code 0, must not be flagged. These are worker text
+    (the prompt it was given, the file contents it is writing), not
+    executor health -- and the default-deny scan must know the difference
+    without losing genuine signal from stderr, unparseable stdout, or a
+    real error-typed event."""
+
+    @staticmethod
+    def _final(content):
+        return json.dumps({
+            "type": "assistant.message",
+            "data": {"content": content, "phase": "final_answer"},
+        })
+
+    @staticmethod
+    def _tool_call(body):
+        return json.dumps({
+            "type": "tool.call",
+            "data": {"name": "Write", "input": {"content": body}},
+        })
+
+    @staticmethod
+    def _tool_result(body):
+        return json.dumps({
+            "type": "tool.result",
+            "data": {"output": body},
+        })
+
+    def _parse(self, stdout, stderr="", exit_code=0):
+        return agent_exec.parse_copilot_jsonl(stdout, stderr, exit_code)
+
+    def test_tool_call_and_tool_result_bodies_never_trigger_unavailable(self):
+        for phrase, label in [
+            ("please avoid the word quota in the docs", "quota"),
+            ("document our rate limit handling", "rate limit"),
+            ("this API deducts one credit per call", "credits"),
+            ("update the authenticate() helper", "authenticate"),
+        ]:
+            with self.subTest(label=label):
+                stdout = "\n".join([
+                    self._tool_call(phrase),
+                    self._tool_result(phrase),
+                    self._final("Done."),
+                ])
+                result = self._parse(stdout, exit_code=0)
+                self.assertEqual(result["status"], "ok")
+                self.assertIsNone(result["reason"])
+                self.assertEqual(result["answer"], "Done.")
+
+    def test_genuine_stderr_quota_error_still_detected(self):
+        stdout = "\n".join([
+            self._tool_call("mentions quota"),
+            self._final("Done."),
+        ])
+        result = self._parse(stdout, stderr="fatal: quota exceeded", exit_code=0)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "quota")
+
+    def test_genuine_error_typed_json_event_still_detected(self):
+        stdout = "\n".join([
+            json.dumps({"type": "session.error", "data": {"message": "not logged in"}}),
+            self._final("Done."),
+        ])
+        result = self._parse(stdout, exit_code=0)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "auth")
+
+    def test_result_event_with_explicit_failure_flag_is_detected(self):
+        stdout = "\n".join([
+            json.dumps({"type": "result", "success": False, "error": "insufficient credits"}),
+            self._final("Done."),
+        ])
+        result = self._parse(stdout, exit_code=0)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "credits")
+
+    def test_unparseable_plain_text_stdout_line_still_detected(self):
+        stdout = "\n".join([
+            "error: rate limit exceeded, try again later",
+            self._final("Done."),
+        ])
+        result = self._parse(stdout, exit_code=0)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "rate-limit")
+
+    def test_nonzero_exit_with_no_pattern_anywhere_is_unchanged(self):
+        stdout = "\n".join([
+            self._tool_call("nothing suspicious"),
+            self._final("Done."),
+        ])
+        result = self._parse(stdout, exit_code=1)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "nonzero-exit")
+
+    def test_bare_json_scalar_line_is_not_scanned(self):
+        # A malformed/unexpected top-level JSON value (not an object) is
+        # parseable JSON but has no `type` to judge -- default-deny means
+        # it is neither treated as an error source nor crashes the parser.
+        stdout = "\n".join([
+            json.dumps(["quota", "exceeded"]),
+            self._final("Done."),
+        ])
+        result = self._parse(stdout, exit_code=0)
+        self.assertEqual(result["status"], "ok")
+        self.assertIsNone(result["reason"])
+
+
+class RecordUnavailableCooldownOutcomeGuardTests(unittest.TestCase):
+    """`record_unavailable_cooldown` must refuse to persist a cooldown for a
+    run that evidently succeeded (exit 0 + a real answer), no matter what
+    `status`/`reason` upstream computed -- a belt-and-braces backstop for
+    any future gap in the availability scan."""
+
+    def _cfg(self, path):
+        cfg = copy.deepcopy(agent_exec.DEFAULTS)
+        cfg["cooldown"]["path"] = path
+        cfg["cooldown"]["seconds"]["quota"] = 3600
+        cfg["cooldown"]["seconds"]["rate-limit"] = 3600
+        return cfg
+
+    def test_exit_zero_with_real_answer_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "state.json")
+            cfg = self._cfg(path)
+            wrote = agent_exec.record_unavailable_cooldown(
+                cfg, "copilot", "quota", 100, exit_code=0, answer="Here is the answer."
+            )
+            self.assertFalse(wrote)
+            self.assertFalse(os.path.exists(path))
+
+    def test_exit_nonzero_writes_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "state.json")
+            cfg = self._cfg(path)
+            wrote = agent_exec.record_unavailable_cooldown(
+                cfg, "copilot", "quota", 100, exit_code=1, answer=None
+            )
+            self.assertTrue(wrote)
+            self.assertIn("copilot", agent_exec.load_cooldown_state(path))
+
+    def test_exit_zero_with_empty_answer_writes_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "state.json")
+            cfg = self._cfg(path)
+            for empty_answer in (None, "", "   "):
+                with self.subTest(answer=repr(empty_answer)):
+                    if os.path.exists(path):
+                        os.remove(path)
+                    wrote = agent_exec.record_unavailable_cooldown(
+                        cfg, "copilot", "rate-limit", 100, exit_code=0, answer=empty_answer
+                    )
+                    self.assertTrue(wrote)
+                    self.assertIn("copilot", agent_exec.load_cooldown_state(path))
+
+    def test_omitted_exit_code_and_answer_behave_as_before(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "state.json")
+            cfg = self._cfg(path)
+            wrote = agent_exec.record_unavailable_cooldown(cfg, "copilot", "quota", 100)
+            self.assertTrue(wrote)
+            self.assertIn("copilot", agent_exec.load_cooldown_state(path))
 
 
 if __name__ == "__main__":
