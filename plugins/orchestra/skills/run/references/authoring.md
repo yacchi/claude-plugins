@@ -23,45 +23,55 @@ For tasks with modest design latitude, call `dispatchClass('standard', workerPro
 This restructures `runTask` (author-tests worker owns the `tests/` paths, impl worker owns the `src/` paths — disjoint, per the same-tree safety rule above):
 
 ```javascript
-// (dispatchClass() and the module-level `exhausted` Set are defined in §5 above -
-// this restructuring only changes runTask, not the rest of the script.)
+// (dispatchClass(), correctionPacket(), regatePrompt(), NEXT_CLASS, MAX_GATES and
+// the module-level `exhausted` Set are defined in §5/§11 above - this
+// restructuring only changes runTask, not the rest of the script.)
 async function runTask(task) {
   // Author adversarial tests from the SPEC, concurrently with the first
   // implementation. Disjoint paths (tests/ vs src/), so no write conflict.
   // The test-authoring side stays pinned to Sonnet, same reasoning as the
   // review stage below (`priority.review` is `[claude]`-only, §9).
   await parallel([
-    () => dispatchClass('light', task.workerPrompt, { label: task.id + '-work-1', workdir: task.workdir }),
+    () => dispatchClass(task.cls || 'light', task.workerPrompt, { label: task.id + '-work-1', workdir: task.workdir }),
     () => agent(task.authorTestsPrompt, { label: task.id + '-authtests', model: 'sonnet' }),
   ])
 
-  let feedback = null
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    if (feedback) {
-      // Re-implement only. Tests are already on disk from the concurrent
-      // author step and are NOT re-written across retries.
-      await dispatchClass(
-        'light',
-        task.workerPrompt +
-          '\n\nThis is retry ' + attempt + ' of ' + MAX_RETRIES + '. Your previous ' +
-          'attempt already wrote source files at the paths you used before. Read them ' +
-          'first, then apply this feedback exactly, changing only what it names:\n' +
-          JSON.stringify(feedback),
-        { label: task.id + '-work-' + attempt, workdir: task.workdir },
-      )
+  let cls = task.cls || 'light'
+  let prior = null
+  for (let gate = 1; gate <= MAX_GATES; gate++) {
+    if (prior) {
+      // Re-implement only, via a self-contained correction packet to a FRESH
+      // worker (§11.3). Tests are already on disk from the concurrent author
+      // step and are NOT re-written across rounds.
+      const work = await dispatchClass(cls, correctionPacket(task, prior, gate),
+        { label: task.id + '-work-' + gate, workdir: task.workdir })
+      if (typeof work === 'string' && work.trim().startsWith('ESCALATE')) {
+        if (NEXT_CLASS[cls] === cls) return { id: task.id, pass: false, needsInstructor: true, summary: 'escalated at deep class' }
+        cls = NEXT_CLASS[cls]; gate--; continue
+      }
     }
     // Verify = RUN the pre-authored tests + whitebox glance. No re-authoring.
-    // Unrouted, same as §5's review stage and for the same reason.
-    const verdict = await agent(task.runTestsPrompt, {
-      label: task.id + '-verify-' + attempt, model: 'sonnet', schema: VERDICT_SCHEMA,
+    // Gate 2 is incremental (§11.2). Unrouted, same as §5's review stage.
+    const verdict = await agent(prior ? regatePrompt(task, prior) : task.runTestsPrompt, {
+      label: task.id + '-verify-' + gate, model: 'sonnet', schema: VERDICT_SCHEMA,
     })
-    if (!verdict) return { id: task.id, pass: false, summary: 'review unavailable (skipped or errored)', rounds: attempt }
-    if (verdict.pass) return { id: task.id, pass: true, summary: verdict.summary, rounds: attempt }
-    feedback = verdict.feedback
+    if (!verdict) return { id: task.id, pass: false, summary: 'review unavailable (skipped or errored)', rounds: gate }
+    if (verdict.pass) return { id: task.id, pass: true, summary: verdict.summary, rounds: gate }
+    if (verdict.new_family) {
+      return { id: task.id, pass: false, needsInstructor: true, rounds: gate,
+               summary: 'new defect family at re-gate: ' + verdict.summary, feedback: verdict.feedback }
+    }
+    if (prior && (verdict.feedback || []).some(f => (prior.feedback || []).some(p => p.family === f.family))) {
+      cls = NEXT_CLASS[cls]
+    }
+    prior = verdict
   }
-  return { id: task.id, pass: false, summary: 'exhausted retries without a pass', rounds: MAX_RETRIES }
+  return { id: task.id, pass: false, needsInstructor: true, rounds: MAX_GATES,
+           summary: 'two gates without a pass - instructor re-analysis required', feedback: prior && prior.feedback }
 }
 ```
+
+**Note the interaction with §11.2.** Pre-authored tests make the *sweep* cheaper, not optional: the reviewer still classifies each finding by family and checks sibling sites, it just does so against a suite it already has rather than one it writes mid-gate. That is precisely the combination that keeps the whole task inside two gates.
 
 **Trade-off:** this adds one agent (the test author) and thus one spawn's overhead, so it pays off when authoring latency exceeds spawn overhead — true whenever the reviewer writes non-trivial tests, and the win *grows with retry depth* because authoring no longer repeats per round. For a change so small its review is a single obvious assertion, keep the plain §5 `runTask` instead. Split `task.verifierPrompt` into `task.authorTestsPrompt` (write spec-derived adversarial tests to `tests/`, do not run them) and `task.runTestsPrompt` (run the worker's tests **and** the pre-authored `tests/`, whitebox-inspect the diff, return `VERDICT_SCHEMA`).
 
@@ -117,8 +127,11 @@ Instructor (Fable/Opus)
             (no relay needed - it already has Bash) - Copilot by default, orchestra-light/haiku
             only on that call's own "delegate" fallback, never launched directly
        └─ orchestra-delegate internally launches orchestra-review (sonnet) via the Agent tool
-       └─ on FAIL, orchestra-delegate re-dispatches with feedback (cap: 3 rounds)
+       └─ on FAIL, orchestra-delegate re-dispatches a self-contained correction packet
+            to a FRESH worker and runs one incremental re-gate (cap: 2 gates, §11)
   └─ instructor receives only the structured verdict from orchestra-delegate
 ```
 
-When rework needs multiple rounds of back-and-forth, do not spawn a fresh `orchestra-delegate` each time — resume the same instance with `SendMessage` so it keeps its context (previous failures, approaches already tried) without re-explanation.
+Two gates without a pass, a re-gate reporting `new_family`, or an `ESCALATE` at `deep` all come back as `needsInstructor` — a request for re-analysis, not a request for more rounds. Answering it by telling the delegate to try again is exactly the loop §11.2 exists to break.
+
+Across those instructor-driven rounds, do not spawn a fresh `orchestra-delegate` each time — resume the same instance with `SendMessage` so it keeps its context (previous failures, approaches already tried) without re-explanation. This is the supervisor-level exception to §11.3's "fresh invocation" rule, which governs the *implementation* worker: the delegate's accumulated context is the thing of value, whereas the failed worker's is a liability.

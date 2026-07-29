@@ -33,10 +33,12 @@ Instructor (Fable / Opus) ── classifies each request (router injected at Ses
     (agent-exec route: Copilot default,                             │
      Claude Haiku fallback)                    (Sonnet, adversarial)│
       ▲                                                             │
-      └────── retry with precise feedback ──────┘  (up to 3 rounds) │
+      └─ ONE correction round: cited, family-swept packet to a      │
+         FRESH worker, then an incremental re-gate  (2 gates max)   │
       │                                                             │
       ▼                                                             │
-    Structured verdict only: { pass, summary, feedback? }           │
+    Structured verdict only: { pass, summary, feedback?,            │
+                               optional_hardening?, needsInstructor? }│
       │                                                             │
       ▼                                                             ▼
     Instructor receives ~2KB of JSON, zero tokens spent on execution
@@ -49,16 +51,37 @@ Two execution paths are supported:
 
 **The one rule that matters in both paths**: every agent invocation must explicitly set `model` or `agentType`. Omitting both causes the spawned agent to silently inherit the session's (expensive) model, which defeats the entire cost-tiering strategy.
 
+## Gate discipline (v0.14.0)
+
+Rounds are the pipeline's real cost, and most slow runs are slow because rounds were spent badly rather than because a model was weak. v0.14.0 replaces the blind 3-retry counter with four rules (`skills/run/SKILL.md` §11):
+
+- **A rejection must cite the contract.** A reviewer may not invent a stricter requirement, tighten a tolerance the spec left open, or reject a design choice the spec delegated; `cited_contract` is a required field on every finding. Improvements it noticed but the contract doesn't require go to `optional_hardening`, which never blocks a pass. Gold-plating reviewers were the most expensive failure mode available — they burn every remaining round on work nobody asked for and still fail the task.
+- **Findings carry a defect `family`, and the reviewer sweeps the family before reporting.** One round closes a whole class of bug (rounding-carry, input normalization, error-type mismatch, ordering, serialization round-trip, …) instead of one instance; a one-finding-per-round loop is how a 3-round budget gets spent on three siblings of the same defect.
+- **Two gates, then a human-shaped decision.** One initial gate plus one incremental re-gate — the re-gate gets the previous verdict, the closed finding ids and the changed paths, and inspects only those plus plausible regressions (6 read-only shell invocations, first line `VERDICT: PASS|FAIL`). If it surfaces a family that predates the correction, the loop stops and returns `needsInstructor`: the *sweep* was wrong, so another automatic round would just find the next sibling.
+- **Escalate the class; never resume the failed worker.** Workers report `ESCALATE` when the packet doesn't settle a needed decision, the change crosses their file ownership, or a failure isn't locally explainable — that bumps `light`→`standard`→`deep` without consuming a gate, since a mis-sized packet is not a defect. The same family failing twice bumps it too, and security/auth/concurrency work starts at the higher tier rather than proving itself through a cheap failure. Corrections always go to a *fresh* invocation via a self-contained packet: the rejected instance is anchored on the reasoning that produced the defect.
+
+Workers are also capped at ~12 shell invocations (reviews 12, re-gates 6). An interrupted or budget-exhausted review is a FAIL, never a PASS.
+
+## Rollback, diffs, and aggressive isolation (v0.14.0)
+
+Version control is effectively free, so the pipeline assumes it (`skills/run/references/isolation.md`). A baseline snapshot is taken before the first worker — `git init` if the tree isn't a repo — and between attempts, which buys two things: the reviewer diffs against something real instead of inferring the worker's footprint from prose, and a bad correction is rolled back rather than patched on top of.
+
+That in turn makes `isolation: 'worktree'` worth using aggressively. It lifts the constraint that parallel workers must own disjoint files, so genuinely tangled work can be parallelized, exploratory failures cost nothing, and **competing implementations of one contract** become practical: run N variants, judge them against one adversarial suite, and treat their disagreements as a defect report about the *spec* — ambiguity found before the bug ships. It costs N× implementation tokens, so it's for the risky core, not the default shape.
+
+Workers never touch VCS state; snapshots, merges, and cleanup belong to the supervising layer. Descendant agent branches are unrestricted and disposable, but the branch that becomes the PR is built from the accepted diff and carries no checkpoints, rejected variants, or worker-only files. Non-interactive CLI executors also get their approvals front-loaded, since a permission prompt they can't surface becomes a silent stall.
+
 ## Components
 
 | File | Role | Model |
 |---|---|---|
 | `agents/orchestra-light.md` | Mechanical implementation worker. Implements literally, no scope expansion, self-verifies before reporting. | Haiku |
 | `agents/orchestra-deep.md` | Design-sensitive implementation worker for tasks with real design latitude (algorithm choice, API shape, tradeoffs). Decides within the contract's bounds and reports decisions with rationale. | Opus |
-| `agents/orchestra-review.md` | Adversarial review. Re-runs the worker's tests, writes ≥3 adversarial edge-case tests of its own, returns a strict verdict. | Sonnet |
+| `agents/orchestra-review.md` | Adversarial review. Re-runs the worker's tests, writes ≥3 adversarial edge-case tests of its own, returns a strict verdict. Two hard boundaries as of v0.14.0: it reviews but never repairs (`Write` is for its own new test files only — patching the implementation destroys the signal), and a FAIL requires a cited contract violation, with everything else demoted to non-blocking `optional_hardening`. Classifies findings by defect family and sweeps siblings before reporting; supports an incremental re-gate mode and a hard inspection budget. | Sonnet |
 | `agents/orchestra-delegate.md` | Middle-manager fallback for environments without Dynamic Workflows. Holds context across retry rounds, dispatches each implementation round itself via `agent-exec dispatch --class light` (no relay needed — it already has Bash) rather than spawning a Claude implementer directly, drives review→retry, escalates only genuine ambiguity. | Sonnet |
-| `skills/run/SKILL.md` | The playbook (`/run`, or `orchestra:run` cross-plugin). Read by the instructor. Instructor code of conduct, express-lane criteria, capability-class table, the one model-pinning rule, the workflow template, worker-prompt requirements, and short condensed sections on latency, fallback, configuration, and telemetry — each pointing at the reference file that holds the detail. Deliberately lean (~200 lines, English, for token efficiency): as of v0.12.0 the detail lives in `references/`. | — |
+| `skills/run/SKILL.md` | The playbook (`/run`, or `orchestra:run` cross-plugin). Read by the instructor. Instructor code of conduct, express-lane criteria, capability-class table, the one model-pinning rule, the workflow template, worker-prompt requirements, and short condensed sections on latency, fallback, configuration, telemetry, gate discipline, and isolation — each pointing at the reference file that holds the detail. Deliberately lean (English, for token efficiency): it is loaded on every orchestrated run, so as of v0.12.0 rationale and detail live in `references/` and only rules that change what the instructor *does* stay inline. | — |
 | `skills/run/references/authoring.md` | Detail split out of the playbook in v0.12.0 (English, verbatim): same-tree parallelism safety and `agentType` resolution, shortening the per-task critical path (overlapping adversarial-test authoring with implementation, never serializing independent work behind a barrier, sizing tasks to the concurrency width), prompt density, the measured PoC findings, and the no-Workflow `orchestra-delegate` fallback shape. Not loaded automatically; read while writing a workflow script. | — |
+| `skills/run/references/gates.md` | New in v0.14.0 (English): why each gate rule exists — the gold-plating reviewer as the most expensive failure mode, why defects arrive in families, why a re-gate is incremental and why `new_family` stops the loop (and when a third round *is* right), the escalation ladder in both directions, why corrections go to a fresh worker while the delegate is resumed, and invocation budgets as a diagnostic. Not loaded automatically. | — |
+| `skills/run/references/isolation.md` | New in v0.14.0 (English): baseline/checkpoint mechanics and jj recovery, branch hygiene (disposable descendants, a clean PR branch built from the accepted diff), worktree-isolated parallelism and supervisor merge, competing implementations and how to read their divergence, verifying on a context-free integration tree, and front-loading approvals for non-interactive workers. Not loaded automatically. | — |
 | `skills/run/references/config.md` | Detail split out of the playbook in v0.12.0 (English, verbatim): the four-layer config schema and deep-merge algorithm (plus its pre-v0.11.0 upgrade trap), `agent-exec route`/`dispatch` gating, external-executor dispatch mechanisms and the `dispatch: cli` sandboxing caveat, `enforcement.light_class` and its four escape hatches, and the full telemetry field allowlist and CLI. Not loaded automatically; read only when a configuration question actually arises. | — |
 | `skills/setup/SKILL.md` | Companion config skill (`/setup`, or `orchestra:setup` cross-plugin). Detects Codex/Copilot CLI + agent availability, then interactively edits `.claude/orchestra.yaml` (project) or `~/.claude/orchestra.yaml` (user) — enabling/disabling executors, choosing scope, and migrating an old `orchestra.json`. Never runs the pipeline itself. | — |
 | `skills/run/references/external-executors.md` | Operational reference for external executors (Japanese) — Codex's Sol/Terra/Luna + effort policy, Copilot's model catalog and CLI usage recipes (including session continuation), and official per-token pricing for Codex/Copilot/Claude. Not loaded automatically; read on demand when actually dispatching to Codex/Copilot. | — |
@@ -120,7 +143,7 @@ Or just describe a task that needs cost-tiered delegation to many cheap workers 
 The skill instructs the instructor to:
 
 1. Decompose the task and define per-task contracts (literal spec, edge cases as input/output examples, a verification command).
-2. Write (or reuse) a Dynamic Workflow script that pipelines each task through a light-class implementer (resolved by `agent-exec route` — Copilot by default, `orchestra-light`/Haiku as fallback) → `orchestra-review` → retry-with-feedback (capped at 3 rounds), or fall back to spawning `orchestra-delegate` when Workflows aren't available. Design-latitude tasks route to `orchestra-deep` (Opus) instead of the light-class worker.
+2. Write (or reuse) a Dynamic Workflow script that pipelines each task through a light-class implementer (resolved by `agent-exec route` — Copilot by default, `orchestra-light`/Haiku as fallback) → `orchestra-review` → at most one correction round followed by an incremental re-gate (two gates, not a blind retry count — see "Gate discipline" below), or fall back to spawning `orchestra-delegate` when Workflows aren't available. Design-latitude tasks route to `orchestra-deep` (Opus) instead of the light-class worker.
 3. Receive only structured verdicts, never raw logs, diffs, or intermediate files.
 
 ## Configuration
