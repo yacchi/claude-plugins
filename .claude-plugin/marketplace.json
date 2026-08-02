@@ -42,6 +42,16 @@
       "description": "Backlog CLI integration for Claude Code - Manage issues, PRs, and wikis from terminal",
       "category": "integration",
       "tags": ["backlog", "cli", "project-management", "issue-tracker"]
+    },
+    {
+      "name": "jobcan",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/yacchi/jobcan.git"
+      },
+      "description": "Unofficial Jobcan attendance CLI integration - Check work hours, register man-hours, and view attendance from terminal",
+      "category": "integration",
+      "tags": ["jobcan", "cli", "attendance", "timesheet", "勤怠", "工数"]
     }
   ]
 }
