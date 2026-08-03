@@ -1,8 +1,43 @@
 # Isolation, checkpointing, and aggressive parallelism (orchestra `run`)
 
-Load this file when a run needs any of: **rollback on failure**, **a reliable diff for the reviewer**, **parallel work on files that would otherwise collide**, or **competing implementations of the same task**. Introduced in v0.14.0.
+Load this file when a run needs any of: **a worker to touch a tree that holds uncommitted work**, **rollback on failure**, **a reliable diff for the reviewer**, **parallel work on files that would otherwise collide**, or **competing implementations of the same task**. Introduced in v0.14.0; isolation became the dirty-tree default in v0.15.0.
 
 The premise: version control is effectively free, and an orchestration that can always return to a known-good state is strictly better than one that edits in place and hopes. A run that cannot roll back has to be cautious; a run that can roll back can be aggressive.
+
+## 0. Isolate first: the failure this prevents
+
+Seven weeks of transcripts contain **35 destructive VCS commands run by workers** against the user's shared tree — `git checkout -- <paths>`, `git restore`, `git reset --hard`, `git clean -fd`. They are spread across haiku, sonnet, and opus workers alike, so this is not a cheap-model defect. The instructor's countermeasure was prose, escalated three generations deep in the worker prompts ("Never run git checkout…", then "The ONE exception…", then "THE WORKING TREE IS ALREADY DIRTY AND THAT IS EXPECTED AND CORRECT"), and the accidents continued after each escalation.
+
+The reason prose loses here is structural. A worker's only view of the world is `git status`. Its contract describes one task; the tree contains several tasks' worth of changes plus whatever the user had in flight. Told "the dirty tree is expected", the worker still sees a diff it cannot account for, and cleaning up is a plausible reading of doing good work.
+
+**So do not rely on telling workers to be careful. Give them a tree where the mistake is impossible** — one that contains their own work and nothing else. Then "revert the stray diff" is a no-op rather than an accident.
+
+```bash
+# The default. Isolates exactly when the tree has uncommitted work.
+agent-exec dispatch --class light --task <task-id> \
+    --prompt-file <file> --workdir <repo> --capture
+# --isolate always  : isolate even a clean tree (parallel/competing variants)
+# --isolate never   : opt out, e.g. a strictly sequential phase on one tree
+```
+
+Every dispatch result carries an `isolation` object saying which tree was used and why, so a run always knows where to collect from:
+
+```bash
+agent-exec isolate diff   --task <id>            # patch + file list, worker's changes only
+agent-exec isolate list                          # orchestra-created worktrees
+agent-exec isolate remove --task <id>            # refuses while changes are uncollected
+```
+
+What `isolate create` does for you, so a worktree is not a downgrade for the worker:
+
+- **carries the user's uncommitted work in**, then commits it as that worktree's baseline — so a later `isolate diff` shows the worker's changes and nothing else;
+- **copies gitignored dependency directories** (`node_modules`, `.venv`, `vendor`, `target`, …) by copy-on-write clone. ~2s for 83MB/9.5k files, versus minutes and a pile of tokens if every worker re-runs its own install;
+- **reuses one worktree per `--task`**, so retry rounds accumulate in one place instead of littering;
+- **goes through `git gtr`** (git-worktree-runner) when installed, so the user's own `gtr.copy.include` patterns and `gtr.hook.postCreate` setup steps apply here too. Orchestra never *writes* gtr config: what it needs is injected for one subprocess via `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n`, leaving `.git/config`, `~/.gitconfig`, and the committable repo-root `.gtrconfig` untouched. Without gtr it falls back to a plain `git worktree`.
+
+A second layer backs this up: `hooks/guard-worker-vcs.sh` denies destructive VCS commands from *subagents* against a non-`orchestra/*` branch (`enforcement.worker_vcs`, on by default). Inside its own worktree a worker may reset freely — there is nothing there but its own work. The main thread is never affected.
+
+**When isolation is genuinely not available** — no repository at all, or a phase that must run in place — say so in the plan, and fall back to §1's discipline: snapshot before the first worker, and never `checkout .`/`reset --hard`/`clean` the user's work.
 
 ## 1. Checkpointing: the run always has somewhere to fall back to
 
@@ -31,18 +66,19 @@ Create as many descendant branches as the work wants — per task, per attempt, 
 
 ## 2. Worktrees: isolate so you can be aggressive
 
-`agent()` accepts `isolation: 'worktree'`, which gives that agent a fresh git worktree. It costs a few hundred milliseconds plus disk per agent, so it is not the default — but it removes the constraint that has been shaping every parallelism decision in this playbook so far.
+`agent()` accepts `isolation: 'worktree'`, which gives that Claude subagent a fresh git worktree; `agent-exec dispatch --isolate` (§0) does the same for CLI executors, which `agent()`'s option cannot reach. Beyond the safety case in §0 — where isolation is simply the default on a dirty tree — isolation also removes the constraint that has been shaping every parallelism decision in this playbook so far.
 
 The base rule elsewhere in the skill (`authoring.md` §1) is *partition file ownership so parallel workers never collide*. That rule is correct for same-tree runs and it is also a real limit: it forbids parallelizing exactly the work that is most tangled, and tangled work is usually the slow work. Worktree isolation lifts the limit — collisions become merge decisions instead of silent corruption.
 
 **Use worktree isolation when:**
 
+- the tree holds uncommitted work — this one is the default and needs no deliberation (§0);
 - two or more tasks genuinely need to touch overlapping paths, and splitting them would be artificial;
 - a task is exploratory enough that you want its failure to be free (delete the worktree, nothing else moved);
 - you are running competing implementations (§3);
 - a long-running task should not block quick ones from mutating the same files.
 
-**Don't use it when** the phase is genuinely sequential on one tree, or when ownership partitions cleanly and cheaply — then the merge step is pure overhead.
+**Don't use it when** the tree is clean *and* the phase is genuinely sequential on one tree, or ownership partitions cleanly and cheaply — then the merge step is pure overhead. Note the ordering: a clean tree is what makes skipping isolation safe, not a tidy partition.
 
 **After the workers finish, the supervisor merges.** Cherry-pick or apply each accepted worktree's diff onto an integration branch, resolve conflicts deliberately, and re-run verification on the merged result. A per-worktree PASS does not imply the merge passes; verification of the integrated tree is a separate, mandatory step.
 

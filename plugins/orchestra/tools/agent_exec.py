@@ -133,8 +133,19 @@ DEFAULTS = {
     # session, with documented escape hatches. Consumed by that hook (and by
     # `agent-exec config`/`doctor`'s reflection of resolved config), not
     # enforced by agent-exec's own subcommands.
+    # "worker_vcs" guards the other direction and therefore defaults to
+    # "block": a subagent must not run destructive VCS commands
+    # (checkout --/restore/reset --hard/clean -f/stash) against the user's
+    # shared working tree. Consumed by hooks/guard-worker-vcs.sh. Set to
+    # "off" to disable that guard entirely.
+    # "turn_edits" is the turn-size tripwire threshold consumed by
+    # hooks/count-turn-edits.sh: once the main thread has hand-edited this
+    # many files inside one turn, the hook asks it once to re-classify into
+    # the orchestrated lane. Set to "off" to disable.
     "enforcement": {
         "light_class": "off",
+        "worker_vcs": "block",
+        "turn_edits": 8,
     },
     # auth and nonzero-exit are transient, not resource exhaustion, so 0 means
     # "no cooldown" for those reasons.
@@ -198,7 +209,7 @@ Usage:
                                   drops the given comma-separated executor
                                   names as already-tried/unavailable.
   agent-exec dispatch --class <cls> [--archetype A] [--exhausted a,b]
-                  [--no-cooldown]
+                  [--no-cooldown] [--isolate auto|always|never] [--task ID]
                   --prompt-file F --workdir W [--resume SID] [--capture]
                                   one-call resolve + dispatch: resolves the
                                   route, then runs it. If the winning
@@ -219,6 +230,34 @@ Usage:
                                   --capture`. Also self-logs a "dispatch"
                                   telemetry record for the cli branch, same
                                   as `run --capture`.
+                                  --isolate (default auto) runs the worker in
+                                  its own git worktree when the tree is dirty,
+                                  so a worker cannot destroy the user's
+                                  uncommitted work; needs --task to name the
+                                  worktree so retry rounds reuse one. Every
+                                  result carries an `isolation` object saying
+                                  which tree was used and why.
+  agent-exec isolate create --task ID [--repo P] [--backend auto|gtr|git]
+                  [--no-carry]
+                                  create (or return) that task's worktree,
+                                  carrying the user's uncommitted work and
+                                  gitignored dependency dirs (node_modules,
+                                  .venv, ...) into it. Uses git-worktree-runner
+                                  when installed so the user's own gtr copy
+                                  patterns and postCreate hooks apply; gtr
+                                  config is read, never written.
+  agent-exec isolate diff --task ID [--repo P] [--names-only]
+                                  what the worker changed, as patch + file
+                                  list, measured from the worktree's baseline
+                                  so the user's own work never shows up.
+  agent-exec isolate remove --task ID [--repo P] [--force]
+                                  delete the worktree and branch; refuses while
+                                  uncollected changes remain unless --force.
+  agent-exec isolate list [--repo P]
+                                  orchestra-created worktrees in this repo.
+  agent-exec isolate should [--repo P] [--mode auto|always|never]
+                                  the isolation verdict for this tree, without
+                                  creating anything.
   agent-exec cooldown [--json|--text]
                                   show active executor cooldowns
   agent-exec cooldown clear [<executor>]
@@ -816,6 +855,23 @@ def resolve_config():
         resolved["enforcement"] = enforcement
     if enforcement.get("light_class") != "block":
         enforcement["light_class"] = "off"
+    # worker_vcs normalizes the opposite way: it protects the user's
+    # uncommitted work, so an ambiguous value must leave the guard ON. Only an
+    # explicit "off" -- as a string, or as the bareword YAML 1.1 loads as
+    # False -- turns it off.
+    worker_vcs = enforcement.get("worker_vcs")
+    if worker_vcs is False or (isinstance(worker_vcs, str) and worker_vcs.strip().lower() == "off"):
+        enforcement["worker_vcs"] = "off"
+    else:
+        enforcement["worker_vcs"] = "block"
+    # turn_edits is either the string "off" or a positive int. Anything
+    # unusable falls back to the default rather than disabling the tripwire
+    # silently.
+    turn_edits = enforcement.get("turn_edits")
+    if turn_edits is False or (isinstance(turn_edits, str) and turn_edits.strip().lower() == "off"):
+        enforcement["turn_edits"] = "off"
+    elif isinstance(turn_edits, bool) or not isinstance(turn_edits, int) or turn_edits <= 0:
+        enforcement["turn_edits"] = DEFAULTS["enforcement"]["turn_edits"]
 
     return resolved, None
 
@@ -1916,6 +1972,607 @@ def cmd_doctor(args):
     return 0
 
 
+# --- isolate subcommand ------------------------------------------------------
+#
+# WHY THIS EXISTS. Transcript analysis of 7 weeks of runs found 35 destructive
+# VCS commands (`git checkout --`, `git restore`, `git reset --hard`) run by
+# *workers* against the user's shared working tree -- spread across every model
+# tier, not just the cheap ones. The instructor's response had been to escalate
+# the prohibition in prose ("HARD SAFETY RULES: never run git checkout ...",
+# then "The ONE exception is ...", then "THE WORKING TREE IS ALREADY DIRTY AND
+# THAT IS EXPECTED"). It kept happening anyway, because a worker's only view of
+# the world is `git status`, and a diff it did not author reads as contamination
+# no matter what the prompt says.
+#
+# The fix is structural, not textual: give the worker a tree in which no other
+# task's changes exist. Then "clean up the stray diff" is a no-op instead of an
+# accident. Prose prohibitions stay (see the worker agent definitions) but they
+# are no longer the only thing standing between a worker and the user's work.
+#
+# WHY IT LIVES IN `agent-exec`. The Workflow tool's `agent()` already accepts
+# `isolation: 'worktree'`, but that only covers Claude subagents -- the light
+# class, where most implementation work actually runs, is dispatched to an
+# external CLI executor that never sees that option. Isolation implemented
+# here covers both, because both go through `agent-exec dispatch`.
+#
+# GTR INTEGRATION. If `git gtr` (git-worktree-runner) is installed we create
+# worktrees through it rather than reimplementing its job, which means the
+# user's existing `gtr.copy.include` patterns and `gtr.hook.postCreate` setup
+# steps apply to orchestra's worktrees too. We never *write* gtr config:
+# anything orchestra needs is injected for the duration of one subprocess via
+# `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, which git merges
+# into its config lookup without touching `.git/config`, `~/.gitconfig`, or the
+# repo-root `.gtrconfig` (the one gtr layer that would be committed). A user's
+# own gtr configuration is read, never edited.
+
+# Directories that hold installed dependencies or build caches. They are
+# expensive to recreate and (being gitignored) invisible to `git worktree add`,
+# so a fresh worktree without them makes every worker re-run an install --
+# minutes of wall clock and a large pile of tokens each. Copying them is ~2s.
+CARRY_DIR_NAMES = (
+    "node_modules", ".venv", "venv", ".tox", "vendor", "target",
+    ".next", ".nuxt", ".svelte-kit", ".gradle", "Pods", ".bundle", ".dart_tool",
+)
+
+# How deep to look for the directories above. 3 covers the usual monorepo
+# shapes (`packages/<pkg>/node_modules`) without walking a whole large tree.
+CARRY_SCAN_MAX_DEPTH = 3
+
+ISOLATE_BRANCH_PREFIX = "orchestra/"
+
+# Only used when the user has configured no copy patterns of their own; their
+# settings win outright when present.
+GTR_FALLBACK_COPY_INCLUDE = (".env", ".env.*", "*.local")
+
+_BASELINE_FILE = "orchestra-baseline"
+
+
+def git_config_env(pairs, base_env=None):
+    """Return an env dict that adds `pairs` to git's config lookup.
+
+    Uses git's `GIT_CONFIG_COUNT` protocol so the settings live for exactly one
+    subprocess and no configuration file is created or modified. An existing
+    count in `base_env` is extended rather than overwritten.
+    """
+    env = dict(os.environ if base_env is None else base_env)
+    if not pairs:
+        return env
+    try:
+        start = int(env.get("GIT_CONFIG_COUNT", "0"))
+        if start < 0:
+            start = 0
+    except (TypeError, ValueError):
+        start = 0
+    for offset, (key, value) in enumerate(pairs):
+        env["GIT_CONFIG_KEY_%d" % (start + offset)] = key
+        env["GIT_CONFIG_VALUE_%d" % (start + offset)] = value
+    env["GIT_CONFIG_COUNT"] = str(start + len(pairs))
+    return env
+
+
+def sanitize_task_id(raw):
+    """Turn a task id into something safe as both a branch name and a path.
+
+    Path separators split into segments; `.`/`..`/empty segments are dropped so
+    traversal cannot survive. Everything outside `[A-Za-z0-9._-]` becomes `-`.
+    """
+    text = raw if isinstance(raw, str) else ""
+    segments = []
+    for seg in re.split(r"[/\\]+", text):
+        seg = re.sub(r"[^A-Za-z0-9._-]", "-", seg)
+        seg = re.sub(r"-{2,}", "-", seg).strip("-")
+        if seg in ("", ".", ".."):
+            continue
+        segments.append(seg)
+    out = re.sub(r"-{2,}", "-", "-".join(segments)).strip("-.")
+    if not out:
+        raise ValueError("task id %r has no usable characters" % (raw,))
+    return out
+
+
+def isolate_branch(task_id):
+    return ISOLATE_BRANCH_PREFIX + sanitize_task_id(task_id)
+
+
+def _git(cwd, *args, **kwargs):
+    """Run git, returning (returncode, stdout). Never raises on git failure."""
+    env = kwargs.pop("env", None)
+    try:
+        proc = subprocess.run(
+            ["git"] + [a for a in args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    except (OSError, ValueError):
+        return 1, ""
+    return proc.returncode, proc.stdout
+
+
+def repo_root(path):
+    """Absolute path to the working tree root, or None outside a repository."""
+    rc, out = _git(path, "rev-parse", "--show-toplevel")
+    if rc != 0:
+        return None
+    root = out.strip()
+    return root or None
+
+
+def tree_is_dirty(path):
+    """True when the tree holds uncommitted work worth protecting.
+
+    Ignored files (`node_modules` and friends) deliberately do not count --
+    otherwise every repo with dependencies installed would look dirty and
+    `auto` would isolate unconditionally.
+    """
+    root = repo_root(path)
+    if root is None:
+        return False
+    rc, out = _git(root, "status", "--porcelain")
+    if rc != 0:
+        return False
+    return bool(out.strip())
+
+
+def should_isolate(path, mode):
+    """Decide whether a dispatch into `path` should get its own worktree."""
+    if mode not in ("auto", "always", "never"):
+        raise ValueError("unknown isolation mode: %r" % (mode,))
+    if mode == "never":
+        return {"isolate": False, "mode": mode, "reason": "isolation disabled (--isolate never)"}
+    root = repo_root(path)
+    if root is None:
+        # Without a repository there is no worktree to make. Say so loudly:
+        # the caller asked for isolation and is not getting it.
+        return {
+            "isolate": False,
+            "mode": mode,
+            "reason": "not a git repository, cannot isolate",
+        }
+    if mode == "always":
+        return {"isolate": True, "mode": mode, "reason": "isolation forced (--isolate always)", "repo": root}
+    if tree_is_dirty(root):
+        return {
+            "isolate": True,
+            "mode": mode,
+            "reason": "working tree is dirty; the user's uncommitted work must not be reachable by a worker",
+            "repo": root,
+        }
+    return {
+        "isolate": False,
+        "mode": mode,
+        "reason": "working tree is clean; nothing for a worker to destroy",
+        "repo": root,
+    }
+
+
+def _is_git_ignored(root, relpath):
+    rc, _ = _git(root, "check-ignore", "-q", "--", relpath)
+    return rc == 0
+
+
+def detect_carry_dirs(root):
+    """Find gitignored dependency/build directories worth copying into a worktree.
+
+    Only ignored directories qualify: a tracked `vendor/` already arrives with
+    the worktree, and copying an untracked-but-not-ignored directory would
+    smuggle files into the diff handed back to the user.
+    """
+    found = []
+    root = os.path.abspath(root)
+
+    def walk(current, depth):
+        try:
+            entries = sorted(os.listdir(current))
+        except OSError:
+            return
+        for name in entries:
+            if name == ".git":
+                continue
+            full = os.path.join(current, name)
+            if not os.path.isdir(full) or os.path.islink(full):
+                continue
+            rel = os.path.relpath(full, root)
+            if name in CARRY_DIR_NAMES and _is_git_ignored(root, rel):
+                # Do not descend: nested copies (node_modules/.pnpm/*/node_modules)
+                # ride along inside the parent copy.
+                found.append(rel)
+                continue
+            if depth < CARRY_SCAN_MAX_DEPTH:
+                walk(full, depth + 1)
+
+    walk(root, 1)
+    return found
+
+
+def copy_tree_fast(src, dst):
+    """Copy a directory, preferring a copy-on-write clone. False if it failed.
+
+    APFS (`cp -c`) and reflink-capable Linux filesystems make this near-free in
+    both time and disk; elsewhere it degrades to a normal recursive copy.
+    """
+    if not os.path.isdir(src):
+        return False
+    parent = os.path.dirname(os.path.abspath(dst))
+    try:
+        os.makedirs(parent, exist_ok=True)
+    except OSError:
+        return False
+    attempts = []
+    if sys.platform == "darwin":
+        attempts.append(["cp", "-Rc", src, dst])
+    else:
+        attempts.append(["cp", "-R", "--reflink=auto", src, dst])
+    attempts.append(["cp", "-R", src, dst])
+    for argv in attempts:
+        try:
+            proc = subprocess.run(argv, capture_output=True, text=True)
+        except (OSError, ValueError):
+            continue
+        if proc.returncode == 0:
+            return True
+        if os.path.exists(dst):
+            shutil.rmtree(dst, ignore_errors=True)
+    try:
+        shutil.copytree(src, dst, symlinks=True)
+        return True
+    except (OSError, shutil.Error):
+        return False
+
+
+def isolate_home(root):
+    """Where plain-git worktrees go: a sibling of the repo, never inside it.
+
+    Inside the repo they would show up as untracked noise in the very tree we
+    are trying to keep clean.
+    """
+    root = os.path.abspath(root)
+    return os.path.join(os.path.dirname(root), os.path.basename(root) + "-orchestra")
+
+
+def _worktree_gitdir(path):
+    rc, out = _git(path, "rev-parse", "--absolute-git-dir")
+    if rc != 0:
+        return None
+    return out.strip() or None
+
+
+def _write_baseline(worktree, sha):
+    gitdir = _worktree_gitdir(worktree)
+    if not gitdir:
+        return
+    try:
+        with open(os.path.join(gitdir, _BASELINE_FILE), "w") as fh:
+            fh.write(sha + "\n")
+    except OSError:
+        pass
+
+
+def _read_baseline(worktree):
+    gitdir = _worktree_gitdir(worktree)
+    if gitdir:
+        try:
+            with open(os.path.join(gitdir, _BASELINE_FILE)) as fh:
+                sha = fh.read().strip()
+            if sha:
+                return sha
+        except OSError:
+            pass
+    # Fall back to the branch tip: correct as long as nobody committed, and
+    # workers are forbidden from committing.
+    rc, out = _git(worktree, "rev-parse", "HEAD")
+    return out.strip() if rc == 0 else None
+
+
+def gtr_available():
+    rc, _ = _git(None, "gtr", "version")
+    return rc == 0
+
+
+def _gtr_config_pairs(root):
+    """Settings to lend gtr for one invocation, without persisting anything."""
+    rc, out = _git(root, "config", "--get-all", "gtr.copy.include")
+    if rc == 0 and out.strip():
+        return []  # the user configured their own patterns; leave them alone
+    return [("gtr.copy.include", p) for p in GTR_FALLBACK_COPY_INCLUDE]
+
+
+def _carry_uncommitted(root, worktree):
+    """Reproduce the user's uncommitted state inside the fresh worktree.
+
+    A worktree starts at HEAD, so without this the worker would silently work
+    against stale code whenever the user has work in progress.
+    """
+    rc, patch = _git(root, "diff", "HEAD", "--binary")
+    if rc == 0 and patch.strip():
+        try:
+            subprocess.run(
+                ["git", "apply", "--binary", "--whitespace=nowarn", "-"],
+                cwd=worktree, input=patch, capture_output=True, text=True,
+            )
+        except (OSError, ValueError):
+            pass
+    rc, out = _git(root, "ls-files", "--others", "--exclude-standard")
+    if rc != 0:
+        return
+    for rel in out.splitlines():
+        rel = rel.strip()
+        if not rel:
+            continue
+        src = os.path.join(root, rel)
+        dst = os.path.join(worktree, rel)
+        if not os.path.isfile(src):
+            continue
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+        except OSError:
+            pass
+
+
+def _create_via_gtr(root, branch, pairs):
+    env = git_config_env(pairs)
+    rc, _ = _git(root, "gtr", "new", branch, "--from-current", "--yes", "--no-fetch", env=env)
+    if rc != 0:
+        return None
+    rc, out = _git(root, "gtr", "go", branch, env=env)
+    if rc != 0:
+        return None
+    path = out.strip()
+    return path if path and os.path.isdir(path) else None
+
+
+def _create_via_git(root, branch, task):
+    path = os.path.join(isolate_home(root), task)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    except OSError:
+        return None
+    rc, _ = _git(root, "worktree", "add", "-q", "-b", branch, path, "HEAD")
+    if rc != 0:
+        return None
+    return path if os.path.isdir(path) else None
+
+
+def _worktree_for_branch(root, branch):
+    for entry in _worktree_entries(root):
+        if entry.get("branch") == branch:
+            return entry.get("path")
+    return None
+
+
+def _worktree_entries(root):
+    rc, out = _git(root, "worktree", "list", "--porcelain")
+    if rc != 0:
+        return []
+    entries = []
+    current = {}
+    for line in out.splitlines() + [""]:
+        if not line.strip():
+            if current.get("path"):
+                entries.append(current)
+            current = {}
+            continue
+        if line.startswith("worktree "):
+            current["path"] = line[len("worktree "):].strip()
+        elif line.startswith("branch "):
+            ref = line[len("branch "):].strip()
+            current["branch"] = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
+    return entries
+
+
+def isolate_create(root, task, backend="auto", carry=True):
+    """Create (or return) the worktree for `task`. Idempotent per task."""
+    root = repo_root(root)
+    if root is None:
+        return {"status": "error", "reason": "not a git repository"}
+    task = sanitize_task_id(task)
+    branch = ISOLATE_BRANCH_PREFIX + task
+
+    existing = _worktree_for_branch(root, branch)
+    if existing:
+        return {
+            "status": "exists", "task": task, "branch": branch, "path": existing,
+            "backend": "existing", "carried": [],
+        }
+
+    if backend == "auto":
+        backend = "gtr" if gtr_available() else "git"
+
+    path = None
+    if backend == "gtr":
+        path = _create_via_gtr(root, branch, _gtr_config_pairs(root))
+        if path is None:
+            backend = "git"  # gtr refused; a worktree still beats a shared tree
+    if path is None:
+        path = _create_via_git(root, branch, task)
+    if path is None:
+        return {"status": "error", "reason": "could not create a worktree for %s" % branch}
+
+    _carry_uncommitted(root, path)
+
+    # Commit the user's state as this worktree's baseline, so every later diff
+    # shows the worker's changes and nothing else.
+    _git(path, "add", "-A")
+    _git(path, "-c", "user.email=orchestra@local", "-c", "user.name=orchestra",
+         "commit", "-q", "--allow-empty", "-m", "orchestra baseline for %s" % task)
+    rc, head = _git(path, "rev-parse", "HEAD")
+    baseline = head.strip() if rc == 0 else None
+    if baseline:
+        _write_baseline(path, baseline)
+
+    carried = []
+    if carry:
+        for rel in detect_carry_dirs(root):
+            if copy_tree_fast(os.path.join(root, rel), os.path.join(path, rel)):
+                carried.append(rel)
+
+    return {
+        "status": "created", "task": task, "branch": branch, "path": path,
+        "backend": backend, "baseline": baseline, "carried": carried,
+    }
+
+
+def isolate_list(root):
+    root = repo_root(root)
+    if root is None:
+        return []
+    out = []
+    for entry in _worktree_entries(root):
+        branch = entry.get("branch") or ""
+        if not branch.startswith(ISOLATE_BRANCH_PREFIX):
+            continue
+        out.append({
+            "task": branch[len(ISOLATE_BRANCH_PREFIX):],
+            "branch": branch,
+            "path": entry.get("path"),
+        })
+    return out
+
+
+def isolate_diff(root, task):
+    """What the worker changed in its worktree, as a patch plus a file list."""
+    root = repo_root(root)
+    if root is None:
+        return {"status": "error", "reason": "not a git repository"}
+    task = sanitize_task_id(task)
+    branch = ISOLATE_BRANCH_PREFIX + task
+    path = _worktree_for_branch(root, branch)
+    if not path:
+        return {"status": "absent", "task": task, "files": [], "patch": ""}
+    baseline = _read_baseline(path)
+    if not baseline:
+        return {"status": "error", "reason": "no baseline recorded for %s" % task}
+    # `-N` makes new files visible to `git diff` without staging their content.
+    # Ignored directories (the carried node_modules) stay invisible.
+    _git(path, "add", "-A", "-N")
+    rc, names = _git(path, "diff", "--name-only", baseline)
+    files = [f for f in names.splitlines() if f.strip()] if rc == 0 else []
+    rc, patch = _git(path, "diff", "--binary", baseline)
+    return {
+        "status": "ok", "task": task, "path": path, "baseline": baseline,
+        "files": files, "patch": patch if rc == 0 else "",
+    }
+
+
+def isolate_remove(root, task, force=False):
+    """Delete a task's worktree and branch, refusing to discard unreviewed work."""
+    root = repo_root(root)
+    if root is None:
+        return {"status": "error", "reason": "not a git repository"}
+    task = sanitize_task_id(task)
+    branch = ISOLATE_BRANCH_PREFIX + task
+    path = _worktree_for_branch(root, branch)
+    if not path:
+        return {"status": "absent", "task": task}
+
+    if not force:
+        diff = isolate_diff(root, task)
+        if diff.get("files"):
+            return {
+                "status": "dirty", "task": task, "path": path, "files": diff["files"],
+                "reason": "worktree holds %d changed file(s) not yet collected; "
+                          "collect the diff or pass --force" % len(diff["files"]),
+            }
+
+    argv = ["worktree", "remove", path]
+    if force:
+        argv.append("--force")
+    rc, _ = _git(root, *argv)
+    if rc != 0:
+        return {"status": "error", "task": task, "reason": "git worktree remove failed"}
+    _git(root, "branch", "-D", branch)
+    return {"status": "removed", "task": task, "path": path}
+
+
+def _isolate_usage(stream=sys.stderr):
+    stream.write(
+        "usage: agent-exec isolate {create|list|diff|remove|should} [options]\n"
+        "  create --task <id> [--repo <path>] [--backend auto|gtr|git] [--no-carry]\n"
+        "  list   [--repo <path>]\n"
+        "  diff   --task <id> [--repo <path>] [--names-only]\n"
+        "  remove --task <id> [--repo <path>] [--force]\n"
+        "  should [--repo <path>] [--mode auto|always|never]\n"
+    )
+
+
+def cmd_isolate(args):
+    if not args:
+        _isolate_usage()
+        return 2
+    sub = args[0]
+    if sub not in ("create", "list", "diff", "remove", "should"):
+        sys.stderr.write("agent-exec: isolate: unknown subcommand: %s\n" % sub)
+        _isolate_usage()
+        return 2
+
+    task = None
+    directory = os.getcwd()
+    backend = "auto"
+    mode = "auto"
+    carry = True
+    force = False
+    names_only = False
+
+    i = 1
+    while i < len(args):
+        tok = args[i]
+        if tok in ("--task", "--repo", "--backend", "--mode"):
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: isolate: missing value for %s\n" % tok)
+                return 2
+            value = args[i + 1]
+            if tok == "--task":
+                task = value
+            elif tok == "--repo":
+                directory = value
+            elif tok == "--backend":
+                backend = value
+            else:
+                mode = value
+            i += 2
+        elif tok == "--no-carry":
+            carry = False
+            i += 1
+        elif tok == "--force":
+            force = True
+            i += 1
+        elif tok == "--names-only":
+            names_only = True
+            i += 1
+        else:
+            sys.stderr.write("agent-exec: isolate: unknown option: %s\n" % tok)
+            return 2
+
+    if sub in ("create", "diff", "remove") and task is None:
+        sys.stderr.write("agent-exec: isolate %s: missing required option: --task\n" % sub)
+        return 2
+    if backend not in ("auto", "gtr", "git"):
+        sys.stderr.write("agent-exec: isolate: unknown backend: %s\n" % backend)
+        return 2
+
+    try:
+        if sub == "create":
+            result = isolate_create(directory, task, backend=backend, carry=carry)
+        elif sub == "list":
+            result = {"worktrees": isolate_list(directory)}
+        elif sub == "diff":
+            result = isolate_diff(directory, task)
+            if names_only:
+                result.pop("patch", None)
+        elif sub == "remove":
+            result = isolate_remove(directory, task, force=force)
+        else:
+            result = should_isolate(directory, mode)
+    except ValueError as exc:
+        sys.stderr.write("agent-exec: isolate: %s\n" % exc)
+        return 2
+
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if result.get("status") != "error" else 1
+
+
 # --- route / dispatch subcommands --------------------------------------------
 #
 # `resolve_route` moves "which executor should handle this class of work"
@@ -2393,6 +3050,10 @@ def cmd_dispatch_route(args):
     # combined result+route JSON rather than replace this process.
     capture = False
     no_cooldown = False
+    # Default `auto`: isolate exactly when there is uncommitted work a worker
+    # could destroy. See the isolate section above for why this exists.
+    isolate_mode = "auto"
+    task = None
 
     i = 0
     while i < len(args):
@@ -2400,6 +3061,23 @@ def cmd_dispatch_route(args):
         if tok == "--capture":
             capture = True
             i += 1
+        elif tok == "--isolate":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --isolate\n")
+                return 2
+            isolate_mode = args[i + 1]
+            if isolate_mode not in ("auto", "always", "never"):
+                sys.stderr.write(
+                    "agent-exec: dispatch: --isolate must be auto|always|never\n"
+                )
+                return 2
+            i += 2
+        elif tok == "--task":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --task\n")
+                return 2
+            task = args[i + 1]
+            i += 2
         elif tok == "--class":
             if i + 1 >= len(args):
                 sys.stderr.write("agent-exec: dispatch: missing value for --class\n")
@@ -2478,6 +3156,45 @@ def cmd_dispatch_route(args):
         print(json.dumps({"status": "unroutable", "route": route}, ensure_ascii=False))
         return 0
 
+    # Resolve isolation before handing the work anywhere. Every branch below
+    # reports `isolation` so the caller always knows which tree was used and
+    # where to collect the diff from. Failing to isolate degrades to the shared
+    # tree with a stated reason -- never aborts the dispatch.
+    isolation = should_isolate(workdir, isolate_mode)
+    if isolation["isolate"]:
+        if task is None:
+            isolation = {
+                "isolate": False,
+                "mode": isolate_mode,
+                "reason": "isolation wanted (%s) but no --task id was given; "
+                          "an id is what lets retry rounds share one worktree"
+                          % isolation["reason"],
+            }
+        else:
+            try:
+                created = isolate_create(workdir, task)
+            except ValueError as exc:
+                created = {"status": "error", "reason": str(exc)}
+            if created.get("status") in ("created", "exists") and created.get("path"):
+                workdir = created["path"]
+                isolation = {
+                    "isolate": True,
+                    "mode": isolate_mode,
+                    "reason": isolation["reason"],
+                    "path": created["path"],
+                    "branch": created.get("branch"),
+                    "backend": created.get("backend"),
+                    "carried": created.get("carried", []),
+                    "created": created.get("status") == "created",
+                }
+            else:
+                isolation = {
+                    "isolate": False,
+                    "mode": isolate_mode,
+                    "reason": "could not isolate (%s); running in the shared tree"
+                              % created.get("reason", "unknown error"),
+                }
+
     if route["dispatch"] != "cli":
         # agent (codex) or claude: agent-exec cannot spawn subagents itself
         # -- the caller (the instructor) makes the Agent-tool call.
@@ -2488,6 +3205,7 @@ def cmd_dispatch_route(args):
             "effort": route["effort"],
             "agent_type": route["agent_type"],
             "route": route,
+            "isolation": isolation,
         }
         print(json.dumps(output, ensure_ascii=False))
         return 0
@@ -2511,6 +3229,7 @@ def cmd_dispatch_route(args):
             "model": model,
             "effort": effort,
             "route": route,
+            "isolation": isolation,
         }
         print(json.dumps(output, ensure_ascii=False))
         record_unavailable_cooldown(
@@ -2559,6 +3278,7 @@ def cmd_dispatch_route(args):
     output["model"] = model
     output["effort"] = effort
     output["route"] = route
+    output["isolation"] = isolation
     print(json.dumps(output, ensure_ascii=False))
     return 0
 
@@ -2590,6 +3310,9 @@ def main(argv):
 
     if tok == "dispatch":
         return cmd_dispatch_route(argv[1:])
+
+    if tok == "isolate":
+        return cmd_isolate(argv[1:])
 
     if tok == "telemetry":
         return cmd_telemetry(argv[1:])

@@ -1,5 +1,5 @@
 {
-  "description": "Injects the orchestra routing protocol (express vs orchestrated lane) at session start, re-injects it after /clear, resume, and compaction, appends a short per-prompt reminder so the router survives long sessions, and (opt-in, off by default) nudges a direct Claude Haiku subagent spawn toward `agent-exec dispatch` once per task when enforcement.light_class=block, with four independent escape hatches so it can never become a hard wall",
+  "description": "Injects the orchestra routing protocol (express vs orchestrated lane) at session start, re-injects it after /clear, resume, and compaction, appends a short per-prompt reminder so the router survives long sessions, asks the main thread to re-classify into the orchestrated lane once a single turn has hand-edited enforcement.turn_edits files, blocks a subagent from running destructive VCS commands against the user's shared working tree (enforcement.worker_vcs, on by default), and (opt-in, off by default) nudges a direct Claude Haiku subagent spawn toward `agent-exec dispatch` once per task when enforcement.light_class=block, with independent escape hatches so neither can become a hard wall",
   "hooks": {
     "SessionStart": [
       {
@@ -8,7 +8,9 @@
           {
             "type": "command",
             "command": "bash",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/inject-router.sh"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/inject-router.sh"
+            ],
             "timeout": 10,
             "statusMessage": "Injecting orchestra router..."
           }
@@ -21,7 +23,9 @@
           {
             "type": "command",
             "command": "bash",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/remind-router.sh"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/remind-router.sh"
+            ],
             "timeout": 10
           }
         ]
@@ -29,14 +33,45 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/guard-worker-vcs.sh"
+            ],
+            "timeout": 15,
+            "statusMessage": "Checking worker VCS safety..."
+          }
+        ]
+      },
+      {
         "matcher": "Agent|Task",
         "hooks": [
           {
             "type": "command",
             "command": "bash",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/enforce-router.sh"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/enforce-router.sh"
+            ],
             "timeout": 15,
             "statusMessage": "Checking light-class enforcement policy..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/count-turn-edits.sh"
+            ],
+            "timeout": 10
           }
         ]
       }

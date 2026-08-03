@@ -201,5 +201,28 @@ priority:
 # `[orchestra:allow-claude: <reason>]` marker anywhere in the prompt/description,
 # (3) the named-subagent_type carve-out above, and (4) ORCHESTRA_ENFORCEMENT=off
 # plus fail-open on any uncertainty. Ships "off"; see `run` skill's SKILL.md §9.
+#
+# worker_vcs (default "block", i.e. ON): deny destructive VCS commands
+# (checkout -- / restore / reset --hard / clean -f / stash push) when they come
+# from a SUBAGENT and target a tree that is not one of orchestra's own
+# (orchestra/* branch). This one ships on because it prevents data loss, not
+# because it steers a cost decision: worker prompts carrying three escalating
+# generations of "never run git reset" still produced 35 such commands across
+# seven weeks of transcripts. The main thread is never affected, a worker
+# inside its own worktree is never affected, orchestra-delegate (which owns
+# snapshots and rollbacks) is exempt, and heredoc/quoted text that merely
+# mentions the commands is not mistaken for running them. Escapes:
+# `[orchestra:allow-vcs: <reason>]` in the command or description, and
+# ORCHESTRA_VCS_GUARD=off. Set to "off" here to disable entirely.
+#
+# turn_edits (default 8, or "off"): once the MAIN THREAD has hand-edited this
+# many files inside one turn, a PostToolUse hook asks it once to re-classify
+# into the orchestrated lane. It never blocks an edit. Turn-level analysis
+# found orchestra invoked in 1 of 102 turns that hand-edited 10+ files -- the
+# prompts that produce those turns ("作業を続けて", "実装して", "y") look small
+# when classified and only reveal their size once work is underway. Subagent
+# edits are not counted. ORCHESTRA_TURN_GUARD=off disables it.
 enforcement:
   light_class: "off"
+  worker_vcs: "block"
+  turn_edits: 8

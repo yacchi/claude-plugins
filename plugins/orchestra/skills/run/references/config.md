@@ -122,11 +122,13 @@ priority:
   independent-review:
     default: [codex]
 
-# Opt-in nudge, never a hard wall - see the `enforcement.light_class`
-# paragraph below for the escape hatches. Ships "off". NOTE: quote the value -
-# YAML 1.1 parses a bareword `off` as boolean False, not the string "off".
+# Nudges and guards, never hard walls - see the `enforcement` paragraphs below
+# for the escape hatches. NOTE: quote "off" - YAML 1.1 parses a bareword `off`
+# as boolean False, not the string "off".
 enforcement:
-  light_class: "off"
+  light_class: "off"    # opt-in: nudge a generic Haiku spawn toward dispatch
+  worker_vcs: "block"   # default ON: no destructive VCS from a subagent
+  turn_edits: 8         # main-thread edits in one turn before asking to re-route
 ```
 
 To set this up interactively (detect whether Codex/Copilot are actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `setup` skill instead of hand-editing — see its own SKILL.md.
@@ -160,6 +162,16 @@ To set this up interactively (detect whether Codex/Copilot are actually availabl
 4. **Kill switch + fail-open.** `ORCHESTRA_ENFORCEMENT=off` short-circuits to allow, and every uncertainty (`agent-exec` missing, `config` failing/slow, no `python3`, unparseable stdin, anything unexpected) fails open — it never denies on doubt.
 
 Ships **`"off"`** — turning it on is a deliberate opt-in via the `setup` skill or by hand-editing `orchestra.yaml`, not a default behavior change.
+
+**`enforcement.worker_vcs`** (`"block"` default | `"off"` — quote the value) blocks a **subagent** from running destructive VCS commands (`git checkout -- <paths>`, `git checkout .`, `git restore` without `--staged`, `git reset --hard/--merge/--keep`, `git clean -f`, `git stash push`, `git worktree remove --force`) against a working tree that is not one of orchestra's own (`orchestra/*` branch). It ships **on**, unlike `light_class`, because it prevents data loss rather than steering a cost decision: transcripts recorded 35 such commands run by workers of every model tier, and three escalating generations of prose prohibition in the worker prompts did not stop them (`references/isolation.md` §0). Normalization is correspondingly inverted — an ambiguous value keeps the guard on; only an explicit `off` (string, or the bareword YAML loads as `False`) disables it. Scope and escapes:
+
+1. **Main thread untouched.** Only calls carrying an `agent_id` (i.e. from inside a subagent) are candidates. An instructor resolving a rebase conflict with `git checkout --ours` is doing its job.
+2. **A worker's own worktree is its own business.** On an `orchestra/*` branch the command is allowed — there is nothing there but that worker's work.
+3. **The supervising layer is exempt.** `orchestra-delegate` owns snapshots, rollbacks, and merges by design.
+4. **Not fooled by text.** Heredoc bodies and quoted strings are stripped before matching, so writing the prohibition itself into a worker prompt (`cat > task.txt <<EOF … never run git reset --hard … EOF`) is not mistaken for running it.
+5. **Escape marker + kill switch + fail-open.** `[orchestra:allow-vcs: <reason>]` in the command or its description, `ORCHESTRA_VCS_GUARD=off`, and fail-open on every uncertainty.
+
+**`enforcement.turn_edits`** (`8` default | any positive integer | `"off"`) is the turn-size tripwire. Once the **main thread** has hand-edited that many files inside a single turn, a `PostToolUse` hook (`hooks/count-turn-edits.sh`) injects one piece of context asking it to re-classify into the orchestrated lane. It never blocks an edit. The number comes from turn-level transcript analysis: orchestra was invoked in 1 of the 102 turns that went on to hand-edit 10+ files, because the prompts that produce those turns ("作業を続けて", "実装して", "y") look small at classification time and only reveal their size once work is underway. Subagent edits are not counted — that is the delegation working. Fires at most once per turn, stays silent in `cheap`-model sessions, and `ORCHESTRA_TURN_GUARD=off` disables it outright. An unusable value (0, negative, a non-integer string) falls back to the default rather than silently disabling the tripwire.
 
 **Safety note:** `cli` dispatch only ever executes command templates that come from the user's own configuration file (`.claude/orchestra.yaml` or `~/.claude/orchestra.yaml`). This plugin ships no CLI commands of its own and must never invent one; if no config file declares a CLI executor, `cli` dispatch is unavailable. The `agent-exec` binary those templates call through is not part of this plugin either — it's a separate tool the user explicitly installs and authorizes via their own `Bash(agent-exec:*)` permission rule (see the `setup` skill); this plugin only ever writes the command template that invokes it, never runs it directly, and never grants it permission on the user's behalf.
 

@@ -785,6 +785,76 @@ class EnforcementLightClassNormalizationTests(_IsolatedConfigMixin, unittest.Tes
         self.assertEqual(resolved["enforcement"]["light_class"], "off")
 
 
+class EnforcementWorkerVcsNormalizationTests(_IsolatedConfigMixin, unittest.TestCase):
+    """enforcement.worker_vcs defaults to "block" and normalizes the OPPOSITE
+    way from light_class: this one guards against destroying the user's
+    uncommitted work, so anything ambiguous must keep the guard on. Only an
+    explicit off (string, or the YAML 1.1 bareword that loads as False) turns
+    it off."""
+
+    def test_default_with_no_override_is_block(self):
+        resolved, err = self._isolated_resolve(None)
+        self.assertIsNone(err)
+        self.assertEqual(resolved["enforcement"]["worker_vcs"], "block")
+
+    def test_explicit_off_string_disables_the_guard(self):
+        resolved, err = self._isolated_resolve("enforcement:\n  worker_vcs: 'off'\n")
+        self.assertIsNone(err)
+        self.assertEqual(resolved["enforcement"]["worker_vcs"], "off")
+
+    def test_bareword_off_disables_the_guard(self):
+        # yaml.safe_load("worker_vcs: off") -> False; honour the obvious intent.
+        resolved, err = self._isolated_resolve("enforcement:\n  worker_vcs: off\n")
+        self.assertIsNone(err)
+        self.assertEqual(resolved["enforcement"]["worker_vcs"], "off")
+        self.assertIsInstance(resolved["enforcement"]["worker_vcs"], str)
+
+    def test_unrecognized_string_fails_safe_to_block(self):
+        resolved, err = self._isolated_resolve("enforcement:\n  worker_vcs: banana\n")
+        self.assertIsNone(err)
+        self.assertEqual(resolved["enforcement"]["worker_vcs"], "block")
+
+    def test_null_fails_safe_to_block(self):
+        resolved, err = self._isolated_resolve("enforcement:\n  worker_vcs:\n")
+        self.assertIsNone(err)
+        self.assertEqual(resolved["enforcement"]["worker_vcs"], "block")
+
+    def test_light_class_override_does_not_disturb_worker_vcs(self):
+        resolved, err = self._isolated_resolve("enforcement:\n  light_class: block\n")
+        self.assertIsNone(err)
+        self.assertEqual(resolved["enforcement"]["worker_vcs"], "block")
+
+
+class EnforcementTurnEditsNormalizationTests(_IsolatedConfigMixin, unittest.TestCase):
+    """enforcement.turn_edits is "off" or a positive int; an unusable value
+    falls back to the default rather than silently disabling the tripwire."""
+
+    def test_default_is_a_positive_int(self):
+        resolved, err = self._isolated_resolve(None)
+        self.assertIsNone(err)
+        self.assertEqual(resolved["enforcement"]["turn_edits"], 8)
+
+    def test_explicit_int_is_preserved(self):
+        resolved, _ = self._isolated_resolve("enforcement:\n  turn_edits: 3\n")
+        self.assertEqual(resolved["enforcement"]["turn_edits"], 3)
+
+    def test_bareword_off_disables(self):
+        resolved, _ = self._isolated_resolve("enforcement:\n  turn_edits: off\n")
+        self.assertEqual(resolved["enforcement"]["turn_edits"], "off")
+
+    def test_zero_falls_back_to_the_default(self):
+        resolved, _ = self._isolated_resolve("enforcement:\n  turn_edits: 0\n")
+        self.assertEqual(resolved["enforcement"]["turn_edits"], 8)
+
+    def test_negative_falls_back_to_the_default(self):
+        resolved, _ = self._isolated_resolve("enforcement:\n  turn_edits: -5\n")
+        self.assertEqual(resolved["enforcement"]["turn_edits"], 8)
+
+    def test_string_falls_back_to_the_default(self):
+        resolved, _ = self._isolated_resolve("enforcement:\n  turn_edits: many\n")
+        self.assertEqual(resolved["enforcement"]["turn_edits"], 8)
+
+
 class ResolveRoutePathStubTests(unittest.TestCase):
     """Demonstrates, by actually stubbing PATH (not by hand-building a
     doctor_report), that a machine without the Copilot CLI resolves `light`
@@ -891,6 +961,11 @@ class DispatchCommandBehaviorTests(unittest.TestCase):
         orig_subprocess_run = agent_exec.subprocess.run
 
         def boom(*a, **kw):
+            argv = a[0] if a else kw.get("args")
+            if isinstance(argv, (list, tuple)) and argv and argv[0] == "git":
+                # Isolation resolution shells out to git on every route,
+                # including this one. What must not be spawned is the executor.
+                return orig_subprocess_run(*a, **kw)
             raise AssertionError(
                 "subprocess.run must not be called when dispatch resolves to claude"
             )
@@ -918,6 +993,11 @@ class DispatchCommandBehaviorTests(unittest.TestCase):
         orig_subprocess_run = agent_exec.subprocess.run
 
         def boom(*a, **kw):
+            argv = a[0] if a else kw.get("args")
+            if isinstance(argv, (list, tuple)) and argv and argv[0] == "git":
+                # Isolation resolution shells out to git on every route,
+                # including this one. What must not be spawned is the executor.
+                return orig_subprocess_run(*a, **kw)
             raise AssertionError(
                 "subprocess.run must not be called when dispatch resolves to an agent"
             )
@@ -947,7 +1027,9 @@ class DispatchCommandBehaviorTests(unittest.TestCase):
             stderr = ""
             returncode = 0
 
-        def fake_run(argv, env=None, capture_output=None, text=None):
+        def fake_run(argv, **kwargs):
+            if isinstance(argv, (list, tuple)) and argv and argv[0] == "git":
+                return orig_subprocess_run(argv, **kwargs)
             return FakeProc()
 
         agent_exec.subprocess.run = fake_run

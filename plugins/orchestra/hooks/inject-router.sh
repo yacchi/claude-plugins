@@ -64,9 +64,9 @@ small expected context bloat. File count is NOT a criterion.
   back only its verdict.
 The gate is context bloat, NOT your model tier. Before judging size, ask "do I
 already hold this content?" — if writing the delegation prompt would mean
-spelling out the full spec, you already authored it: that is EXPRESS, write it
-yourself however many files it touches. Delegation only pays for work needing
-context you do NOT yet hold.
+re-authoring a spec you just wrote, delegating buys nothing. That exemption is
+about content you already hold, NOT about volume: it does not license an
+open-ended build, and it expires the moment the work outgrows what you held.
 
 ORCHESTRATED — anything else, and WHENEVER IN DOUBT.
 → Load the `orchestra:run` skill and follow it: decompose, write contracts,
@@ -79,6 +79,13 @@ edit substantive code in 2+ files; a design discussion just turned into
 "implement it" / 「PRを出しましょう」/「直しておきましょう」; or you are planning your
 own multi-step implement-then-verify sequence. Then STOP and load
 `orchestra:run` first.
+
+ABORT RULE — the lane is wrong more often mid-turn than at the start, because
+the prompts that produce the biggest turns are the smallest ones ("作業を続けて",
+"実装して", "y"). So re-judge while working, not only when asked: if a turn you
+began as EXPRESS keeps sprouting new subtasks or is many files deep, STOP.
+Finishing the edit already open is fine; starting the next chunk by hand is
+not — re-route it through `orchestra:run` instead.
 </orchestra-router>
 EOF
 }
