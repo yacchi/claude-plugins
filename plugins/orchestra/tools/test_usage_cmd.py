@@ -98,6 +98,27 @@ def codex_token_count(ts, input_tokens, cached, output_tokens):
     )
 
 
+def codex_rollout_lines(corr, samples):
+    """Lines for one synthetic codex rollout: a user_message carrying `corr`
+    verbatim, then one token_count event per value in `samples` (all five
+    numeric fields set to that value, plus a total_tokens that would only
+    match a sum if the aggregator wrongly used it)."""
+    lines = [json.dumps({"type": "event_msg", "payload": {
+        "type": "user_message", "message": "do the task " + corr}})]
+    for value in samples:
+        lines.append(json.dumps({"type": "event_msg", "payload": {
+            "type": "token_count", "info": {"total_token_usage": {
+                "input_tokens": value, "output_tokens": value,
+                "cached_input_tokens": value, "cache_write_input_tokens": value,
+                "reasoning_output_tokens": value, "total_tokens": 999999,
+            }}}}))
+    return lines
+
+
+def delegated_ledger_line(corr):
+    return json.dumps({"executor": "codex", "status": "delegated", "corr": corr})
+
+
 def write_lines(path, lines):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -392,6 +413,106 @@ class CodexAggregationTests(unittest.TestCase):
             entry = agent_exec.collect_codex_usage(CUTOFF, home=home)
             self.assertEqual(entry["status"], "unavailable")
             self.assertIn("note", entry)
+
+
+class DelegatedCodexRunScopeTests(unittest.TestCase):
+    """Section B: `usage --run` resolving delegated codex ledger lines
+    against a synthetic ~/.codex sessions root."""
+
+    def _corr(self, n):
+        return "oxc-%012x" % n
+
+    def _setup(self, home, matched_n, total_n):
+        telemetry_dir = os.path.join(home, "telemetry")
+        ledger_dir = os.path.join(home, "runs")
+        corrs = [self._corr(i + 1) for i in range(total_n)]
+        write_lines(os.path.join(ledger_dir, "run1.jsonl"),
+                   [delegated_ledger_line(c) for c in corrs])
+        sessions_root = os.path.join(home, ".codex", "sessions")
+        for c in corrs[:matched_n]:
+            write_lines(os.path.join(sessions_root, "rollout-%s.jsonl" % c),
+                       codex_rollout_lines(c, [10, 20]))
+        cfg = {"telemetry": {"dir": telemetry_dir, "enabled": False}}
+        return cfg
+
+    def test_partial_match_reports_ok_with_summed_measured_tokens(self):
+        with tempfile.TemporaryDirectory() as home:
+            cfg = self._setup(home, matched_n=2, total_n=3)
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["codex"], cfg=cfg, home=home, cwd="/x",
+                run_ids=["run1"])
+            entry = report["sources"]["codex"]
+            self.assertEqual(entry["status"], "ok")
+            self.assertEqual(entry["delegated"], 3)
+            self.assertEqual(entry["measured"], 2)
+            for key in ("input_tokens", "output_tokens", "cached_input_tokens",
+                       "cache_write_input_tokens", "reasoning_output_tokens"):
+                self.assertEqual(entry["tokens"][key], 40)  # 2 matches * last=20
+
+    def test_no_match_reports_not_attributable_with_counters(self):
+        with tempfile.TemporaryDirectory() as home:
+            cfg = self._setup(home, matched_n=0, total_n=3)
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["codex"], cfg=cfg, home=home, cwd="/x",
+                run_ids=["run1"])
+            entry = report["sources"]["codex"]
+            self.assertEqual(entry, {
+                "attributable": False,
+                "reason": "codex delegated but no rollout matched",
+                "delegated": 3, "measured": 0,
+            })
+
+    def test_text_counter_renders_for_ok_and_not_attributable(self):
+        with tempfile.TemporaryDirectory() as home:
+            ok_cfg = self._setup(home, matched_n=2, total_n=3)
+            ok_report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["codex"], cfg=ok_cfg, home=home, cwd="/x",
+                run_ids=["run1"])
+            out = io.StringIO()
+            real_out = sys.stdout
+            sys.stdout = out
+            try:
+                agent_exec._print_usage_text(ok_report)
+            finally:
+                sys.stdout = real_out
+            self.assertIn("(measured 2/3 delegated)", out.getvalue())
+
+        with tempfile.TemporaryDirectory() as home:
+            none_cfg = self._setup(home, matched_n=0, total_n=3)
+            none_report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["codex"], cfg=none_cfg, home=home, cwd="/x",
+                run_ids=["run1"])
+            out = io.StringIO()
+            real_out = sys.stdout
+            sys.stdout = out
+            try:
+                agent_exec._print_usage_text(none_report)
+            finally:
+                sys.stdout = real_out
+            self.assertIn("(measured 0/3 delegated)", out.getvalue())
+
+    def test_window_scope_codex_report_shape_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as home:
+            day = os.path.join(home, ".codex", "sessions", "2026", "08", "19")
+            write_lines(
+                os.path.join(day, "rollout-1.jsonl"),
+                [codex_token_count(NOW - timedelta(hours=1), 100, 40, 10)],
+            )
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["codex"], cfg={"telemetry": {"enabled": False}},
+                home=home, cwd="/x")
+            entry = report["sources"]["codex"]
+            self.assertEqual(sorted(entry), [
+                "files_scanned", "scope", "sessions", "status", "tokens"])
+            self.assertEqual(entry["status"], "ok")
+            self.assertEqual(entry["sessions"], 1)
+            self.assertEqual(
+                entry["tokens"],
+                {"input_tokens": 60, "output_tokens": 10, "cached_input_tokens": 40},
+            )
+            self.assertEqual(
+                entry,
+                agent_exec.collect_codex_usage(CUTOFF, home=home))
 
 
 class CopilotAggregationTests(unittest.TestCase):
@@ -875,6 +996,28 @@ class EndToEndSubprocessTests(unittest.TestCase):
                 parsed["sources"]["claude"]["tokens"]["input_tokens"], 5)
             self.assertNotIn("since", parsed)
             self.assertNotIn("now", parsed)
+
+    def test_delegated_codex_run_scope_over_subprocess(self):
+        with tempfile.TemporaryDirectory() as home, \
+             tempfile.TemporaryDirectory() as codex_home:
+            corrs = ["oxc-%012x" % n for n in (1, 2, 3)]
+            write_lines(
+                os.path.join(home, ".claude", "orchestra", "runs", "run_e2e.jsonl"),
+                [delegated_ledger_line(c) for c in corrs])
+            for c in corrs[:2]:
+                write_lines(
+                    os.path.join(codex_home, "sessions", "rollout-%s.jsonl" % c),
+                    codex_rollout_lines(c, [5]))
+            rc, out, err = run_cli(
+                ["--run", "run_e2e", "--source", "codex", "--json"],
+                home=home, extra_env={"CODEX_HOME": codex_home})
+            self.assertEqual(rc, 0, err)
+            parsed = json.loads(out)
+            entry = parsed["sources"]["codex"]
+            self.assertEqual(entry["status"], "ok")
+            self.assertEqual(entry["delegated"], 3)
+            self.assertEqual(entry["measured"], 2)
+            self.assertEqual(entry["tokens"]["input_tokens"], 10)
 
     def test_since_with_run_exits_two_with_empty_stdout(self):
         with tempfile.TemporaryDirectory() as home:

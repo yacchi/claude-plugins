@@ -12,6 +12,8 @@ The reason prose loses here is structural. A worker's only view of the world is 
 
 **So do not rely on telling workers to be careful. Give them a tree where the mistake is impossible** — one that contains their own work and nothing else. Then "revert the stray diff" is a no-op rather than an accident.
 
+Destructive VCS commands are only the loudest case. The same structural point covers ordinary file writes: a worker whose contract said it owned three `.md` files and *nothing else in the repository* truncated an implementation file to zero bytes — no `git` command involved, no dirty tree, just a write to a path its prompt had explicitly placed off-limits. **A declared file-ownership boundary is documentation, not a constraint**; the worktree is the constraint. That is why the rule is *every* file-changing worker gets a tree, not only the ones running against a dirty one. A clean tree is precisely where isolation looks unnecessary and gets skipped, and it is only "safe" to the extent that everything in it happens to be committed.
+
 ```bash
 # The default. Isolates exactly when the tree has uncommitted work.
 agent-exec dispatch --class light --task <task-id> \

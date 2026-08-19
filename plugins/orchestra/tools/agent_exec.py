@@ -953,9 +953,10 @@ _TELEMETRY_ROUND_KEY_RE = re.compile(r"^[1-9][0-9]*$")
 _TELEMETRY_MAX_LINES = 10000
 _RUN_LEDGER_EXECUTORS = ("copilot", "codex", "claude")
 _RUN_LEDGER_CLASSES = ("light", "standard", "deep")
-_RUN_LEDGER_STATUSES = ("ok", "error", "unavailable")
+_RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "delegated")
 _RUN_LEDGER_MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,64}$")
 _RUN_LEDGER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_RUN_LEDGER_CORR_RE = re.compile(r"^oxc-[0-9a-f]{12}$")
 
 
 def _is_nonneg_int(v):
@@ -1147,10 +1148,14 @@ def sanitize_run_ledger_record(raw):
     for key in (
         "input_tokens", "output_tokens", "cached_input_tokens", "aiu_nano",
         "premium_requests", "api_duration_ms", "session_duration_ms",
+        "cache_write_input_tokens", "reasoning_output_tokens",
     ):
         value = raw.get(key)
         if _is_nonneg_int(value):
             out[key] = value
+    corr = raw.get("corr")
+    if isinstance(corr, str) and _RUN_LEDGER_CORR_RE.fullmatch(corr):
+        out["corr"] = corr
 
     if not any(key in out for key in ("executor", "cls", "status", "model")):
         return None
@@ -1199,6 +1204,16 @@ def build_run_ledger_record(executor, model, cls, result):
                 if key in tokens:
                     record[key] = tokens[key]
     return record
+
+
+def build_delegated_run_ledger_record(executor, model, cls, corr):
+    record = build_run_ledger_record(executor, model, cls, {"status": "delegated"})
+    record["corr"] = corr
+    return record
+
+
+def _new_correlation_id():
+    return "oxc-" + os.urandom(6).hex()
 
 
 def _telemetry_enforce_cap(path):
@@ -3828,6 +3843,16 @@ def cmd_dispatch_route(args):
             "route": route,
             "isolation": isolation,
         }
+        if route["executor"] != "claude" and run_id is not None:
+            correlation_id = _new_correlation_id()
+            output["correlation_id"] = correlation_id
+            run_ledger_append(
+                build_delegated_run_ledger_record(
+                    route["executor"], route["model"], cls, correlation_id
+                ),
+                run_id,
+                resolved,
+            )
         print(json.dumps(output, ensure_ascii=False))
         return 0
 
@@ -4170,6 +4195,13 @@ def _usage_home(home=None):
     return home if home else os.path.expanduser("~")
 
 
+def _codex_sessions_root(home=None):
+    codex_home = os.environ.get("CODEX_HOME")
+    if not codex_home:
+        codex_home = os.path.join(_usage_home(home), ".codex")
+    return os.path.join(os.path.expanduser(codex_home), "sessions")
+
+
 def _iter_jsonl_lines(path):
     """Yield a file's lines one at a time, swallowing any read error. A
     generator so callers never hold a whole transcript in memory."""
@@ -4409,6 +4441,68 @@ def _ledger_usage(records, executor):
     return acc
 
 
+def parse_codex_rollout_lines(lines, correlations):
+    wanted = set(correlations or ())
+    found, last_total, count = set(), None, 0
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(obj, dict) or obj.get("type") != "event_msg":
+            continue
+        payload = obj.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("type") == "user_message":
+            message = payload.get("message")
+            if isinstance(message, str):
+                found.update(corr for corr in wanted if corr in message)
+        elif payload.get("type") == "token_count":
+            info = payload.get("info")
+            total = info.get("total_token_usage") if isinstance(info, dict) else None
+            if isinstance(total, dict):
+                count += 1
+                last_total = {key: _coerce_count(total.get(key)) for key in (
+                    "input_tokens", "output_tokens", "cached_input_tokens",
+                    "cache_write_input_tokens", "reasoning_output_tokens")}
+    return found, last_total, count
+
+
+def match_codex_rollouts(root, correlations):
+    wanted, candidates = set(correlations or ()), {}
+    for path in _walk_jsonl_files(root):
+        found, usage, count = parse_codex_rollout_lines(
+            _iter_jsonl_lines(path), wanted)
+        if usage is None:
+            continue
+        for corr in found:
+            current = candidates.get(corr)
+            if current is None or (count, path) > (current[0], current[1]):
+                candidates[corr] = (count, path, usage)
+    return {corr: item[2] for corr, item in candidates.items()}
+
+
+def _ledger_codex_usage(records, home):
+    delegated = [r for r in records if r.get("executor") == "codex"
+                 and r.get("status") == "delegated"]
+    measured = match_codex_rollouts(
+        _codex_sessions_root(home),
+        [r.get("corr") for r in delegated if isinstance(r.get("corr"), str)])
+    tokens, extra = _zero_tokens(), {
+        "cache_write_input_tokens": 0, "reasoning_output_tokens": 0}
+    for record in records:
+        if record.get("executor") != "codex":
+            continue
+        usage = measured.get(record.get("corr")) if record.get("status") == "delegated" else record
+        if usage is None:
+            continue
+        _add_tokens(tokens, usage)
+        for key in extra:
+            extra[key] += _coerce_count(usage.get(key))
+    return delegated, measured, tokens, extra
+
+
 def _codex_session_files(root, cutoff):
     """Rollout files under ~/.codex/sessions/YYYY/MM/DD that could carry an
     in-window event. Files whose mtime predates the cutoff are skipped up
@@ -4437,7 +4531,7 @@ def collect_codex_usage(cutoff, home=None):
     ~/.codex/sessions. Never cwd-scoped -- codex rollouts are filed by date,
     not by project."""
     entry = {"status": "unavailable", "scope": "global"}
-    root = os.path.join(_usage_home(home), ".codex", "sessions")
+    root = _codex_sessions_root(home)
     if not os.path.isdir(root):
         entry["note"] = "no codex sessions directory"
         entry.update({"tokens": _zero_tokens(), "sessions": 0, "files_scanned": 0})
@@ -4517,7 +4611,22 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                     _telemetry_dir_from_cfg(cfg)), "runs")
                 for run_id in run_ids:
                     records.extend(read_run_ledger(ledger_dir, run_id))
-                acc = _ledger_usage(records, name)
+                if name == "codex":
+                    delegated, measured, tokens, extra = _ledger_codex_usage(records, home)
+                    if not measured and delegated:
+                        out[name] = {
+                            "attributable": False,
+                            "reason": "codex delegated but no rollout matched",
+                            "delegated": len(delegated), "measured": 0,
+                        }
+                        continue
+                    acc = _ledger_usage(records, name)
+                    acc["tokens"] = tokens
+                    acc["delegated"] = len(delegated)
+                    acc["measured"] = len(measured)
+                    acc["extra_tokens"] = extra
+                else:
+                    acc = _ledger_usage(records, name)
                 if not acc["records"]:
                     out[name] = _scope_entry("no matching run ledger data")
                 else:
@@ -4529,6 +4638,10 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                         "premium_requests": acc["premium_requests"],
                         "records": acc["records"],
                     }
+                    if name == "codex":
+                        out[name]["delegated"] = acc["delegated"]
+                        out[name]["measured"] = acc["measured"]
+                        out[name]["tokens"].update(acc["extra_tokens"])
             else:
                 out[name] = _scope_entry("session scope is not attributable")
         elif scoped:
@@ -4650,12 +4763,24 @@ def _print_usage_text(report):
                ",".join(scope.get("session_ids") or ())))
     for name, entry in (report.get("sources") or {}).items():
         if entry.get("attributable") is False:
-            print("%s: not attributable (%s)" % (name, entry.get("reason")))
+            suffix = ""
+            if name == "codex" and entry.get("delegated", 0):
+                suffix = " (measured %d/%d delegated)" % (
+                    _coerce_count(entry.get("measured")),
+                    _coerce_count(entry.get("delegated")))
+            print("%s: not attributable (%s)%s" %
+                  (name, entry.get("reason"), suffix))
             continue
         status = entry.get("status")
+        counter = ""
+        if name == "codex" and entry.get("delegated", 0):
+            counter = "  (measured %d/%d delegated)" % (
+                _coerce_count(entry.get("measured")),
+                _coerce_count(entry.get("delegated")))
         print(
             "%-8s %-13s %s"
-            % (name, "[%s]" % status, _usage_tokens_line(entry.get("tokens")))
+            % (name, "[%s]" % status,
+               _usage_tokens_line(entry.get("tokens")) + counter)
         )
         note = entry.get("note")
         if note:

@@ -23,6 +23,8 @@ Codex CLI 0.144+はGPT-5.6を3つのサイズティアで提供している — 
 
 **長文コンテキストに関する注意:** Lunaは長文コンテキストの想起が測定可能なレベルで弱い。名目上light/standardクラスのタスクであっても、大規模リポジトリの深い探索が必要な場合(単なる小さな自己完結の変更ではない場合)は、そのタスクに限り`deep`(Sol/xhigh)にエスカレーションすること — サンプル設定の`long_context_escalation`フィールドがこのトリガーを明示的に文書化しているので、毎回ゼロから判断する必要はない。
 
+Codexは公式の`codex:codex-rescue`エージェントを通る`dispatch: agent`のままにする。実行コストは相関IDでラン単位に帰属できるため、`agent-exec usage --run <workflow-run-id>`で確認する。
+
 ## 2. Copilotのモデルカタログ・候補・CLI利用方法
 
 Copilotには(Codexの`codex:codex-rescue`のような)専用のClaude Codeプラグイン/スキルが存在しないため、以下の利用パターンはこのプラグイン独自のガイダンスである。

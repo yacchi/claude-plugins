@@ -121,11 +121,17 @@ const MAX_GATES = 2
 // selection - the priority walk itself runs inside `agent-exec route`.
 const exhausted = new Set()
 
+// Fill this with the workflow's own run id.
+const RUN_ID = 'workflow-run-id'
+
 // Trailing runtime controls for an agent-dispatch executor. Codex's rescue
 // agent strips `--model`/`--effort` out of the task text and forwards them to
 // the CLI; anything the route left null is simply omitted.
 function routingFlags(r) {
-  return (r.model ? '\n\n--model ' + r.model : '') + (r.effort ? ' --effort ' + r.effort : '')
+  // The executor records its input, so the id reaches the rollout without asking the agent to use it.
+  return (r.model ? '\n\n--model ' + r.model : '') +
+    (r.effort ? ' --effort ' + r.effort : '') +
+    (r.correlation_id ? '\n\n[orchestra-run-correlation: ' + r.correlation_id + ']' : '')
 }
 
 // Dispatch one task at a capability class ('light' | 'standard' | 'deep').
@@ -138,13 +144,15 @@ async function dispatchClass(cls, promptText, opts = {}) {
     (opts.archetype ? ' --archetype ' + opts.archetype : '') +
     (exhausted.size ? ' --exhausted ' + [...exhausted].join(',') : '') +
     promptFiles.map(file => ' --prompt-file ' + file).join('') +
-    ' --workdir ' + (opts.workdir || '.') + ' --capture`' +
+    ' --workdir ' + (opts.workdir || '.') + ' --run-id ' + RUN_ID + ' --capture`' +
     ' as ONE foreground Bash call with timeout 600000. It routinely takes many minutes: just ' +
     'wait for it. Never background it, never poll it, never start a monitor, never report ' +
     'progress. When it returns, print its stdout JSON verbatim - nothing else.'
 
   const raw = await agent(relayPrompt, { label: (opts.label || cls) + '-dispatch', model: 'haiku', effort: 'low' })
-  const r = JSON.parse(raw)
+  // Relays wrap the JSON in a ```json fence often enough that parsing the raw
+  // string throws on work that actually succeeded. Strip a fence before parsing.
+  const r = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''))
 
   if (r.status === 'ok') return r.answer // a CLI executor (e.g. Copilot) already ran it.
   if (r.status === 'delegate') {
@@ -303,7 +311,7 @@ The relay command should carry `--run-id <the workflow run id>` so Copilot/Codex
 
 **Decision rule: serialize only for a real ordering dependency** — one task must read another task's *output* to do its own work. Two tasks editing the same file is not that; it is a merge, and merges are mechanized now. If the interface between the tasks can be written down before either starts, the dependency is on the contract, not on the code, and the tasks run in parallel.
 
-**Isolate whenever the tree is dirty.** Disjoint ownership does not protect the *user's* uncommitted work: transcripts show workers of every model tier running `git checkout --`/`restore`/`reset --hard` over changes they did not author, because a diff a worker did not write reads as contamination whatever its prompt says. So when the tree has uncommitted work, give file-changing workers their own tree — `agent-exec dispatch --isolate auto --task <id>` (the default; it isolates exactly when the tree is dirty) for CLI executors, `isolation: 'worktree'` for `agent()` calls. Collect with `agent-exec isolate diff --task <id>`. Full guidance: `references/isolation.md`.
+**Isolate every file-changing worker, dirty tree or not.** A prompt that names the files a worker owns does not constrain the worker — only a separate tree does. Observed: a documentation-only worker, told it owned three `.md` files and nothing else, truncated an implementation file it had never been asked to open to zero bytes. Disjoint ownership likewise does not protect the *user's* uncommitted work: workers of every model tier run `git checkout --`/`restore`/`reset --hard` over changes they did not author, because a diff a worker did not write reads as contamination whatever its prompt says. So give every file-changing worker its own tree — `agent-exec dispatch --isolate always --task <id>` for CLI executors, `isolation: 'worktree'` for `agent()` calls. `--isolate auto` only covers the dirty-tree case; a clean tree is exactly where this gets skipped, and a clean tree still holds work that is only recoverable if it was committed. Collect with `agent-exec isolate diff --task <id>`. Full guidance: `references/isolation.md`.
 
 **On `agentType`:** the plugin-scoped names (`orchestra:orchestra-light` / `-deep` / `-review`) may or may not resolve as `agent()`'s `agentType` in this environment — check the available-subagents list before relying on them, and fall back to explicit `model:`. See `references/authoring.md` §1.
 
@@ -354,7 +362,7 @@ Key semantics, the merge algorithm and its upgrade trap, `enforcement.light_clas
 
 Opt-in, default off, anonymized: `agent-exec` enforces a field/value allowlist, so prompts, paths, ids, and free text are structurally unrecordable. Two sources: `agent-exec run ... --capture` self-logs one `dispatch` record per dispatch (LLM-independent), and you emit exactly one `run_summary` at run end through a haiku relay when enabled. Fields, storage layout, and the `record`/`show`/`archive`/`clear` CLI: `references/config.md` §2.
 
-Measure one workflow run with `agent-exec usage --run <workflow-run-id>`; this is exact rather than a time window. External-executor dispatches must carry `--run-id` for their costs to be attributable to that run.
+Measure one workflow run with `agent-exec usage --run <workflow-run-id>`; this is exact rather than a time window. A `dispatch: agent` executor runs outside `agent-exec`, so its cost is attributed via the correlation id rather than captured directly; dispatches must carry `--run-id` for either mechanism to work.
 
 ## 11. Gate discipline
 
