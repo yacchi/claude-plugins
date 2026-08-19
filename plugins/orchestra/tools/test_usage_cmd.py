@@ -27,7 +27,7 @@ AGENT_EXEC_PY = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "agent_exec.py")
 
 
-def run_cli(args, home, config_dir=None, extra_env=None):
+def run_cli(args, home, config_dir=None, extra_env=None, unset_env=None):
     """Invoke tools/agent_exec.py as a real subprocess, isolated to a
     synthetic HOME (and optionally CLAUDE_CONFIG_DIR), so a signature or
     wiring break in the argv -> cmd_usage -> collector path is caught even
@@ -38,6 +38,9 @@ def run_cli(args, home, config_dir=None, extra_env=None):
         env.pop("CLAUDE_CONFIG_DIR", None)
     else:
         env["CLAUDE_CONFIG_DIR"] = config_dir
+    if unset_env:
+        for key in unset_env:
+            env.pop(key, None)
     if extra_env:
         env.update(extra_env)
     proc = subprocess.run(
@@ -1148,6 +1151,117 @@ class DeterministicScopeTests(unittest.TestCase):
                 sorted(r["run_id"] for r in all_scoped), ["wf_a", "wf_b"])
 
 
+class OrdinalAddressingTests(unittest.TestCase):
+    """`usage --run <ordinal>` prefix addressing (ORD1)."""
+
+    def setUp(self):
+        self._session_before = os.environ.get("CLAUDE_CODE_SESSION_ID")
+
+    def tearDown(self):
+        if self._session_before is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_before
+
+    def test_bare_ordinal_and_leading_zeros_resolve_same_run(self):
+        with tempfile.TemporaryDirectory() as ledger_dir:
+            session = "ord-sess"
+            write_lines(os.path.join(ledger_dir, session, "001-run_a.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+            write_lines(os.path.join(ledger_dir, session, "002-run_b.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 2})])
+            write_lines(os.path.join(ledger_dir, session, "003-wf_ord.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 3})])
+            os.environ["CLAUDE_CODE_SESSION_ID"] = session
+            for selector in ("3", "03", "003", "wf_ord"):
+                self.assertEqual(
+                    agent_exec._resolve_run_selector(ledger_dir, selector),
+                    "wf_ord", "selector %r" % selector)
+
+    def test_ordinal_without_session_id_matches_nothing(self):
+        with tempfile.TemporaryDirectory() as ledger_dir:
+            session = "ord-sess"
+            write_lines(os.path.join(ledger_dir, session, "001-run_a.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+            self.assertIsNone(agent_exec._resolve_run_selector(ledger_dir, "1"))
+
+    def test_ordinal_in_different_session_matches_nothing(self):
+        with tempfile.TemporaryDirectory() as ledger_dir:
+            write_lines(
+                os.path.join(ledger_dir, "session-other", "001-wf_other.jsonl"),
+                [json.dumps({"executor": "copilot", "input_tokens": 1})])
+            os.environ["CLAUDE_CODE_SESSION_ID"] = "session-mine"
+            self.assertIsNone(agent_exec._resolve_run_selector(ledger_dir, "1"))
+
+    def test_full_run_id_matches_both_prefixed_and_unprefixed_forms(self):
+        with tempfile.TemporaryDirectory() as ledger_dir:
+            write_lines(os.path.join(ledger_dir, "s1", "legacyrun.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+            write_lines(os.path.join(ledger_dir, "s2", "005-otherrun.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 2})])
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+            self.assertEqual(
+                agent_exec.read_run_ledger(ledger_dir, "legacyrun"),
+                [{"executor": "copilot", "input_tokens": 1}])
+            self.assertEqual(
+                agent_exec.read_run_ledger(ledger_dir, "otherrun"),
+                [{"executor": "copilot", "input_tokens": 2}])
+
+    def test_runs_breakdown_ordinal_order_with_no_run_last(self):
+        with tempfile.TemporaryDirectory() as home:
+            ledger_dir = os.path.join(home, "runs")
+            session = "ord-runs-sess"
+            # Written out of ordinal order on purpose: b (002) before a
+            # (001), plus no.run.jsonl, so an alphabetical or filesystem
+            # listing order would fail this assertion.
+            write_lines(os.path.join(ledger_dir, session, "002-run_b.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+            write_lines(os.path.join(ledger_dir, session, "001-run_a.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+            write_lines(os.path.join(ledger_dir, session, "no.run.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot"],
+                cfg={"ledger": {"dir": ledger_dir}}, home=home, cwd="/x",
+                session_ids=[session])
+            runs = report["sources"]["copilot"]["runs"]
+            self.assertEqual(list(runs.keys()), ["run_a", "run_b", "no-run"])
+
+    def test_list_runs_ordinal_field_present_and_null(self):
+        with tempfile.TemporaryDirectory() as home:
+            ledger_dir = os.path.join(home, "runs")
+            session = "ord-list-sess"
+            write_lines(os.path.join(ledger_dir, session, "001-wf_ledgered.jsonl"),
+                       [json.dumps({"executor": "copilot", "input_tokens": 1,
+                                    "ts": iso(NOW)})])
+            slug = agent_exec.claude_project_slug("/x")
+            write_lines(
+                os.path.join(home, ".claude", "projects", slug, session,
+                             "subagents/workflows/wf_claude_only/x.jsonl"),
+                [claude_line(NOW, input_tokens=1)])
+            os.environ["CLAUDE_CODE_SESSION_ID"] = session
+            runs = agent_exec._list_usage_runs(
+                home=home, config_dir="", sources=["claude", "copilot"],
+                cfg={"ledger": {"dir": ledger_dir},
+                     "telemetry": {"dir": os.path.join(home, "telemetry")}},
+                all_projects=True)
+            by_id = {r["run_id"]: r for r in runs}
+            self.assertEqual(by_id["wf_ledgered"]["ordinal"], 1)
+            self.assertIsNone(by_id["wf_claude_only"]["ordinal"])
+
+    def test_since_window_scope_unchanged(self):
+        with tempfile.TemporaryDirectory() as home:
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["claude"], cfg={"telemetry": {"enabled": False}},
+                home=home, cwd="/x")
+            self.assertEqual(report["scope"], {
+                "kind": "window", "since": CUTOFF.isoformat(),
+                "until": NOW.isoformat()})
+            self.assertEqual(report["since"], CUTOFF.isoformat())
+            self.assertEqual(report["now"], NOW.isoformat())
+
+
 class EndToEndSubprocessTests(unittest.TestCase):
     """Drives tools/agent_exec.py as a real subprocess. A caller/callee
     signature mismatch (argv parsing calling a helper with a keyword it does
@@ -1331,6 +1445,72 @@ class EndToEndSubprocessTests(unittest.TestCase):
             rc, out, err = run_cli(["--run", "a,,b"], home=home)
             self.assertEqual(rc, 2)
             self.assertEqual(out, "")
+
+    def test_ordinal_addressing_matches_full_run_id_over_subprocess(self):
+        # ORD1: --run 7 / --run 07 / --run 007 / --run <full id> must all
+        # resolve the same run and report identical numbers, including the
+        # claude source (whose transcripts are addressed by the harness run
+        # id recovered from the ordinal-prefixed ledger filename).
+        with tempfile.TemporaryDirectory() as home:
+            home = os.path.realpath(home)
+            session_id = "e2e-ord-session"
+            run_id = "wf_e2e_ord"
+            ledger_dir = os.path.join(home, ".claude", "orchestra", "runs")
+            write_lines(
+                os.path.join(ledger_dir, session_id, "007-%s.jsonl" % run_id),
+                [json.dumps({"executor": "copilot", "input_tokens": 11,
+                            "output_tokens": 3})])
+            self._write_claude(
+                home, "s", "subagents/workflows/%s/x.jsonl" % run_id,
+                [claude_line(NOW - timedelta(days=2000), input_tokens=42,
+                            output_tokens=7)])
+            reports = {}
+            for selector in ("7", "07", "007", run_id):
+                rc, out, err = run_cli(
+                    ["--run", selector, "--json"], home=home,
+                    extra_env={"CLAUDE_CODE_SESSION_ID": session_id})
+                self.assertEqual(rc, 0, err)
+                reports[selector] = json.loads(out)
+            base = reports[run_id]
+            self.assertEqual(base["scope"], {"kind": "run", "run_ids": [run_id]})
+            self.assertEqual(
+                base["sources"]["claude"]["tokens"]["input_tokens"], 42)
+            self.assertEqual(
+                base["sources"]["claude"]["tokens"]["output_tokens"], 7)
+            self.assertEqual(
+                base["sources"]["copilot"]["tokens"]["input_tokens"], 11)
+            for selector in ("7", "07", "007"):
+                self.assertEqual(reports[selector], base, "selector %r" % selector)
+
+    def test_ordinal_without_session_id_matches_nothing_over_subprocess(self):
+        with tempfile.TemporaryDirectory() as home:
+            session_id = "e2e-ord-session2"
+            run_id = "wf_e2e_ord2"
+            ledger_dir = os.path.join(home, ".claude", "orchestra", "runs")
+            write_lines(
+                os.path.join(ledger_dir, session_id, "001-%s.jsonl" % run_id),
+                [json.dumps({"executor": "copilot", "input_tokens": 5})])
+            rc, out, err = run_cli(
+                ["--run", "1", "--source", "copilot", "--json"], home=home,
+                unset_env=["CLAUDE_CODE_SESSION_ID"])
+            self.assertEqual(rc, 0, err)
+            parsed = json.loads(out)
+            self.assertEqual(parsed["sources"]["copilot"], {
+                "attributable": False, "reason": "no matching run ledger data"})
+
+    def test_ordinal_in_different_session_matches_nothing_over_subprocess(self):
+        with tempfile.TemporaryDirectory() as home:
+            ledger_dir = os.path.join(home, ".claude", "orchestra", "runs")
+            write_lines(
+                os.path.join(ledger_dir, "session-other", "001-wf_other.jsonl"),
+                [json.dumps({"executor": "copilot", "input_tokens": 9})])
+            rc, out, err = run_cli(
+                ["--run", "1", "--source", "copilot", "--json"], home=home,
+                extra_env={"CLAUDE_CODE_SESSION_ID": "session-mine"})
+            self.assertEqual(rc, 0, err)
+            parsed = json.loads(out)
+            self.assertEqual(parsed["sources"]["copilot"], {
+                "attributable": False, "reason": "no matching run ledger data"})
 
 
 if __name__ == "__main__":

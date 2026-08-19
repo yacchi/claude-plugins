@@ -140,6 +140,14 @@ enforcement:
   turn_edits: 8         # main-thread edits in one turn before asking to re-route
 ```
 
+Run ledger files for tagged runs use an atomically allocated, per-session
+ordinal prefix such as `001-wf_153ae50e-9bf.jsonl`; this orders a session's
+runs by execution, and a bare ordinal (`3`, `03`, or `003`) addresses that run
+only within the current `CLAUDE_CODE_SESSION_ID` session. The harness run id
+stays in the filename because the Claude source resolves transcripts through
+the harness's own `workflows/<run-id>` directory, which a locally minted id
+could not address. Older un-prefixed files are still read and are not migrated.
+
 To set this up interactively (detect whether Codex/Copilot are actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `setup` skill instead of hand-editing — see its own SKILL.md.
 
 **`tiers`** overrides the model-class defaults of section 3. Values are model aliases (or full model IDs) used whenever this skill — or `agent-exec route` — resolves a class/role to a Claude model: the `claude` candidate in `priority`, or any class/role with no external executor configured for it.

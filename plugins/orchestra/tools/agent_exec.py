@@ -965,6 +965,8 @@ _RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "delegated")
 _RUN_LEDGER_MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,64}$")
 _RUN_LEDGER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _RUN_LEDGER_RUN_RE = _RUN_LEDGER_ID_RE
+_RUN_LEDGER_ORDINAL_RE = re.compile(r"^[0-9]{1,4}$")
+_RUN_LEDGER_FILE_RE = re.compile(r"^([0-9]+)-([A-Za-z0-9_-]{1,64})\.jsonl$")
 _RUN_LEDGER_SESSION_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 _RUN_LEDGER_CORR_RE = re.compile(r"^oxc-[0-9a-f]{12}$")
 _ledger_retention_ran = False
@@ -1200,7 +1202,9 @@ def run_ledger_append(record, run_id, cfg):
         session_directory = os.path.join(directory, session_id)
         os.makedirs(session_directory, mode=0o700, exist_ok=True)
         os.chmod(session_directory, 0o700)
-        filename = (run_id + ".jsonl") if run_id is not None else "no.run.jsonl"
+        filename = "no.run.jsonl"
+        if run_id is not None:
+            filename = _ledger_run_filename(session_directory, run_id)
         path = os.path.join(session_directory, filename)
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(sanitized, ensure_ascii=False, separators=(",", ":")) + "\n")
@@ -1219,7 +1223,7 @@ def run_ledger_append(record, run_id, cfg):
                         directories.append(candidate_dir)
                 for current in directories:
                     for name in os.listdir(current):
-                        if not name.endswith(".jsonl"):
+                        if not (name.endswith(".jsonl") or name.startswith(".ordinal-")):
                             continue
                         candidate = os.path.join(current, name)
                         if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
@@ -1228,6 +1232,56 @@ def run_ledger_append(record, run_id, cfg):
                 pass
     except Exception:
         pass
+
+
+def _ledger_run_filename(session_directory, run_id):
+    """Find or atomically allocate the execution ordinal for a new run."""
+    unprefixed = run_id + ".jsonl"
+    try:
+        for name in os.listdir(session_directory):
+            match = _RUN_LEDGER_FILE_RE.fullmatch(name)
+            if match and match.group(2) == run_id:
+                return name
+        if os.path.isfile(os.path.join(session_directory, unprefixed)):
+            return unprefixed
+
+        claim = os.path.join(session_directory, ".ordinal-run-%s.claim" % run_id)
+        try:
+            fd = os.open(claim, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.close(fd)
+            owner = True
+        except FileExistsError:
+            owner = False
+        if not owner:
+            for _ in range(20):
+                for name in os.listdir(session_directory):
+                    match = _RUN_LEDGER_FILE_RE.fullmatch(name)
+                    if match and match.group(2) == run_id:
+                        return name
+                time.sleep(0.01)
+            return unprefixed
+
+        ordinal = 1
+        while True:
+            candidate = "%03d" % ordinal
+            sentinel = os.path.join(
+                session_directory, ".ordinal-%s.reserve" % candidate)
+            try:
+                fd = os.open(sentinel, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                os.close(fd)
+                break
+            except FileExistsError:
+                ordinal += 1
+            except OSError:
+                return unprefixed
+        try:
+            with open(claim, "w", encoding="ascii") as handle:
+                handle.write(str(ordinal))
+            return "%03d-%s.jsonl" % (ordinal, run_id)
+        except OSError:
+            return unprefixed
+    except Exception:
+        return unprefixed
 
 
 def _ledger_dir_from_cfg(cfg):
@@ -1508,7 +1562,10 @@ def cmd_ledger(args):
                     return 2
                 value = rest[i + 1]
                 pattern = (_RUN_LEDGER_SESSION_RE if tok == "--session"
-                           else _RUN_LEDGER_ID_RE)
+                           else re.compile(
+                               r"(?:%s|%s)" % (
+                                   _RUN_LEDGER_ID_RE.pattern[1:-1],
+                                   _RUN_LEDGER_ORDINAL_RE.pattern[1:-1])))
                 if not _valid_ledger_selector(value, pattern):
                     return 2
                 if tok == "--session":
@@ -1543,11 +1600,12 @@ def cmd_ledger(args):
                     continue
                 session = os.path.basename(os.path.dirname(path))
                 session_summary = session_summaries.setdefault(
-                    session, {"records": 0, "runs": {}})
-                run = os.path.basename(path)[:-6]
+                    session, {"records": 0, "runs": {}, "ordinals": {}})
+                ordinal, run = _ledger_file_info(path)
                 count = len(_read_ledger_file(path))
                 session_summary["records"] += count
                 session_summary["runs"][run] = count
+                session_summary["ordinals"][run] = ordinal
             summary = {
                 "records": len(records),
                 "executors": by_executor,
@@ -1556,6 +1614,18 @@ def cmd_ledger(args):
             }
         else:
             summary = {"records": len(records), "executors": by_executor}
+            if run_id is not None:
+                resolved_run = _resolve_run_selector(directory, run_id)
+                summary["ordinal"] = (
+                    _ledger_session_ordinal_map(directory).get(resolved_run)
+                    if resolved_run is not None else None)
+            elif session_id is not None:
+                summary["runs"] = {}
+                summary["ordinals"] = {}
+                for path in _ledger_paths(os.path.join(directory, session_id)):
+                    ordinal, run = _ledger_file_info(path)
+                    summary["runs"][run] = len(_read_ledger_file(path))
+                    summary["ordinals"][run] = ordinal
         if fmt == "--json":
             print(json.dumps(summary, ensure_ascii=False))
         else:
@@ -1566,6 +1636,18 @@ def cmd_ledger(args):
                     executor, values["records"],
                     "".join(" %s=%d" % (key, values[key])
                             for key in sorted(values) if key != "records")))
+            if session_id is None and run_id is None:
+                for session, values in sorted(session_summaries.items()):
+                    print("%s:" % session)
+                    for run, count in values["runs"].items():
+                        ordinal = values["ordinals"].get(run)
+                        label = ("%03d" % ordinal) if ordinal is not None else "-"
+                        print("  %s %s=%d" % (label, run, count))
+            elif session_id is not None:
+                for run, count in summary["runs"].items():
+                    ordinal = summary["ordinals"].get(run)
+                    label = ("%03d" % ordinal) if ordinal is not None else "-"
+                    print("%s %s=%d" % (label, run, count))
         return 0
 
     if sub in ("archive", "clear"):
@@ -1583,10 +1665,13 @@ def cmd_ledger(args):
                     path = os.path.join(directory, name)
                     if name.endswith(".jsonl") and os.path.isfile(path):
                         os.remove(path)
+                    elif name.startswith(".ordinal-") and os.path.isfile(path):
+                        os.remove(path)
                     elif os.path.isdir(path):
                         for child in os.listdir(path):
                             child_path = os.path.join(path, child)
-                            if child.endswith(".jsonl") and os.path.isfile(child_path):
+                            if ((child.endswith(".jsonl") or child.startswith(".ordinal-"))
+                                    and os.path.isfile(child_path)):
                                 os.remove(child_path)
             except OSError:
                 pass
@@ -4646,6 +4731,56 @@ def _valid_ledger_selector(value, pattern):
             and pattern.fullmatch(value))
 
 
+def _ledger_file_info(path):
+    name = os.path.basename(path)
+    if name == "no.run.jsonl":
+        return None, "no.run"
+    match = _RUN_LEDGER_FILE_RE.fullmatch(name)
+    if match:
+        return int(match.group(1)), match.group(2)
+    if name.endswith(".jsonl"):
+        return None, name[:-6]
+    return None, None
+
+
+def _ledger_session_ordinal_map(ledger_dir, session_id=None):
+    session_id = session_id or os.environ.get("CLAUDE_CODE_SESSION_ID")
+    if not _valid_ledger_selector(session_id, _RUN_LEDGER_SESSION_RE):
+        return {}
+    directory = os.path.join(ledger_dir, session_id)
+    result = {}
+    for path in _ledger_paths(directory):
+        ordinal, run_id = _ledger_file_info(path)
+        if ordinal is not None:
+            result[run_id] = ordinal
+    return result
+
+
+def _resolve_run_selector(ledger_dir, selector):
+    """Resolve an ordinal only in the current session; preserve full ids."""
+    if not _RUN_LEDGER_ORDINAL_RE.fullmatch(selector or ""):
+        return selector if _valid_ledger_selector(selector, _RUN_LEDGER_ID_RE) else None
+    ordinal = int(selector)
+    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    if not _valid_ledger_selector(session_id, _RUN_LEDGER_SESSION_RE):
+        return None
+    directory = os.path.join(ledger_dir, session_id)
+    for path in _ledger_paths(directory):
+        found, run_id = _ledger_file_info(path)
+        if found == ordinal:
+            return run_id
+    return None
+
+
+def _ledger_order_key(path):
+    ordinal, run_id = _ledger_file_info(path)
+    if run_id == "no.run":
+        return (2, 0, run_id)
+    if ordinal is None:
+        return (1, 0, run_id or "")
+    return (0, ordinal, run_id)
+
+
 def _ledger_paths(ledger_dir):
     """Return each directly stored ledger file once, by resolved real path."""
     paths = []
@@ -4653,21 +4788,24 @@ def _ledger_paths(ledger_dir):
     try:
         names = sorted(os.listdir(ledger_dir))
     except OSError:
-        return paths
+        return sorted(paths, key=_ledger_order_key)
     for name in names:
         path = os.path.join(ledger_dir, name)
         if name.endswith(".jsonl") and os.path.isfile(path):
             candidates = (path,)
         elif os.path.isdir(path):
             try:
-                candidates = tuple(
+                children = [
                     os.path.join(path, child)
-                    for child in sorted(os.listdir(path))
+                    for child in os.listdir(path)
                     if child.endswith(".jsonl")
                     and os.path.isfile(os.path.join(path, child))
-                )
+                ]
             except OSError:
                 continue
+            # Numeric order, not lexical: past ordinal 999, "1000-" would
+            # otherwise sort before "999-" as a string.
+            candidates = tuple(sorted(children, key=_ledger_order_key))
         else:
             continue
         for candidate in candidates:
@@ -4686,11 +4824,12 @@ def read_run_ledger(ledger_dir, run_id):
     local, disposable measurement data. Correctness of the number beats
     reading a handful of stale files.
     """
-    if not _valid_ledger_selector(run_id, _RUN_LEDGER_ID_RE):
+    resolved = _resolve_run_selector(ledger_dir, run_id)
+    if resolved is None:
         return []
     return [record for path in _ledger_paths(ledger_dir)
             if os.path.abspath(os.path.dirname(path)) != os.path.abspath(ledger_dir)
-            and os.path.basename(path) == run_id + ".jsonl"
+            and _ledger_file_info(path)[1] == resolved
             for record in _read_ledger_file(path)]
 
 
@@ -4707,11 +4846,16 @@ def _ledger_selected_paths(ledger_dir, run_ids=(), session_ids=()):
     selected = []
     seen = set()
     for path in _ledger_paths(ledger_dir):
-        basename = os.path.basename(path)
+        ordinal, basename = _ledger_file_info(path)
         session = os.path.basename(os.path.dirname(path))
+        resolved_runs = []
+        for run_id in run_ids:
+            resolved = _resolve_run_selector(ledger_dir, run_id)
+            if resolved is not None:
+                resolved_runs.append((run_id, resolved))
         matches_run = (
             os.path.abspath(os.path.dirname(path)) != os.path.abspath(ledger_dir)
-            and any(basename == run_id + ".jsonl" for run_id in run_ids)
+            and any(basename == resolved for _, resolved in resolved_runs)
         )
         matches_session = any(
             os.path.dirname(path) == os.path.join(ledger_dir, session_id)
@@ -5014,14 +5158,22 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                     if session_ids:
                         runs = {}
                         for path in paths:
-                            run_key = os.path.basename(path)[:-6]
+                            ordinal, run_key = _ledger_file_info(path)
                             count = sum(
                                 1 for record in _read_ledger_file(path)
                                 if record.get("executor") == name
                             )
                             if count:
-                                runs["no-run" if run_key == "no.run" else run_key] = count
+                                key = "no-run" if run_key == "no.run" else run_key
+                                runs[key] = count
                         if runs:
+                            runs = dict(sorted(
+                                runs.items(),
+                                key=lambda item: (
+                                    1 if item[0] == "no-run" else 0,
+                                    _ledger_session_ordinal_map(
+                                        ledger_dir).get(item[0], 10**9),
+                                    item[0])))
                             out[name]["runs"] = runs
                     if name == "codex":
                         out[name]["delegated"] = acc["delegated"]
@@ -5092,15 +5244,18 @@ def _list_usage_runs(home=None, config_dir=None, sources=None, cfg=None,
                                     item["timestamps"].append(ts)
     if requested.intersection(("copilot", "codex")):
         ledger_dir = _ledger_dir_from_cfg(cfg)
+        ordinals = _ledger_session_ordinal_map(ledger_dir)
         for path in _ledger_paths(ledger_dir):
             name = os.path.basename(path)
             if name == "no.run.jsonl" or not name.endswith(".jsonl"):
                 continue
-            run_id = name[:-6]
+            ordinal, run_id = _ledger_file_info(path)
             records = _read_ledger_file(path)
             if not records:
                 continue
             item = runs.setdefault(run_id, {"files": 0, "timestamps": []})
+            if run_id in ordinals:
+                item["ordinal"] = ordinals[run_id]
             for record in records:
                 ts = parse_usage_timestamp(record.get("ts"))
                 if ts is not None:
@@ -5111,6 +5266,7 @@ def _list_usage_runs(home=None, config_dir=None, sources=None, cfg=None,
         if not stamps:
             continue
         result.append({"run_id": run_id, "files": item["files"],
+                       "ordinal": item.get("ordinal"),
                        "first_ts": min(stamps).isoformat(),
                        "last_ts": max(stamps).isoformat()})
     return sorted(result, key=lambda x: x["last_ts"])
@@ -5218,7 +5374,10 @@ def cmd_usage(args):
             if any(not value for value in values):
                 sys.stderr.write("agent-exec: usage: empty value for %s\n" % tok)
                 return 2
-            pattern = _RUN_LEDGER_ID_RE if tok == "--run" else _RUN_LEDGER_SESSION_RE
+            pattern = (_RUN_LEDGER_SESSION_RE if tok == "--session" else
+                       re.compile(r"(?:%s|%s)" % (
+                           _RUN_LEDGER_ID_RE.pattern[1:-1],
+                           _RUN_LEDGER_ORDINAL_RE.pattern[1:-1])))
             if any(not _valid_ledger_selector(value, pattern) for value in values):
                 sys.stderr.write("agent-exec: usage: invalid value for %s\n" % tok)
                 return 2
@@ -5275,13 +5434,23 @@ def cmd_usage(args):
 
     resolved, err = resolve_config()
     cfg = resolved if err is None and isinstance(resolved, dict) else DEFAULTS
+    if run_ids:
+        resolved_run_ids = []
+        for value in run_ids:
+            resolved_value = _resolve_run_selector(_ledger_dir_from_cfg(cfg), value)
+            resolved_run_ids.append(
+                resolved_value if resolved_value is not None else value)
+        run_ids = resolved_run_ids
     if list_runs:
         runs = _list_usage_runs(
             sources=sources, cfg=cfg, all_projects=all_projects)
         if fmt == "--text":
             for item in runs:
-                print("%s %d %s %s" % (
-                    item["run_id"], item["files"], item["first_ts"], item["last_ts"]))
+                ordinal = item.get("ordinal")
+                label = ("%03d" % ordinal) if ordinal is not None else "-"
+                print("%s %s %d %s %s" % (
+                    label, item["run_id"], item["files"],
+                    item["first_ts"], item["last_ts"]))
         else:
             print(json.dumps({"runs": runs}, indent=2, ensure_ascii=False))
         return 0

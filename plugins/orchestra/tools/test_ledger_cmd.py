@@ -106,6 +106,85 @@ class LedgerCommandTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 2)
                 self.assertEqual(proc.stdout, "")
 
+    def _ordinal_home(self):
+        """A session directory with ordinals spanning past the 3-digit
+        width, deliberately created out of numeric order on disk."""
+        home = tempfile.TemporaryDirectory()
+        ledger = os.path.join(home.name, "ledger")
+        os.makedirs(os.path.join(home.name, ".claude"), exist_ok=True)
+        with open(os.path.join(home.name, ".claude", "orchestra.yaml"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("ledger:\n  dir: %s\n" % ledger)
+        session = os.path.join(ledger, "ord-session")
+        os.makedirs(session)
+        for name, count in (
+            ("1000-run_c.jsonl", 1),
+            ("001-run_a.jsonl", 1),
+            ("999-run_b.jsonl", 1),
+        ):
+            with open(os.path.join(session, name), "w",
+                      encoding="utf-8") as handle:
+                for _ in range(count):
+                    handle.write(json.dumps({
+                        "executor": "copilot", "input_tokens": 1,
+                    }) + "\n")
+        return home, ledger
+
+    def test_show_displays_ordinals_ordered_numerically_past_999(self):
+        home, ledger = self._ordinal_home()
+        try:
+            proc = run_cli(home.name, ["ledger", "show", "--json"])
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            parsed = json.loads(proc.stdout)
+            session_summary = parsed["sessions"]["ord-session"]
+            self.assertEqual(session_summary["ordinals"], {
+                "run_a": 1, "run_b": 999, "run_c": 1000,
+            })
+            # Numeric order, not lexical: "1000-" would sort before
+            # "999-" as strings but must come after as integers.
+            self.assertEqual(
+                list(session_summary["runs"].keys()),
+                ["run_a", "run_b", "run_c"])
+
+            proc = run_cli(home.name, ["ledger", "show", "--text"])
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            lines = [ln for ln in proc.stdout.splitlines() if "run_" in ln]
+            self.assertEqual(len(lines), 3)
+            self.assertIn("001 run_a", lines[0])
+            self.assertIn("999 run_b", lines[1])
+            self.assertIn("1000 run_c", lines[2])
+        finally:
+            home.cleanup()
+
+    def test_show_run_ordinal_matches_same_run_as_full_id(self):
+        home, ledger = self._ordinal_home()
+        try:
+            env = dict(os.environ)
+            env["HOME"] = home.name
+            env["CLAUDE_CODE_SESSION_ID"] = "ord-session"
+            env.pop("CLAUDE_CONFIG_DIR", None)
+            proc_ordinal = subprocess.run(
+                [sys.executable, AGENT_EXEC, "ledger", "show",
+                 "--run", "999", "--json"],
+                cwd=home.name, env=env, capture_output=True, text=True,
+                timeout=60,
+            )
+            proc_full = subprocess.run(
+                [sys.executable, AGENT_EXEC, "ledger", "show",
+                 "--run", "run_b", "--json"],
+                cwd=home.name, env=env, capture_output=True, text=True,
+                timeout=60,
+            )
+            self.assertEqual(proc_ordinal.returncode, 0, proc_ordinal.stderr)
+            self.assertEqual(proc_full.returncode, 0, proc_full.stderr)
+            parsed_ordinal = json.loads(proc_ordinal.stdout)
+            parsed_full = json.loads(proc_full.stdout)
+            self.assertEqual(parsed_ordinal, parsed_full)
+            self.assertEqual(parsed_ordinal["ordinal"], 999)
+            self.assertEqual(parsed_ordinal["records"], 1)
+        finally:
+            home.cleanup()
+
     def test_clear_yes_removes_files(self):
         home, ledger = self._home()
         try:

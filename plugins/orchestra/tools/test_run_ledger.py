@@ -7,6 +7,7 @@
 import contextlib
 import io
 import json
+import multiprocessing
 import os
 import stat
 import sys
@@ -17,6 +18,15 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent_exec  # noqa: E402
+
+
+def _append_from_child(directory, run_id):
+    os.environ["CLAUDE_CODE_SESSION_ID"] = "parallel-session"
+    agent_exec.run_ledger_append(
+        {"executor": "copilot", "status": "ok"},
+        run_id,
+        {"ledger": {"dir": directory, "enabled": True}},
+    )
 
 
 class RunLedgerSanitizingTests(unittest.TestCase):
@@ -82,7 +92,7 @@ class RunLedgerSanitizingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False}}
             agent_exec.run_ledger_append(raw, "run_a", cfg)
-            path = os.path.join(tmp, "runs", "session-test", "run_a.jsonl")
+            path = os.path.join(tmp, "runs", "session-test", "001-run_a.jsonl")
             with open(path, encoding="utf-8") as f:
                 line = f.read()
             for secret in ("secret prompt text", "/absolute/private/file", "session-secret"):
@@ -144,7 +154,8 @@ class RunLedgerWritingTests(unittest.TestCase):
             agent_exec.run_ledger_append(record, "wf_a26027ae-bdb", cfg)
             directory = os.path.join(tmp, "runs")
             self.assertEqual(stat.S_IMODE(os.stat(directory).st_mode), 0o700)
-            with open(os.path.join(directory, "session-test", "wf_a26027ae-bdb.jsonl"),
+            with open(os.path.join(directory, "session-test",
+                                   "001-wf_a26027ae-bdb.jsonl"),
                       encoding="utf-8") as f:
                 lines = f.readlines()
             self.assertEqual(len(lines), 2)
@@ -155,6 +166,35 @@ class RunLedgerWritingTests(unittest.TestCase):
     def test_append_never_raises(self):
         cfg = {"telemetry": {"dir": "/dev/null/telemetry", "enabled": False}}
         agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+
+    def test_allocates_session_ordinals_and_reuses_them(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = {"ledger": {"dir": os.path.join(tmp, "runs"), "enabled": True}}
+            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "wf_a", cfg)
+            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "wf_a", cfg)
+            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "wf_b", cfg)
+            directory = os.path.join(tmp, "runs", "session-test")
+            self.assertEqual(sorted(os.listdir(directory)),
+                             [".ordinal-001.reserve", ".ordinal-002.reserve",
+                              ".ordinal-run-wf_a.claim", ".ordinal-run-wf_b.claim",
+                              "001-wf_a.jsonl", "002-wf_b.jsonl"])
+            self.assertEqual(len(agent_exec._read_ledger_file(
+                os.path.join(directory, "001-wf_a.jsonl"))), 2)
+
+    def test_concurrent_writers_get_distinct_ordinals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = multiprocessing.get_context("fork")
+            runs = ["wf_%d" % n for n in range(6)]
+            with ctx.Pool(len(runs)) as pool:
+                pool.starmap(_append_from_child, [(os.path.join(tmp, "runs"), run)
+                                                  for run in runs])
+            directory = os.path.join(tmp, "runs", "parallel-session")
+            files = [name for name in os.listdir(directory)
+                     if name.endswith(".jsonl")]
+            self.assertEqual(sorted(int(name.split("-", 1)[0]) for name in files),
+                             list(range(1, 7)))
+            self.assertTrue(all(len(agent_exec._read_ledger_file(
+                os.path.join(directory, name))) == 1 for name in files))
 
 
 class RunLedgerSessionIdValidationTests(unittest.TestCase):
@@ -248,7 +288,7 @@ class RunLedgerTelemetryIndependenceTests(unittest.TestCase):
                 "ledger": {"dir": os.path.join(tmp, "runs"), "enabled": True},
             }
             agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
-            path = os.path.join(tmp, "runs", "session-independence", "run.jsonl")
+            path = os.path.join(tmp, "runs", "session-independence", "001-run.jsonl")
             self.assertTrue(os.path.exists(path))
             self.assertFalse(
                 os.path.exists(os.path.join(tmp, "telemetry", "records.jsonl")))
@@ -377,7 +417,7 @@ class DelegatedDispatchCorrelationTests(unittest.TestCase):
                 os.environ["CLAUDE_CODE_SESSION_ID"] = old_session
 
     def _ledger_lines(self, tmp, run_id):
-        filename = run_id + ".jsonl" if run_id != "unused" else "no.run.jsonl"
+        filename = "no.run.jsonl" if run_id == "unused" else "001-%s.jsonl" % run_id
         path = os.path.join(tmp, "runs", "session-dispatch", filename)
         if not os.path.exists(path):
             return []
