@@ -132,12 +132,13 @@ function routingFlags(r) {
 // Selection is `agent-exec route`'s job, not this function's and not yours.
 // Same call shape whether it resolves to Copilot or to a Claude tier.
 async function dispatchClass(cls, promptText, opts = {}) {
+  const promptFiles = Array.isArray(promptText) ? promptText : [promptText]
   const relayPrompt =
-    'Write the task text below to a new temp file, then run `agent-exec dispatch --class ' + cls +
+    'Run `agent-exec dispatch --class ' + cls +
     (opts.archetype ? ' --archetype ' + opts.archetype : '') +
     (exhausted.size ? ' --exhausted ' + [...exhausted].join(',') : '') +
-    ' --workdir ' + (opts.workdir || '.') + ' --prompt-file <that path> --capture`, ' +
-    'then print its stdout JSON verbatim - nothing else.\n\n--- TASK ---\n' + promptText
+    promptFiles.map(file => ' --prompt-file ' + file).join('') +
+    ' --workdir ' + (opts.workdir || '.') + ' --capture`; then print its stdout JSON verbatim - nothing else.'
 
   const raw = await agent(relayPrompt, { label: (opts.label || cls) + '-dispatch', model: 'haiku', effort: 'low' })
   const r = JSON.parse(raw)
@@ -153,9 +154,10 @@ async function dispatchClass(cls, promptText, opts = {}) {
     // leaves both unset unless the request names them, so dropping them here
     // silently runs Codex at whatever ~/.codex/config.toml defaults to instead
     // of the class_policy this route just resolved.
+    const directPrompt = 'Read the worker prompt from ' + promptFiles.join(' and ') + ' and carry it out.'
     const answer = r.agent_type
-      ? await agent(promptText + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type })
-      : await agent(promptText, { label: opts.label || cls, model: r.model, effort: r.effort })
+      ? await agent(directPrompt + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type })
+      : await agent(directPrompt, { label: opts.label || cls, model: r.model, effort: r.effort })
     if (answer === null) {
       exhausted.add(r.executor)
       return dispatchClass(cls, promptText, opts)
@@ -170,9 +172,10 @@ async function dispatchClass(cls, promptText, opts = {}) {
 }
 
 // `tasks` comes from `args` when this workflow is saved and re-run. Each task
-// needs: id, cls ('light'|'standard'|'deep'), workerPrompt (literal spec + edge
-// cases + verify command), verifierPrompt (what to re-check + which adversarial
-// cases to add). Optional: workdir, baseline (a snapshot ref - see
+// needs: id, cls ('light'|'standard'|'deep'), workerPromptFile (path to the
+// literal spec + edge cases + verify command), workerPrompt (same contract text
+// for runtime correction packets), verifierPrompt (what to re-check + which
+// adversarial cases to add). Optional: workdir, baseline (a snapshot ref - see
 // references/isolation.md - so a bad attempt can be rolled back instead of
 // patched, and the re-gate can diff against something real).
 const tasks = (typeof args !== 'undefined' && args && args.tasks) ? args.tasks : []
@@ -193,6 +196,10 @@ function correctionPacket(task, verdict, gate) {
     '\nThe next review will check ONLY these findings plus regressions they could cause.'
 }
 
+// A correction packet is assembled at runtime from the reviewer verdict, so it has no
+// file on disk. A correction round therefore bypasses the relay and goes straight to a
+// pinned Claude tier via `agent()`.
+
 // A re-gate is incremental, not a fresh audit (§11.2).
 function regatePrompt(task, verdict) {
   return task.verifierPrompt +
@@ -211,8 +218,13 @@ async function runTask(task) {
   let prior = null
 
   for (let gate = 1; gate <= MAX_GATES; gate++) {
-    const prompt = prior ? correctionPacket(task, prior, gate) : task.workerPrompt
-    const work = await dispatchClass(cls, prompt, { label: task.id + '-work-' + gate, workdir: task.workdir })
+    const work = prior
+      ? await agent(correctionPacket(task, prior, gate), {
+          label: task.id + '-work-' + gate, model: 'sonnet',
+        })
+      : await dispatchClass(cls, task.workerPromptFile, {
+          label: task.id + '-work-' + gate, workdir: task.workdir,
+        })
 
     // A worker that hits a design decision, a boundary crossing, or an
     // unexplained failure reports ESCALATE instead of looping (§11.3). Bump the
@@ -272,6 +284,10 @@ return results
 
 **Same-tree parallelism safety.** `pipeline()`/`parallel()` run file-changing workers concurrently against the **same working tree** — two workers with overlapping file ownership silently corrupt each other. Pin disjoint target files (and shared contracts/types) in each worker's prompt, and keep workers small. Full guidance: `references/authoring.md` §1.
 
+**Fan-out variant.** When several tasks must touch the same file but their interfaces can be frozen up front — exact key names, function signatures, CLI flags, JSON shapes, written once and pasted verbatim into every contract — give each worker its own worktree, run them in parallel, then `agent-exec isolate integrate --tasks <a,b,c>` and run one mandatory integration gate on the merged tree.
+
+**Decision rule: serialize only for a real ordering dependency** — one task must read another task's *output* to do its own work. Two tasks editing the same file is not that; it is a merge, and merges are mechanized now. If the interface between the tasks can be written down before either starts, the dependency is on the contract, not on the code, and the tasks run in parallel.
+
 **Isolate whenever the tree is dirty.** Disjoint ownership does not protect the *user's* uncommitted work: transcripts show workers of every model tier running `git checkout --`/`restore`/`reset --hard` over changes they did not author, because a diff a worker did not write reads as contamination whatever its prompt says. So when the tree has uncommitted work, give file-changing workers their own tree — `agent-exec dispatch --isolate auto --task <id>` (the default; it isolates exactly when the tree is dirty) for CLI executors, `isolation: 'worktree'` for `agent()` calls. Collect with `agent-exec isolate diff --task <id>`. Full guidance: `references/isolation.md`.
 
 **On `agentType`:** the plugin-scoped names (`orchestra:orchestra-light` / `-deep` / `-review`) may or may not resolve as `agent()`'s `agentType` in this environment — check the available-subagents list before relying on them, and fall back to explicit `model:`. See `references/authoring.md` §1.
@@ -291,13 +307,14 @@ Mandatory for every `workerPrompt`:
 3. **Constrain the response format.** Explicitly forbid pasting code, logs, and diffs — `orchestra-light`'s system prompt already enforces this, but restating it is safer when calling `agent()` directly from a Workflow.
 4. **Name the files the worker owns** — and, when other workers run concurrently, say that everything else is off-limits (§5's same-tree safety rule, or give it a worktree per `references/isolation.md`).
 5. **Permit escalation explicitly.** State that a decision the packet doesn't settle, a change crossing the ownership boundary, or a failure it can't explain locally should come back as `ESCALATE` rather than a guess (§11.3).
-6. **A correction packet must stand alone.** It goes to a *fresh* worker, so it carries: the original contract in full, the rejection findings with their `cited_contract`, the `must_not_change` paths, the fact that the previous attempt's files are still on disk, and what the next gate will check. `correctionPacket()` in §5 does this; hand-written prompts must include all six.
+6. **Keep relay-dispatched worker prompts on disk.** Write the prompt to a FILE and give the relay only its path. Never put task text, a base64 blob, or any other payload in the relay's prompt: it is a model and will act on the text or fail to reproduce it verbatim. Split shared preamble and per-task contract into separate files and pass `--prompt-file` twice rather than duplicating the preamble.
+7. **A correction packet must stand alone.** It goes to a *fresh* worker, so it carries: the original contract in full, the rejection findings with their `cited_contract`, the `must_not_change` paths, the fact that the previous attempt's files are still on disk, and what the next gate will check. `correctionPacket()` in §5 does this; hand-written prompts must include all six.
 
 **Density:** write worker/verifier prompts terse, imperative, English — they are read by cheap models, not humans. **Compress the scaffolding, never the contract:** enumerated I/O examples, boundary values, and the verification command are compression-exempt, and structure (tables, example rows, the response `schema`) beats terse prose for removing ambiguity. Reasoning and the thinking-inflation trap: `references/authoring.md` §3.
 
 ## 7. Latency and review economics
 
-- **Default to `pipeline()`, never phase-by-phase `parallel()`.** A barrier is justified only when stage N genuinely needs all of stage N-1 (dedup/merge, global early-exit, real cross-task synthesis).
+- **Default to parallel work followed by integration, never serialization for file overlap.** A barrier is justified only when a later stage has a real dependency on earlier output, such as a global early-exit or synthesis that literally reads every task. Same-file edits are handled with isolated worktrees and supervisor-run integration, not by making otherwise independent tasks wait.
 - **Author adversarial tests from the spec, concurrently with the first implementation, once.** Tests derive from the spec, not the implementation, so they need not be re-authored per retry; each verify then merely *runs* them.
 - **Size tasks to fill the concurrency width** (`min(16, cores − 2)`): not so coarse that slots idle, not so trivial that spawn overhead dominates. Split only where file ownership is genuinely disjoint.
 - **Review costs ~2x the implementation's output tokens and is worth it.** The PoC's worker passed all 11 of its own tests while shipping a real boundary bug that the reviewer's added test caught. Skip review only when a task's verification is completely self-evident and low-risk — which is exactly what the express criteria (§2) carve out.
@@ -339,7 +356,15 @@ Rationale, failure modes, and the family taxonomy: `references/gates.md`.
 
 VCS is effectively free, and a run that can return to a known-good state can afford to be aggressive. Take a baseline before the first worker (`git init` if the tree isn't a repo) and snapshot between attempts: the reviewer then diffs against something real instead of inferring the worker's footprint from prose, and a bad attempt is rolled back instead of patched over.
 
-**Isolation is the default whenever the tree is dirty, not a special-case optimization.** `agent-exec dispatch` isolates on its own (`--isolate auto`, needs `--task <id>`), covering CLI executors that `agent()`'s `isolation` option cannot reach; pass `--isolate always` to isolate a clean tree too, `never` to opt out. It carries the user's uncommitted work in, copies gitignored dependency dirs (`node_modules`, `.venv`, …) by CoW clone so no worker re-runs an install, and reuses one worktree per `--task` across retry rounds. Where git-worktree-runner is installed it goes through `gtr`, so the user's own copy patterns and postCreate hooks apply; orchestra never writes gtr config.
+**Parallel-with-integration is the default.** Run independent tasks concurrently. When their paths overlap, isolate them in worktrees rather than serializing them; after they finish, the supervisor mechanizes integration with:
+
+```text
+agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>] [--json|--text]
+```
+
+`--tasks` is required and takes comma-separated orchestra task IDs in the order to integrate. Same-file edits are not a reason to serialize. The only legitimate reason to serialize is a real dependency in which a later task must consume an earlier task's output or state.
+
+Isolation is still the default whenever the tree is dirty, not a special-case optimization. `agent-exec dispatch` isolates on its own (`--isolate auto`, needs `--task <id>`), covering CLI executors that `agent()`'s `isolation` option cannot reach; pass `--isolate always` to isolate a clean tree too, `never` to opt out. It carries the user's uncommitted work in, copies gitignored dependency dirs (`node_modules`, `.venv`, …) by CoW clone so no worker re-runs an install, and reuses one worktree per `--task` across retry rounds. Where git-worktree-runner is installed it goes through `gtr`, so the user's own copy patterns and postCreate hooks apply; orchestra never writes gtr config.
 
 Beyond safety, isolation also lifts the disjoint-file-ownership constraint (§5) — use it to parallelize genuinely tangled work, make exploratory failures free, and run **competing implementations of one contract**, where variant disagreement is a defect report about your *spec*. N× tokens, so spend that variant-fanout on the risky core.
 

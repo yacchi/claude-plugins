@@ -159,7 +159,7 @@ class StampFieldsCannotBeSpoofed(unittest.TestCase):
         out = sanitize_telemetry_record(raw)
         self.assertNotEqual(out.get("ts"), "EVIL")
         self.assertNotEqual(out.get("os"), "/etc/x")
-        self.assertEqual(out.get("schema_version"), 1)
+        self.assertEqual(out.get("schema_version"), 2)
         # ts should parse as a real ISO-8601 timestamp
         from datetime import datetime
 

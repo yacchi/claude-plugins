@@ -6,11 +6,17 @@ Load this file when you are actually writing a Workflow script and hit one of: p
 
 ## 1. Workflow template notes (`SKILL.md` §5)
 
-**Same-tree parallelism safety.** `pipeline()` and `parallel()` run their file-changing workers concurrently against the **same working tree** — there is no worktree isolation for an `agent()` call unless you explicitly pass `isolation: 'worktree'` (CLI executors are covered separately, and isolate by default on a dirty tree — see `references/isolation.md` §0). Two file-changing workers whose file ownership overlaps will silently corrupt each other's writes. Guard against it two ways: (1) **assign disjoint file ownership up front** — pin each parallel worker's target files in its prompt so no two can touch the same path, and fix shared contracts/types in the prompts too; and (2) **keep workers small and watch the early spawns** — short-lived, narrowly-scoped workers shrink the overlap window, and a quick check that you haven't spawned two workers keyed to the same task/target catches an accidental duplicate before it reaches its write stage, while it's still harmless. When parallel file mutation genuinely can't be partitioned, use `isolation: 'worktree'` and merge afterward; when the phase is really sequential on one tree, run the workers in sequence rather than racing them. Note that disjoint ownership only protects workers from *each other* — it does nothing for the user's uncommitted work, which is what isolation is for.
+**Parallel-with-integration is the default.** `pipeline()` and `parallel()` run their file-changing workers concurrently. For same-tree runs, assign disjoint file ownership up front — pin each worker's target files in its prompt and fix shared contracts/types in the prompts too. When ownership genuinely overlaps, use `isolation: 'worktree'` and have the supervisor integrate afterward with:
+
+```text
+agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>] [--json|--text]
+```
+
+`--tasks` is required and takes comma-separated orchestra task IDs in the order to integrate. Same-file edits are not a reason to serialize. The only legitimate reason to serialize is a real dependency in which a later task must consume an earlier task's output or state. Disjoint ownership protects workers from each other; isolation protects the user's uncommitted work.
 
 **On `agentType`:** this plugin ships `agents/orchestra-light.md`, `agents/orchestra-deep.md`, and `agents/orchestra-review.md`. These matter only on `dispatchClass`'s fallback branch (`status: 'delegate'` with no `agent_type`, i.e. Claude was the routed candidate) or when writing the express lane / §8 fallback pattern by hand — whether the plugin-scoped names (e.g. `orchestra:orchestra-light`) resolve as the `agentType` option of `agent()` is environment-dependent and unconfirmed. Before relying on it, check the list of available subagents (the @-mention typeahead, or the names visible to the Agent tool); if `orchestra:orchestra-light` / `orchestra:orchestra-deep` / `orchestra:orchestra-review` resolve, pass e.g. `agentType: 'orchestra:orchestra-light'`. If they don't resolve, fall back further to explicit `model: 'haiku'` / `'opus'` / `'sonnet'`. Either way, rule #4 stands: exactly one of `model` or `agentType` must always be explicit — `dispatchClass`'s own branches already guarantee this on the routed path. The `standard` class has no dedicated Claude agent definition — its Claude-side fallback is `model: 'sonnet'` inline instead of an `agentType`.
 
-For tasks with modest design latitude, call `dispatchClass('standard', workerPrompt, opts)` instead of `'light'` — same helper; `agent-exec route --class standard` resolves it (Copilot Luna by default, Sonnet otherwise). For tasks with real design latitude, route the work stage to `orchestra-deep` (Opus) instead: `dispatchClass('deep', workerPrompt, opts)`, or, on the fallback branch, `agentType: 'orchestra:orchestra-deep'` / `model: 'opus'` directly.
+For tasks with modest design latitude, call `dispatchClass('standard', workerPromptFile, opts)` instead of `'light'` — same helper; `agent-exec route --class standard` resolves it (Copilot Luna by default, Sonnet otherwise). For tasks with real design latitude, route the work stage to `orchestra-deep` (Opus) instead: `dispatchClass('deep', workerPromptFile, opts)`, or, on the fallback branch, `agentType: 'orchestra:orchestra-deep'` / `model: 'opus'` directly.
 
 ## 2. Shortening the critical path
 
@@ -32,7 +38,7 @@ async function runTask(task) {
   // The test-authoring side stays pinned to Sonnet, same reasoning as the
   // review stage below (`priority.review` is `[claude]`-only, §9).
   await parallel([
-    () => dispatchClass(task.cls || 'light', task.workerPrompt, { label: task.id + '-work-1', workdir: task.workdir }),
+    () => dispatchClass(task.cls || 'light', task.workerPromptFile, { label: task.id + '-work-1', workdir: task.workdir }),
     () => agent(task.authorTestsPrompt, { label: task.id + '-authtests', model: 'sonnet' }),
   ])
 
@@ -79,7 +85,7 @@ async function runTask(task) {
 
 The most common reason an orchestration "feels sequential" is a barrier — a `parallel()` between phases, or an `await` — placed where there is no real dependency. The runtime does not add these; the instructor does, by writing phase-by-phase code. Guard against it:
 
-- **Default to `pipeline()`, not phase-by-phase `parallel()`.** Writing `const impls = await parallel(tasks.map(work)); const revs = await parallel(impls.map(verify))` forces *every* implementation to finish before *any* verify starts — the single slowest task stalls all reviews. `pipeline(tasks, runTask)` lets each task's verify start the instant *its own* work is done. A barrier between stages is justified ONLY when stage N genuinely needs the whole of stage N-1: dedup/merge across all results, a global early-exit (`0 findings → skip`), or a synthesis that literally reads every task.
+- **Default to `pipeline()`, not phase-by-phase `parallel()`, and integrate rather than serialize overlap.** Writing `const impls = await parallel(tasks.map(work)); const revs = await parallel(impls.map(verify))` forces *every* implementation to finish before *any* verify starts — the single slowest task stalls all reviews. `pipeline(tasks, runTask)` lets each task's verify start the instant *its own* work is done. A barrier between stages is justified ONLY when a later stage has a real dependency on earlier output, such as a global early-exit (`0 findings → skip`) or a synthesis that literally reads every task. Same-file edits are integrated after parallel isolated work; they do not justify serialization.
 - **A "final review" is per-task unless it truly reads all tasks.** If a final check only re-validates task A, it belongs *inside* task A's pipeline chain, not in a global barrier that runs after every task finishes. Reserve a single whole-set barrier for a real cross-task synthesis, and scope it to the minimal set of tasks it actually consumes — not "all of them" by reflex.
 - **Independent review passes run concurrently, not one after another.** When a task gets both a Claude `review` and an `independent-review` (§9 — a different provider's eyes), the two share no dependency. Dispatch them together — `await parallel([() => claudeReview(...), () => independentReview(...)])` — and merge the two verdicts, rather than `await`-ing one and then the other.
 

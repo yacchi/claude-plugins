@@ -78,9 +78,36 @@ The base rule elsewhere in the skill (`authoring.md` §1) is *partition file own
 - you are running competing implementations (§3);
 - a long-running task should not block quick ones from mutating the same files.
 
-**Don't use it when** the tree is clean *and* the phase is genuinely sequential on one tree, or ownership partitions cleanly and cheaply — then the merge step is pure overhead. Note the ordering: a clean tree is what makes skipping isolation safe, not a tidy partition.
+**Parallel-with-integration is the default.** Run independent tasks concurrently. If their paths overlap, keep them parallel in isolated worktrees and have the supervisor integrate them after completion:
 
-**After the workers finish, the supervisor merges.** Cherry-pick or apply each accepted worktree's diff onto an integration branch, resolve conflicts deliberately, and re-run verification on the merged result. A per-worktree PASS does not imply the merge passes; verification of the integrated tree is a separate, mandatory step.
+```text
+agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>] [--json|--text]
+```
+
+`--tasks` is required and takes comma-separated orchestra task IDs, applied in that order. `--repo` defaults to cwd; `--onto` defaults to the first task's baseline sha (falling back to HEAD); `--into` names the integration worktree's own task id (default `"integrate"`) and is an ordinary orchestra worktree — `agent-exec isolate list` shows it, `agent-exec isolate remove --task <id>` cleans it up. `--json` (default) or `--text`; passing both is a usage error. Same-file edits are not a reason to serialize. The only legitimate reason to serialize is a real dependency in which a later task must consume an earlier task's output or state.
+
+Skip worktree isolation when the tree is clean and ownership partitions cleanly and cheaply; that is an isolation choice, not a reason to serialize independent tasks.
+
+**Why this subcommand exists.** Merging parallel worktrees by hand means pulling diffs and conflict text into the instructor's context — forbidden by §1's code of conduct. `isolate integrate` mechanizes the merge instead and reports only structured JSON, so the instructor can fold parallel work back together without ever reading a patch. A conflict stops being something the instructor resolves inline; it becomes a delegatable follow-up task ("resolve these files under this contract") for a `standard`-class worker.
+
+**Output (stdout JSON, the default; `--text` prints a compact human summary of the same data):**
+
+```text
+{"status": "ok" | "conflicted" | "error",
+ "integration": {"task": "<id>", "branch": "<branch>", "path": "<worktree path>"},
+ "onto": "<sha>",
+ "tasks": [{"task": "<id>", "status": "applied" | "conflicted" | "missing" | "empty",
+            "files_changed": <int>, "conflicts": [{"file": "<path>", "hunks": <int>}]}],
+ "note": "<one short human-readable sentence>"}
+```
+
+Per-task `status` is one of four strings: `applied` (clean), `conflicted` (left for inspection or a follow-up task, see below), `missing` (that task's worktree didn't exist — reported, not fatal, and the rest still run), `empty` (diff was empty, `files_changed` 0).
+
+**Exit codes:** `0` — every task applied (`status: "ok"`). `1` — at least one task conflicted (`status: "conflicted"`); this is a normal, expected outcome, not a failure, and the exit code alone is enough to route the run without parsing JSON. `2` — usage error (missing/duplicate/unknown flags, `--tasks` absent, both `--json` and `--text`). `3` — environment error (not a git repository, integration worktree could not be created), `status: "error"`.
+
+**Hard guarantees:** never prints patch text, diff hunks, or file contents — only paths, counts, and the enum fields above; never modifies the user's working tree, index, HEAD, or current branch — all work happens inside the integration worktree; a task whose worktree is missing is reported and does not abort the run; a task whose diff is empty is reported `empty`; conflicts leave the integration worktree in place and never roll back tasks that already applied cleanly.
+
+**After the workers finish, the supervisor integrates.** Run the command above with the task IDs in integration order, then re-run verification on the integrated result (§4) — a per-worktree PASS does not imply the integration passes, and verifying the integrated tree stays a separate, mandatory step. Any `conflicted` task's files are exactly what a follow-up resolution task needs named as its scope.
 
 ## 3. Competing implementations: conflict as signal
 

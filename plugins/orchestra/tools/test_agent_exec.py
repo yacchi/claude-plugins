@@ -62,7 +62,7 @@ class SanitizeTelemetryRecordTests(unittest.TestCase):
 
     def test_stamped_fields(self):
         out = agent_exec.sanitize_telemetry_record({"event": "run_summary"})
-        self.assertEqual(out["schema_version"], 1)
+        self.assertEqual(out["schema_version"], 2)
         self.assertIsInstance(out["ts"], str)
         self.assertTrue(len(out["ts"]) > 0)
         self.assertEqual(out["os"], out["os"].lower())
@@ -77,7 +77,7 @@ class SanitizeTelemetryRecordTests(unittest.TestCase):
             "os": "not-a-real-os",
         }
         out = agent_exec.sanitize_telemetry_record(raw)
-        self.assertEqual(out["schema_version"], 1)
+        self.assertEqual(out["schema_version"], 2)
         self.assertNotEqual(out["ts"], "1999-01-01T00:00:00Z")
         self.assertNotEqual(out["os"], "not-a-real-os")
 

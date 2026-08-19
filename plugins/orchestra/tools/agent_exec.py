@@ -17,7 +17,8 @@ Usage:
   agent-exec doctor [--json|--text]  structured readiness report
   agent-exec route --class <cls> [--archetype A] [--exhausted a,b] [--json|--text]
                                   resolve a class to a concrete executor
-  agent-exec dispatch --class <cls> --prompt-file F --workdir W ...
+  agent-exec dispatch --class <cls> --prompt-file F [--prompt-file G ...]
+                  --workdir W ...
                                   one-call resolve + dispatch
   agent-exec <profile> [args..]  dispatch to the profile's executor
   agent-exec -h | --help          show this help
@@ -35,7 +36,7 @@ import sys
 import tarfile
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -177,13 +178,16 @@ Usage:
                                   ./.claude/orchestra.yaml +
                                   ./.claude/orchestra.local.yaml)
   agent-exec run <profile> --model M --effort E --workdir W --prompt-file F
+                                   [--prompt-file G ...]
                                   [--resume SID] [--output FMT] [--cls CLASS]
                                   [--capture]
                                   normalized, config-driven dispatch. With
                                   --capture, runs the executor as a subprocess,
                                   captures + parses its JSONL output, and
                                   prints a normalized result JSON to stdout
-                                  (status/answer/session_id/reason/exit_code)
+                                  (status/answer/session_id/reason/exit_code,
+                                  plus a usage object with credits/duration
+                                  and captured tokens when available)
                                   instead of exec-replacing the process. Also
                                   self-logs an anonymized "dispatch" telemetry
                                   record (see `agent-exec telemetry`) if
@@ -210,7 +214,8 @@ Usage:
                                   names as already-tried/unavailable.
   agent-exec dispatch --class <cls> [--archetype A] [--exhausted a,b]
                   [--no-cooldown] [--isolate auto|always|never] [--task ID]
-                  --prompt-file F --workdir W [--resume SID] [--capture]
+                  --prompt-file F [--prompt-file G ...] --workdir W
+                  [--resume SID] [--capture]
                                   one-call resolve + dispatch: resolves the
                                   route, then runs it. If the winning
                                   executor is `dispatch: cli` (e.g. copilot),
@@ -250,6 +255,17 @@ Usage:
                                   what the worker changed, as patch + file
                                   list, measured from the worktree's baseline
                                   so the user's own work never shows up.
+  agent-exec isolate integrate --tasks a,b,c [--repo P] [--onto REF]
+                  [--into ID] [--json|--text]
+                                  replay each task's diff, in that order, onto
+                                  one integration worktree (default task id
+                                  `integrate`, started from the first task's
+                                  baseline). Reports per task applied /
+                                  conflicted / missing / empty with file and
+                                  hunk counts and never prints patch text; the
+                                  user's tree is untouched. Exit 0 all applied,
+                                  1 some conflicted (expected, not an error),
+                                  2 usage, 3 environment.
   agent-exec isolate remove --task ID [--repo P] [--force]
                                   delete the worktree and branch; refuses while
                                   uncollected changes remain unless --force.
@@ -258,6 +274,20 @@ Usage:
   agent-exec isolate should [--repo P] [--mode auto|always|never]
                                   the isolation verdict for this tree, without
                                   creating anything.
+  agent-exec usage [--since W] [--json|--text] [--source a,b] [--all-projects]
+                                  aggregate token usage across all three
+                                  executors for a time window: claude
+                                  transcripts (~/.claude/projects, scoped to
+                                  this working directory unless
+                                  --all-projects, split main/sidechain and
+                                  broken down per model), codex rollouts
+                                  (~/.codex/sessions, last cumulative
+                                  token_count per session), and copilot (its
+                                  usage only exists in orchestra telemetry,
+                                  so it reports "unavailable" when telemetry
+                                  is off). --since takes <N>m|<N>h|<N>d or an
+                                  ISO8601 timestamp (default 24h); --json is
+                                  the default. Strictly read-only.
   agent-exec cooldown [--json|--text]
                                   show active executor cooldowns
   agent-exec cooldown clear [<executor>]
@@ -956,7 +986,7 @@ def sanitize_telemetry_record(raw):
 
     out = {
         "event": event,
-        "schema_version": 1,
+        "schema_version": 2,
         "ts": datetime.now(timezone.utc).isoformat(),
         "os": platform.system().lower(),
     }
@@ -1023,6 +1053,17 @@ def sanitize_telemetry_record(raw):
                 if k in ("copilot", "codex") and isinstance(v, bool):
                     sanitized[k] = v
             out["external_enabled"] = sanitized
+
+    if "usage" in raw:
+        value = raw.get("usage")
+        if isinstance(value, dict):
+            allowed_usage_keys = (
+                "input_tokens", "output_tokens", "cached_input_tokens",
+                "aiu_nano", "premium_requests", "api_duration_ms", "session_duration_ms"
+            )
+            sanitized = _sanitize_count_dict(value, allowed_usage_keys)
+            if sanitized:
+                out["usage"] = sanitized
 
     return out
 
@@ -1093,6 +1134,28 @@ def build_dispatch_record(profile_name, result, resume, cls):
     }
     if cls is not None:
         record["cls"] = cls
+
+    # Flatten executor result usage into record, including tokens subdict.
+    result_usage = result.get("usage")
+    if isinstance(result_usage, dict):
+        flattened = {}
+        # Copy top-level usage keys (not tokens).
+        for key in ("premium_requests", "api_duration_ms", "session_duration_ms", "aiu_nano"):
+            if key in result_usage:
+                value = result_usage[key]
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    flattened[key] = value
+        # Flatten tokens subdict to the same level.
+        tokens = result_usage.get("tokens")
+        if isinstance(tokens, dict):
+            for key in ("input_tokens", "output_tokens", "cached_input_tokens"):
+                if key in tokens:
+                    value = tokens[key]
+                    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                        flattened[key] = value
+        if flattened:
+            record["usage"] = flattened
+
     return record
 
 
@@ -1382,6 +1445,9 @@ def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
     last_content = None
     last_final_content = None
     session_id = None
+    result_usage = None
+    result_supplied_premium_requests = False
+    checkpoint_usage = None
     # Lines eligible for the availability scan below: everything EXCEPT the
     # assistant's own answer and other worker-text-bearing events. A worker
     # asked to implement a rate limiter, fix a login flow, or price out
@@ -1424,6 +1490,20 @@ def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
             sid = event.get("sessionId")
             if isinstance(sid, str) and sid != "":
                 session_id = sid
+            raw_usage = event.get("usage")
+            if isinstance(raw_usage, dict):
+                result_supplied_premium_requests = "premiumRequests" in raw_usage
+                result_usage = {
+                    "premium_requests": raw_usage.get("premiumRequests"),
+                    "api_duration_ms": raw_usage.get("totalApiDurationMs"),
+                    "session_duration_ms": raw_usage.get("sessionDurationMs"),
+                }
+
+        if etype == "session.usage_checkpoint" and isinstance(data, dict):
+            checkpoint_usage = {
+                "aiu_nano": data.get("totalNanoAiu"),
+                "premium_requests": data.get("totalPremiumRequests"),
+            }
 
     answer = last_final_content if last_final_content is not None else last_content
 
@@ -1442,13 +1522,75 @@ def parse_copilot_jsonl(stdout_text, stderr_text, exit_code):
     else:
         status = "ok"
 
+    usage = {}
+    if isinstance(result_usage, dict):
+        for key in ("premium_requests", "api_duration_ms", "session_duration_ms"):
+            value = result_usage.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                usage[key] = value
+    if isinstance(checkpoint_usage, dict):
+        value = checkpoint_usage.get("aiu_nano")
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            usage["aiu_nano"] = value
+        if not result_supplied_premium_requests:
+            value = checkpoint_usage.get("premium_requests")
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                usage["premium_requests"] = value
+
     return {
         "status": status,
         "answer": answer,
         "session_id": session_id,
         "reason": reason,
         "exit_code": exit_code,
+        "usage": usage or None,
     }
+
+
+def parse_copilot_otel(text):
+    """Pure parser for Copilot's JSONL OpenTelemetry file-exporter dump."""
+    totals = {}
+    attribute_keys = {
+        "gen_ai.usage.input_tokens": "input_tokens",
+        "gen_ai.usage.output_tokens": "output_tokens",
+        "gen_ai.usage.cache_creation.input_tokens": "cached_input_tokens",
+        "gen_ai.usage.cache_read.input_tokens": "cached_input_tokens",
+    }
+    for line in (text or "").splitlines():
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(event, dict) or event.get("type") != "span":
+            continue
+        attributes = event.get("attributes")
+        if not isinstance(attributes, dict):
+            continue
+        for source_key, target_key in attribute_keys.items():
+            value = attributes.get(source_key)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                totals[target_key] = totals.get(target_key, 0) + value
+    result = {key: value for key, value in totals.items() if value > 0}
+    return result or None
+
+
+def read_prompt_files(paths):
+    """Read UTF-8 prompt files and concatenate them in order."""
+    texts = []
+    for path in paths:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                texts.append(f.read())
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("could not read prompt file: %s" % path) from exc
+    if len(texts) == 1:
+        return texts[0]
+    nonempty = [text for text in texts if text]
+    if not nonempty:
+        return ""
+    return "\n\n".join(
+        [text.rstrip("\n") for text in nonempty[:-1]] + [nonempty[-1]]
+    )
 
 
 def _build_copilot_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt):
@@ -1469,7 +1611,7 @@ def _build_copilot_argv(exec_name, model, effort, workdir, prompt_value, resume,
     return argv
 
 
-def _run_copilot_capture(profile_name, model, effort, workdir, prompt_file, resume, output_fmt="json"):
+def _run_copilot_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json"):
     """Shared core of `run --capture` / `dispatch` (cli-dispatch route): build
     the executor's argv, run it as a subprocess, and parse its JSONL output.
 
@@ -1491,20 +1633,42 @@ def _run_copilot_capture(profile_name, model, effort, workdir, prompt_file, resu
     if resolved is None:
         return 127, None
 
-    with open(prompt_file, "r", encoding="utf-8") as f:
-        prompt_text = f.read()
-
     argv = _build_copilot_argv(exec_name, model, effort, workdir, prompt_text, resume, output_fmt)
     env = dict(os.environ)
+    otel_path = None
+    if "COPILOT_OTEL_FILE_EXPORTER_PATH" not in os.environ:
+        try:
+            otel_fd, otel_path = tempfile.mkstemp()
+            os.close(otel_fd)
+            env["COPILOT_OTEL_FILE_EXPORTER_PATH"] = otel_path
+        except Exception:
+            otel_path = None
 
-    proc = subprocess.run(
-        argv,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-    result = parse_copilot_jsonl(proc.stdout, proc.stderr, proc.returncode)
-    return 0, result
+    try:
+        proc = subprocess.run(
+            argv,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        result = parse_copilot_jsonl(proc.stdout, proc.stderr, proc.returncode)
+        if otel_path is not None:
+            try:
+                with open(otel_path, "r", encoding="utf-8") as f:
+                    tokens = parse_copilot_otel(f.read())
+                if tokens is not None:
+                    if result["usage"] is None:
+                        result["usage"] = {}
+                    result["usage"]["tokens"] = tokens
+            except Exception:
+                pass
+        return 0, result
+    finally:
+        if otel_path is not None:
+            try:
+                os.unlink(otel_path)
+            except Exception:
+                pass
 
 
 def cmd_run(args):
@@ -1527,7 +1691,7 @@ def cmd_run(args):
         "--model": None,
         "--effort": None,
         "--workdir": None,
-        "--prompt-file": None,
+        "--prompt-file": [],
         "--resume": None,
         "--output": "json",
         "--cls": None,
@@ -1544,7 +1708,10 @@ def cmd_run(args):
             if i + 1 >= len(rest):
                 sys.stderr.write("agent-exec: run: missing value for %s\n" % tok)
                 return 2
-            opts[tok] = rest[i + 1]
+            if tok == "--prompt-file":
+                opts[tok].append(rest[i + 1])
+            else:
+                opts[tok] = rest[i + 1]
             i += 2
         else:
             sys.stderr.write("agent-exec: run: unknown option: %s\n" % tok)
@@ -1553,11 +1720,20 @@ def cmd_run(args):
     if capture:
         opts["--output"] = "json"
 
-    required = ["--model", "--effort", "--workdir", "--prompt-file"]
+    required = ["--model", "--effort", "--workdir"]
     for r in required:
         if opts[r] is None:
             sys.stderr.write("agent-exec: run: missing required option: %s\n" % r)
             return 2
+    if not opts["--prompt-file"]:
+        sys.stderr.write("agent-exec: run: missing required option: --prompt-file\n")
+        return 2
+
+    try:
+        prompt_text = read_prompt_files(opts["--prompt-file"])
+    except ValueError as exc:
+        sys.stderr.write("agent-exec: run: %s\n" % exc)
+        return 2
 
     mode = profile["mode"]
     if mode != "headless":
@@ -1571,7 +1747,6 @@ def cmd_run(args):
     model = opts["--model"]
     effort = opts["--effort"]
     workdir = opts["--workdir"]
-    prompt_file = opts["--prompt-file"]
     resume = opts["--resume"]
     output_fmt = opts["--output"]
     cls = opts["--cls"]
@@ -1580,7 +1755,7 @@ def cmd_run(args):
         return _build_copilot_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt)
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
-        argv = build_argv("@%s" % prompt_file)
+        argv = build_argv(prompt_text)
         print("PROFILE: %s" % profile_name)
         print("MODE: %s" % mode)
         print("ENV: (none)")
@@ -1594,7 +1769,7 @@ def cmd_run(args):
 
     if capture:
         exit_code, result = _run_copilot_capture(
-            profile_name, model, effort, workdir, prompt_file, resume, output_fmt
+            profile_name, model, effort, workdir, prompt_text, resume, output_fmt
         )
         if result is None:
             sys.stderr.write(
@@ -1628,9 +1803,6 @@ def cmd_run(args):
             "agent-exec: executor '%s' not found on PATH\n" % exec_name
         )
         return 127
-
-    with open(prompt_file, "r", encoding="utf-8") as f:
-        prompt_text = f.read()
 
     argv = build_argv(prompt_text)
     env = dict(os.environ)
@@ -2323,13 +2495,13 @@ def _create_via_gtr(root, branch, pairs):
     return path if path and os.path.isdir(path) else None
 
 
-def _create_via_git(root, branch, task):
+def _create_via_git(root, branch, task, start="HEAD"):
     path = os.path.join(isolate_home(root), task)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
     except OSError:
         return None
-    rc, _ = _git(root, "worktree", "add", "-q", "-b", branch, path, "HEAD")
+    rc, _ = _git(root, "worktree", "add", "-q", "-b", branch, path, start)
     if rc != 0:
         return None
     return path if os.path.isdir(path) else None
@@ -2362,8 +2534,16 @@ def _worktree_entries(root):
     return entries
 
 
-def isolate_create(root, task, backend="auto", carry=True):
-    """Create (or return) the worktree for `task`. Idempotent per task."""
+def isolate_create(root, task, backend="auto", carry=True, onto=None):
+    """Create (or return) the worktree for `task`. Idempotent per task.
+
+    `onto` names the commit the worktree starts from. Left at None it means
+    "HEAD plus the user's uncommitted work", which is what a worker needs. Given
+    a ref (integration worktrees pass one) the tree is that commit exactly: no
+    uncommitted work is carried in and no baseline commit is layered on top, so
+    the recorded baseline *is* `onto` and every later diff reads as "what was
+    integrated on top of it".
+    """
     root = repo_root(root)
     if root is None:
         return {"status": "error", "reason": "not a git repository"}
@@ -2377,6 +2557,10 @@ def isolate_create(root, task, backend="auto", carry=True):
             "backend": "existing", "carried": [],
         }
 
+    if onto is not None:
+        # gtr only ever branches from the current checkout, so an explicit
+        # start ref forces the plain-git backend.
+        backend = "git"
     if backend == "auto":
         backend = "gtr" if gtr_available() else "git"
 
@@ -2386,17 +2570,18 @@ def isolate_create(root, task, backend="auto", carry=True):
         if path is None:
             backend = "git"  # gtr refused; a worktree still beats a shared tree
     if path is None:
-        path = _create_via_git(root, branch, task)
+        path = _create_via_git(root, branch, task, start=onto or "HEAD")
     if path is None:
         return {"status": "error", "reason": "could not create a worktree for %s" % branch}
 
-    _carry_uncommitted(root, path)
+    if onto is None:
+        _carry_uncommitted(root, path)
 
-    # Commit the user's state as this worktree's baseline, so every later diff
-    # shows the worker's changes and nothing else.
-    _git(path, "add", "-A")
-    _git(path, "-c", "user.email=orchestra@local", "-c", "user.name=orchestra",
-         "commit", "-q", "--allow-empty", "-m", "orchestra baseline for %s" % task)
+        # Commit the user's state as this worktree's baseline, so every later
+        # diff shows the worker's changes and nothing else.
+        _git(path, "add", "-A")
+        _git(path, "-c", "user.email=orchestra@local", "-c", "user.name=orchestra",
+             "commit", "-q", "--allow-empty", "-m", "orchestra baseline for %s" % task)
     rc, head = _git(path, "rev-parse", "HEAD")
     baseline = head.strip() if rc == 0 else None
     if baseline:
@@ -2486,14 +2671,312 @@ def isolate_remove(root, task, force=False):
     return {"status": "removed", "task": task, "path": path}
 
 
+# --- isolate integrate --------------------------------------------------------
+#
+# WHY THIS EXISTS. `isolate create/diff/remove` gives every parallel worker its
+# own tree, but merging the results back was undocumented manual git work done
+# by the *orchestrating model* -- which drags diffs and conflict text into the
+# most expensive context in the system. Because the merge step was unmechanized,
+# orchestrators serialized tasks that merely touched the same file rather than
+# risk it. This subcommand replays each task's diff onto one integration
+# worktree and answers with counts and enums only: paths, file counts, hunk
+# counts. No patch text ever reaches stdout, so parallelizing tasks that share a
+# file costs the instructor a few dozen tokens instead of a few thousand.
+
+_INTEGRATE_IDENTITY = (
+    "-c", "user.email=orchestra@local", "-c", "user.name=orchestra",
+)
+
+
+def _apply_patch_3way(worktree, patch):
+    """Apply `patch` inside `worktree`, returning git's exit code.
+
+    `--3way` is the point: where a plain apply fails outright on context drift,
+    the 3-way form reconstructs the merge base from the blobs the patch names
+    (they are in the shared object database) and degrades to conflict markers
+    plus unmerged index entries -- a *reportable* outcome instead of a dead end.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "apply", "--3way", "--binary", "--whitespace=nowarn", "-"],
+            cwd=worktree, input=patch, capture_output=True, text=True,
+        )
+    except (OSError, ValueError):
+        return 1
+    return proc.returncode
+
+
+def _count_conflict_markers(path):
+    """How many conflict regions git left in a file. 0 when unreadable/binary."""
+    count = 0
+    try:
+        with open(path, "r", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("<<<<<<<"):
+                    count += 1
+    except OSError:
+        return 0
+    return count
+
+
+def _unmerged_conflicts(worktree):
+    """Conflicted files as [{"file", "hunks"}], from git's own reporting.
+
+    The hunk count comes from counting marker lines, never from echoing them:
+    the caller of this tool must be able to read the result without ingesting a
+    diff.
+    """
+    rc, out = _git(worktree, "diff", "--name-only", "--diff-filter=U")
+    names = [n.strip() for n in out.splitlines() if n.strip()] if rc == 0 else []
+    if not names:
+        # Older/edge cases where the diff form reports nothing: fall back to the
+        # raw unmerged index entries.
+        rc, out = _git(worktree, "ls-files", "-u")
+        if rc == 0:
+            for line in out.splitlines():
+                parts = line.split("\t", 1)
+                if len(parts) == 2 and parts[1].strip() and parts[1].strip() not in names:
+                    names.append(parts[1].strip())
+    conflicts = []
+    for name in names:
+        hunks = _count_conflict_markers(os.path.join(worktree, name))
+        conflicts.append({"file": name, "hunks": hunks or 1})
+    return conflicts
+
+
+def _task_change_set(root, task):
+    """One task worktree's own changes: {"state", "files", "patch", "baseline"}.
+
+    `state` is "missing" (no worktree, or its baseline is unreadable), "empty"
+    (a worktree that changed nothing), or "ready".
+    """
+    branch = ISOLATE_BRANCH_PREFIX + task
+    path = _worktree_for_branch(root, branch)
+    blank = {"task": task, "state": "missing", "files": [], "patch": "", "baseline": None}
+    if not path or not os.path.isdir(path):
+        return blank
+    # Stage in full first: `git apply --3way` needs the post-image blobs to
+    # exist in the object database, and an intent-to-add file has none.
+    _git(path, "add", "-A")
+    diff = isolate_diff(root, task)
+    if diff.get("status") != "ok":
+        return blank
+    files = [f for f in (diff.get("files") or []) if f]
+    patch = diff.get("patch") or ""
+    return {
+        "task": task,
+        "state": "ready" if files and patch.strip() else "empty",
+        "files": files,
+        "patch": patch,
+        "baseline": diff.get("baseline"),
+    }
+
+
+def _integrate_note(results, into_task, wt_path):
+    """One short human sentence summarizing the run. Never contains patch text."""
+    counts = {"applied": 0, "conflicted": 0, "missing": 0, "empty": 0}
+    for entry in results:
+        counts[entry["status"]] = counts.get(entry["status"], 0) + 1
+    total = len(results)
+    tail = []
+    if counts["missing"]:
+        tail.append("%d had no worktree" % counts["missing"])
+    if counts["empty"]:
+        tail.append("%d changed nothing" % counts["empty"])
+    suffix = (" (" + ", ".join(tail) + ")") if tail else ""
+    if counts["conflicted"]:
+        return (
+            "%d of %d task(s) applied, %d conflicted%s; resolve in worktree '%s' at %s"
+            % (counts["applied"], total, counts["conflicted"], suffix, into_task, wt_path)
+        )
+    return (
+        "%d of %d task(s) applied cleanly%s into worktree '%s' at %s"
+        % (counts["applied"], total, suffix, into_task, wt_path)
+    )
+
+
+def isolate_integrate(root, tasks, onto=None, into="integrate"):
+    """Replay each task worktree's diff, in order, onto one integration worktree.
+
+    The user's tree is never touched: every apply and commit happens inside the
+    integration worktree, which is an ordinary orchestra worktree (so `isolate
+    list` shows it and `isolate remove` cleans it up). Each applied task is
+    committed there, giving the next 3-way apply a real merge base. A conflict
+    is a normal outcome, not an error: it is recorded, the conflicted state is
+    left in the tree for a follow-up resolution task to inspect, and tasks that
+    already applied cleanly are never rolled back.
+    """
+    resolved_root = repo_root(root)
+    into_task = sanitize_task_id(into)
+    branch = ISOLATE_BRANCH_PREFIX + into_task
+    task_ids = [sanitize_task_id(t) for t in tasks]
+
+    def failure(reason):
+        return {
+            "status": "error",
+            "integration": {"task": into_task, "branch": branch, "path": None},
+            "onto": None,
+            "tasks": [
+                {"task": t, "status": "missing", "files_changed": 0, "conflicts": []}
+                for t in task_ids
+            ],
+            "note": reason,
+        }
+
+    if resolved_root is None:
+        return failure("not a git repository")
+
+    changes = [_task_change_set(resolved_root, t) for t in task_ids]
+
+    # Default base: the first listed task's baseline -- the commit that task was
+    # actually written against -- so its patch applies to the tree it expects.
+    ref = onto if onto else (changes[0]["baseline"] or "HEAD")
+    rc, out = _git(resolved_root, "rev-parse", "--verify", "%s^{commit}" % ref)
+    onto_sha = out.strip() if rc == 0 else ""
+    if not onto_sha:
+        return failure("could not resolve --onto ref %r to a commit" % (ref,))
+
+    created = isolate_create(resolved_root, into_task, backend="git", onto=onto_sha)
+    wt_path = created.get("path")
+    if created.get("status") == "error" or not wt_path or not os.path.isdir(wt_path):
+        return failure("could not create the integration worktree %s" % branch)
+    if created.get("status") == "exists":
+        # Reusing an integration tree from an earlier round: its own baseline,
+        # not the ref we would have picked, is the truth about where it starts.
+        onto_sha = _read_baseline(wt_path) or onto_sha
+
+    results = []
+    for change in changes:
+        task = change["task"]
+        if change["state"] in ("missing", "empty"):
+            results.append({
+                "task": task, "status": change["state"],
+                "files_changed": 0, "conflicts": [],
+            })
+            continue
+        rc = _apply_patch_3way(wt_path, change["patch"])
+        conflicts = _unmerged_conflicts(wt_path) if rc != 0 else []
+        # Commit whatever resulted -- conflict markers included. Staging them
+        # resolves the index, so the next task still has a real base to merge
+        # against, and nothing applied so far can be lost.
+        _git(wt_path, "add", "-A")
+        _git(wt_path, *(_INTEGRATE_IDENTITY + (
+            "commit", "-q", "--allow-empty", "-m", "orchestra integrate %s" % task)))
+        results.append({
+            "task": task,
+            "status": "applied" if rc == 0 else "conflicted",
+            "files_changed": len(change["files"]),
+            "conflicts": conflicts,
+        })
+
+    conflicted = any(entry["status"] == "conflicted" for entry in results)
+    return {
+        "status": "conflicted" if conflicted else "ok",
+        "integration": {"task": into_task, "branch": branch, "path": wt_path},
+        "onto": onto_sha,
+        "tasks": results,
+        "note": _integrate_note(results, into_task, wt_path),
+    }
+
+
+def format_integrate_text(result):
+    """Compact human rendering of an `isolate integrate` result."""
+    integration = result.get("integration") or {}
+    lines = [
+        "integrate %s  onto %s  worktree %s" % (
+            result.get("status"),
+            (result.get("onto") or "-")[:12],
+            integration.get("path") or "-",
+        )
+    ]
+    for entry in result.get("tasks") or []:
+        line = "  %-16s %-10s %d file(s)" % (
+            entry.get("task"), entry.get("status"), entry.get("files_changed", 0),
+        )
+        conflicts = entry.get("conflicts") or []
+        if conflicts:
+            line += "  " + ", ".join(
+                "%s (%d hunk(s))" % (c.get("file"), c.get("hunks", 0)) for c in conflicts
+            )
+        lines.append(line)
+    lines.append("note: %s" % result.get("note", ""))
+    return "\n".join(lines)
+
+
+def _parse_integrate_args(args):
+    """Parse `isolate integrate` flags. Returns (options, error_message).
+
+    Kept separate from the other subcommands' parser because this one has its
+    own flag set and rejects duplicates: a repeated `--tasks` would silently
+    discard a whole batch of work.
+    """
+    opts = {"tasks": None, "repo": os.getcwd(), "onto": None, "into": "integrate",
+            "json": False, "text": False}
+    seen = set()
+    value_flags = {"--tasks": "tasks", "--repo": "repo", "--onto": "onto", "--into": "into"}
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok in seen:
+            return None, "duplicate option: %s" % tok
+        if tok in value_flags:
+            if i + 1 >= len(args):
+                return None, "missing value for %s" % tok
+            seen.add(tok)
+            opts[value_flags[tok]] = args[i + 1]
+            i += 2
+            continue
+        if tok in ("--json", "--text"):
+            seen.add(tok)
+            opts[tok[2:]] = True
+            i += 1
+            continue
+        return None, "unknown option: %s" % tok
+    if opts["json"] and opts["text"]:
+        return None, "--json and --text are mutually exclusive"
+    if opts["tasks"] is None:
+        return None, "missing required option: --tasks"
+    parsed = [t.strip() for t in opts["tasks"].split(",") if t.strip()]
+    if not parsed:
+        return None, "--tasks is empty"
+    opts["tasks"] = parsed
+    return opts, None
+
+
+def cmd_isolate_integrate(args):
+    opts, error = _parse_integrate_args(args)
+    if error is not None:
+        sys.stderr.write("agent-exec: isolate integrate: %s\n" % error)
+        return 2
+    try:
+        result = isolate_integrate(
+            opts["repo"], opts["tasks"], onto=opts["onto"], into=opts["into"],
+        )
+    except ValueError as exc:
+        sys.stderr.write("agent-exec: isolate integrate: %s\n" % exc)
+        return 2
+    if opts["text"]:
+        print(format_integrate_text(result))
+    else:
+        print(json.dumps(result, ensure_ascii=False))
+    status = result.get("status")
+    if status == "ok":
+        return 0
+    if status == "conflicted":
+        return 1
+    return 3
+
+
 def _isolate_usage(stream=sys.stderr):
     stream.write(
-        "usage: agent-exec isolate {create|list|diff|remove|should} [options]\n"
-        "  create --task <id> [--repo <path>] [--backend auto|gtr|git] [--no-carry]\n"
-        "  list   [--repo <path>]\n"
-        "  diff   --task <id> [--repo <path>] [--names-only]\n"
-        "  remove --task <id> [--repo <path>] [--force]\n"
-        "  should [--repo <path>] [--mode auto|always|never]\n"
+        "usage: agent-exec isolate {create|list|diff|integrate|remove|should} [options]\n"
+        "  create    --task <id> [--repo <path>] [--backend auto|gtr|git] [--no-carry]\n"
+        "  list      [--repo <path>]\n"
+        "  diff      --task <id> [--repo <path>] [--names-only]\n"
+        "  integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>]\n"
+        "            [--json|--text]\n"
+        "  remove    --task <id> [--repo <path>] [--force]\n"
+        "  should    [--repo <path>] [--mode auto|always|never]\n"
     )
 
 
@@ -2502,10 +2985,16 @@ def cmd_isolate(args):
         _isolate_usage()
         return 2
     sub = args[0]
-    if sub not in ("create", "list", "diff", "remove", "should"):
+    if sub not in ("create", "list", "diff", "integrate", "remove", "should"):
         sys.stderr.write("agent-exec: isolate: unknown subcommand: %s\n" % sub)
         _isolate_usage()
         return 2
+
+    # `integrate` has its own flag set and its own exit-code contract
+    # (0 clean / 1 conflicted / 2 usage / 3 environment), so it parses and
+    # returns on its own rather than sharing the single-task plumbing below.
+    if sub == "integrate":
+        return cmd_isolate_integrate(args[1:])
 
     task = None
     directory = os.getcwd()
@@ -3042,7 +3531,7 @@ def cmd_dispatch_route(args):
     cls = None
     archetype = "default"
     exhausted = []
-    prompt_file = None
+    prompt_files = []
     workdir = None
     resume = None
     # Accepted for parity with `run --capture`; the cli branch below always
@@ -3100,7 +3589,7 @@ def cmd_dispatch_route(args):
             if i + 1 >= len(args):
                 sys.stderr.write("agent-exec: dispatch: missing value for --prompt-file\n")
                 return 2
-            prompt_file = args[i + 1]
+            prompt_files.append(args[i + 1])
             i += 2
         elif tok == "--workdir":
             if i + 1 >= len(args):
@@ -3124,11 +3613,16 @@ def cmd_dispatch_route(args):
     if cls is None:
         sys.stderr.write("agent-exec: dispatch: missing required option: --class\n")
         return 2
-    if prompt_file is None:
+    if not prompt_files:
         sys.stderr.write("agent-exec: dispatch: missing required option: --prompt-file\n")
         return 2
     if workdir is None:
         sys.stderr.write("agent-exec: dispatch: missing required option: --workdir\n")
+        return 2
+    try:
+        prompt_text = read_prompt_files(prompt_files)
+    except ValueError as exc:
+        sys.stderr.write("agent-exec: dispatch: %s\n" % exc)
         return 2
 
     resolved, err = resolve_config()
@@ -3240,7 +3734,7 @@ def cmd_dispatch_route(args):
     exec_name = profile["exec"]
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
-        argv = _build_copilot_argv(exec_name, model, effort, workdir, "@%s" % prompt_file, resume, "json")
+        argv = _build_copilot_argv(exec_name, model, effort, workdir, prompt_text, resume, "json")
         print("PROFILE: %s" % profile_name)
         print("MODE: headless")
         print("ENV: (none)")
@@ -3251,7 +3745,7 @@ def cmd_dispatch_route(args):
         )
         return 0
 
-    exit_code, result = _run_copilot_capture(profile_name, model, effort, workdir, prompt_file, resume, "json")
+    exit_code, result = _run_copilot_capture(profile_name, model, effort, workdir, prompt_text, resume, "json")
     if result is None:
         sys.stderr.write("agent-exec: executor '%s' not found on PATH\n" % exec_name)
         return exit_code
@@ -3280,6 +3774,602 @@ def cmd_dispatch_route(args):
     output["route"] = route
     output["isolation"] = isolation
     print(json.dumps(output, ensure_ascii=False))
+    return 0
+
+
+# --- usage subcommand --------------------------------------------------------
+
+# Canonical token vocabulary. Every source normalizes into exactly these three
+# keys so `totals` can sum across executors without knowing which one produced
+# a number. "input_tokens" always means FRESH input (never served from a
+# prompt cache) and "cached_input_tokens" always means input served from one,
+# so the two never double-count each other. Each collector below documents how
+# its native shape maps onto this vocabulary.
+_USAGE_TOKEN_KEYS = ("input_tokens", "output_tokens", "cached_input_tokens")
+
+_USAGE_SOURCES = ("claude", "codex", "copilot")
+
+_USAGE_WINDOW_RE = re.compile(r"^(\d+)([mhd])$")
+_USAGE_WINDOW_SECONDS = {"m": 60, "h": 3600, "d": 86400}
+
+# fromisoformat() on 3.9 only accepts 3- or 6-digit fractional seconds and no
+# trailing "Z", so timestamps are normalized through this before parsing.
+_USAGE_ISO_FRACTION_RE = re.compile(r"\.(\d+)")
+
+
+def _zero_tokens():
+    return dict((k, 0) for k in _USAGE_TOKEN_KEYS)
+
+
+def _coerce_count(value):
+    """Any -> non-negative int, defaulting to 0. Every number that reaches the
+    report goes through here, which is what makes the "every emitted number is
+    a non-negative int" guarantee hold against arbitrary shape drift in the
+    source logs (strings, floats, None, bools, nested dicts)."""
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int) and value >= 0:
+        return value
+    return 0
+
+
+def _add_tokens(acc, other):
+    """In-place acc += other, restricted to the canonical token keys."""
+    if not isinstance(other, dict):
+        return acc
+    for key in _USAGE_TOKEN_KEYS:
+        acc[key] = acc.get(key, 0) + _coerce_count(other.get(key))
+    return acc
+
+
+def parse_usage_timestamp(value):
+    """Pure: a log timestamp -> aware UTC datetime, or None if unusable.
+
+    Tolerates trailing "Z", odd fractional-second widths, and naive stamps
+    (treated as UTC). Anything else is None, and the caller skips the record
+    rather than guessing."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith("Z") or text.endswith("z"):
+        text = text[:-1] + "+00:00"
+    text = _USAGE_ISO_FRACTION_RE.sub(lambda m: "." + m.group(1)[:6].ljust(6, "0"), text)
+    try:
+        parsed = datetime.fromisoformat(text)
+    except (ValueError, TypeError):
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def parse_usage_since(value, now):
+    """Pure: --since value + the current time -> the window's UTC cutoff, or
+    None when the value is neither `<N><m|h|d>` nor an ISO8601 timestamp."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    match = _USAGE_WINDOW_RE.match(text)
+    if match:
+        amount = int(match.group(1))
+        return now - timedelta(seconds=amount * _USAGE_WINDOW_SECONDS[match.group(2)])
+    return parse_usage_timestamp(text)
+
+
+def new_claude_usage_acc():
+    return {
+        "tokens": _zero_tokens(),
+        "main": _zero_tokens(),
+        "sidechain": _zero_tokens(),
+        "by_model": {},
+        "records": 0,
+    }
+
+
+def aggregate_claude_lines(lines, cutoff, acc=None):
+    """Pure aggregator for a claude transcript: an iterable of raw JSONL text
+    lines + a UTC cutoff -> the accumulator dict (created when not supplied,
+    so several transcripts can be folded into one accumulator).
+
+    `lines` is consumed lazily, so an open file object streams a
+    multi-megabyte transcript without ever materializing it.
+
+    Token mapping: claude reports cache-creation and cache-read separately.
+    Cache creation is freshly-submitted input (it is written on the way
+    through), so it lands in `input_tokens`; only cache reads are
+    `cached_input_tokens`."""
+    if acc is None:
+        acc = new_claude_usage_acc()
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+        message = obj.get("message")
+        if not isinstance(message, dict):
+            continue
+        usage = message.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        ts = parse_usage_timestamp(obj.get("timestamp"))
+        if ts is None or ts < cutoff:
+            continue
+
+        tokens = {
+            "input_tokens": (
+                _coerce_count(usage.get("input_tokens"))
+                + _coerce_count(usage.get("cache_creation_input_tokens"))
+            ),
+            "output_tokens": _coerce_count(usage.get("output_tokens")),
+            "cached_input_tokens": _coerce_count(usage.get("cache_read_input_tokens")),
+        }
+        _add_tokens(acc["tokens"], tokens)
+        _add_tokens(acc["sidechain" if obj.get("isSidechain") is True else "main"], tokens)
+
+        model = message.get("model")
+        if isinstance(model, str) and model:
+            _add_tokens(acc["by_model"].setdefault(model, _zero_tokens()), tokens)
+        acc["records"] += 1
+    return acc
+
+
+def aggregate_codex_lines(lines, cutoff, mtime=None):
+    """Pure aggregator for ONE codex rollout file: raw JSONL lines + cutoff ->
+    {"tokens": {...}, "contributed": bool}.
+
+    codex's `total_token_usage` is cumulative for the whole session, so the
+    LAST token_count event carries the session total and the events must never
+    be summed. Window filtering uses that last event's own timestamp; when it
+    has none, `mtime` (epoch seconds of the file) is the documented fallback,
+    which is sound because rollout files are append-only — their mtime is the
+    time of the last event written. A session that straddles the cutoff is
+    counted in full; splitting a cumulative counter is not possible from the
+    last event alone.
+
+    Token mapping: codex's `input_tokens` is the total input INCLUDING the
+    cached part (input + output == total_tokens), so the cached share is
+    subtracted out to match the canonical vocabulary."""
+    last_total = None
+    last_ts = None
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(obj, dict) or obj.get("type") != "event_msg":
+            continue
+        payload = obj.get("payload")
+        if not isinstance(payload, dict) or payload.get("type") != "token_count":
+            continue
+        info = payload.get("info")
+        if not isinstance(info, dict):
+            continue
+        total = info.get("total_token_usage")
+        if not isinstance(total, dict):
+            continue
+        last_total = total
+        last_ts = parse_usage_timestamp(obj.get("timestamp"))
+
+    if last_total is None:
+        return {"tokens": _zero_tokens(), "contributed": False}
+
+    ts = last_ts
+    if ts is None and isinstance(mtime, (int, float)) and not isinstance(mtime, bool):
+        try:
+            ts = datetime.fromtimestamp(mtime, timezone.utc)
+        except (ValueError, OSError, OverflowError):
+            ts = None
+    if ts is None or ts < cutoff:
+        return {"tokens": _zero_tokens(), "contributed": False}
+
+    cached = _coerce_count(last_total.get("cached_input_tokens"))
+    total_input = _coerce_count(last_total.get("input_tokens"))
+    tokens = {
+        "input_tokens": max(0, total_input - cached),
+        "output_tokens": _coerce_count(last_total.get("output_tokens")),
+        "cached_input_tokens": cached,
+    }
+    return {"tokens": tokens, "contributed": True}
+
+
+def aggregate_copilot_records(records, cutoff, executor="copilot"):
+    """Pure aggregator for orchestra telemetry: an iterable of already-parsed
+    telemetry records + cutoff -> summed usage for that executor's `dispatch`
+    events. Unlike the other two sources these numbers are already normalized
+    (sanitize_telemetry_record allowlists them), so they are summed as-is."""
+    acc = {
+        "tokens": _zero_tokens(),
+        "aiu_nano": 0,
+        "premium_requests": 0,
+        "records": 0,
+    }
+    for rec in records:
+        if not isinstance(rec, dict) or rec.get("event") != "dispatch":
+            continue
+        if executor is not None and rec.get("executor") != executor:
+            continue
+        ts = parse_usage_timestamp(rec.get("ts"))
+        if ts is None or ts < cutoff:
+            continue
+        usage = rec.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        _add_tokens(acc["tokens"], usage)
+        acc["aiu_nano"] += _coerce_count(usage.get("aiu_nano"))
+        acc["premium_requests"] += _coerce_count(usage.get("premium_requests"))
+        acc["records"] += 1
+    return acc
+
+
+def sum_usage_totals(sources):
+    """Pure: the per-source entries -> the cross-source token totals. Only
+    sources that actually reported ("ok") contribute; "unavailable" and
+    "empty" ones must not be able to pass zeros off as measurements."""
+    totals = _zero_tokens()
+    for entry in (sources or {}).values():
+        if isinstance(entry, dict) and entry.get("status") == "ok":
+            _add_tokens(totals, entry.get("tokens"))
+    return totals
+
+
+def claude_project_slug(path):
+    """The ~/.claude/projects directory name for a working directory: every
+    "/" replaced by "-"."""
+    return str(path).replace("/", "-")
+
+
+def _usage_home(home=None):
+    return home if home else os.path.expanduser("~")
+
+
+def _iter_jsonl_lines(path):
+    """Yield a file's lines one at a time, swallowing any read error. A
+    generator so callers never hold a whole transcript in memory."""
+    try:
+        handle = open(path, "r", encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    try:
+        for line in handle:
+            yield line
+    except OSError:
+        return
+    finally:
+        handle.close()
+
+
+def _list_claude_jsonl_files(directory):
+    """Yield top-level session files and every JSONL file below subagents."""
+    try:
+        walked = os.walk(directory)
+        for dirpath, dirnames, filenames in walked:
+            dirnames.sort()
+            relative = os.path.relpath(dirpath, directory)
+            if relative != "." and "subagents" not in relative.split(os.sep):
+                dirnames[:] = [name for name in dirnames if name == "subagents"]
+                continue
+            for name in sorted(filenames):
+                if name.endswith(".jsonl"):
+                    full = os.path.join(dirpath, name)
+                    if os.path.isfile(full):
+                        yield full
+    except OSError:
+        return
+
+
+def _claude_projects_roots(home=None, config_dir=None):
+    """Return existing Claude project roots, de-duplicated by real path."""
+    usage_home = _usage_home(home)
+    if config_dir is None:
+        config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    candidates = []
+    if config_dir:
+        candidates.append(os.path.join(config_dir, "projects"))
+    candidates.append(os.path.join(usage_home, ".claude", "projects"))
+    roots = []
+    seen = set()
+    for root in candidates:
+        resolved = os.path.realpath(root)
+        if resolved in seen or not os.path.isdir(root):
+            continue
+        seen.add(resolved)
+        roots.append(root)
+    return roots
+
+
+def _list_project_directories(root, all_projects, cwd):
+    try:
+        if all_projects:
+            names = sorted(os.listdir(root))
+            return [
+                os.path.join(root, name)
+                for name in names
+                if os.path.isdir(os.path.join(root, name))
+            ]
+    except OSError:
+        return []
+    slug_dir = os.path.join(root, claude_project_slug(cwd or os.getcwd()))
+    return [slug_dir] if os.path.isdir(slug_dir) else []
+
+
+def collect_claude_usage(cutoff, all_projects=False, home=None, cwd=None,
+                         config_dir=None):
+    """I/O shell over aggregate_claude_lines: read-only walk of
+    both Claude projects roots. Scoped to the current working directory's
+    project slug unless all_projects is set."""
+    scope = "all-projects" if all_projects else "cwd"
+    entry = {"status": "unavailable", "scope": scope}
+    roots = _claude_projects_roots(home=home, config_dir=config_dir)
+    if not roots:
+        entry["note"] = "no claude projects directory"
+        entry.update(
+            {
+                "tokens": _zero_tokens(),
+                "main": _zero_tokens(),
+                "sidechain": _zero_tokens(),
+                "by_model": {},
+                "sessions": 0,
+                "records": 0,
+            }
+        )
+        return entry
+
+    acc = new_claude_usage_acc()
+    sessions = 0
+    seen_projects = set()
+    seen_files = set()
+    for root in roots:
+        for directory in _list_project_directories(root, all_projects, cwd):
+            project_key = os.path.realpath(directory)
+            if project_key in seen_projects:
+                continue
+            seen_projects.add(project_key)
+            for path in _list_claude_jsonl_files(directory):
+                file_key = os.path.realpath(path)
+                if file_key in seen_files:
+                    continue
+                seen_files.add(file_key)
+                before = acc["records"]
+                aggregate_claude_lines(_iter_jsonl_lines(path), cutoff, acc)
+                if acc["records"] > before:
+                    sessions += 1
+
+    return {
+        "status": "ok" if acc["records"] else "empty",
+        "scope": scope,
+        "tokens": acc["tokens"],
+        "main": acc["main"],
+        "sidechain": acc["sidechain"],
+        "by_model": acc["by_model"],
+        "sessions": sessions,
+        "records": acc["records"],
+    }
+
+
+def _codex_session_files(root, cutoff):
+    """Rollout files under ~/.codex/sessions/YYYY/MM/DD that could carry an
+    in-window event. Files whose mtime predates the cutoff are skipped up
+    front: rollouts are append-only, so mtime is an upper bound on the
+    timestamp of every event inside."""
+    out = []
+    cutoff_epoch = cutoff.timestamp()
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames.sort()
+        for name in sorted(filenames):
+            if not name.endswith(".jsonl"):
+                continue
+            full = os.path.join(dirpath, name)
+            try:
+                mtime = os.path.getmtime(full)
+            except OSError:
+                continue
+            if mtime < cutoff_epoch:
+                continue
+            out.append((full, mtime))
+    return out
+
+
+def collect_codex_usage(cutoff, home=None):
+    """I/O shell over aggregate_codex_lines: read-only walk of
+    ~/.codex/sessions. Never cwd-scoped -- codex rollouts are filed by date,
+    not by project."""
+    entry = {"status": "unavailable", "scope": "global"}
+    root = os.path.join(_usage_home(home), ".codex", "sessions")
+    if not os.path.isdir(root):
+        entry["note"] = "no codex sessions directory"
+        entry.update({"tokens": _zero_tokens(), "sessions": 0, "files_scanned": 0})
+        return entry
+
+    tokens = _zero_tokens()
+    sessions = 0
+    files = _codex_session_files(root, cutoff)
+    for path, mtime in files:
+        result = aggregate_codex_lines(_iter_jsonl_lines(path), cutoff, mtime=mtime)
+        if result.get("contributed"):
+            sessions += 1
+            _add_tokens(tokens, result.get("tokens"))
+
+    return {
+        "status": "ok" if sessions else "empty",
+        "scope": "global",
+        "tokens": tokens,
+        "sessions": sessions,
+        "files_scanned": len(files),
+    }
+
+
+def collect_copilot_usage(cutoff, cfg):
+    """I/O shell over aggregate_copilot_records. copilot usage only exists in
+    orchestra's own telemetry log, so a disabled/absent log is reported as
+    "unavailable" -- reporting zeros would read as "copilot cost nothing"."""
+    entry = {
+        "status": "unavailable",
+        "scope": "global",
+        "tokens": _zero_tokens(),
+        "aiu_nano": 0,
+        "premium_requests": 0,
+        "records": 0,
+    }
+    if not _telemetry_enabled(cfg):
+        entry["note"] = "telemetry disabled; no copilot usage is recorded"
+        return entry
+
+    path = os.path.join(_telemetry_dir_from_cfg(cfg), "records.jsonl")
+    if not os.path.isfile(path):
+        entry["note"] = "no telemetry records file yet"
+        return entry
+    try:
+        records = _read_telemetry_lines(path)
+    except OSError:
+        entry["note"] = "telemetry records unreadable"
+        return entry
+
+    acc = aggregate_copilot_records(records, cutoff)
+    return {
+        "status": "ok" if acc["records"] else "empty",
+        "scope": "global",
+        "tokens": acc["tokens"],
+        "aiu_nano": acc["aiu_nano"],
+        "premium_requests": acc["premium_requests"],
+        "records": acc["records"],
+    }
+
+
+def build_usage_report(since, now, sources, all_projects=False, cfg=None,
+                       home=None, cwd=None):
+    """Assemble the full report. `sources` is the requested subset, in
+    _USAGE_SOURCES order; every requested source gets an entry, even an
+    unavailable one."""
+    requested = [name for name in _USAGE_SOURCES if name in (sources or ())]
+    out = {}
+    for name in requested:
+        if name == "claude":
+            out[name] = collect_claude_usage(
+                cutoff=since, all_projects=all_projects, home=home, cwd=cwd
+            )
+        elif name == "codex":
+            out[name] = collect_codex_usage(cutoff=since, home=home)
+        else:
+            out[name] = collect_copilot_usage(cutoff=since, cfg=cfg)
+    return {
+        "since": since.isoformat(),
+        "now": now.isoformat(),
+        "sources": out,
+        "totals": sum_usage_totals(out),
+    }
+
+
+def _usage_tokens_line(tokens):
+    tokens = tokens if isinstance(tokens, dict) else {}
+    return "in=%d out=%d cached=%d" % (
+        _coerce_count(tokens.get("input_tokens")),
+        _coerce_count(tokens.get("output_tokens")),
+        _coerce_count(tokens.get("cached_input_tokens")),
+    )
+
+
+def _print_usage_text(report):
+    """Compact human summary. Deliberately carries model names and counts
+    only -- no paths, session ids, project slugs or any prompt text."""
+    print("usage since %s (now %s)" % (report.get("since"), report.get("now")))
+    for name, entry in (report.get("sources") or {}).items():
+        status = entry.get("status")
+        print(
+            "%-8s %-13s %s"
+            % (name, "[%s]" % status, _usage_tokens_line(entry.get("tokens")))
+        )
+        note = entry.get("note")
+        if note:
+            print("           note: %s" % note)
+        if status != "ok":
+            continue
+        if name == "claude":
+            print("           main: %s" % _usage_tokens_line(entry.get("main")))
+            print("           sidechain: %s" % _usage_tokens_line(entry.get("sidechain")))
+            for model, tokens in sorted((entry.get("by_model") or {}).items()):
+                print("           %s: %s" % (model, _usage_tokens_line(tokens)))
+            print("           sessions: %d" % _coerce_count(entry.get("sessions")))
+        elif name == "codex":
+            print("           sessions: %d" % _coerce_count(entry.get("sessions")))
+        elif name == "copilot":
+            print(
+                "           aiu_nano: %d, premium_requests: %d"
+                % (
+                    _coerce_count(entry.get("aiu_nano")),
+                    _coerce_count(entry.get("premium_requests")),
+                )
+            )
+    print("total    %-13s %s" % ("", _usage_tokens_line(report.get("totals"))))
+
+
+def cmd_usage(args):
+    since_raw = "24h"
+    fmt = None
+    sources = list(_USAGE_SOURCES)
+    all_projects = False
+
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--since":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: usage: missing value for --since\n")
+                return 2
+            since_raw = args[i + 1]
+            i += 2
+        elif tok == "--source":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: usage: missing value for --source\n")
+                return 2
+            names = [x.strip() for x in args[i + 1].split(",") if x.strip()]
+            unknown = [x for x in names if x not in _USAGE_SOURCES]
+            if unknown or not names:
+                sys.stderr.write(
+                    "agent-exec: usage: unknown --source: %s (known: %s)\n"
+                    % (",".join(unknown) or "<empty>", ",".join(_USAGE_SOURCES))
+                )
+                return 2
+            sources = names
+            i += 2
+        elif tok in ("--json", "--text"):
+            if fmt is not None and fmt != tok:
+                sys.stderr.write("agent-exec: usage: --json and --text are mutually exclusive\n")
+                return 2
+            fmt = tok
+            i += 1
+        elif tok == "--all-projects":
+            all_projects = True
+            i += 1
+        else:
+            sys.stderr.write("agent-exec: usage: unknown option: %s\n" % tok)
+            return 2
+
+    now = datetime.now(timezone.utc)
+    since = parse_usage_since(since_raw, now)
+    if since is None:
+        sys.stderr.write(
+            "agent-exec: usage: invalid --since: %s "
+            "(expected <N>m|<N>h|<N>d or an ISO8601 timestamp)\n" % since_raw
+        )
+        return 2
+
+    resolved, err = resolve_config()
+    cfg = resolved if err is None and isinstance(resolved, dict) else DEFAULTS
+
+    report = build_usage_report(
+        since, now, sources, all_projects=all_projects, cfg=cfg
+    )
+
+    if fmt == "--text":
+        _print_usage_text(report)
+    else:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0
 
 
@@ -3319,6 +4409,9 @@ def main(argv):
 
     if tok == "cooldown":
         return cmd_cooldown(argv[1:])
+
+    if tok == "usage":
+        return cmd_usage(argv[1:])
 
     return cmd_dispatch(tok, argv[1:])
 
