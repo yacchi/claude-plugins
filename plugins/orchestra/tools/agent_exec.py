@@ -165,6 +165,11 @@ DEFAULTS = {
         "enabled": False,
         "dir": "~/.claude/orchestra/telemetry",
     },
+    "ledger": {
+        "enabled": True,
+        "dir": "~/.claude/orchestra/runs",
+        "retention_days": 30,
+    },
 }
 
 USAGE = """\
@@ -310,6 +315,9 @@ Usage:
                                   preserving all other content/comments
   agent-exec telemetry disable [--scope user|project|local]
                                   same, but sets telemetry.enabled: false
+  agent-exec ledger show [--session ID|--run ID] [--json|--text]
+  agent-exec ledger archive [--json|--text]
+  agent-exec ledger clear [--yes] [--json|--text]
   agent-exec <profile> [args...] dispatch: inject profile env, exec the
                                   target CLI with args passed through verbatim
   agent-exec -h | --help          show this help
@@ -956,7 +964,10 @@ _RUN_LEDGER_CLASSES = ("light", "standard", "deep")
 _RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "delegated")
 _RUN_LEDGER_MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,64}$")
 _RUN_LEDGER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_RUN_LEDGER_RUN_RE = _RUN_LEDGER_ID_RE
+_RUN_LEDGER_SESSION_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 _RUN_LEDGER_CORR_RE = re.compile(r"^oxc-[0-9a-f]{12}$")
+_ledger_retention_ran = False
 
 
 def _is_nonneg_int(v):
@@ -1156,6 +1167,9 @@ def sanitize_run_ledger_record(raw):
     corr = raw.get("corr")
     if isinstance(corr, str) and _RUN_LEDGER_CORR_RE.fullmatch(corr):
         out["corr"] = corr
+    run = raw.get("run")
+    if isinstance(run, str) and _RUN_LEDGER_RUN_RE.fullmatch(run):
+        out["run"] = run
 
     if not any(key in out for key in ("executor", "cls", "status", "model")):
         return None
@@ -1164,22 +1178,60 @@ def sanitize_run_ledger_record(raw):
 
 def run_ledger_append(record, run_id, cfg):
     """Best-effort append of one sanitized, compact run ledger line."""
+    global _ledger_retention_ran
     try:
-        if not isinstance(run_id, str) or not _RUN_LEDGER_ID_RE.fullmatch(run_id):
+        ledger_cfg = (cfg or {}).get("ledger")
+        if not isinstance(ledger_cfg, dict):
+            ledger_cfg = {}
+        if ledger_cfg.get("enabled", DEFAULTS["ledger"]["enabled"]) is not True:
+            return
+        session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        if not isinstance(session_id, str):
+            return
+        if (not session_id.strip() or session_id in (".", "..")
+                or not _RUN_LEDGER_SESSION_RE.fullmatch(session_id)):
+            return
+        if run_id is not None and (
+                not isinstance(run_id, str) or not _RUN_LEDGER_ID_RE.fullmatch(run_id)):
             return
         sanitized = sanitize_run_ledger_record(record)
         if sanitized is None:
             return
+        if run_id is not None:
+            sanitized["run"] = run_id
         sanitized.setdefault("ts", datetime.now(timezone.utc).isoformat())
-        directory = os.path.join(os.path.dirname(_telemetry_dir_from_cfg(cfg)), "runs")
+        directory = _ledger_dir_from_cfg(cfg)
         os.makedirs(directory, mode=0o700, exist_ok=True)
         os.chmod(directory, 0o700)
-        path = os.path.join(directory, run_id + ".jsonl")
+        path = os.path.join(directory, session_id + ".jsonl")
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(sanitized, ensure_ascii=False, separators=(",", ":")) + "\n")
         _telemetry_enforce_cap(path)
+        if not _ledger_retention_ran:
+            _ledger_retention_ran = True
+            try:
+                days = ledger_cfg.get("retention_days", DEFAULTS["ledger"]["retention_days"])
+                if not isinstance(days, int) or isinstance(days, bool) or days <= 0:
+                    days = DEFAULTS["ledger"]["retention_days"]
+                cutoff = time.time() - days * 86400
+                for name in os.listdir(directory):
+                    if not name.endswith(".jsonl"):
+                        continue
+                    candidate = os.path.join(directory, name)
+                    if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
+                        os.remove(candidate)
+            except Exception:
+                pass
     except Exception:
         pass
+
+
+def _ledger_dir_from_cfg(cfg):
+    ledger_cfg = (cfg or {}).get("ledger")
+    if isinstance(ledger_cfg, dict) and isinstance(ledger_cfg.get("dir"), str) and ledger_cfg.get("dir"):
+        return os.path.expanduser(ledger_cfg["dir"])
+    # Preserve the pre-ledger-config location for callers with partial configs.
+    return os.path.join(os.path.dirname(_telemetry_dir_from_cfg(cfg)), "runs")
 
 
 def build_run_ledger_record(executor, model, cls, result):
@@ -1417,6 +1469,125 @@ def cmd_telemetry(args):
         return 0
 
     sys.stderr.write("agent-exec: telemetry: unknown subcommand: %s\n" % sub)
+    return 2
+
+
+def _ledger_records_for_command(directory, session_id=None, run_id=None):
+    if session_id is not None:
+        return read_session_ledger(directory, session_id)
+    if run_id is not None:
+        return read_run_ledger(directory, run_id)
+    records = []
+    seen = set()
+    try:
+        names = sorted(name for name in os.listdir(directory)
+                       if name.endswith(".jsonl") and os.path.isfile(
+                           os.path.join(directory, name)))
+    except OSError:
+        names = []
+    for name in names:
+        for record in _read_ledger_file(os.path.join(directory, name)):
+            key = json.dumps(record, sort_keys=True, separators=(",", ":"))
+            if key not in seen:
+                seen.add(key)
+                records.append(record)
+    return records
+
+
+def cmd_ledger(args):
+    if not args:
+        sys.stderr.write("agent-exec: ledger: missing subcommand\n")
+        return 2
+    sub, rest = args[0], args[1:]
+    resolved, err = resolve_config()
+    cfg = resolved if err is None and isinstance(resolved, dict) else DEFAULTS
+    directory = _ledger_dir_from_cfg(cfg)
+
+    if sub == "show":
+        session_id = run_id = None
+        fmt = "--text"
+        i = 0
+        while i < len(rest):
+            tok = rest[i]
+            if tok in ("--json", "--text"):
+                fmt = tok
+                i += 1
+            elif tok in ("--session", "--run"):
+                if i + 1 >= len(rest):
+                    return 2
+                value = rest[i + 1]
+                pattern = (_RUN_LEDGER_SESSION_RE if tok == "--session"
+                           else _RUN_LEDGER_ID_RE)
+                if not _valid_ledger_selector(value, pattern):
+                    return 2
+                if tok == "--session":
+                    session_id = value
+                else:
+                    run_id = value
+                i += 2
+            else:
+                return 2
+        if session_id is not None and run_id is not None:
+            return 2
+        records = _ledger_records_for_command(directory, session_id, run_id)
+        by_executor = {}
+        for record in records:
+            executor = record.get("executor")
+            if executor not in _RUN_LEDGER_EXECUTORS:
+                continue
+            entry = by_executor.setdefault(executor, {"records": 0})
+            entry["records"] += 1
+            for key, value in record.items():
+                if key != "records" and _is_nonneg_int(value):
+                    entry[key] = entry.get(key, 0) + value
+        summary = {"records": len(records), "executors": by_executor}
+        if fmt == "--json":
+            print(json.dumps(summary, ensure_ascii=False))
+        else:
+            print("total records: %d" % len(records))
+            for executor in sorted(by_executor):
+                values = by_executor[executor]
+                print("%s: records=%d%s" % (
+                    executor, values["records"],
+                    "".join(" %s=%d" % (key, values[key])
+                            for key in sorted(values) if key != "records")))
+        return 0
+
+    if sub in ("archive", "clear"):
+        fmt = "--text"
+        for tok in rest:
+            if tok in ("--json", "--text"):
+                fmt = tok
+            else:
+                if sub == "clear" and tok == "--yes":
+                    continue
+                return 2
+        if sub == "clear":
+            try:
+                for name in os.listdir(directory):
+                    if name.endswith(".jsonl"):
+                        os.remove(os.path.join(directory, name))
+            except OSError:
+                pass
+            return 0
+        if not os.path.isdir(directory):
+            return 0
+        out_path = os.path.join(
+            os.path.dirname(os.path.abspath(directory)),
+            "orchestra-ledger-archive.tgz",
+        )
+        try:
+            with tarfile.open(out_path, "w:gz") as tar:
+                tar.add(directory, arcname=os.path.basename(directory.rstrip("/")))
+        except OSError:
+            return 1
+        if fmt == "--json":
+            print(json.dumps({"archive": out_path}, ensure_ascii=False))
+        else:
+            print(out_path)
+        return 0
+
+    sys.stderr.write("agent-exec: ledger: unknown subcommand: %s\n" % sub)
     return 2
 
 
@@ -3843,7 +4014,7 @@ def cmd_dispatch_route(args):
             "route": route,
             "isolation": isolation,
         }
-        if route["executor"] != "claude" and run_id is not None:
+        if route["executor"] != "claude":
             correlation_id = _new_correlation_id()
             output["correlation_id"] = correlation_id
             run_ledger_append(
@@ -4326,9 +4497,7 @@ def collect_claude_usage(cutoff, all_projects=False, home=None, cwd=None,
     }
 
 
-def read_run_ledger(ledger_dir, run_id):
-    """Return parsed ledger records for one run; malformed lines are ignored."""
-    path = os.path.join(ledger_dir, "%s.jsonl" % run_id)
+def _read_ledger_file(path):
     records = []
     try:
         handle = open(path, "r", encoding="utf-8", errors="replace")
@@ -4347,6 +4516,41 @@ def read_run_ledger(ledger_dir, run_id):
     finally:
         handle.close()
     return records
+
+
+def _valid_ledger_selector(value, pattern):
+    return (isinstance(value, str) and value not in (".", "..")
+            and pattern.fullmatch(value))
+
+
+def read_run_ledger(ledger_dir, run_id):
+    """Return tagged records plus legacy records for one run."""
+    if not _valid_ledger_selector(run_id, _RUN_LEDGER_ID_RE):
+        return []
+    records = []
+    seen = set()
+    try:
+        names = sorted(name for name in os.listdir(ledger_dir)
+                       if name.endswith(".jsonl") and os.path.isfile(
+                           os.path.join(ledger_dir, name)))
+    except OSError:
+        names = []
+    for name in names:
+        is_legacy = name == "%s.jsonl" % run_id
+        for record in _read_ledger_file(os.path.join(ledger_dir, name)):
+            if not is_legacy and record.get("run") != run_id:
+                continue
+            key = json.dumps(record, sort_keys=True, separators=(",", ":"))
+            if key not in seen:
+                seen.add(key)
+                records.append(record)
+    return records
+
+
+def read_session_ledger(ledger_dir, session_id):
+    if not _valid_ledger_selector(session_id, _RUN_LEDGER_SESSION_RE):
+        return []
+    return _read_ledger_file(os.path.join(ledger_dir, "%s.jsonl" % session_id))
 
 
 def _scope_entry(reason):
@@ -4605,12 +4809,24 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
             out[name] = collect_claude_scoped_usage(
                 home=home, run_ids=run_ids, session_ids=session_ids)
         elif scoped and name in ("copilot", "codex"):
-            if run_ids:
+            if run_ids or session_ids:
                 records = []
-                ledger_dir = os.path.join(os.path.dirname(
-                    _telemetry_dir_from_cfg(cfg)), "runs")
+                ledger_dir = _ledger_dir_from_cfg(cfg)
+                seen = set()
                 for run_id in run_ids:
-                    records.extend(read_run_ledger(ledger_dir, run_id))
+                    selected = read_run_ledger(ledger_dir, run_id)
+                    for record in selected:
+                        key = json.dumps(record, sort_keys=True, separators=(",", ":"))
+                        if key not in seen:
+                            seen.add(key)
+                            records.append(record)
+                for session_id in session_ids:
+                    selected = read_session_ledger(ledger_dir, session_id)
+                    for record in selected:
+                        key = json.dumps(record, sort_keys=True, separators=(",", ":"))
+                        if key not in seen:
+                            seen.add(key)
+                            records.append(record)
                 if name == "codex":
                     delegated, measured, tokens, extra = _ledger_codex_usage(records, home)
                     if not measured and delegated:
@@ -4632,7 +4848,7 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                 else:
                     out[name] = {
                         "status": "ok",
-                        "scope": "run",
+                        "scope": "run" if run_ids else "session",
                         "tokens": acc["tokens"],
                         "aiu_nano": acc["aiu_nano"],
                         "premium_requests": acc["premium_requests"],
@@ -4642,8 +4858,6 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                         out[name]["delegated"] = acc["delegated"]
                         out[name]["measured"] = acc["measured"]
                         out[name]["tokens"].update(acc["extra_tokens"])
-            else:
-                out[name] = _scope_entry("session scope is not attributable")
         elif scoped:
             out[name] = _scope_entry("session scope is not attributable")
         elif name == "claude":
@@ -4708,8 +4922,7 @@ def _list_usage_runs(home=None, config_dir=None, sources=None, cfg=None,
                                 if ts is not None:
                                     item["timestamps"].append(ts)
     if requested.intersection(("copilot", "codex")):
-        ledger_dir = os.path.join(os.path.dirname(
-            _telemetry_dir_from_cfg(cfg)), "runs")
+        ledger_dir = _ledger_dir_from_cfg(cfg)
         try:
             names = os.listdir(ledger_dir)
         except OSError:
@@ -4834,6 +5047,10 @@ def cmd_usage(args):
             if any(not value for value in values):
                 sys.stderr.write("agent-exec: usage: empty value for %s\n" % tok)
                 return 2
+            pattern = _RUN_LEDGER_ID_RE if tok == "--run" else _RUN_LEDGER_SESSION_RE
+            if any(not _valid_ledger_selector(value, pattern) for value in values):
+                sys.stderr.write("agent-exec: usage: invalid value for %s\n" % tok)
+                return 2
             if tok == "--run":
                 run_ids.extend(values)
             else:
@@ -4943,6 +5160,9 @@ def main(argv):
 
     if tok == "telemetry":
         return cmd_telemetry(argv[1:])
+
+    if tok == "ledger":
+        return cmd_ledger(argv[1:])
 
     if tok == "cooldown":
         return cmd_cooldown(argv[1:])

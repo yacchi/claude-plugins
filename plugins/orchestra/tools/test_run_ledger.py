@@ -11,6 +11,7 @@ import os
 import stat
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -19,6 +20,16 @@ import agent_exec  # noqa: E402
 
 
 class RunLedgerSanitizingTests(unittest.TestCase):
+    def setUp(self):
+        self._session_before = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "session-test"
+
+    def tearDown(self):
+        if self._session_before is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_before
+
     def test_allowlist_and_numeric_validation(self):
         raw = {
             "ts": "2026-08-19T07:00:00+00:00",
@@ -71,7 +82,7 @@ class RunLedgerSanitizingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False}}
             agent_exec.run_ledger_append(raw, "run_a", cfg)
-            path = os.path.join(tmp, "runs", "run_a.jsonl")
+            path = os.path.join(tmp, "runs", "session-test.jsonl")
             with open(path, encoding="utf-8") as f:
                 line = f.read()
             for secret in ("secret prompt text", "/absolute/private/file", "session-secret"):
@@ -102,8 +113,29 @@ class RunLedgerSanitizingTests(unittest.TestCase):
             dict(base, status="not-a-real-status"))
         self.assertNotIn("status", invented)
 
+    def test_bad_run_field_is_dropped_rest_survives(self):
+        base = {"executor": "copilot", "cls": "standard", "status": "ok",
+                "input_tokens": 9}
+        for bad_run in ("", " ", "a b", "x" * 65, "run/with/slash", ".."):
+            result = agent_exec.sanitize_run_ledger_record(dict(base, run=bad_run))
+            self.assertNotIn("run", result)
+            self.assertEqual(result["executor"], "copilot")
+            self.assertEqual(result["input_tokens"], 9)
+        good = agent_exec.sanitize_run_ledger_record(dict(base, run="wf_ok-1"))
+        self.assertEqual(good["run"], "wf_ok-1")
+
 
 class RunLedgerWritingTests(unittest.TestCase):
+    def setUp(self):
+        self._session_before = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "session-test"
+
+    def tearDown(self):
+        if self._session_before is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_before
+
     def test_append_mode_compact_json_and_telemetry_independent(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False}}
@@ -112,7 +144,7 @@ class RunLedgerWritingTests(unittest.TestCase):
             agent_exec.run_ledger_append(record, "wf_a26027ae-bdb", cfg)
             directory = os.path.join(tmp, "runs")
             self.assertEqual(stat.S_IMODE(os.stat(directory).st_mode), 0o700)
-            with open(os.path.join(directory, "wf_a26027ae-bdb.jsonl"), encoding="utf-8") as f:
+            with open(os.path.join(directory, "session-test.jsonl"), encoding="utf-8") as f:
                 lines = f.readlines()
             self.assertEqual(len(lines), 2)
             for line in lines:
@@ -124,12 +156,183 @@ class RunLedgerWritingTests(unittest.TestCase):
         agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
 
 
+class RunLedgerSessionIdValidationTests(unittest.TestCase):
+    """Section B: the session id is read from the environment ONLY, used
+    solely as a filename, and must fail closed -- no path traversal, no
+    file, no directory -- for anything not matching the allowlist."""
+
+    def setUp(self):
+        self._session_before = os.environ.get("CLAUDE_CODE_SESSION_ID")
+
+    def tearDown(self):
+        if self._session_before is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_before
+
+    def test_invalid_session_ids_write_nothing_and_create_no_file(self):
+        for bad in ("..", "a/b", "", " ", "x" * 129):
+            os.environ["CLAUDE_CODE_SESSION_ID"] = bad
+            with tempfile.TemporaryDirectory() as tmp:
+                cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"),
+                                     "enabled": False}}
+                agent_exec.run_ledger_append(
+                    {"executor": "copilot", "status": "ok"}, "run_id_ok", cfg)
+                directory = os.path.join(tmp, "runs")
+                self.assertFalse(os.path.exists(directory), repr(bad))
+                # No traversal outside the tempdir either: nothing at all
+                # was created under it.
+                self.assertEqual(os.listdir(tmp), [])
+
+
+class RunLedgerSessionUnsetTests(unittest.TestCase):
+    """Section B: CLAUDE_CODE_SESSION_ID unset -> nothing is written at
+    all, with or without --run-id, and the ledger directory is never
+    created."""
+
+    def setUp(self):
+        self._session_before = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+
+    def tearDown(self):
+        if self._session_before is not None:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_before
+
+    def test_unset_session_id_writes_nothing_without_run_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False}}
+            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, None, cfg)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "runs")))
+
+    def test_unset_session_id_writes_nothing_with_run_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False}}
+            agent_exec.run_ledger_append(
+                {"executor": "copilot", "status": "ok"}, "wf_a1b2c3d4e5f6", cfg)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "runs")))
+
+
+class RunLedgerTelemetryIndependenceTests(unittest.TestCase):
+    """Section A: ledger.enabled and telemetry.enabled are independent
+    switches, in both directions."""
+
+    def setUp(self):
+        self._session_before = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "session-independence"
+
+    def tearDown(self):
+        if self._session_before is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_before
+
+    def test_ledger_disabled_blocks_ledger_telemetry_enabled_still_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            telemetry_dir = os.path.join(tmp, "telemetry")
+            cfg = {
+                "telemetry": {"dir": telemetry_dir, "enabled": True},
+                "ledger": {"dir": os.path.join(tmp, "runs"), "enabled": False},
+            }
+            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "runs")))
+
+            agent_exec.telemetry_append({"event": "dispatch"}, cfg)
+            self.assertTrue(
+                os.path.exists(os.path.join(telemetry_dir, "records.jsonl")))
+
+    def test_telemetry_disabled_does_not_block_ledger(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = {
+                "telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False},
+                "ledger": {"dir": os.path.join(tmp, "runs"), "enabled": True},
+            }
+            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+            path = os.path.join(tmp, "runs", "session-independence.jsonl")
+            self.assertTrue(os.path.exists(path))
+            self.assertFalse(
+                os.path.exists(os.path.join(tmp, "telemetry", "records.jsonl")))
+
+
+class RunLedgerRetentionTests(unittest.TestCase):
+    """Section E: best-effort, at-most-once-per-process retention sweep on
+    a successful append."""
+
+    def setUp(self):
+        self._session_before = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "session-retention"
+        self._retention_ran_before = agent_exec._ledger_retention_ran
+        agent_exec._ledger_retention_ran = False
+
+    def tearDown(self):
+        if self._session_before is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_before
+        agent_exec._ledger_retention_ran = self._retention_ran_before
+
+    def test_retention_deletes_old_keeps_new_ignores_non_jsonl_and_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = os.path.join(tmp, "runs")
+            os.makedirs(directory)
+            old_path = os.path.join(directory, "old.jsonl")
+            new_path = os.path.join(directory, "new.jsonl")
+            other_path = os.path.join(directory, "notes.txt")
+            sub_dir = os.path.join(directory, "sub.jsonl")
+            for path in (old_path, new_path, other_path):
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write("{}\n")
+            os.makedirs(sub_dir)  # a directory literally named "sub.jsonl"
+
+            old_time = time.time() - 40 * 86400
+            os.utime(old_path, (old_time, old_time))
+            os.utime(sub_dir, (old_time, old_time))
+
+            cfg = {
+                "telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False},
+                "ledger": {"dir": directory, "enabled": True, "retention_days": 30},
+            }
+            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+
+            self.assertFalse(os.path.exists(old_path))
+            self.assertTrue(os.path.exists(new_path))
+            self.assertTrue(os.path.exists(other_path))
+            self.assertTrue(os.path.isdir(sub_dir))
+
+    def test_retention_runs_at_most_once_per_process(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = os.path.join(tmp, "runs")
+            os.makedirs(directory)
+            old_path = os.path.join(directory, "old.jsonl")
+            with open(old_path, "w", encoding="utf-8") as f:
+                f.write("{}\n")
+            old_time = time.time() - 40 * 86400
+            os.utime(old_path, (old_time, old_time))
+
+            cfg = {
+                "telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False},
+                "ledger": {"dir": directory, "enabled": True, "retention_days": 30},
+            }
+            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+            self.assertFalse(os.path.exists(old_path))
+
+            # Re-create the now-stale file after the first (successful)
+            # sweep: a second append in the same process must NOT sweep
+            # again, since the module-level flag is already set.
+            with open(old_path, "w", encoding="utf-8") as f:
+                f.write("{}\n")
+            os.utime(old_path, (old_time, old_time))
+            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+            self.assertTrue(os.path.exists(old_path))
+
+
 class DelegatedDispatchCorrelationTests(unittest.TestCase):
     """Section A: the delegate branch of `dispatch` mints a correlation id,
     writes exactly one ledger line for it, and echoes it in the JSON --
     except for claude, and except when --run-id was not passed."""
 
     def _dispatch(self, tmp, executor, run_id=None, model="m", cls="standard"):
+        old_session = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "session-dispatch"
         prompt = tempfile.NamedTemporaryFile(mode="w", delete=False)
         prompt.write("hello")
         prompt.close()
@@ -159,9 +362,13 @@ class DelegatedDispatchCorrelationTests(unittest.TestCase):
             agent_exec.resolve_config = old_resolve_config
             agent_exec.resolve_route = old_resolve_route
             os.unlink(prompt.name)
+            if old_session is None:
+                os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+            else:
+                os.environ["CLAUDE_CODE_SESSION_ID"] = old_session
 
     def _ledger_lines(self, tmp, run_id):
-        path = os.path.join(tmp, "runs", run_id + ".jsonl")
+        path = os.path.join(tmp, "runs", "session-dispatch.jsonl")
         if not os.path.exists(path):
             return []
         with open(path, encoding="utf-8") as f:
@@ -186,13 +393,15 @@ class DelegatedDispatchCorrelationTests(unittest.TestCase):
             ):
                 self.assertNotIn(token_key, record)
 
-    def test_codex_delegate_without_run_id_writes_nothing(self):
+    def test_codex_delegate_without_run_id_writes_untagged_line(self):
         with tempfile.TemporaryDirectory() as tmp:
             code, out, err = self._dispatch(tmp, "codex", run_id=None)
             self.assertEqual(code, 0, err)
             payload = json.loads(out)
-            self.assertNotIn("correlation_id", payload)
-            self.assertFalse(os.path.exists(os.path.join(tmp, "runs")))
+            self.assertRegex(payload["correlation_id"], r"^oxc-[0-9a-f]{12}$")
+            lines = self._ledger_lines(tmp, "unused")
+            self.assertEqual(len(lines), 1)
+            self.assertNotIn("run", lines[0])
 
     def test_claude_delegate_with_run_id_mints_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -242,7 +451,7 @@ class RunIdValidationTests(unittest.TestCase):
                 self.assertEqual(out, "")
                 self.assertIn(value, err)
 
-    def test_no_run_id_does_not_create_ledger(self):
+    def test_no_run_id_writes_session_ledger(self):
         with tempfile.TemporaryDirectory() as tmp:
             old = agent_exec.resolve_config
             old_dryrun = os.environ.get("AGENT_EXEC_DRYRUN")

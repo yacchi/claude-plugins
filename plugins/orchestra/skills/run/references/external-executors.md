@@ -23,7 +23,7 @@ Codex CLI 0.144+はGPT-5.6を3つのサイズティアで提供している — 
 
 **長文コンテキストに関する注意:** Lunaは長文コンテキストの想起が測定可能なレベルで弱い。名目上light/standardクラスのタスクであっても、大規模リポジトリの深い探索が必要な場合(単なる小さな自己完結の変更ではない場合)は、そのタスクに限り`deep`(Sol/xhigh)にエスカレーションすること — サンプル設定の`long_context_escalation`フィールドがこのトリガーを明示的に文書化しているので、毎回ゼロから判断する必要はない。
 
-Codexは公式の`codex:codex-rescue`エージェントを通る`dispatch: agent`のままにする。実行コストは相関IDでラン単位に帰属できるため、`agent-exec usage --run <workflow-run-id>`で確認する。
+Codexは公式の`codex:codex-rescue`エージェントを通る`dispatch: agent`のままにする。実行コストは相関IDでラン単位に帰属でき、台帳はセッション単位でも既定で有効なので、`agent-exec usage --run <workflow-run-id>`または`agent-exec usage --session <session-id>`で確認する。
 
 ## 2. Copilotのモデルカタログ・候補・CLI利用方法
 
@@ -62,7 +62,7 @@ agent-exec copilot -p "$(cat TASK.md)" --model gpt-5.6-luna --effort medium \
   --add-dir "$WORKDIR" --output-format json --disable-builtin-mcps > run.jsonl
 ```
 
-For deterministic per-run accounting, use the normalized entry point with the workflow run id: `agent-exec run copilot --run-id <workflow-run-id> --model gpt-5.6-luna --effort medium --workdir "$WORKDIR" --prompt-file TASK.md`. The equivalent routed form is `agent-exec dispatch --class <cls> --run-id <workflow-run-id> ...`; read the resulting Copilot or Codex cost back with `agent-exec usage --run <workflow-run-id>`.
+For deterministic accounting, use `--run-id <workflow-run-id>` when dispatching and read Copilot or Codex cost with `agent-exec usage --run <workflow-run-id>`; the default-on ledger also makes per-session cost available through `agent-exec usage --session <session-id>`.
 
 **`COPILOT_ALLOW_ALL`/`--allow-all-tools`は不要(実測: M1)。** Copilot CLI 1.0.74で再測定した結果、`copilot -p`は非対話モードで、上記コマンドのように`--add-dir`と`--output-format json`だけを渡した状態でも、ファイル書き込み(`apply_patch`)・シェル実行(`bash`)・ネットワークアクセス(`bash`経由の`curl`が`example.com`へHTTP 200)を**確認なしに自律的に実行する**。旧版のこのファイルにあった「非対話実行には`COPILOT_ALLOW_ALL`/`--allow-all-tools`が必須」という記述はCLI 1.0.71での検証によるもので、1.0.74では成立しない — allow-allフラグ/環境変数はヘッドレスディスパッチに不要であり、`agent-exec`はもう注入しない。
 
@@ -181,7 +181,7 @@ GitHubはCopilotモデルの単価を[Models and pricing](https://docs.github.co
 
 **対照的に、Codex CLIのコストは直接測定できる**: `codex exec --json`は`turn.completed`イベントで`usage.input_tokens`・`usage.cached_input_tokens`・`usage.output_tokens`を返し、これは上表と単純に掛け合わせられる(CodexもCopilotも同じGPT-5.6モデル群に課金される)。`poc-findings.md`のCodex側のコスト数値はすべてここから算出している — Codexのコスト数値は確度が高く、Copilotのものは(`premiumRequests: 1`の注意点により)方向性の参考程度と考えること。
 
-When dispatches carry `--run-id <workflow-run-id>`, the run ledger is the deterministic source for reading Copilot/Codex cost per workflow run: use `agent-exec usage --run <workflow-run-id>` rather than estimating from a time window.
+The default-on run ledger is the deterministic source for reading Copilot/Codex cost per workflow run or session: use `agent-exec usage --run <workflow-run-id>` or `agent-exec usage --session <session-id>` rather than estimating from a time window.
 
 **Claude(Sonnet/Haiku、`Agent`ツール経由)の単価**、[Anthropicの公式料金ページ](https://platform.claude.com/docs/en/docs/about-claude/pricing)より(2026-07-16確認)、100万トークンあたり:
 

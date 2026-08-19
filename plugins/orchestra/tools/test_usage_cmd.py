@@ -799,6 +799,29 @@ class DeterministicScopeTests(unittest.TestCase):
             self.assertNotIn("since", report)
             self.assertNotIn("now", report)
 
+    def test_session_scope_reports_no_matching_run_ledger_data_per_source(self):
+        # Section C: under --session, a source with no lines in the
+        # session's ledger file keeps the exact "no matching run ledger
+        # data" reason, even while a sibling source in the SAME file is
+        # attributable.
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            ledger_dir = os.path.join(home, "runs")
+            write_lines(os.path.join(ledger_dir, "sess-x.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 5}),
+            ])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot", "codex"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", session_ids=["sess-x"])
+            self.assertEqual(report["sources"]["copilot"]["status"], "ok")
+            self.assertEqual(
+                report["sources"]["copilot"]["tokens"]["input_tokens"], 5)
+            self.assertEqual(report["sources"]["codex"], {
+                "attributable": False,
+                "reason": "no matching run ledger data",
+            })
+
     def test_session_only_scope_omits_window_keys(self):
         with tempfile.TemporaryDirectory() as home:
             slug = agent_exec.claude_project_slug("/x")
