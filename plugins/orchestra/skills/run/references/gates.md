@@ -12,6 +12,8 @@ So `cited_contract` is a required field: point at the spec text, an enumerated e
 
 The rule cuts both ways. A supervisor inference about casing, normalization, inheritance, or compatibility does not become a product requirement because you wrote it into a correction packet mid-run. If you decide the contract really should be stricter, amend the contract explicitly and say so — don't smuggle it in as a correction.
 
+**A FAIL with no findings is not a FAIL, it is a dropped round.** Reviewers routinely narrate a real, well-analysed defect into `summary` and leave `feedback` empty — the schema declares the field but cannot force a model to use it. The correction packet then interpolates `undefined`, and the next worker's only correct move is `ESCALATE`, which costs a full round and returns nothing. So guard on `feedback.length` before building any packet, and tell reviewers explicitly to put findings in the array field rather than in the prose. When the guard fires, the summary usually still holds the whole finding: re-derive it yourself and re-dispatch, rather than paying for another blind pass.
+
 **Reviewer-side corollary:** a reviewer must never repair what it found. `orchestra-review` may write its own new test files and nothing else. A reviewer that patches the implementation — or quietly adds the missing assertion to the worker's test — destroys the only independent signal the pipeline has, and the next gate is then reviewing its own work.
 
 ## 2. Why findings carry a defect family

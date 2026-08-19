@@ -60,6 +60,8 @@ agent-exec copilot -p "$(cat TASK.md)" --model gpt-5.6-luna --effort medium \
   --add-dir "$WORKDIR" --output-format json --disable-builtin-mcps > run.jsonl
 ```
 
+For deterministic per-run accounting, use the normalized entry point with the workflow run id: `agent-exec run copilot --run-id <workflow-run-id> --model gpt-5.6-luna --effort medium --workdir "$WORKDIR" --prompt-file TASK.md`. The equivalent routed form is `agent-exec dispatch --class <cls> --run-id <workflow-run-id> ...`; read the resulting Copilot or Codex cost back with `agent-exec usage --run <workflow-run-id>`.
+
 **`COPILOT_ALLOW_ALL`/`--allow-all-tools`は不要(実測: M1)。** Copilot CLI 1.0.74で再測定した結果、`copilot -p`は非対話モードで、上記コマンドのように`--add-dir`と`--output-format json`だけを渡した状態でも、ファイル書き込み(`apply_patch`)・シェル実行(`bash`)・ネットワークアクセス(`bash`経由の`curl`が`example.com`へHTTP 200)を**確認なしに自律的に実行する**。旧版のこのファイルにあった「非対話実行には`COPILOT_ALLOW_ALL`/`--allow-all-tools`が必須」という記述はCLI 1.0.71での検証によるもので、1.0.74では成立しない — allow-allフラグ/環境変数はヘッドレスディスパッチに不要であり、`agent-exec`はもう注入しない。
 
 `--disable-builtin-mcps`はハードニング目的のデフォルトフラグとして追加した。ビルトインMCPツール(`github-mcp-server`・`customize-cloud-agent`)をツール面から外し、トークン・レイテンシも削減する。
@@ -176,6 +178,8 @@ GitHubはCopilotモデルの単価を[Models and pricing](https://docs.github.co
 **注意 — この表は、Copilotのサブスクリプションが実際に1回あたり請求する額とは限らない。** このプラグイン自身のPoCでの全実行が、使用モデルによらず最終`result`イベントの`usage`に`"premiumRequests": 1`と記録していた — これは生のトークン単価ではなく、旧来の「フラットなプレミアムリクエスト」課金モデル(モデルごとの倍率をリクエスト枠に掛ける方式)と整合的である。GitHubの料金ページは、現行の課金世代についての倍率表を公開していないため、標準的なサブスクリプションの実際のコスト影響がこのドル建ての数字に連動しているのか、別の枠倍率の仕組みなのかはCLIだけからはわからない。上表は方向性としての序列(おおよそSol > Terra > Codex ≈ Kimi > Luna > MAI、コストの観点で)として扱い、大量利用を伴う判断の前には各自のCopilot利用状況/請求ダッシュボードで実際のコストを確認すること。
 
 **対照的に、Codex CLIのコストは直接測定できる**: `codex exec --json`は`turn.completed`イベントで`usage.input_tokens`・`usage.cached_input_tokens`・`usage.output_tokens`を返し、これは上表と単純に掛け合わせられる(CodexもCopilotも同じGPT-5.6モデル群に課金される)。`poc-findings.md`のCodex側のコスト数値はすべてここから算出している — Codexのコスト数値は確度が高く、Copilotのものは(`premiumRequests: 1`の注意点により)方向性の参考程度と考えること。
+
+When dispatches carry `--run-id <workflow-run-id>`, the run ledger is the deterministic source for reading Copilot/Codex cost per workflow run: use `agent-exec usage --run <workflow-run-id>` rather than estimating from a time window.
 
 **Claude(Sonnet/Haiku、`Agent`ツール経由)の単価**、[Anthropicの公式料金ページ](https://platform.claude.com/docs/en/docs/about-claude/pricing)より(2026-07-16確認)、100万トークンあたり:
 

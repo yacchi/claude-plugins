@@ -138,7 +138,10 @@ async function dispatchClass(cls, promptText, opts = {}) {
     (opts.archetype ? ' --archetype ' + opts.archetype : '') +
     (exhausted.size ? ' --exhausted ' + [...exhausted].join(',') : '') +
     promptFiles.map(file => ' --prompt-file ' + file).join('') +
-    ' --workdir ' + (opts.workdir || '.') + ' --capture`; then print its stdout JSON verbatim - nothing else.'
+    ' --workdir ' + (opts.workdir || '.') + ' --capture`' +
+    ' as ONE foreground Bash call with timeout 600000. It routinely takes many minutes: just ' +
+    'wait for it. Never background it, never poll it, never start a monitor, never report ' +
+    'progress. When it returns, print its stdout JSON verbatim - nothing else.'
 
   const raw = await agent(relayPrompt, { label: (opts.label || cls) + '-dispatch', model: 'haiku', effort: 'low' })
   const r = JSON.parse(raw)
@@ -255,6 +258,16 @@ async function runTask(task) {
                optional_hardening: verdict.optional_hardening || [] }
     }
 
+    // A FAIL with an empty `feedback` array is unactionable: the packet would
+    // interpolate `undefined` and the next worker can only guess or ESCALATE.
+    // Reviewers do prose the findings into `summary` instead of the field, so
+    // guard rather than trust the schema. Hand it back with the summary intact
+    // - you can re-derive the findings from it far cheaper than a wasted round.
+    if (!(verdict.feedback || []).length) {
+      return { id: task.id, pass: false, needsInstructor: true, rounds: gate,
+               summary: 'FAIL with no structured findings: ' + verdict.summary }
+    }
+
     // A re-gate that surfaces a defect family the correction did not introduce
     // means the FIRST review under-swept. Another blind round would just find
     // the next sibling - hand it back for re-analysis instead (§11.2).
@@ -281,6 +294,8 @@ const results = await pipeline(tasks, runTask)
 
 return results
 ```
+
+The relay command should carry `--run-id <the workflow run id>` so Copilot/Codex cost lands in the same ledger the instructor later queries.
 
 **Same-tree parallelism safety.** `pipeline()`/`parallel()` run file-changing workers concurrently against the **same working tree** — two workers with overlapping file ownership silently corrupt each other. Pin disjoint target files (and shared contracts/types) in each worker's prompt, and keep workers small. Full guidance: `references/authoring.md` §1.
 
@@ -338,6 +353,8 @@ Key semantics, the merge algorithm and its upgrade trap, `enforcement.light_clas
 ## 10. Telemetry
 
 Opt-in, default off, anonymized: `agent-exec` enforces a field/value allowlist, so prompts, paths, ids, and free text are structurally unrecordable. Two sources: `agent-exec run ... --capture` self-logs one `dispatch` record per dispatch (LLM-independent), and you emit exactly one `run_summary` at run end through a haiku relay when enabled. Fields, storage layout, and the `record`/`show`/`archive`/`clear` CLI: `references/config.md` §2.
+
+Measure one workflow run with `agent-exec usage --run <workflow-run-id>`; this is exact rather than a time window. External-executor dispatches must carry `--run-id` for their costs to be attributable to that run.
 
 ## 11. Gate discipline
 

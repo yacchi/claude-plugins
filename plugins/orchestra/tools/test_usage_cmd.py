@@ -13,6 +13,7 @@ Run with: uv run test_usage_cmd.py
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -21,6 +22,29 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent_exec  # noqa: E402
+
+AGENT_EXEC_PY = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "agent_exec.py")
+
+
+def run_cli(args, home, config_dir=None, extra_env=None):
+    """Invoke tools/agent_exec.py as a real subprocess, isolated to a
+    synthetic HOME (and optionally CLAUDE_CONFIG_DIR), so a signature or
+    wiring break in the argv -> cmd_usage -> collector path is caught even
+    when every helper unit-tests green in isolation."""
+    env = dict(os.environ)
+    env["HOME"] = home
+    if config_dir is None:
+        env.pop("CLAUDE_CONFIG_DIR", None)
+    else:
+        env["CLAUDE_CONFIG_DIR"] = config_dir
+    if extra_env:
+        env.update(extra_env)
+    proc = subprocess.run(
+        [sys.executable, AGENT_EXEC_PY, "usage"] + args,
+        capture_output=True, text=True, env=env, cwd=home, timeout=60,
+    )
+    return proc.returncode, proc.stdout, proc.stderr
 
 
 NOW = datetime(2026, 8, 19, 12, 0, 0, tzinfo=timezone.utc)
@@ -448,7 +472,10 @@ class TotalsAndReportTests(unittest.TestCase):
             report = agent_exec.build_usage_report(
                 CUTOFF, NOW, ["codex", "claude"], cfg={"telemetry": {"enabled": False}},
                 home=home, cwd="/x")
-            self.assertEqual(sorted(report), ["now", "since", "sources", "totals"])
+            self.assertEqual(sorted(report), ["now", "scope", "since", "sources", "totals"])
+            self.assertEqual(report["scope"], {
+                "kind": "window", "since": CUTOFF.isoformat(), "until": NOW.isoformat()
+            })
             self.assertEqual(sorted(report["sources"]), ["claude", "codex"])
             self.assertEqual(report["since"], CUTOFF.isoformat())
             self.assertEqual(report["now"], NOW.isoformat())
@@ -485,7 +512,7 @@ class TotalsAndReportTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             parsed = json.loads(out.getvalue())
             self.assertEqual(sorted(parsed),
-                             ["now", "since", "sources", "totals"])
+                             ["now", "scope", "since", "sources", "totals"])
 
     def test_every_emitted_number_is_a_nonnegative_int(self):
         with tempfile.TemporaryDirectory() as home:
@@ -576,6 +603,300 @@ class ReadOnlyTests(unittest.TestCase):
 
             self.assertEqual(self._snapshot(home), before)
             self.assertEqual(dict(os.environ), env_before)
+
+
+class DeterministicScopeTests(unittest.TestCase):
+    def _write_claude(self, home, session, relative, lines):
+        slug = agent_exec.claude_project_slug("/x")
+        path = os.path.join(home, ".claude", "projects", slug, session, relative)
+        write_lines(path, lines)
+        return path
+
+    def test_run_scope_is_recursive_and_ignores_time(self):
+        with tempfile.TemporaryDirectory() as home:
+            self._write_claude(
+                home, "s-1", "subagents/workflows/wf_one/deep/a.jsonl",
+                [claude_line(NOW - timedelta(days=2000), input_tokens=7)],
+            )
+            self._write_claude(
+                home, "s-1", "subagents/workflows/wf_two/a.jsonl",
+                [claude_line(NOW, input_tokens=100)],
+            )
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["claude"], cfg={"telemetry": {"enabled": False}},
+                home=home, cwd="/x", run_ids=["wf_one"],)
+            self.assertEqual(report["scope"], {"kind": "run", "run_ids": ["wf_one"]})
+            self.assertEqual(report["sources"]["claude"]["tokens"]["input_tokens"], 7)
+            self.assertNotIn("since", report)
+            self.assertNotIn("now", report)
+
+    def test_session_and_union_deduplicate(self):
+        with tempfile.TemporaryDirectory() as home:
+            slug = agent_exec.claude_project_slug("/x")
+            write_lines(
+                os.path.join(home, ".claude", "projects", slug, "s-1.jsonl"),
+                [claude_line(NOW, input_tokens=2)])
+            self._write_claude(
+                home, "s-1", "subagents/workflows/wf_one/a.jsonl",
+                [claude_line(NOW, input_tokens=3)])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["claude", "codex"], cfg={"telemetry": {}},
+                home=home, cwd="/x", run_ids=["wf_one"], session_ids=["s-1"])
+            self.assertEqual(report["scope"], {
+                "kind": "run+session", "run_ids": ["wf_one"], "session_ids": ["s-1"]})
+            self.assertEqual(report["sources"]["claude"]["tokens"]["input_tokens"], 5)
+            self.assertFalse(report["sources"]["codex"]["attributable"])
+            self.assertNotIn("since", report)
+            self.assertNotIn("now", report)
+
+    def test_run_and_session_union_still_reports_ledger_totals(self):
+        # Regression: a non-empty --session must not suppress the --run
+        # scope's real ledger contribution for copilot/codex.
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            ledger_dir = os.path.join(home, "runs")
+            write_lines(os.path.join(ledger_dir, "one.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 9}),
+                json.dumps({"executor": "codex", "input_tokens": 6}),
+            ])
+            slug = agent_exec.claude_project_slug("/x")
+            write_lines(
+                os.path.join(home, ".claude", "projects", slug, "s-1.jsonl"),
+                [claude_line(NOW, input_tokens=2)])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["claude", "copilot", "codex"],
+                cfg={"telemetry": {"dir": telemetry_dir}},
+                home=home, cwd="/x", run_ids=["one"], session_ids=["s-1"])
+            self.assertEqual(report["scope"], {
+                "kind": "run+session", "run_ids": ["one"], "session_ids": ["s-1"]})
+            self.assertEqual(
+                report["sources"]["copilot"]["tokens"]["input_tokens"], 9)
+            self.assertEqual(
+                report["sources"]["codex"]["tokens"]["input_tokens"], 6)
+            self.assertNotIn("attributable", report["sources"]["copilot"])
+            self.assertNotIn("attributable", report["sources"]["codex"])
+            self.assertNotIn("since", report)
+            self.assertNotIn("now", report)
+
+    def test_session_only_scope_omits_window_keys(self):
+        with tempfile.TemporaryDirectory() as home:
+            slug = agent_exec.claude_project_slug("/x")
+            write_lines(
+                os.path.join(home, ".claude", "projects", slug, "s-1.jsonl"),
+                [claude_line(NOW, input_tokens=2)])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["claude"], cfg={"telemetry": {"enabled": False}},
+                home=home, cwd="/x", session_ids=["s-1"])
+            self.assertEqual(report["scope"], {
+                "kind": "session", "session_ids": ["s-1"]})
+            self.assertEqual(sorted(report), ["scope", "sources", "totals"])
+            self.assertNotIn("since", report)
+            self.assertNotIn("now", report)
+
+    def test_window_scope_keeps_since_and_now(self):
+        with tempfile.TemporaryDirectory() as home:
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["claude"], cfg={"telemetry": {"enabled": False}},
+                home=home, cwd="/x")
+            self.assertIn("since", report)
+            self.assertIn("now", report)
+            self.assertEqual(report["since"], CUTOFF.isoformat())
+            self.assertEqual(report["now"], NOW.isoformat())
+            self.assertEqual(report["scope"]["kind"], "window")
+
+    def test_run_scope_text_output_has_no_window_wording(self):
+        with tempfile.TemporaryDirectory() as home:
+            self._write_claude(
+                home, "s-1", "subagents/workflows/wf_one/a.jsonl",
+                [claude_line(NOW, input_tokens=7)])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["claude"], cfg={"telemetry": {"enabled": False}},
+                home=home, cwd="/x", run_ids=["wf_one"])
+            out = io.StringIO()
+            real_out = sys.stdout
+            sys.stdout = out
+            try:
+                agent_exec._print_usage_text(report)
+            finally:
+                sys.stdout = real_out
+            text = out.getvalue()
+            self.assertIn("scope: run wf_one", text)
+            self.assertNotIn("since=", text)
+            self.assertNotIn("until=", text)
+            self.assertNotIn("window", text)
+
+    def test_ledger_reader_and_unknown_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(agent_exec.read_run_ledger(directory, "missing"), [])
+            write_lines(os.path.join(directory, "r.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 4}),
+                "garbage",
+            ])
+            self.assertEqual(agent_exec.read_run_ledger(directory, "r"),
+                             [{"executor": "copilot", "input_tokens": 4}])
+            self.assertEqual(agent_exec.read_run_ledger(
+                os.path.join(directory, "absent"), "r"), [])
+
+    def test_scope_option_conflicts_are_exit_two_without_stdout(self):
+        for args in (
+            ["--since", "1h", "--run", "r"],
+            ["--since", "1h", "--session", "s"],
+            ["--list-runs", "--run", "r"],
+            ["--list-runs", "--since", "1h"],
+            ["--run", "a,,b"],
+        ):
+            out, err = io.StringIO(), io.StringIO()
+            old_out, old_err = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = out, err
+            try:
+                rc = agent_exec.cmd_usage(args)
+            finally:
+                sys.stdout, sys.stderr = old_out, old_err
+            self.assertEqual(rc, 2)
+            self.assertEqual(out.getvalue(), "")
+
+    def test_list_runs_is_sorted_and_reports_metadata(self):
+        with tempfile.TemporaryDirectory() as home:
+            self._write_claude(
+                home, "s", "subagents/workflows/wf_a/x.jsonl",
+                [claude_line(NOW - timedelta(hours=2), input_tokens=1),
+                 claude_line(NOW - timedelta(hours=1), input_tokens=1)])
+            self._write_claude(
+                home, "s", "subagents/workflows/wf_b/x.jsonl",
+                [claude_line(NOW - timedelta(hours=3), input_tokens=1)])
+            runs = agent_exec._list_usage_runs(
+                home=home, config_dir="", sources=["claude"],
+                cfg={"telemetry": {"dir": os.path.join(home, "telemetry")}},
+                all_projects=True)
+            self.assertEqual([r["run_id"] for r in runs], ["wf_b", "wf_a"])
+            self.assertEqual(runs[0]["files"], 1)
+
+    def test_list_runs_respects_cwd_scope_unless_all_projects(self):
+        with tempfile.TemporaryDirectory() as home:
+            self._write_claude(
+                home, "s", "subagents/workflows/wf_a/x.jsonl",
+                [claude_line(NOW, input_tokens=1)])
+            slug_dir = os.path.join(
+                home, ".claude", "projects", agent_exec.claude_project_slug("/other"))
+            write_lines(
+                os.path.join(slug_dir, "s2", "subagents", "workflows",
+                             "wf_b", "x.jsonl"),
+                [claude_line(NOW, input_tokens=1)])
+
+            cwd_scoped = agent_exec._list_usage_runs(
+                home=home, config_dir="", sources=["claude"], cfg={},
+                cwd="/x")
+            self.assertEqual([r["run_id"] for r in cwd_scoped], ["wf_a"])
+
+            all_scoped = agent_exec._list_usage_runs(
+                home=home, config_dir="", sources=["claude"], cfg={},
+                all_projects=True)
+            self.assertEqual(
+                sorted(r["run_id"] for r in all_scoped), ["wf_a", "wf_b"])
+
+
+class EndToEndSubprocessTests(unittest.TestCase):
+    """Drives tools/agent_exec.py as a real subprocess. A caller/callee
+    signature mismatch (argv parsing calling a helper with a keyword it does
+    not accept) or a real-layout wiring bug (e.g. matching the wrong
+    directory name) raises/returns wrong data here even when every helper
+    passes in isolation -- that is the gap this class exists to close."""
+
+    def _write_claude(self, home, session, relative, lines):
+        slug = agent_exec.claude_project_slug(home)
+        path = os.path.join(home, ".claude", "projects", slug, session, relative)
+        write_lines(path, lines)
+        return path
+
+    def test_list_runs_json_over_subprocess(self):
+        with tempfile.TemporaryDirectory() as home:
+            # realpath: on macOS the raw tempdir path traverses a /var ->
+            # /private/var symlink, which would otherwise make the child
+            # process's os.getcwd() resolve to a different project slug
+            # than the one used to write the fixture below.
+            home = os.path.realpath(home)
+            self._write_claude(
+                home, "s", "subagents/workflows/wf_e2e-a/x.jsonl",
+                [claude_line(NOW - timedelta(days=2000), input_tokens=1)])
+            rc, out, err = run_cli(["--list-runs", "--json"], home=home)
+            self.assertEqual(rc, 0, err)
+            parsed = json.loads(out)
+            self.assertEqual(sorted(parsed), ["runs"])
+            self.assertEqual([r["run_id"] for r in parsed["runs"]], ["wf_e2e-a"])
+            self.assertEqual(parsed["runs"][0]["files"], 1)
+
+    def test_run_scope_real_hit_over_subprocess(self):
+        with tempfile.TemporaryDirectory() as home:
+            self._write_claude(
+                home, "s", "subagents/workflows/wf_e2e-b/deep/x.jsonl",
+                [claude_line(NOW - timedelta(days=2000), input_tokens=42,
+                             output_tokens=7)])
+            rc, out, err = run_cli(
+                ["--run", "wf_e2e-b", "--json"], home=home)
+            self.assertEqual(rc, 0, err)
+            parsed = json.loads(out)
+            self.assertEqual(parsed["scope"], {"kind": "run", "run_ids": ["wf_e2e-b"]})
+            self.assertEqual(
+                parsed["sources"]["claude"]["tokens"]["input_tokens"], 42)
+            self.assertEqual(
+                parsed["sources"]["claude"]["tokens"]["output_tokens"], 7)
+            self.assertNotIn("since", parsed)
+            self.assertNotIn("now", parsed)
+
+    def test_run_scope_text_over_subprocess_has_no_window_wording(self):
+        with tempfile.TemporaryDirectory() as home:
+            self._write_claude(
+                home, "s", "subagents/workflows/wf_e2e-text/x.jsonl",
+                [claude_line(NOW - timedelta(days=2000), input_tokens=42)])
+            rc, out, err = run_cli(["--run", "wf_e2e-text", "--text"], home=home)
+            self.assertEqual(rc, 0, err)
+            self.assertIn("scope: run wf_e2e-text", out)
+            self.assertNotIn("since=", out)
+            self.assertNotIn("until=", out)
+            self.assertNotIn("window", out)
+
+    def test_run_and_session_combined_over_subprocess(self):
+        with tempfile.TemporaryDirectory() as home:
+            slug = agent_exec.claude_project_slug(home)
+            write_lines(
+                os.path.join(home, ".claude", "projects", slug, "sess-1.jsonl"),
+                [claude_line(NOW, input_tokens=2)])
+            self._write_claude(
+                home, "s", "subagents/workflows/wf_e2e-c/x.jsonl",
+                [claude_line(NOW, input_tokens=3)])
+            rc, out, err = run_cli(
+                ["--run", "wf_e2e-c", "--session", "sess-1", "--json"], home=home)
+            self.assertEqual(rc, 0, err)
+            parsed = json.loads(out)
+            self.assertEqual(parsed["scope"], {
+                "kind": "run+session", "run_ids": ["wf_e2e-c"],
+                "session_ids": ["sess-1"]})
+            self.assertEqual(
+                parsed["sources"]["claude"]["tokens"]["input_tokens"], 5)
+            self.assertNotIn("since", parsed)
+            self.assertNotIn("now", parsed)
+
+    def test_since_with_run_exits_two_with_empty_stdout(self):
+        with tempfile.TemporaryDirectory() as home:
+            rc, out, err = run_cli(
+                ["--since", "1h", "--run", "wf_x"], home=home)
+            self.assertEqual(rc, 2)
+            self.assertEqual(out, "")
+            self.assertIn("--since", err)
+
+    def test_list_runs_with_session_exits_two_with_empty_stdout(self):
+        with tempfile.TemporaryDirectory() as home:
+            rc, out, err = run_cli(
+                ["--list-runs", "--session", "s"], home=home)
+            self.assertEqual(rc, 2)
+            self.assertEqual(out, "")
+            self.assertIn("--list-runs", err)
+
+    def test_empty_run_element_exits_two_over_subprocess(self):
+        with tempfile.TemporaryDirectory() as home:
+            rc, out, err = run_cli(["--run", "a,,b"], home=home)
+            self.assertEqual(rc, 2)
+            self.assertEqual(out, "")
 
 
 if __name__ == "__main__":

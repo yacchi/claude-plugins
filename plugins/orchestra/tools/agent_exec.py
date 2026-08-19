@@ -180,7 +180,7 @@ Usage:
   agent-exec run <profile> --model M --effort E --workdir W --prompt-file F
                                    [--prompt-file G ...]
                                   [--resume SID] [--output FMT] [--cls CLASS]
-                                  [--capture]
+                                  [--capture] [--run-id ID]
                                   normalized, config-driven dispatch. With
                                   --capture, runs the executor as a subprocess,
                                   captures + parses its JSONL output, and
@@ -215,7 +215,7 @@ Usage:
   agent-exec dispatch --class <cls> [--archetype A] [--exhausted a,b]
                   [--no-cooldown] [--isolate auto|always|never] [--task ID]
                   --prompt-file F [--prompt-file G ...] --workdir W
-                  [--resume SID] [--capture]
+                  [--resume SID] [--capture] [--run-id ID]
                                   one-call resolve + dispatch: resolves the
                                   route, then runs it. If the winning
                                   executor is `dispatch: cli` (e.g. copilot),
@@ -274,9 +274,10 @@ Usage:
   agent-exec isolate should [--repo P] [--mode auto|always|never]
                                   the isolation verdict for this tree, without
                                   creating anything.
-  agent-exec usage [--since W] [--json|--text] [--source a,b] [--all-projects]
+  agent-exec usage [--since W|--run ID[,ID...]|--session ID[,ID...]]
+                   [--list-runs] [--json|--text] [--source a,b] [--all-projects]
                                   aggregate token usage across all three
-                                  executors for a time window: claude
+                                  executors for a time window or deterministic
                                   transcripts (~/.claude/projects, scoped to
                                   this working directory unless
                                   --all-projects, split main/sidechain and
@@ -286,8 +287,9 @@ Usage:
                                   usage only exists in orchestra telemetry,
                                   so it reports "unavailable" when telemetry
                                   is off). --since takes <N>m|<N>h|<N>d or an
-                                  ISO8601 timestamp (default 24h); --json is
-                                  the default. Strictly read-only.
+                                  ISO8601 timestamp (default 24h); --run is
+                                  inherently cross-project; --json is the
+                                  default. Strictly read-only.
   agent-exec cooldown [--json|--text]
                                   show active executor cooldowns
   agent-exec cooldown clear [<executor>]
@@ -949,6 +951,11 @@ _TELEMETRY_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _TELEMETRY_ROUND_KEY_RE = re.compile(r"^[1-9][0-9]*$")
 
 _TELEMETRY_MAX_LINES = 10000
+_RUN_LEDGER_EXECUTORS = ("copilot", "codex", "claude")
+_RUN_LEDGER_CLASSES = ("light", "standard", "deep")
+_RUN_LEDGER_STATUSES = ("ok", "error", "unavailable")
+_RUN_LEDGER_MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,64}$")
+_RUN_LEDGER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def _is_nonneg_int(v):
@@ -1083,6 +1090,13 @@ def _telemetry_enabled(cfg):
     return telemetry_cfg.get("enabled") is True
 
 
+def _parse_run_id(value, command):
+    if not isinstance(value, str) or not _RUN_LEDGER_ID_RE.fullmatch(value):
+        sys.stderr.write("agent-exec: %s: invalid --run-id: %s\n" % (command, value))
+        return False
+    return True
+
+
 def telemetry_append(record, cfg):
     """Sanitize + append a telemetry record as one compact JSON line, subject
     to a hard size cap. Never raises to the caller: any failure (disk full,
@@ -1105,6 +1119,86 @@ def telemetry_append(record, cfg):
     except Exception:
         # Telemetry must never break the caller.
         pass
+
+
+def sanitize_run_ledger_record(raw):
+    """Purely allowlist and validate one numbers-only run ledger record."""
+    if not isinstance(raw, dict):
+        return None
+
+    out = {}
+    ts = raw.get("ts")
+    if isinstance(ts, str) and ts and "\n" not in ts and "\r" not in ts:
+        out["ts"] = ts
+
+    for key, allowed in (
+        ("executor", _RUN_LEDGER_EXECUTORS),
+        ("cls", _RUN_LEDGER_CLASSES),
+        ("status", _RUN_LEDGER_STATUSES),
+    ):
+        value = raw.get(key)
+        if value in allowed:
+            out[key] = value
+
+    model = raw.get("model")
+    if isinstance(model, str) and _RUN_LEDGER_MODEL_RE.fullmatch(model):
+        out["model"] = model
+
+    for key in (
+        "input_tokens", "output_tokens", "cached_input_tokens", "aiu_nano",
+        "premium_requests", "api_duration_ms", "session_duration_ms",
+    ):
+        value = raw.get(key)
+        if _is_nonneg_int(value):
+            out[key] = value
+
+    if not any(key in out for key in ("executor", "cls", "status", "model")):
+        return None
+    return out
+
+
+def run_ledger_append(record, run_id, cfg):
+    """Best-effort append of one sanitized, compact run ledger line."""
+    try:
+        if not isinstance(run_id, str) or not _RUN_LEDGER_ID_RE.fullmatch(run_id):
+            return
+        sanitized = sanitize_run_ledger_record(record)
+        if sanitized is None:
+            return
+        sanitized.setdefault("ts", datetime.now(timezone.utc).isoformat())
+        directory = os.path.join(os.path.dirname(_telemetry_dir_from_cfg(cfg)), "runs")
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        os.chmod(directory, 0o700)
+        path = os.path.join(directory, run_id + ".jsonl")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(sanitized, ensure_ascii=False, separators=(",", ":")) + "\n")
+        _telemetry_enforce_cap(path)
+    except Exception:
+        pass
+
+
+def build_run_ledger_record(executor, model, cls, result):
+    """Purely flatten normalized capture output for the run ledger."""
+    result = result if isinstance(result, dict) else {}
+    usage = result.get("usage")
+    record = {
+        "executor": executor,
+        "model": model,
+        "cls": cls,
+        "status": result.get("status"),
+    }
+    if isinstance(usage, dict):
+        for key in (
+            "premium_requests", "api_duration_ms", "session_duration_ms", "aiu_nano",
+        ):
+            if key in usage:
+                record[key] = usage[key]
+        tokens = usage.get("tokens")
+        if isinstance(tokens, dict):
+            for key in ("input_tokens", "output_tokens", "cached_input_tokens"):
+                if key in tokens:
+                    record[key] = tokens[key]
+    return record
 
 
 def _telemetry_enforce_cap(path):
@@ -1696,6 +1790,7 @@ def cmd_run(args):
         "--output": "json",
         "--cls": None,
     }
+    run_id = None
     capture = False
 
     i = 0
@@ -1712,6 +1807,14 @@ def cmd_run(args):
                 opts[tok].append(rest[i + 1])
             else:
                 opts[tok] = rest[i + 1]
+            i += 2
+        elif tok == "--run-id":
+            if i + 1 >= len(rest):
+                sys.stderr.write("agent-exec: run: missing value for --run-id\n")
+                return 2
+            run_id = rest[i + 1]
+            if not _parse_run_id(run_id, "run"):
+                return 2
             i += 2
         else:
             sys.stderr.write("agent-exec: run: unknown option: %s\n" % tok)
@@ -1772,6 +1875,16 @@ def cmd_run(args):
             profile_name, model, effort, workdir, prompt_text, resume, output_fmt
         )
         if result is None:
+            ledger_cfg, ledger_err = resolve_config()
+            if ledger_err is not None or not isinstance(ledger_cfg, dict):
+                ledger_cfg = DEFAULTS
+            run_ledger_append(
+                build_run_ledger_record(profile_name, model, cls, {
+                    "status": "unavailable",
+                }),
+                run_id,
+                ledger_cfg,
+            )
             sys.stderr.write(
                 "agent-exec: executor '%s' not found on PATH\n" % exec_name
             )
@@ -1792,6 +1905,11 @@ def cmd_run(args):
                 )
             record = build_dispatch_record(profile_name, result, resume, cls)
             telemetry_append(record, telemetry_cfg)
+            run_ledger_append(
+                build_run_ledger_record(profile_name, model, cls, result),
+                run_id,
+                telemetry_cfg,
+            )
         except Exception:
             # Telemetry must never break dispatch.
             pass
@@ -3543,6 +3661,7 @@ def cmd_dispatch_route(args):
     # could destroy. See the isolate section above for why this exists.
     isolate_mode = "auto"
     task = None
+    run_id = None
 
     i = 0
     while i < len(args):
@@ -3602,6 +3721,14 @@ def cmd_dispatch_route(args):
                 sys.stderr.write("agent-exec: dispatch: missing value for --resume\n")
                 return 2
             resume = args[i + 1]
+            i += 2
+        elif tok == "--run-id":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --run-id\n")
+                return 2
+            run_id = args[i + 1]
+            if not _parse_run_id(run_id, "dispatch"):
+                return 2
             i += 2
         elif tok == "--no-cooldown":
             no_cooldown = True
@@ -3729,6 +3856,11 @@ def cmd_dispatch_route(args):
         record_unavailable_cooldown(
             resolved, profile_name, output.get("reason"), time.time()
         )
+        run_ledger_append(
+            build_run_ledger_record(profile_name, model, cls, output),
+            run_id,
+            resolved,
+        )
         return 0
 
     exec_name = profile["exec"]
@@ -3747,6 +3879,11 @@ def cmd_dispatch_route(args):
 
     exit_code, result = _run_copilot_capture(profile_name, model, effort, workdir, prompt_text, resume, "json")
     if result is None:
+        run_ledger_append(
+            build_run_ledger_record(profile_name, model, cls, {"status": "unavailable"}),
+            run_id,
+            resolved,
+        )
         sys.stderr.write("agent-exec: executor '%s' not found on PATH\n" % exec_name)
         return exit_code
 
@@ -3763,6 +3900,11 @@ def cmd_dispatch_route(args):
         record = build_dispatch_record(profile_name, result, resume, cls)
         telemetry_cfg = resolved if isinstance(resolved, dict) else DEFAULTS
         telemetry_append(record, telemetry_cfg)
+        run_ledger_append(
+            build_run_ledger_record(profile_name, model, cls, result),
+            run_id,
+            telemetry_cfg,
+        )
     except Exception:
         # Telemetry must never break dispatch.
         pass
@@ -4152,6 +4294,121 @@ def collect_claude_usage(cutoff, all_projects=False, home=None, cwd=None,
     }
 
 
+def read_run_ledger(ledger_dir, run_id):
+    """Return parsed ledger records for one run; malformed lines are ignored."""
+    path = os.path.join(ledger_dir, "%s.jsonl" % run_id)
+    records = []
+    try:
+        handle = open(path, "r", encoding="utf-8", errors="replace")
+    except OSError:
+        return records
+    try:
+        for line in handle:
+            try:
+                value = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(value, dict):
+                records.append(value)
+    except OSError:
+        pass
+    finally:
+        handle.close()
+    return records
+
+
+def _scope_entry(reason):
+    return {"attributable": False, "reason": reason}
+
+
+def _walk_jsonl_files(directory):
+    try:
+        for dirpath, dirnames, filenames in os.walk(directory):
+            dirnames.sort()
+            for name in sorted(filenames):
+                if name.endswith(".jsonl"):
+                    path = os.path.join(dirpath, name)
+                    if os.path.isfile(path):
+                        yield path
+    except OSError:
+        return
+
+
+def _claude_scope_files(home=None, config_dir=None, run_ids=(), session_ids=()):
+    paths = []
+    seen = set()
+    for root in _claude_projects_roots(home=home, config_dir=config_dir):
+        try:
+            projects = os.listdir(root)
+        except OSError:
+            continue
+        for slug in projects:
+            project = os.path.join(root, slug)
+            if not os.path.isdir(project):
+                continue
+            candidates = []
+            for run_id in run_ids:
+                workflow_name = run_id
+                try:
+                    for dirpath, dirnames, _ in os.walk(project):
+                        dirnames.sort()
+                        if os.path.basename(dirpath) == workflow_name:
+                            candidates.append(dirpath)
+                            dirnames[:] = []
+                            break
+                except OSError:
+                    continue
+            for session_id in session_ids:
+                candidates.append(os.path.join(project, "%s.jsonl" % session_id))
+                candidates.append(os.path.join(project, session_id, "subagents"))
+            for candidate in candidates:
+                if os.path.isfile(candidate) and candidate.endswith(".jsonl"):
+                    found = (candidate,)
+                else:
+                    found = _walk_jsonl_files(candidate)
+                for path in found:
+                    key = os.path.realpath(path)
+                    if key not in seen:
+                        seen.add(key)
+                        paths.append(path)
+    return paths
+
+
+def collect_claude_scoped_usage(home=None, config_dir=None, run_ids=(),
+                                session_ids=()):
+    acc = new_claude_usage_acc()
+    files = _claude_scope_files(home, config_dir, run_ids, session_ids)
+    for path in files:
+        aggregate_claude_lines(_iter_jsonl_lines(path), datetime.min.replace(
+            tzinfo=timezone.utc), acc)
+    if not acc["records"]:
+        return _scope_entry("no matching transcript data")
+    return {
+        "status": "ok",
+        "scope": "run" if run_ids else "session",
+        "tokens": acc["tokens"],
+        "main": acc["main"],
+        "sidechain": acc["sidechain"],
+        "by_model": acc["by_model"],
+        "sessions": len(files),
+        "records": acc["records"],
+    }
+
+
+def _ledger_usage(records, executor):
+    acc = {"tokens": _zero_tokens(), "aiu_nano": 0,
+           "premium_requests": 0, "records": 0}
+    for record in records:
+        if record.get("executor") != executor:
+            continue
+        acc["records"] += 1
+        for key in _USAGE_TOKEN_KEYS:
+            acc["tokens"][key] += _coerce_count(record.get(key))
+        for key in ("aiu_nano", "premium_requests"):
+            acc[key] += _coerce_count(record.get(key))
+    return acc
+
+
 def _codex_session_files(root, cutoff):
     """Rollout files under ~/.codex/sessions/YYYY/MM/DD that could carry an
     in-window event. Files whose mtime predates the cutoff are skipped up
@@ -4242,14 +4499,41 @@ def collect_copilot_usage(cutoff, cfg):
 
 
 def build_usage_report(since, now, sources, all_projects=False, cfg=None,
-                       home=None, cwd=None):
+                       home=None, cwd=None, run_ids=(), session_ids=()):
     """Assemble the full report. `sources` is the requested subset, in
     _USAGE_SOURCES order; every requested source gets an entry, even an
     unavailable one."""
     requested = [name for name in _USAGE_SOURCES if name in (sources or ())]
+    scoped = bool(run_ids or session_ids)
     out = {}
     for name in requested:
-        if name == "claude":
+        if scoped and name == "claude":
+            out[name] = collect_claude_scoped_usage(
+                home=home, run_ids=run_ids, session_ids=session_ids)
+        elif scoped and name in ("copilot", "codex"):
+            if run_ids:
+                records = []
+                ledger_dir = os.path.join(os.path.dirname(
+                    _telemetry_dir_from_cfg(cfg)), "runs")
+                for run_id in run_ids:
+                    records.extend(read_run_ledger(ledger_dir, run_id))
+                acc = _ledger_usage(records, name)
+                if not acc["records"]:
+                    out[name] = _scope_entry("no matching run ledger data")
+                else:
+                    out[name] = {
+                        "status": "ok",
+                        "scope": "run",
+                        "tokens": acc["tokens"],
+                        "aiu_nano": acc["aiu_nano"],
+                        "premium_requests": acc["premium_requests"],
+                        "records": acc["records"],
+                    }
+            else:
+                out[name] = _scope_entry("session scope is not attributable")
+        elif scoped:
+            out[name] = _scope_entry("session scope is not attributable")
+        elif name == "claude":
             out[name] = collect_claude_usage(
                 cutoff=since, all_projects=all_projects, home=home, cwd=cwd
             )
@@ -4257,12 +4541,87 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
             out[name] = collect_codex_usage(cutoff=since, home=home)
         else:
             out[name] = collect_copilot_usage(cutoff=since, cfg=cfg)
+    if run_ids and session_ids:
+        scope = {"kind": "run+session", "run_ids": list(run_ids),
+                 "session_ids": list(session_ids)}
+    elif run_ids:
+        scope = {"kind": "run", "run_ids": list(run_ids)}
+    elif session_ids:
+        scope = {"kind": "session", "session_ids": list(session_ids)}
+    else:
+        scope = {"kind": "window", "since": since.isoformat(),
+                 "until": now.isoformat()}
+    if scope["kind"] == "window":
+        return {
+            "since": since.isoformat(),
+            "now": now.isoformat(),
+            "scope": scope,
+            "sources": out,
+            "totals": sum_usage_totals(out),
+        }
     return {
-        "since": since.isoformat(),
-        "now": now.isoformat(),
+        "scope": scope,
         "sources": out,
         "totals": sum_usage_totals(out),
     }
+
+
+def _list_usage_runs(home=None, config_dir=None, sources=None, cfg=None,
+                     all_projects=False, cwd=None):
+    requested = set(sources or _USAGE_SOURCES)
+    runs = {}
+    if "claude" in requested:
+        for root in _claude_projects_roots(home=home, config_dir=config_dir):
+            for project in _list_project_directories(root, all_projects, cwd):
+                for dirpath, dirnames, filenames in os.walk(project):
+                    dirnames.sort()
+                    base = os.path.basename(dirpath)
+                    if not base.startswith("wf_") or base == "wf_":
+                        continue
+                    run_id = base
+                    item = runs.setdefault(run_id, {"files": 0, "timestamps": []})
+                    for name in sorted(filenames):
+                        if not name.endswith(".jsonl"):
+                            continue
+                        path = os.path.join(dirpath, name)
+                        item["files"] += 1
+                        for line in _iter_jsonl_lines(path):
+                            try:
+                                obj = json.loads(line)
+                            except (ValueError, TypeError):
+                                continue
+                            if isinstance(obj, dict):
+                                ts = parse_usage_timestamp(obj.get("timestamp"))
+                                if ts is not None:
+                                    item["timestamps"].append(ts)
+    if requested.intersection(("copilot", "codex")):
+        ledger_dir = os.path.join(os.path.dirname(
+            _telemetry_dir_from_cfg(cfg)), "runs")
+        try:
+            names = os.listdir(ledger_dir)
+        except OSError:
+            names = []
+        for name in names:
+            if not name.endswith(".jsonl"):
+                continue
+            run_id = name[:-6]
+            records = read_run_ledger(ledger_dir, run_id)
+            if not records:
+                continue
+            item = runs.setdefault(run_id, {"files": 0, "timestamps": []})
+            for record in records:
+                ts = parse_usage_timestamp(record.get("ts"))
+                if ts is not None:
+                    item["timestamps"].append(ts)
+    result = []
+    for run_id, item in runs.items():
+        stamps = item["timestamps"]
+        if not stamps:
+            continue
+        result.append({"run_id": run_id, "files": item["files"],
+                       "first_ts": min(stamps).isoformat(),
+                       "last_ts": max(stamps).isoformat()})
+    return sorted(result, key=lambda x: x["last_ts"])
 
 
 def _usage_tokens_line(tokens):
@@ -4277,8 +4636,22 @@ def _usage_tokens_line(tokens):
 def _print_usage_text(report):
     """Compact human summary. Deliberately carries model names and counts
     only -- no paths, session ids, project slugs or any prompt text."""
-    print("usage since %s (now %s)" % (report.get("since"), report.get("now")))
+    scope = report.get("scope") or {}
+    if scope.get("kind") == "window":
+        print("scope: window since=%s until=%s" %
+              (scope.get("since"), scope.get("until")))
+    elif scope.get("kind") == "run":
+        print("scope: run %s" % ",".join(scope.get("run_ids") or ()))
+    elif scope.get("kind") == "session":
+        print("scope: session %s" % ",".join(scope.get("session_ids") or ()))
+    else:
+        print("scope: run+session runs=%s sessions=%s" %
+              (",".join(scope.get("run_ids") or ()),
+               ",".join(scope.get("session_ids") or ())))
     for name, entry in (report.get("sources") or {}).items():
+        if entry.get("attributable") is False:
+            print("%s: not attributable (%s)" % (name, entry.get("reason")))
+            continue
         status = entry.get("status")
         print(
             "%-8s %-13s %s"
@@ -4313,6 +4686,10 @@ def cmd_usage(args):
     fmt = None
     sources = list(_USAGE_SOURCES)
     all_projects = False
+    run_ids = []
+    session_ids = []
+    list_runs = False
+    since_given = False
 
     i = 0
     while i < len(args):
@@ -4322,7 +4699,24 @@ def cmd_usage(args):
                 sys.stderr.write("agent-exec: usage: missing value for --since\n")
                 return 2
             since_raw = args[i + 1]
+            since_given = True
             i += 2
+        elif tok in ("--run", "--session"):
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: usage: missing value for %s\n" % tok)
+                return 2
+            values = args[i + 1].split(",")
+            if any(not value for value in values):
+                sys.stderr.write("agent-exec: usage: empty value for %s\n" % tok)
+                return 2
+            if tok == "--run":
+                run_ids.extend(values)
+            else:
+                session_ids.extend(values)
+            i += 2
+        elif tok == "--list-runs":
+            list_runs = True
+            i += 1
         elif tok == "--source":
             if i + 1 >= len(args):
                 sys.stderr.write("agent-exec: usage: missing value for --source\n")
@@ -4350,6 +4744,13 @@ def cmd_usage(args):
             sys.stderr.write("agent-exec: usage: unknown option: %s\n" % tok)
             return 2
 
+    if list_runs and (run_ids or session_ids or since_given):
+        sys.stderr.write("agent-exec: usage: --list-runs cannot be combined with scope or --since\n")
+        return 2
+    if (run_ids or session_ids) and since_given:
+        sys.stderr.write("agent-exec: usage: --since cannot be combined with --run or --session\n")
+        return 2
+
     now = datetime.now(timezone.utc)
     since = parse_usage_since(since_raw, now)
     if since is None:
@@ -4361,9 +4762,20 @@ def cmd_usage(args):
 
     resolved, err = resolve_config()
     cfg = resolved if err is None and isinstance(resolved, dict) else DEFAULTS
+    if list_runs:
+        runs = _list_usage_runs(
+            sources=sources, cfg=cfg, all_projects=all_projects)
+        if fmt == "--text":
+            for item in runs:
+                print("%s %d %s %s" % (
+                    item["run_id"], item["files"], item["first_ts"], item["last_ts"]))
+        else:
+            print(json.dumps({"runs": runs}, indent=2, ensure_ascii=False))
+        return 0
 
     report = build_usage_report(
-        since, now, sources, all_projects=all_projects, cfg=cfg
+        since, now, sources, all_projects=all_projects, cfg=cfg,
+        run_ids=run_ids, session_ids=session_ids
     )
 
     if fmt == "--text":
