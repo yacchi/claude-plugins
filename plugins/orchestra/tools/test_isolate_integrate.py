@@ -42,6 +42,7 @@ class _IntegrateRepo(unittest.TestCase):
     """A throwaway repo plus helpers to build task worktrees in it."""
 
     def setUp(self):
+        self._session_id = os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
         self.tmp = tempfile.mkdtemp(prefix="orch-integ-")
         self.repo = os.path.join(self.tmp, "repo")
         os.makedirs(self.repo)
@@ -57,6 +58,8 @@ class _IntegrateRepo(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
+        if self._session_id is not None:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_id
 
     def _make_task(self, task, edits=None, new_files=None):
         """Create a task worktree and apply `edits` ({lineno: text}) to shared.txt."""
@@ -412,6 +415,36 @@ class IntegrateUsageTests(_IntegrateRepo):
             )
         self.assertEqual(rc, 0)
         self.assertEqual(json.loads(buf.getvalue())["status"], "ok")
+
+
+class SessionScopedIntegrateTests(_IntegrateRepo):
+    """`isolate integrate` resolves each task by the same session rules as
+    `diff`/`remove`: current session first, unique cross-session match otherwise."""
+
+    def test_integrate_resolves_tasks_created_under_the_current_session(self):
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "aaaaaaaa-sess"
+        self.addCleanup(lambda: os.environ.pop("CLAUDE_CODE_SESSION_ID", None))
+        self._make_task("alpha", {2: "ALPHA\n"})
+        self._make_task("beta", {19: "BETA\n"})
+        result = agent_exec.isolate_integrate(self.repo, ["alpha", "beta"])
+        self.assertEqual(result["status"], "ok")
+        entries = self._by_task(result)
+        self.assertEqual(entries["alpha"]["status"], "applied")
+        self.assertEqual(entries["beta"]["status"], "applied")
+
+    def test_integrate_resolves_a_cross_session_task(self):
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "aaaaaaaa-sess"
+        self.addCleanup(lambda: os.environ.pop("CLAUDE_CODE_SESSION_ID", None))
+        self._make_task("alpha", {2: "ALPHA\n"})
+        # beta was created under a different session than the one integrating.
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "bbbbbbbb-sess"
+        self._make_task("beta", {19: "BETA\n"})
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "aaaaaaaa-sess"
+        result = agent_exec.isolate_integrate(self.repo, ["alpha", "beta"])
+        self.assertEqual(result["status"], "ok")
+        entries = self._by_task(result)
+        self.assertEqual(entries["alpha"]["status"], "applied")
+        self.assertEqual(entries["beta"]["status"], "applied")
 
 
 if __name__ == "__main__":

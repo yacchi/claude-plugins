@@ -426,7 +426,7 @@ class DelegatedCodexRunScopeTests(unittest.TestCase):
         telemetry_dir = os.path.join(home, "telemetry")
         ledger_dir = os.path.join(home, "runs")
         corrs = [self._corr(i + 1) for i in range(total_n)]
-        write_lines(os.path.join(ledger_dir, "run1.jsonl"),
+        write_lines(os.path.join(ledger_dir, "session-1", "run1.jsonl"),
                    [delegated_ledger_line(c) for c in corrs])
         sessions_root = os.path.join(home, ".codex", "sessions")
         for c in corrs[:matched_n]:
@@ -776,7 +776,7 @@ class DeterministicScopeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             telemetry_dir = os.path.join(home, "telemetry")
             ledger_dir = os.path.join(home, "runs")
-            write_lines(os.path.join(ledger_dir, "one.jsonl"), [
+            write_lines(os.path.join(ledger_dir, "ledger-session", "one.jsonl"), [
                 json.dumps({"executor": "copilot", "input_tokens": 9}),
                 json.dumps({"executor": "codex", "input_tokens": 6}),
             ])
@@ -807,7 +807,7 @@ class DeterministicScopeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             telemetry_dir = os.path.join(home, "telemetry")
             ledger_dir = os.path.join(home, "runs")
-            write_lines(os.path.join(ledger_dir, "sess-x.jsonl"), [
+            write_lines(os.path.join(ledger_dir, "sess-x", "no.run.jsonl"), [
                 json.dumps({"executor": "copilot", "input_tokens": 5}),
             ])
             report = agent_exec.build_usage_report(
@@ -872,9 +872,14 @@ class DeterministicScopeTests(unittest.TestCase):
     def test_ledger_reader_and_unknown_run(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(agent_exec.read_run_ledger(directory, "missing"), [])
-            write_lines(os.path.join(directory, "r.jsonl"), [
+            write_lines(os.path.join(directory, "session", "r.jsonl"), [
                 json.dumps({"executor": "copilot", "input_tokens": 4}),
                 "garbage",
+            ])
+            self.assertEqual(agent_exec.read_run_ledger(directory, "r"),
+                             [{"executor": "copilot", "input_tokens": 4}])
+            write_lines(os.path.join(directory, "r.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 999}),
             ])
             self.assertEqual(agent_exec.read_run_ledger(directory, "r"),
                              [{"executor": "copilot", "input_tokens": 4}])
@@ -914,6 +919,210 @@ class DeterministicScopeTests(unittest.TestCase):
                 all_projects=True)
             self.assertEqual([r["run_id"] for r in runs], ["wf_b", "wf_a"])
             self.assertEqual(runs[0]["files"], 1)
+
+    def test_run_scope_never_matches_a_session_id_regression(self):
+        # THE REGRESSION this task exists to fix: a session id passed to
+        # --run must never resolve the session's directory as if it were a
+        # run file. With a populated <ledger-dir>/<sid>/ directory holding
+        # several runs, --run <sid> must report ZERO records for every
+        # ledger source -- never the session's aggregate numbers.
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            ledger_dir = os.path.join(home, "runs")
+            sid = "30ad8eb2-33a4-4ed8-bc5a-f21d111223b2"
+            write_lines(os.path.join(ledger_dir, sid, "wf_a.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 100}),
+            ])
+            write_lines(os.path.join(ledger_dir, sid, "wf_b.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 200}),
+                json.dumps({"executor": "codex", "input_tokens": 50}),
+            ])
+            write_lines(os.path.join(ledger_dir, sid, "no.run.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 300}),
+            ])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot", "codex"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", run_ids=[sid])
+            self.assertEqual(report["scope"], {"kind": "run", "run_ids": [sid]})
+            for name in ("copilot", "codex"):
+                self.assertEqual(report["sources"][name], {
+                    "attributable": False,
+                    "reason": "no matching run ledger data",
+                })
+                self.assertNotIn("tokens", report["sources"][name])
+
+    def test_run_scope_never_matches_session_id_with_shadowing_flat_file_regression(self):
+        # THE LITERAL REGRESSION 1 SCENARIO: a session directory containing a
+        # differently-named run file, PLUS a flat legacy file that happens to
+        # share the session id's own name. --run <sid> must report
+        # attributable:false for every ledger source, and the flat file's
+        # numbers must appear nowhere in the report.
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            ledger_dir = os.path.join(home, "runs")
+            sid = "30ad8eb2-33a4-4ed8-bc5a-f21d111223b2"
+            write_lines(os.path.join(ledger_dir, sid, "wf_a.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 100}),
+                json.dumps({"executor": "codex", "input_tokens": 25}),
+            ])
+            write_lines(os.path.join(ledger_dir, sid + ".jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 6370990}),
+                json.dumps({"executor": "codex", "input_tokens": 561018}),
+            ])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot", "codex"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", run_ids=[sid])
+            self.assertEqual(report["scope"], {"kind": "run", "run_ids": [sid]})
+            for name in ("copilot", "codex"):
+                self.assertEqual(report["sources"][name], {
+                    "attributable": False,
+                    "reason": "no matching run ledger data",
+                })
+                self.assertNotIn("tokens", report["sources"][name])
+            rendered = json.dumps(report)
+            self.assertNotIn("6370990", rendered)
+            self.assertNotIn("561018", rendered)
+
+    def test_run_scope_sums_same_run_id_across_two_sessions_once(self):
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            ledger_dir = os.path.join(home, "runs")
+            write_lines(os.path.join(ledger_dir, "sess-a", "shared.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 3}),
+            ])
+            write_lines(os.path.join(ledger_dir, "sess-b", "shared.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 5}),
+            ])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", run_ids=["shared"])
+            self.assertEqual(
+                report["sources"]["copilot"]["tokens"]["input_tokens"], 8)
+            self.assertEqual(report["sources"]["copilot"]["records"], 2)
+
+    def test_run_scope_ignores_legacy_flat_file(self):
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            ledger_dir = os.path.join(home, "runs")
+            write_lines(os.path.join(ledger_dir, "sess-a", "combo.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 4}),
+            ])
+            write_lines(os.path.join(ledger_dir, "combo.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 9}),
+            ])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", run_ids=["combo"])
+            self.assertEqual(
+                report["sources"]["copilot"]["tokens"]["input_tokens"], 4)
+            self.assertEqual(report["sources"]["copilot"]["records"], 1)
+
+    def test_run_scope_requires_workflows_parent(self):
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            self._write_claude(
+                home, "s-1", "subagents/session-shaped/a.jsonl",
+                [claude_line(NOW, input_tokens=99)])
+            self._write_claude(
+                home, "s-1", "subagents/workflows/wf_a/a.jsonl",
+                [claude_line(NOW, input_tokens=7)])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["claude"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", run_ids=["s-1"])
+            self.assertEqual(report["sources"]["claude"], {
+                "attributable": False,
+                "reason": "no matching transcript data",
+            })
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["claude"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", run_ids=["wf_a"])
+            self.assertEqual(
+                report["sources"]["claude"]["tokens"]["input_tokens"], 7)
+
+    def test_session_scope_never_reads_legacy_flat_file_of_same_name(self):
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            ledger_dir = os.path.join(home, "runs")
+            sid = "sess-shadow"
+            write_lines(os.path.join(ledger_dir, sid, "no.run.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 2}),
+            ])
+            # A legacy flat file that happens to share the session's name.
+            write_lines(os.path.join(ledger_dir, sid + ".jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 999}),
+            ])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", session_ids=[sid])
+            self.assertEqual(
+                report["sources"]["copilot"]["tokens"]["input_tokens"], 2)
+            self.assertEqual(report["sources"]["copilot"]["records"], 1)
+
+    def test_session_scope_runs_breakdown_exact_shape(self):
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            ledger_dir = os.path.join(home, "runs")
+            sid = "sess-breakdown"
+            write_lines(os.path.join(ledger_dir, sid, "wf_a.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 1})
+                for _ in range(3)
+            ])
+            write_lines(os.path.join(ledger_dir, sid, "wf_b.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 1})
+                for _ in range(5)
+            ])
+            write_lines(os.path.join(ledger_dir, sid, "no.run.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 1})
+                for _ in range(2)
+            ])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot", "codex"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", session_ids=[sid])
+            self.assertEqual(
+                report["sources"]["copilot"]["runs"],
+                {"wf_a": 3, "wf_b": 5, "no-run": 2})
+            # codex has no ledger lines at all in this session: the key is
+            # omitted, not present-and-empty.
+            self.assertNotIn("runs", report["sources"]["codex"])
+
+            out = io.StringIO()
+            real_out = sys.stdout
+            sys.stdout = out
+            try:
+                agent_exec._print_usage_text(report)
+            finally:
+                sys.stdout = real_out
+            text = out.getvalue()
+            self.assertIn("wf_a=3", text)
+            self.assertIn("wf_b=5", text)
+            self.assertIn("no-run=2", text)
+
+    def test_run_scope_and_window_scope_omit_runs_key(self):
+        with tempfile.TemporaryDirectory() as home:
+            telemetry_dir = os.path.join(home, "telemetry")
+            ledger_dir = os.path.join(home, "runs")
+            write_lines(os.path.join(ledger_dir, "sess-only", "wf_c.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 1}),
+            ])
+            run_report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x", run_ids=["wf_c"])
+            self.assertNotIn("runs", run_report["sources"]["copilot"])
+
+            window_report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["copilot"],
+                cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
+                home=home, cwd="/x")
+            self.assertNotIn("runs", window_report["sources"].get("copilot", {}))
 
     def test_list_runs_respects_cwd_scope_unless_all_projects(self):
         with tempfile.TemporaryDirectory() as home:
@@ -1025,7 +1234,8 @@ class EndToEndSubprocessTests(unittest.TestCase):
              tempfile.TemporaryDirectory() as codex_home:
             corrs = ["oxc-%012x" % n for n in (1, 2, 3)]
             write_lines(
-                os.path.join(home, ".claude", "orchestra", "runs", "run_e2e.jsonl"),
+                os.path.join(home, ".claude", "orchestra", "runs",
+                             "ledger-session", "run_e2e.jsonl"),
                 [delegated_ledger_line(c) for c in corrs])
             for c in corrs[:2]:
                 write_lines(
@@ -1041,6 +1251,64 @@ class EndToEndSubprocessTests(unittest.TestCase):
             self.assertEqual(entry["delegated"], 3)
             self.assertEqual(entry["measured"], 2)
             self.assertEqual(entry["tokens"]["input_tokens"], 10)
+
+    def test_run_scope_session_id_reports_zero_over_subprocess(self):
+        # THE REGRESSION, driven through the real CLI subprocess: a session
+        # id passed to --run over a populated <ledger-dir>/<sid>/ directory
+        # must report zero ledger records, never the session's total.
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, ".claude"), exist_ok=True)
+            ledger_dir = os.path.join(home, ".claude", "orchestra", "runs")
+            sid = "e2e-session-30ad8eb2"
+            write_lines(os.path.join(ledger_dir, sid, "wf_a.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 100}),
+            ])
+            write_lines(os.path.join(ledger_dir, sid, "wf_b.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 200}),
+            ])
+            write_lines(os.path.join(ledger_dir, sid, "no.run.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 300}),
+            ])
+            rc, out, err = run_cli(
+                ["--run", sid, "--source", "copilot", "--json"], home=home)
+            self.assertEqual(rc, 0, err)
+            parsed = json.loads(out)
+            self.assertEqual(parsed["sources"]["copilot"], {
+                "attributable": False,
+                "reason": "no matching run ledger data",
+            })
+            self.assertNotIn("tokens", parsed["sources"]["copilot"])
+
+    def test_run_scope_requires_workflows_parent_over_subprocess(self):
+        # THE LITERAL REGRESSION 2 SCENARIO, driven through the real CLI
+        # subprocess: a session directory whose subagents/ holds a
+        # non-workflows transcript (session-shaped, named after the session
+        # id) AND whose subagents/workflows/wf_a/ holds a genuine run
+        # transcript. --run <sid> must count nothing; --run wf_a must count
+        # only wf_a's data.
+        with tempfile.TemporaryDirectory() as home:
+            sid = "e2e-session-workflows-parent"
+            self._write_claude(
+                home, sid, "subagents/session-shaped/a.jsonl",
+                [claude_line(NOW - timedelta(days=2000), input_tokens=99)])
+            self._write_claude(
+                home, sid, "subagents/workflows/wf_a/a.jsonl",
+                [claude_line(NOW - timedelta(days=2000), input_tokens=7)])
+
+            rc, out, err = run_cli(["--run", sid, "--json"], home=home)
+            self.assertEqual(rc, 0, err)
+            parsed = json.loads(out)
+            self.assertEqual(parsed["sources"]["claude"], {
+                "attributable": False,
+                "reason": "no matching transcript data",
+            })
+            self.assertNotIn("tokens", parsed["sources"]["claude"])
+
+            rc, out, err = run_cli(["--run", "wf_a", "--json"], home=home)
+            self.assertEqual(rc, 0, err)
+            parsed = json.loads(out)
+            self.assertEqual(
+                parsed["sources"]["claude"]["tokens"]["input_tokens"], 7)
 
     def test_since_with_run_exits_two_with_empty_stdout(self):
         with tempfile.TemporaryDirectory() as home:

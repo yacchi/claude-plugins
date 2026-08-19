@@ -1167,10 +1167,6 @@ def sanitize_run_ledger_record(raw):
     corr = raw.get("corr")
     if isinstance(corr, str) and _RUN_LEDGER_CORR_RE.fullmatch(corr):
         out["corr"] = corr
-    run = raw.get("run")
-    if isinstance(run, str) and _RUN_LEDGER_RUN_RE.fullmatch(run):
-        out["run"] = run
-
     if not any(key in out for key in ("executor", "cls", "status", "model")):
         return None
     return out
@@ -1197,13 +1193,15 @@ def run_ledger_append(record, run_id, cfg):
         sanitized = sanitize_run_ledger_record(record)
         if sanitized is None:
             return
-        if run_id is not None:
-            sanitized["run"] = run_id
         sanitized.setdefault("ts", datetime.now(timezone.utc).isoformat())
         directory = _ledger_dir_from_cfg(cfg)
         os.makedirs(directory, mode=0o700, exist_ok=True)
         os.chmod(directory, 0o700)
-        path = os.path.join(directory, session_id + ".jsonl")
+        session_directory = os.path.join(directory, session_id)
+        os.makedirs(session_directory, mode=0o700, exist_ok=True)
+        os.chmod(session_directory, 0o700)
+        filename = (run_id + ".jsonl") if run_id is not None else "no.run.jsonl"
+        path = os.path.join(session_directory, filename)
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(sanitized, ensure_ascii=False, separators=(",", ":")) + "\n")
         _telemetry_enforce_cap(path)
@@ -1214,12 +1212,18 @@ def run_ledger_append(record, run_id, cfg):
                 if not isinstance(days, int) or isinstance(days, bool) or days <= 0:
                     days = DEFAULTS["ledger"]["retention_days"]
                 cutoff = time.time() - days * 86400
+                directories = [directory]
                 for name in os.listdir(directory):
-                    if not name.endswith(".jsonl"):
-                        continue
-                    candidate = os.path.join(directory, name)
-                    if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
-                        os.remove(candidate)
+                    candidate_dir = os.path.join(directory, name)
+                    if os.path.isdir(candidate_dir):
+                        directories.append(candidate_dir)
+                for current in directories:
+                    for name in os.listdir(current):
+                        if not name.endswith(".jsonl"):
+                            continue
+                        candidate = os.path.join(current, name)
+                        if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
+                            os.remove(candidate)
             except Exception:
                 pass
     except Exception:
@@ -1477,21 +1481,8 @@ def _ledger_records_for_command(directory, session_id=None, run_id=None):
         return read_session_ledger(directory, session_id)
     if run_id is not None:
         return read_run_ledger(directory, run_id)
-    records = []
-    seen = set()
-    try:
-        names = sorted(name for name in os.listdir(directory)
-                       if name.endswith(".jsonl") and os.path.isfile(
-                           os.path.join(directory, name)))
-    except OSError:
-        names = []
-    for name in names:
-        for record in _read_ledger_file(os.path.join(directory, name)):
-            key = json.dumps(record, sort_keys=True, separators=(",", ":"))
-            if key not in seen:
-                seen.add(key)
-                records.append(record)
-    return records
+    paths = _ledger_paths(directory)
+    return [record for path in paths for record in _read_ledger_file(path)]
 
 
 def cmd_ledger(args):
@@ -1540,7 +1531,31 @@ def cmd_ledger(args):
             for key, value in record.items():
                 if key != "records" and _is_nonneg_int(value):
                     entry[key] = entry.get(key, 0) + value
-        summary = {"records": len(records), "executors": by_executor}
+        if session_id is None and run_id is None:
+            session_summaries = {}
+            legacy_summaries = {}
+            for path in _ledger_paths(directory):
+                if os.path.dirname(path) == directory:
+                    key = os.path.basename(path)[:-6]
+                    legacy_summaries[key] = {
+                        "records": len(_read_ledger_file(path)),
+                    }
+                    continue
+                session = os.path.basename(os.path.dirname(path))
+                session_summary = session_summaries.setdefault(
+                    session, {"records": 0, "runs": {}})
+                run = os.path.basename(path)[:-6]
+                count = len(_read_ledger_file(path))
+                session_summary["records"] += count
+                session_summary["runs"][run] = count
+            summary = {
+                "records": len(records),
+                "executors": by_executor,
+                "sessions": session_summaries,
+                "legacy_runs": legacy_summaries,
+            }
+        else:
+            summary = {"records": len(records), "executors": by_executor}
         if fmt == "--json":
             print(json.dumps(summary, ensure_ascii=False))
         else:
@@ -1565,8 +1580,14 @@ def cmd_ledger(args):
         if sub == "clear":
             try:
                 for name in os.listdir(directory):
-                    if name.endswith(".jsonl"):
-                        os.remove(os.path.join(directory, name))
+                    path = os.path.join(directory, name)
+                    if name.endswith(".jsonl") and os.path.isfile(path):
+                        os.remove(path)
+                    elif os.path.isdir(path):
+                        for child in os.listdir(path):
+                            child_path = os.path.join(path, child)
+                            if child.endswith(".jsonl") and os.path.isfile(child_path):
+                                os.remove(child_path)
             except OSError:
                 pass
             return 0
@@ -2546,8 +2567,19 @@ def sanitize_task_id(raw):
     return out
 
 
-def isolate_branch(task_id):
-    return ISOLATE_BRANCH_PREFIX + sanitize_task_id(task_id)
+def _session_component(session_id):
+    value = (session_id or "")[:8].lower()
+    return value if re.match(r"^[a-z0-9]{8}$", value) else None
+
+
+def isolate_branch(task_id, session_id=None):
+    task = sanitize_task_id(task_id)
+    session = _session_component(session_id)
+    return ISOLATE_BRANCH_PREFIX + (session + "/" if session else "") + task
+
+
+def _current_session():
+    return os.environ.get("CLAUDE_CODE_SESSION_ID")
 
 
 def _git(cwd, *args, **kwargs):
@@ -2662,19 +2694,19 @@ def detect_carry_dirs(root):
     return found
 
 
-def copy_tree_fast(src, dst):
-    """Copy a directory, preferring a copy-on-write clone. False if it failed.
+def copy_tree_fast_method(src, dst):
+    """Copy a directory and report clone, copy, or failed.
 
     APFS (`cp -c`) and reflink-capable Linux filesystems make this near-free in
     both time and disk; elsewhere it degrades to a normal recursive copy.
     """
     if not os.path.isdir(src):
-        return False
+        return "failed"
     parent = os.path.dirname(os.path.abspath(dst))
     try:
         os.makedirs(parent, exist_ok=True)
     except OSError:
-        return False
+        return "failed"
     attempts = []
     if sys.platform == "darwin":
         attempts.append(["cp", "-Rc", src, dst])
@@ -2687,14 +2719,19 @@ def copy_tree_fast(src, dst):
         except (OSError, ValueError):
             continue
         if proc.returncode == 0:
-            return True
+            return "clone" if argv is attempts[0] else "copy"
         if os.path.exists(dst):
             shutil.rmtree(dst, ignore_errors=True)
     try:
         shutil.copytree(src, dst, symlinks=True)
-        return True
+        return "copy"
     except (OSError, shutil.Error):
-        return False
+        return "failed"
+
+
+def copy_tree_fast(src, dst):
+    """Copy a directory, preferring a copy-on-write clone. False if it failed."""
+    return copy_tree_fast_method(src, dst) != "failed"
 
 
 def isolate_home(root):
@@ -2800,7 +2837,8 @@ def _create_via_gtr(root, branch, pairs):
 
 
 def _create_via_git(root, branch, task, start="HEAD"):
-    path = os.path.join(isolate_home(root), task)
+    path_task = branch[len(ISOLATE_BRANCH_PREFIX):].replace("/", "-")
+    path = os.path.join(isolate_home(root), path_task)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
     except OSError:
@@ -2816,6 +2854,34 @@ def _worktree_for_branch(root, branch):
         if entry.get("branch") == branch:
             return entry.get("path")
     return None
+
+
+def _resolve_worktree(root, task, session_id=None):
+    task = sanitize_task_id(task)
+    current = _session_component(session_id)
+    preferred = isolate_branch(task, current) if current else None
+    matches = []
+    for entry in _worktree_entries(root):
+        branch = entry.get("branch") or ""
+        if branch == isolate_branch(task) or (
+            branch.startswith(ISOLATE_BRANCH_PREFIX) and branch.endswith("/" + task)
+        ):
+            matches.append((branch, entry))
+    for branch, entry in matches:
+        if branch == preferred:
+            return branch, entry
+    if len(matches) > 1:
+        raise ValueError(
+            "ambiguous worktrees for task %s: %s"
+            % (task, ", ".join(sorted(branch for branch, _ in matches)))
+        )
+    return matches[0] if matches else (None, None)
+
+
+def _branch_session(branch):
+    rest = branch[len(ISOLATE_BRANCH_PREFIX):]
+    parts = rest.split("/", 1)
+    return parts[0] if len(parts) == 2 and _session_component(parts[0]) == parts[0] else None
 
 
 def _worktree_entries(root):
@@ -2838,7 +2904,7 @@ def _worktree_entries(root):
     return entries
 
 
-def isolate_create(root, task, backend="auto", carry=True, onto=None):
+def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id=None):
     """Create (or return) the worktree for `task`. Idempotent per task.
 
     `onto` names the commit the worktree starts from. Left at None it means
@@ -2852,13 +2918,13 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None):
     if root is None:
         return {"status": "error", "reason": "not a git repository"}
     task = sanitize_task_id(task)
-    branch = ISOLATE_BRANCH_PREFIX + task
+    branch = isolate_branch(task, session_id if session_id is not None else _current_session())
 
     existing = _worktree_for_branch(root, branch)
     if existing:
         return {
             "status": "exists", "task": task, "branch": branch, "path": existing,
-            "backend": "existing", "carried": [],
+            "backend": "existing", "carried": [], "carry_method": "none",
         }
 
     if onto is not None:
@@ -2892,18 +2958,32 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None):
         _write_baseline(path, baseline)
 
     carried = []
+    carry_method = "none"
     if carry:
         for rel in detect_carry_dirs(root):
-            if copy_tree_fast(os.path.join(root, rel), os.path.join(path, rel)):
+            method = copy_tree_fast_method(os.path.join(root, rel), os.path.join(path, rel))
+            if method != "failed":
                 carried.append(rel)
+            if method == "failed":
+                carry_method = "failed"
+            elif carry_method != "failed" and method == "copy":
+                carry_method = "copy"
+            elif carry_method == "none":
+                carry_method = "clone"
 
-    return {
+    result = {
         "status": "created", "task": task, "branch": branch, "path": path,
         "backend": backend, "baseline": baseline, "carried": carried,
+        "carry_method": carry_method,
     }
+    if carry_method == "copy":
+        result["carry_note"] = "CoW was unavailable; carrying dependencies cost real time and disk."
+    elif carry_method == "failed":
+        result["carry_note"] = "Workers need a dependency install; run it ONCE with a cheap agent, not per worker."
+    return result
 
 
-def isolate_list(root):
+def isolate_list(root, session_id=None):
     root = repo_root(root)
     if root is None:
         return []
@@ -2912,24 +2992,47 @@ def isolate_list(root):
         branch = entry.get("branch") or ""
         if not branch.startswith(ISOLATE_BRANCH_PREFIX):
             continue
+        owner = _branch_session(branch)
+        task = branch[len(ISOLATE_BRANCH_PREFIX):].split("/", 1)[-1]
         out.append({
-            "task": branch[len(ISOLATE_BRANCH_PREFIX):],
+            "task": task,
             "branch": branch,
             "path": entry.get("path"),
+            "session": owner,
+            "current": owner is not None and owner == _session_component(
+                session_id if session_id is not None else _current_session()
+            ),
         })
-    return out
+    if session_id is None:
+        return out
+    wanted = _session_component(session_id)
+    return [entry for entry in out if entry["session"] == wanted]
 
 
-def isolate_diff(root, task):
+def isolate_remove_session(root, session_id, force=False):
+    wanted = _session_component(session_id)
+    if wanted is None:
+        raise ValueError("invalid session id")
+    entries = isolate_list(root)
+    results = []
+    for entry in entries:
+        if entry["session"] == wanted:
+            results.append(isolate_remove(root, entry["task"], force=force, session_id=wanted))
+    return {"status": "removed", "session": wanted, "removed": results}
+
+
+def isolate_diff(root, task, session_id=None):
     """What the worker changed in its worktree, as a patch plus a file list."""
     root = repo_root(root)
     if root is None:
         return {"status": "error", "reason": "not a git repository"}
     task = sanitize_task_id(task)
-    branch = ISOLATE_BRANCH_PREFIX + task
-    path = _worktree_for_branch(root, branch)
-    if not path:
+    branch, entry = _resolve_worktree(
+        root, task, session_id if session_id is not None else _current_session()
+    )
+    if not entry:
         return {"status": "absent", "task": task, "files": [], "patch": ""}
+    path = entry.get("path")
     baseline = _read_baseline(path)
     if not baseline:
         return {"status": "error", "reason": "no baseline recorded for %s" % task}
@@ -2942,22 +3045,25 @@ def isolate_diff(root, task):
     return {
         "status": "ok", "task": task, "path": path, "baseline": baseline,
         "files": files, "patch": patch if rc == 0 else "",
+        "branch": branch, "session": _branch_session(branch),
     }
 
 
-def isolate_remove(root, task, force=False):
+def isolate_remove(root, task=None, force=False, session_id=None):
     """Delete a task's worktree and branch, refusing to discard unreviewed work."""
     root = repo_root(root)
     if root is None:
         return {"status": "error", "reason": "not a git repository"}
     task = sanitize_task_id(task)
-    branch = ISOLATE_BRANCH_PREFIX + task
-    path = _worktree_for_branch(root, branch)
-    if not path:
+    branch, entry = _resolve_worktree(
+        root, task, session_id if session_id is not None else _current_session()
+    )
+    if not entry:
         return {"status": "absent", "task": task}
+    path = entry.get("path")
 
     if not force:
-        diff = isolate_diff(root, task)
+        diff = isolate_diff(root, task, session_id=session_id)
         if diff.get("files"):
             return {
                 "status": "dirty", "task": task, "path": path, "files": diff["files"],
@@ -2972,7 +3078,10 @@ def isolate_remove(root, task, force=False):
     if rc != 0:
         return {"status": "error", "task": task, "reason": "git worktree remove failed"}
     _git(root, "branch", "-D", branch)
-    return {"status": "removed", "task": task, "path": path}
+    return {
+        "status": "removed", "task": task, "path": path,
+        "branch": branch, "session": _branch_session(branch),
+    }
 
 
 # --- isolate integrate --------------------------------------------------------
@@ -3054,8 +3163,8 @@ def _task_change_set(root, task):
     `state` is "missing" (no worktree, or its baseline is unreadable), "empty"
     (a worktree that changed nothing), or "ready".
     """
-    branch = ISOLATE_BRANCH_PREFIX + task
-    path = _worktree_for_branch(root, branch)
+    branch, entry = _resolve_worktree(root, task, _current_session())
+    path = entry.get("path") if entry else None
     blank = {"task": task, "state": "missing", "files": [], "patch": "", "baseline": None}
     if not path or not os.path.isdir(path):
         return blank
@@ -3112,7 +3221,7 @@ def isolate_integrate(root, tasks, onto=None, into="integrate"):
     """
     resolved_root = repo_root(root)
     into_task = sanitize_task_id(into)
-    branch = ISOLATE_BRANCH_PREFIX + into_task
+    branch = isolate_branch(into_task, _current_session())
     task_ids = [sanitize_task_id(t) for t in tasks]
 
     def failure(reason):
@@ -3275,11 +3384,12 @@ def _isolate_usage(stream=sys.stderr):
     stream.write(
         "usage: agent-exec isolate {create|list|diff|integrate|remove|should} [options]\n"
         "  create    --task <id> [--repo <path>] [--backend auto|gtr|git] [--no-carry]\n"
-        "  list      [--repo <path>]\n"
+        "  list      [--repo <path>] [--session <id>]\n"
         "  diff      --task <id> [--repo <path>] [--names-only]\n"
         "  integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>]\n"
         "            [--json|--text]\n"
         "  remove    --task <id> [--repo <path>] [--force]\n"
+        "  remove    --session <id> [--repo <path>] [--force]\n"
         "  should    [--repo <path>] [--mode auto|always|never]\n"
     )
 
@@ -3301,6 +3411,7 @@ def cmd_isolate(args):
         return cmd_isolate_integrate(args[1:])
 
     task = None
+    session = None
     directory = os.getcwd()
     backend = "auto"
     mode = "auto"
@@ -3311,7 +3422,7 @@ def cmd_isolate(args):
     i = 1
     while i < len(args):
         tok = args[i]
-        if tok in ("--task", "--repo", "--backend", "--mode"):
+        if tok in ("--task", "--repo", "--backend", "--mode", "--session"):
             if i + 1 >= len(args):
                 sys.stderr.write("agent-exec: isolate: missing value for %s\n" % tok)
                 return 2
@@ -3320,6 +3431,8 @@ def cmd_isolate(args):
                 task = value
             elif tok == "--repo":
                 directory = value
+            elif tok == "--session":
+                session = value
             elif tok == "--backend":
                 backend = value
             else:
@@ -3338,8 +3451,14 @@ def cmd_isolate(args):
             sys.stderr.write("agent-exec: isolate: unknown option: %s\n" % tok)
             return 2
 
-    if sub in ("create", "diff", "remove") and task is None:
+    if sub in ("create", "diff") and task is None:
         sys.stderr.write("agent-exec: isolate %s: missing required option: --task\n" % sub)
+        return 2
+    if sub == "remove" and ((task is None) == (session is None)):
+        sys.stderr.write("agent-exec: isolate remove: provide exactly one of --task or --session\n")
+        return 2
+    if sub not in ("remove", "list") and session is not None:
+        sys.stderr.write("agent-exec: isolate %s: --session is not supported\n" % sub)
         return 2
     if backend not in ("auto", "gtr", "git"):
         sys.stderr.write("agent-exec: isolate: unknown backend: %s\n" % backend)
@@ -3349,13 +3468,17 @@ def cmd_isolate(args):
         if sub == "create":
             result = isolate_create(directory, task, backend=backend, carry=carry)
         elif sub == "list":
-            result = {"worktrees": isolate_list(directory)}
+            result = {"worktrees": isolate_list(directory, session_id=session)}
         elif sub == "diff":
             result = isolate_diff(directory, task)
             if names_only:
                 result.pop("patch", None)
         elif sub == "remove":
-            result = isolate_remove(directory, task, force=force)
+            result = (
+                isolate_remove_session(directory, session, force=force)
+                if session is not None
+                else isolate_remove(directory, task, force=force)
+            )
         else:
             result = should_isolate(directory, mode)
     except ValueError as exc:
@@ -4523,34 +4646,83 @@ def _valid_ledger_selector(value, pattern):
             and pattern.fullmatch(value))
 
 
-def read_run_ledger(ledger_dir, run_id):
-    """Return tagged records plus legacy records for one run."""
-    if not _valid_ledger_selector(run_id, _RUN_LEDGER_ID_RE):
-        return []
-    records = []
+def _ledger_paths(ledger_dir):
+    """Return each directly stored ledger file once, by resolved real path."""
+    paths = []
     seen = set()
     try:
-        names = sorted(name for name in os.listdir(ledger_dir)
-                       if name.endswith(".jsonl") and os.path.isfile(
-                           os.path.join(ledger_dir, name)))
+        names = sorted(os.listdir(ledger_dir))
     except OSError:
-        names = []
+        return paths
     for name in names:
-        is_legacy = name == "%s.jsonl" % run_id
-        for record in _read_ledger_file(os.path.join(ledger_dir, name)):
-            if not is_legacy and record.get("run") != run_id:
+        path = os.path.join(ledger_dir, name)
+        if name.endswith(".jsonl") and os.path.isfile(path):
+            candidates = (path,)
+        elif os.path.isdir(path):
+            try:
+                candidates = tuple(
+                    os.path.join(path, child)
+                    for child in sorted(os.listdir(path))
+                    if child.endswith(".jsonl")
+                    and os.path.isfile(os.path.join(path, child))
+                )
+            except OSError:
                 continue
-            key = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        else:
+            continue
+        for candidate in candidates:
+            key = os.path.realpath(candidate)
             if key not in seen:
                 seen.add(key)
-                records.append(record)
-    return records
+                paths.append(candidate)
+    return paths
+
+
+def read_run_ledger(ledger_dir, run_id):
+    """Return records from matching run files inside session directories.
+
+    Flat files are intentionally excluded: this was the last place a session
+    total could be reported as a run total, and the affected data is hours-old,
+    local, disposable measurement data. Correctness of the number beats
+    reading a handful of stale files.
+    """
+    if not _valid_ledger_selector(run_id, _RUN_LEDGER_ID_RE):
+        return []
+    return [record for path in _ledger_paths(ledger_dir)
+            if os.path.abspath(os.path.dirname(path)) != os.path.abspath(ledger_dir)
+            and os.path.basename(path) == run_id + ".jsonl"
+            for record in _read_ledger_file(path)]
 
 
 def read_session_ledger(ledger_dir, session_id):
     if not _valid_ledger_selector(session_id, _RUN_LEDGER_SESSION_RE):
         return []
-    return _read_ledger_file(os.path.join(ledger_dir, "%s.jsonl" % session_id))
+    directory = os.path.join(ledger_dir, session_id)
+    return [record for path in _ledger_paths(directory)
+            if os.path.dirname(path) == directory
+            for record in _read_ledger_file(path)]
+
+
+def _ledger_selected_paths(ledger_dir, run_ids=(), session_ids=()):
+    selected = []
+    seen = set()
+    for path in _ledger_paths(ledger_dir):
+        basename = os.path.basename(path)
+        session = os.path.basename(os.path.dirname(path))
+        matches_run = (
+            os.path.abspath(os.path.dirname(path)) != os.path.abspath(ledger_dir)
+            and any(basename == run_id + ".jsonl" for run_id in run_ids)
+        )
+        matches_session = any(
+            os.path.dirname(path) == os.path.join(ledger_dir, session_id)
+            for session_id in session_ids
+        )
+        if matches_run or matches_session:
+            key = os.path.realpath(path)
+            if key not in seen:
+                seen.add(key)
+                selected.append(path)
+    return selected
 
 
 def _scope_entry(reason):
@@ -4584,14 +4756,12 @@ def _claude_scope_files(home=None, config_dir=None, run_ids=(), session_ids=()):
                 continue
             candidates = []
             for run_id in run_ids:
-                workflow_name = run_id
                 try:
-                    for dirpath, dirnames, _ in os.walk(project):
-                        dirnames.sort()
-                        if os.path.basename(dirpath) == workflow_name:
-                            candidates.append(dirpath)
-                            dirnames[:] = []
-                            break
+                    for session in sorted(os.listdir(project)):
+                        workflow = os.path.join(
+                            project, session, "subagents", "workflows", run_id)
+                        if os.path.isdir(workflow):
+                            candidates.append(workflow)
                 except OSError:
                     continue
             for session_id in session_ids:
@@ -4810,23 +4980,10 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                 home=home, run_ids=run_ids, session_ids=session_ids)
         elif scoped and name in ("copilot", "codex"):
             if run_ids or session_ids:
-                records = []
                 ledger_dir = _ledger_dir_from_cfg(cfg)
-                seen = set()
-                for run_id in run_ids:
-                    selected = read_run_ledger(ledger_dir, run_id)
-                    for record in selected:
-                        key = json.dumps(record, sort_keys=True, separators=(",", ":"))
-                        if key not in seen:
-                            seen.add(key)
-                            records.append(record)
-                for session_id in session_ids:
-                    selected = read_session_ledger(ledger_dir, session_id)
-                    for record in selected:
-                        key = json.dumps(record, sort_keys=True, separators=(",", ":"))
-                        if key not in seen:
-                            seen.add(key)
-                            records.append(record)
+                paths = _ledger_selected_paths(ledger_dir, run_ids, session_ids)
+                records = [record for path in paths
+                           for record in _read_ledger_file(path)]
                 if name == "codex":
                     delegated, measured, tokens, extra = _ledger_codex_usage(records, home)
                     if not measured and delegated:
@@ -4854,6 +5011,18 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                         "premium_requests": acc["premium_requests"],
                         "records": acc["records"],
                     }
+                    if session_ids:
+                        runs = {}
+                        for path in paths:
+                            run_key = os.path.basename(path)[:-6]
+                            count = sum(
+                                1 for record in _read_ledger_file(path)
+                                if record.get("executor") == name
+                            )
+                            if count:
+                                runs["no-run" if run_key == "no.run" else run_key] = count
+                        if runs:
+                            out[name]["runs"] = runs
                     if name == "codex":
                         out[name]["delegated"] = acc["delegated"]
                         out[name]["measured"] = acc["measured"]
@@ -4923,15 +5092,12 @@ def _list_usage_runs(home=None, config_dir=None, sources=None, cfg=None,
                                     item["timestamps"].append(ts)
     if requested.intersection(("copilot", "codex")):
         ledger_dir = _ledger_dir_from_cfg(cfg)
-        try:
-            names = os.listdir(ledger_dir)
-        except OSError:
-            names = []
-        for name in names:
-            if not name.endswith(".jsonl"):
+        for path in _ledger_paths(ledger_dir):
+            name = os.path.basename(path)
+            if name == "no.run.jsonl" or not name.endswith(".jsonl"):
                 continue
             run_id = name[:-6]
-            records = read_run_ledger(ledger_dir, run_id)
+            records = _read_ledger_file(path)
             if not records:
                 continue
             item = runs.setdefault(run_id, {"files": 0, "timestamps": []})
@@ -5016,6 +5182,11 @@ def _print_usage_text(report):
                     _coerce_count(entry.get("premium_requests")),
                 )
             )
+        if scope.get("kind") in ("session", "run+session") and entry.get("runs"):
+            print("           runs: %s" % " ".join(
+                "%s=%d" % (run_id, _coerce_count(count))
+                for run_id, count in sorted(entry["runs"].items())
+            ))
     print("total    %-13s %s" % ("", _usage_tokens_line(report.get("totals"))))
 
 

@@ -35,14 +35,23 @@ class LedgerCommandTests(unittest.TestCase):
                   encoding="utf-8") as handle:
             handle.write("ledger:\n  dir: %s\n" % ledger)
         os.makedirs(ledger)
-        with open(os.path.join(ledger, "session-1.jsonl"), "w",
+        session = os.path.join(ledger, "session-1")
+        os.makedirs(session)
+        with open(os.path.join(session, "run-1.jsonl"), "w",
                   encoding="utf-8") as handle:
             handle.write(json.dumps({
-                "executor": "copilot", "run": "run-1",
+                "executor": "copilot",
                 "input_tokens": 4, "output_tokens": 2,
             }) + "\n")
+        with open(os.path.join(session, "no.run.jsonl"), "w",
+                  encoding="utf-8") as handle:
             handle.write(json.dumps({
                 "executor": "codex", "input_tokens": 3,
+            }) + "\n")
+        with open(os.path.join(ledger, "legacy-run.jsonl"), "w",
+                  encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "executor": "copilot", "input_tokens": 1,
             }) + "\n")
         return home, ledger
 
@@ -51,12 +60,38 @@ class LedgerCommandTests(unittest.TestCase):
         try:
             proc = run_cli(home.name, ["ledger", "show", "--json"])
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            self.assertEqual(json.loads(proc.stdout)["records"], 2)
+            parsed = json.loads(proc.stdout)
+            self.assertEqual(parsed["records"], 3)
+            # Distinguishes session directories (with their per-run
+            # breakdown) from legacy flat run files.
+            self.assertIn("session-1", parsed["sessions"])
+            self.assertEqual(parsed["sessions"]["session-1"]["records"], 2)
+            self.assertEqual(
+                parsed["sessions"]["session-1"]["runs"]["run-1"], 1)
+            self.assertIn("legacy-run", parsed["legacy_runs"])
+            self.assertEqual(parsed["legacy_runs"]["legacy-run"]["records"], 1)
             proc = run_cli(home.name, ["ledger", "show", "--session", "session-1",
                                        "--json"])
             self.assertEqual(json.loads(proc.stdout)["executors"]["copilot"]["input_tokens"], 4)
             proc = run_cli(home.name, ["ledger", "show", "--run", "run-1", "--json"])
             self.assertEqual(json.loads(proc.stdout)["records"], 1)
+            proc = run_cli(home.name, ["ledger", "show", "--run", "legacy-run",
+                                       "--json"])
+            self.assertEqual(json.loads(proc.stdout)["records"], 0)
+        finally:
+            home.cleanup()
+
+    def test_show_run_selector_ignores_session_id(self):
+        # A session id must never satisfy --run: the session is a
+        # directory, not a file named <sid>.jsonl.
+        home, ledger = self._home()
+        try:
+            proc = run_cli(home.name, ["ledger", "show", "--run", "session-1",
+                                       "--json"])
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            parsed = json.loads(proc.stdout)
+            self.assertEqual(parsed["records"], 0)
+            self.assertEqual(parsed["executors"], {})
         finally:
             home.cleanup()
 
@@ -76,7 +111,13 @@ class LedgerCommandTests(unittest.TestCase):
         try:
             proc = run_cli(home.name, ["ledger", "clear", "--yes"])
             self.assertEqual(proc.returncode, 0)
-            self.assertEqual(os.listdir(ledger), [])
+            # Legacy flat files are removed...
+            self.assertFalse(
+                os.path.exists(os.path.join(ledger, "legacy-run.jsonl")))
+            # ...and the session directory's contents are removed, but the
+            # session directory itself survives.
+            self.assertEqual(os.listdir(ledger), ["session-1"])
+            self.assertEqual(os.listdir(os.path.join(ledger, "session-1")), [])
         finally:
             home.cleanup()
 

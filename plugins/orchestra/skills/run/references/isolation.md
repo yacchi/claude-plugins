@@ -28,13 +28,21 @@ Every dispatch result carries an `isolation` object saying which tree was used a
 agent-exec isolate diff   --task <id>            # patch + file list, worker's changes only
 agent-exec isolate list                          # orchestra-created worktrees
 agent-exec isolate remove --task <id>            # refuses while changes are uncollected
+agent-exec isolate remove --session <id>          # clean up every worktree for a session
 ```
+
+Task lookup first tries the current session's branch. If absent, a unique
+cross-session `orchestra/*/<task>` or legacy `orchestra/<task>` branch is used
+and its owner is reported; multiple candidates are an exit-2 ambiguity error,
+never a guess. `isolate list` includes `session` and `current` fields, and
+`--session` accepts either a full session id or its eight-character prefix.
 
 What `isolate create` does for you, so a worktree is not a downgrade for the worker:
 
 - **carries the user's uncommitted work in**, then commits it as that worktree's baseline — so a later `isolate diff` shows the worker's changes and nothing else;
 - **copies gitignored dependency directories** (`node_modules`, `.venv`, `vendor`, `target`, …) by copy-on-write clone. ~2s for 83MB/9.5k files, versus minutes and a pile of tokens if every worker re-runs its own install;
-- **reuses one worktree per `--task`**, so retry rounds accumulate in one place instead of littering;
+- reports `carry_method` (`none`, `clone`, `copy`, or `failed`) and, for `copy`/`failed`, a fixed `carry_note`. If carrying fails, a dependency install is paid **ONCE**, by agent-exec or a cheap light-class agent, never per worker and never by an instructor-tier model;
+- **reuses one worktree per session and `--task`**, so retry rounds accumulate in one place instead of littering. When `CLAUDE_CODE_SESSION_ID` has a valid eight-character prefix, the branch is `orchestra/<session>/<task>`; without one it remains the legacy `orchestra/<task>`. The session component lives in the branch rather than the path because isolation runs through gtr where it is installed and orchestra never writes gtr configuration: the branch is the one key both backends honour, while taking over the path would fight gtr.
 - **goes through `git gtr`** (git-worktree-runner) when installed, so the user's own `gtr.copy.include` patterns and `gtr.hook.postCreate` setup steps apply here too. Orchestra never *writes* gtr config: what it needs is injected for one subprocess via `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n`, leaving `.git/config`, `~/.gitconfig`, and the committable repo-root `.gtrconfig` untouched. Without gtr it falls back to a plain `git worktree`.
 
 A second layer backs this up: `hooks/guard-worker-vcs.sh` denies destructive VCS commands from *subagents* against a non-`orchestra/*` branch (`enforcement.worker_vcs`, on by default). Inside its own worktree a worker may reset freely — there is nothing there but its own work. The main thread is never affected.
@@ -89,6 +97,18 @@ agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--i
 `--tasks` is required and takes comma-separated orchestra task IDs, applied in that order. `--repo` defaults to cwd; `--onto` defaults to the first task's baseline sha (falling back to HEAD); `--into` names the integration worktree's own task id (default `"integrate"`) and is an ordinary orchestra worktree — `agent-exec isolate list` shows it, `agent-exec isolate remove --task <id>` cleans it up. `--json` (default) or `--text`; passing both is a usage error. Same-file edits are not a reason to serialize. The only legitimate reason to serialize is a real dependency in which a later task must consume an earlier task's output or state.
 
 Skip worktree isolation when the tree is clean and ownership partitions cleanly and cheaply; that is an isolation choice, not a reason to serialize independent tasks.
+
+**Design note — backend choice, not a requirement.** Git worktree is an
+implementation choice here, not a requirement. The requirement is an isolated
+writable view that is cheap to create, cheap to discard, and diffable at the
+end; git carries real overhead, and agent-oriented alternatives are active
+work. On a CoW filesystem, cloning the whole repository directory (including
+`.git` and ignored dependency directories) is one O(1) operation, strictly
+cheaper than materialising tracked files with `git worktree add` and copying
+ignored directories separately; `copy_tree_fast` is already that primitive.
+The `isolate create/list/diff/remove/integrate` surface is deliberately
+backend-shaped so this primitive can be swapped without changing callers.
+This note exists so the current choice is not mistaken for a settled one.
 
 **Why this subcommand exists.** Merging parallel worktrees by hand means pulling diffs and conflict text into the instructor's context — forbidden by §1's code of conduct. `isolate integrate` mechanizes the merge instead and reports only structured JSON, so the instructor can fold parallel work back together without ever reading a patch. A conflict stops being something the instructor resolves inline; it becomes a delegatable follow-up task ("resolve these files under this contract") for a `standard`-class worker.
 

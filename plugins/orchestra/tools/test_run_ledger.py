@@ -82,7 +82,7 @@ class RunLedgerSanitizingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False}}
             agent_exec.run_ledger_append(raw, "run_a", cfg)
-            path = os.path.join(tmp, "runs", "session-test.jsonl")
+            path = os.path.join(tmp, "runs", "session-test", "run_a.jsonl")
             with open(path, encoding="utf-8") as f:
                 line = f.read()
             for secret in ("secret prompt text", "/absolute/private/file", "session-secret"):
@@ -122,7 +122,7 @@ class RunLedgerSanitizingTests(unittest.TestCase):
             self.assertEqual(result["executor"], "copilot")
             self.assertEqual(result["input_tokens"], 9)
         good = agent_exec.sanitize_run_ledger_record(dict(base, run="wf_ok-1"))
-        self.assertEqual(good["run"], "wf_ok-1")
+        self.assertNotIn("run", good)
 
 
 class RunLedgerWritingTests(unittest.TestCase):
@@ -144,7 +144,8 @@ class RunLedgerWritingTests(unittest.TestCase):
             agent_exec.run_ledger_append(record, "wf_a26027ae-bdb", cfg)
             directory = os.path.join(tmp, "runs")
             self.assertEqual(stat.S_IMODE(os.stat(directory).st_mode), 0o700)
-            with open(os.path.join(directory, "session-test.jsonl"), encoding="utf-8") as f:
+            with open(os.path.join(directory, "session-test", "wf_a26027ae-bdb.jsonl"),
+                      encoding="utf-8") as f:
                 lines = f.readlines()
             self.assertEqual(len(lines), 2)
             for line in lines:
@@ -171,7 +172,7 @@ class RunLedgerSessionIdValidationTests(unittest.TestCase):
             os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_before
 
     def test_invalid_session_ids_write_nothing_and_create_no_file(self):
-        for bad in ("..", "a/b", "", " ", "x" * 129):
+        for bad in ("..", "../../etc/x", "a/b", "", " ", "x" * 129, "line\nbreak"):
             os.environ["CLAUDE_CODE_SESSION_ID"] = bad
             with tempfile.TemporaryDirectory() as tmp:
                 cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"),
@@ -247,7 +248,7 @@ class RunLedgerTelemetryIndependenceTests(unittest.TestCase):
                 "ledger": {"dir": os.path.join(tmp, "runs"), "enabled": True},
             }
             agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
-            path = os.path.join(tmp, "runs", "session-independence.jsonl")
+            path = os.path.join(tmp, "runs", "session-independence", "run.jsonl")
             self.assertTrue(os.path.exists(path))
             self.assertFalse(
                 os.path.exists(os.path.join(tmp, "telemetry", "records.jsonl")))
@@ -282,10 +283,16 @@ class RunLedgerRetentionTests(unittest.TestCase):
                 with open(path, "w", encoding="utf-8") as f:
                     f.write("{}\n")
             os.makedirs(sub_dir)  # a directory literally named "sub.jsonl"
+            nested_old = os.path.join(directory, "session-old")
+            os.makedirs(nested_old)
+            nested_old_file = os.path.join(nested_old, "old.jsonl")
+            with open(nested_old_file, "w", encoding="utf-8") as f:
+                f.write("{}\n")
 
             old_time = time.time() - 40 * 86400
             os.utime(old_path, (old_time, old_time))
             os.utime(sub_dir, (old_time, old_time))
+            os.utime(nested_old_file, (old_time, old_time))
 
             cfg = {
                 "telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False},
@@ -297,6 +304,8 @@ class RunLedgerRetentionTests(unittest.TestCase):
             self.assertTrue(os.path.exists(new_path))
             self.assertTrue(os.path.exists(other_path))
             self.assertTrue(os.path.isdir(sub_dir))
+            self.assertFalse(os.path.exists(nested_old_file))
+            self.assertTrue(os.path.isdir(nested_old))
 
     def test_retention_runs_at_most_once_per_process(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -368,7 +377,8 @@ class DelegatedDispatchCorrelationTests(unittest.TestCase):
                 os.environ["CLAUDE_CODE_SESSION_ID"] = old_session
 
     def _ledger_lines(self, tmp, run_id):
-        path = os.path.join(tmp, "runs", "session-dispatch.jsonl")
+        filename = run_id + ".jsonl" if run_id != "unused" else "no.run.jsonl"
+        path = os.path.join(tmp, "runs", "session-dispatch", filename)
         if not os.path.exists(path):
             return []
         with open(path, encoding="utf-8") as f:

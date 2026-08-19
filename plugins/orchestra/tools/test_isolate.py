@@ -34,6 +34,7 @@ class _RepoMixin:
     """A throwaway git repo with one commit."""
 
     def setUp(self):
+        self._session_id = os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
         self.tmp = tempfile.mkdtemp(prefix="orch-iso-")
         self.repo = os.path.join(self.tmp, "repo")
         os.makedirs(self.repo)
@@ -51,6 +52,8 @@ class _RepoMixin:
         import shutil
 
         shutil.rmtree(self.tmp, ignore_errors=True)
+        if self._session_id is not None:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self._session_id
 
     def _write(self, relpath, content="x\n"):
         full = os.path.join(self.repo, relpath)
@@ -134,6 +137,51 @@ class TaskIdTests(unittest.TestCase):
 
     def test_branch_name_is_namespaced(self):
         self.assertEqual(agent_exec.isolate_branch("fix-parser"), "orchestra/fix-parser")
+
+
+class BranchNameFunctionTests(unittest.TestCase):
+    """`isolate_branch` is the one pure module-level function that decides the
+    session-scoped branch shape; it takes the session id explicitly so these
+    tests never depend on the ambient environment."""
+
+    def test_with_session_id_namespaces_under_it(self):
+        self.assertEqual(
+            agent_exec.isolate_branch("t1", "abcdefgh"), "orchestra/abcdefgh/t1"
+        )
+
+    def test_without_session_id_is_unchanged_legacy_shape(self):
+        self.assertEqual(agent_exec.isolate_branch("t1", None), "orchestra/t1")
+
+    def test_uppercase_session_id_is_lowercased(self):
+        self.assertEqual(
+            agent_exec.isolate_branch("t1", "ABCDEFGH"), "orchestra/abcdefgh/t1"
+        )
+
+    def test_session_id_shorter_than_8_chars_is_unavailable(self):
+        self.assertEqual(agent_exec.isolate_branch("t1", "abcd12"), "orchestra/t1")
+
+    def test_session_id_whose_first_8_chars_are_not_alnum_is_unavailable(self):
+        for bad in ("abcd-123", "abcd 123", "abcd!23x"):
+            self.assertEqual(agent_exec.isolate_branch("t1", bad), "orchestra/t1")
+
+    def test_ref_hostile_session_ids_never_appear_in_the_branch(self):
+        for bad in ("..", "a/b", "-", "ab\ncdef12", "-abcdefg"):
+            branch = agent_exec.isolate_branch("t1", bad)
+            self.assertEqual(branch, "orchestra/t1")
+            self.assertNotIn(bad, branch)
+
+    def test_ref_hostile_task_ids_never_appear_in_the_branch_either(self):
+        for bad in ("../../etc/passwd", "a/b", "x\ny"):
+            branch = agent_exec.isolate_branch(bad, "abcdefgh")
+            self.assertNotIn("..", branch)
+            self.assertNotIn("\n", branch)
+            self.assertTrue(branch.startswith("orchestra/abcdefgh/"))
+
+    def test_hostile_task_id_with_no_usable_characters_creates_nothing(self):
+        """`sanitize_task_id` fails closed here; no branch is ever produced."""
+        for bad in ("-", "..", "///"):
+            with self.assertRaises(ValueError):
+                agent_exec.isolate_branch(bad, "abcdefgh")
 
 
 class DetectCarryDirsTests(_RepoMixin, unittest.TestCase):
@@ -403,6 +451,284 @@ class IsolateLifecycleTests(_RepoMixin, unittest.TestCase):
     def test_remove_of_an_unknown_task_is_reported_not_raised(self):
         out = agent_exec.isolate_remove(self.repo, "never-existed")
         self.assertEqual(out["status"], "absent")
+
+
+def _set_session(test, value):
+    """Set CLAUDE_CODE_SESSION_ID for one test and guarantee cleanup."""
+    os.environ["CLAUDE_CODE_SESSION_ID"] = value
+    test.addCleanup(lambda: os.environ.pop("CLAUDE_CODE_SESSION_ID", None))
+
+
+class SessionScopedCreateTests(_RepoMixin, unittest.TestCase):
+    """Idempotency is now per (session, task), not per task alone."""
+
+    def test_create_twice_in_one_session_reuses_the_worktree(self):
+        _set_session(self, "aaaaaaaa-one")
+        first = agent_exec.isolate_create(self.repo, "t1", backend="git")
+        second = agent_exec.isolate_create(self.repo, "t1", backend="git")
+        self.assertEqual(first["status"], "created")
+        self.assertEqual(second["status"], "exists")
+        self.assertEqual(first["path"], second["path"])
+        self.assertEqual(first["branch"], "orchestra/aaaaaaaa/t1")
+
+    def test_create_same_task_two_different_sessions_makes_two_worktrees(self):
+        _set_session(self, "aaaaaaaa-one")
+        first = agent_exec.isolate_create(self.repo, "t1", backend="git")
+        _set_session(self, "bbbbbbbb-two")
+        second = agent_exec.isolate_create(self.repo, "t1", backend="git")
+        self.assertEqual(first["status"], "created")
+        self.assertEqual(second["status"], "created")
+        self.assertNotEqual(first["path"], second["path"])
+        self.assertNotEqual(first["branch"], second["branch"])
+        self.assertEqual(first["branch"], "orchestra/aaaaaaaa/t1")
+        self.assertEqual(second["branch"], "orchestra/bbbbbbbb/t1")
+
+    def test_hostile_session_id_from_the_environment_is_neutralized(self):
+        _set_session(self, "..\n-abcdefg")
+        r = agent_exec.isolate_create(self.repo, "t1", backend="git")
+        self.assertEqual(r["status"], "created")
+        self.assertEqual(r["branch"], "orchestra/t1")
+
+
+class ResolutionTests(_RepoMixin, unittest.TestCase):
+    """`isolate diff|remove|integrate` resolution order (§2 of the contract)."""
+
+    def _extra_worktree(self, branch, suffix):
+        path = os.path.join(self.tmp, suffix)
+        _git(self.repo, "worktree", "add", "-q", "-b", branch, path)
+        return path
+
+    def test_current_session_hit_wins_over_a_cross_session_one(self):
+        _set_session(self, "aaaaaaaa-cur")
+        mine = agent_exec.isolate_create(self.repo, "t1", backend="git")
+        self._extra_worktree("orchestra/bbbbbbbb/t1", "foreign")
+        branch, entry = agent_exec._resolve_worktree(
+            self.repo, "t1", agent_exec._current_session()
+        )
+        self.assertEqual(branch, mine["branch"])
+        self.assertEqual(entry["path"], mine["path"])
+
+    def test_unique_cross_session_match_is_used_and_reports_its_owner(self):
+        self._extra_worktree("orchestra/bbbbbbbb/t1", "foreign")
+        branch, entry = agent_exec._resolve_worktree(self.repo, "t1", None)
+        self.assertEqual(branch, "orchestra/bbbbbbbb/t1")
+        self.assertEqual(agent_exec._branch_session(branch), "bbbbbbbb")
+        self.assertIsNotNone(entry)
+
+    def test_two_cross_session_matches_is_an_error_not_a_guess(self):
+        self._extra_worktree("orchestra/bbbbbbbb/t1", "foreign1")
+        self._extra_worktree("orchestra/cccccccc/t1", "foreign2")
+        with self.assertRaises(ValueError):
+            agent_exec._resolve_worktree(self.repo, "t1", None)
+
+    def test_legacy_branch_is_still_resolvable(self):
+        self._extra_worktree("orchestra/t1", "legacy")
+        branch, entry = agent_exec._resolve_worktree(self.repo, "t1", None)
+        self.assertEqual(branch, "orchestra/t1")
+        self.assertIsNotNone(entry)
+
+
+class AmbiguityCLITests(_RepoMixin, unittest.TestCase):
+    """A cross-session ambiguity must exit 2 with nothing on stdout."""
+
+    def _run(self, *args):
+        import io
+        import contextlib
+
+        buf_out, buf_err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            rc = agent_exec.cmd_isolate(list(args))
+        return rc, buf_out.getvalue(), buf_err.getvalue()
+
+    def test_diff_with_two_cross_session_matches_exits_2_with_empty_stdout(self):
+        _git(self.repo, "worktree", "add", "-q", "-b", "orchestra/bbbbbbbb/t1",
+             os.path.join(self.tmp, "foreign1"))
+        _git(self.repo, "worktree", "add", "-q", "-b", "orchestra/cccccccc/t1",
+             os.path.join(self.tmp, "foreign2"))
+        rc, out, err = self._run("diff", "--task", "t1", "--repo", self.repo)
+        self.assertEqual(rc, 2)
+        self.assertEqual(out, "")
+        self.assertIn("orchestra/bbbbbbbb/t1", err)
+        self.assertIn("orchestra/cccccccc/t1", err)
+
+
+class ListSessionFieldTests(_RepoMixin, unittest.TestCase):
+    def _run(self, *args):
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = agent_exec.cmd_isolate(list(args))
+        return rc, buf.getvalue()
+
+    def test_list_reports_session_and_current_for_each_kind_of_worktree(self):
+        _set_session(self, "aaaaaaaa-cur")
+        mine = agent_exec.isolate_create(self.repo, "mine", backend="git")
+        _git(self.repo, "worktree", "add", "-q", "-b", "orchestra/bbbbbbbb/theirs",
+             os.path.join(self.tmp, "foreign"))
+        _git(self.repo, "worktree", "add", "-q", "-b", "orchestra/legacy",
+             os.path.join(self.tmp, "legacy"))
+        entries = {e["task"]: e for e in agent_exec.isolate_list(self.repo)}
+        self.assertEqual(entries["mine"]["session"], "aaaaaaaa")
+        self.assertTrue(entries["mine"]["current"])
+        self.assertEqual(entries["theirs"]["session"], "bbbbbbbb")
+        self.assertFalse(entries["theirs"]["current"])
+        self.assertIsNone(entries["legacy"]["session"])
+        self.assertFalse(entries["legacy"]["current"])
+
+    def test_session_flag_filters_by_full_id_and_by_8_char_prefix(self):
+        _git(self.repo, "worktree", "add", "-q", "-b", "orchestra/bbbbbbbb/one",
+             os.path.join(self.tmp, "b1"))
+        _git(self.repo, "worktree", "add", "-q", "-b", "orchestra/cccccccc/two",
+             os.path.join(self.tmp, "c1"))
+        rc, out = self._run("list", "--repo", self.repo, "--session", "bbbbbbbb")
+        self.assertEqual(rc, 0)
+        self.assertEqual([w["task"] for w in json.loads(out)["worktrees"]], ["one"])
+        rc, out = self._run("list", "--repo", self.repo, "--session", "bbbbbbbb-long-suffix")
+        self.assertEqual(rc, 0)
+        self.assertEqual([w["task"] for w in json.loads(out)["worktrees"]], ["one"])
+
+
+class RemoveSessionTests(_RepoMixin, unittest.TestCase):
+    def _run(self, *args):
+        import io
+        import contextlib
+
+        buf_out, buf_err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            rc = agent_exec.cmd_isolate(list(args))
+        return rc, buf_out.getvalue(), buf_err.getvalue()
+
+    def _mk(self, branch, suffix):
+        path = os.path.join(self.tmp, suffix)
+        _git(self.repo, "worktree", "add", "-q", "-b", branch, path)
+        return path
+
+    def test_remove_session_removes_exactly_that_sessions_worktrees(self):
+        self._mk("orchestra/bbbbbbbb/one", "b1")
+        self._mk("orchestra/bbbbbbbb/two", "b2")
+        self._mk("orchestra/cccccccc/three", "c1")
+        rc, out, err = self._run(
+            "remove", "--session", "bbbbbbbb", "--repo", self.repo, "--force"
+        )
+        self.assertEqual(rc, 0)
+        remaining = {e["task"] for e in agent_exec.isolate_list(self.repo)}
+        self.assertEqual(remaining, {"three"})
+
+    def test_remove_session_works_for_a_session_that_is_not_the_current_one(self):
+        """This is how an orphaned session's worktrees get cleaned up after a crash."""
+        _set_session(self, "aaaaaaaa-cur")
+        self._mk("orchestra/bbbbbbbb/one", "b1")
+        rc, out, err = self._run(
+            "remove", "--session", "bbbbbbbb", "--repo", self.repo, "--force"
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(agent_exec.isolate_list(self.repo), [])
+
+    def test_task_and_session_together_is_a_usage_error(self):
+        rc, out, err = self._run(
+            "remove", "--task", "t1", "--session", "bbbbbbbb", "--repo", self.repo
+        )
+        self.assertEqual(rc, 2)
+
+    def test_neither_task_nor_session_is_a_usage_error(self):
+        rc, out, err = self._run("remove", "--repo", self.repo)
+        self.assertEqual(rc, 2)
+
+
+class CarryMethodTests(_RepoMixin, unittest.TestCase):
+    """`carry_method`/`carry_note`, driven by monkeypatching the copy attempt
+    rather than depending on the host filesystem's CoW support."""
+
+    def _create(self):
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        self._write("node_modules/x.js")
+        return agent_exec.isolate_create(self.repo, "t1", backend="git", carry=True)
+
+    def test_none_when_there_is_nothing_to_carry(self):
+        r = agent_exec.isolate_create(self.repo, "t1", backend="git", carry=True)
+        self.assertEqual(r["carry_method"], "none")
+        self.assertNotIn("carry_note", r)
+
+    def test_clone_when_the_cow_path_succeeds(self):
+        orig = agent_exec.copy_tree_fast_method
+        agent_exec.copy_tree_fast_method = lambda src, dst: "clone"
+        try:
+            r = self._create()
+        finally:
+            agent_exec.copy_tree_fast_method = orig
+        self.assertEqual(r["carry_method"], "clone")
+        self.assertEqual(r["carried"], ["node_modules"])
+        self.assertNotIn("carry_note", r)
+
+    def test_copy_when_only_the_plain_copy_succeeds(self):
+        orig = agent_exec.copy_tree_fast_method
+        agent_exec.copy_tree_fast_method = lambda src, dst: "copy"
+        try:
+            r = self._create()
+        finally:
+            agent_exec.copy_tree_fast_method = orig
+        self.assertEqual(r["carry_method"], "copy")
+        self.assertIn("carry_note", r)
+        self.assertNotIn(self.repo, r["carry_note"])
+        self.assertNotIn(r["path"], r["carry_note"])
+
+    def test_failed_when_every_attempt_fails(self):
+        orig = agent_exec.copy_tree_fast_method
+        agent_exec.copy_tree_fast_method = lambda src, dst: "failed"
+        try:
+            r = self._create()
+        finally:
+            agent_exec.copy_tree_fast_method = orig
+        self.assertEqual(r["carry_method"], "failed")
+        self.assertEqual(r["carried"], [])
+        self.assertIn("carry_note", r)
+        self.assertNotIn(self.repo, r["carry_note"])
+        self.assertNotIn(r["path"], r["carry_note"])
+
+
+class SubprocessEndToEndTests(_RepoMixin, unittest.TestCase):
+    """A real `agent-exec isolate` subprocess, not the in-process CLI wrapper --
+    covers (1) session-scoped branches and (3) listing/session fields."""
+
+    def _agent_exec(self, *args, session_id=None):
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_exec.py")
+        env = dict(os.environ)
+        if session_id is None:
+            env.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            env["CLAUDE_CODE_SESSION_ID"] = session_id
+        return subprocess.run(
+            [sys.executable, script, "isolate"] + list(args),
+            capture_output=True, text=True, env=env,
+        )
+
+    def test_two_sessions_create_two_worktrees_and_list_reports_them(self):
+        p1 = self._agent_exec(
+            "create", "--task", "t1", "--repo", self.repo, "--backend", "git",
+            session_id="aaaaaaaa-one",
+        )
+        self.assertEqual(p1.returncode, 0, p1.stderr)
+        out1 = json.loads(p1.stdout)
+        self.assertEqual(out1["status"], "created")
+        self.assertEqual(out1["branch"], "orchestra/aaaaaaaa/t1")
+
+        p2 = self._agent_exec(
+            "create", "--task", "t1", "--repo", self.repo, "--backend", "git",
+            session_id="bbbbbbbb-two",
+        )
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        out2 = json.loads(p2.stdout)
+        self.assertEqual(out2["status"], "created")
+        self.assertEqual(out2["branch"], "orchestra/bbbbbbbb/t1")
+        self.assertNotEqual(out1["path"], out2["path"])
+
+        p3 = self._agent_exec("list", "--repo", self.repo, session_id="aaaaaaaa-one")
+        self.assertEqual(p3.returncode, 0, p3.stderr)
+        by_session = {w["session"]: w for w in json.loads(p3.stdout)["worktrees"]}
+        self.assertTrue(by_session["aaaaaaaa"]["current"])
+        self.assertFalse(by_session["bbbbbbbb"]["current"])
 
 
 class IsolateCommandTests(_RepoMixin, unittest.TestCase):
