@@ -128,10 +128,8 @@ const RUN_ID = 'workflow-run-id'
 // agent strips `--model`/`--effort` out of the task text and forwards them to
 // the CLI; anything the route left null is simply omitted.
 function routingFlags(r) {
-  // The executor records its input, so the id reaches the rollout without asking the agent to use it.
   return (r.model ? '\n\n--model ' + r.model : '') +
-    (r.effort ? ' --effort ' + r.effort : '') +
-    (r.correlation_id ? '\n\n[orchestra-run-correlation: ' + r.correlation_id + ']' : '')
+    (r.effort ? ' --effort ' + r.effort : '')
 }
 
 // Dispatch one task at a capability class ('light' | 'standard' | 'deep').
@@ -171,8 +169,12 @@ async function dispatchClass(cls, promptText, opts = {}) {
     // silently runs Codex at whatever ~/.codex/config.toml defaults to instead
     // of the class_policy this route just resolved.
     const directPrompt = 'Read the worker prompt from ' + promptFiles.join(' and ') + ' and carry it out.'
+    // The agent strips trailing control lines but preserves body text verbatim, so a trailing marker is silently dropped and the run becomes unattributable.
+    const agentPrompt = r.correlation_id
+      ? '[orchestra-run-correlation: ' + r.correlation_id + ']\n' + directPrompt
+      : directPrompt
     const answer = r.agent_type
-      ? await agent(directPrompt + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type })
+      ? await agent(agentPrompt + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type })
       : await agent(directPrompt, { label: opts.label || cls, model: r.model, effort: r.effort })
     if (answer === null) {
       exhausted.add(r.executor)

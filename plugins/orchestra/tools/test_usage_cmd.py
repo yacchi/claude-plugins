@@ -461,8 +461,20 @@ class DelegatedCodexRunScopeTests(unittest.TestCase):
             entry = report["sources"]["codex"]
             self.assertEqual(entry, {
                 "attributable": False,
-                "reason": "codex delegated but no rollout matched",
+                "reason": "codex delegation may have no rollout yet or correlation may have failed",
                 "delegated": 3, "measured": 0,
+            })
+
+    def test_no_match_reports_same_reason_for_session_scope(self):
+        with tempfile.TemporaryDirectory() as home:
+            cfg = self._setup(home, matched_n=0, total_n=3)
+            report = agent_exec.build_usage_report(
+               CUTOFF, NOW, ["codex"], cfg=cfg, home=home, cwd="/x",
+               session_ids=["session-1"])
+            self.assertEqual(report["sources"]["codex"], {
+               "attributable": False,
+               "reason": "codex delegation may have no rollout yet or correlation may have failed",
+               "delegated": 3, "measured": 0,
             })
 
     def test_text_counter_renders_for_ok_and_not_attributable(self):

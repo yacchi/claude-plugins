@@ -25,6 +25,8 @@ Codex CLI 0.144+はGPT-5.6を3つのサイズティアで提供している — 
 
 Codexは公式の`codex:codex-rescue`エージェントを通る`dispatch: agent`のままにする。実行コストは相関IDでラン単位に帰属でき、台帳はセッション単位でも既定で有効なので、`agent-exec usage --run <workflow-run-id>`または`agent-exec usage --session <session-id>`で確認する。
 
+相関マーカーの配置理由とルールは`references/config.md`を参照すること。
+
 ## 2. Copilotのモデルカタログ・候補・CLI利用方法
 
 Copilotには(Codexの`codex:codex-rescue`のような)専用のClaude Codeプラグイン/スキルが存在しないため、以下の利用パターンはこのプラグイン独自のガイダンスである。

@@ -26,6 +26,7 @@ Usage:
 
 import copy
 import glob
+import hashlib
 import json
 import os
 import platform
@@ -974,6 +975,7 @@ _RUN_LEDGER_ORDINAL_RE = re.compile(r"^[0-9]{1,4}$")
 _RUN_LEDGER_FILE_RE = re.compile(r"^([0-9]+)-([A-Za-z0-9_-]{1,64})\.jsonl$")
 _RUN_LEDGER_SESSION_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 _RUN_LEDGER_CORR_RE = re.compile(r"^oxc-[0-9a-f]{12}$")
+_RUN_LEDGER_PATH_RE = re.compile(r"^[0-9a-f]{16}$")
 _ledger_retention_ran = False
 _DISPATCH_TOKEN_RE = re.compile(r"^dsp-[0-9a-f]{12}$")
 
@@ -1175,6 +1177,11 @@ def sanitize_run_ledger_record(raw):
     corr = raw.get("corr")
     if isinstance(corr, str) and _RUN_LEDGER_CORR_RE.fullmatch(corr):
         out["corr"] = corr
+    paths = raw.get("paths")
+    if (isinstance(paths, list) and 1 <= len(paths) <= 8
+            and all(isinstance(path, str) and _RUN_LEDGER_PATH_RE.fullmatch(path)
+                    for path in paths)):
+        out["paths"] = list(paths)
     if not any(key in out for key in ("executor", "cls", "status", "model")):
         return None
     return out
@@ -1497,9 +1504,23 @@ def build_run_ledger_record(executor, model, cls, result):
     return record
 
 
-def build_delegated_run_ledger_record(executor, model, cls, corr):
+def _path_fingerprint(path):
+    return hashlib.sha256(os.path.realpath(path).encode("utf-8")).hexdigest()[:16]
+
+
+def _prompt_path_fingerprints(prompt_files):
+    if (not isinstance(prompt_files, list) or not 1 <= len(prompt_files) <= 8
+            or any(not isinstance(path, str) or not path for path in prompt_files)):
+        return None
+    return [_path_fingerprint(path) for path in prompt_files]
+
+
+def build_delegated_run_ledger_record(executor, model, cls, corr, prompt_files=None):
     record = build_run_ledger_record(executor, model, cls, {"status": "delegated"})
     record["corr"] = corr
+    paths = _prompt_path_fingerprints(prompt_files)
+    if paths is not None:
+        record["paths"] = paths
     return record
 
 
@@ -4473,7 +4494,7 @@ def cmd_dispatch_route(args):
             output["correlation_id"] = correlation_id
             run_ledger_append(
                 build_delegated_run_ledger_record(
-                    route["executor"], route["model"], cls, correlation_id
+                    route["executor"], route["model"], cls, correlation_id, prompt_files
                 ),
                 run_id,
                 resolved,
@@ -5205,8 +5226,23 @@ def _ledger_usage(records, executor):
     return acc
 
 
-def parse_codex_rollout_lines(lines, correlations):
+def _rollout_path_fingerprints(message):
+    fingerprints = set()
+    for candidate in re.findall(r"(?<![A-Za-z0-9_])/\S+", message):
+        fingerprints.add(_path_fingerprint_from_text(candidate))
+        trimmed = candidate.rstrip(".,;:)]}'\"`")
+        if trimmed:
+            fingerprints.add(_path_fingerprint_from_text(trimmed))
+    return fingerprints
+
+
+def _path_fingerprint_from_text(path):
+    return hashlib.sha256(path.encode("utf-8")).hexdigest()[:16]
+
+
+def parse_codex_rollout_lines(lines, correlations, dispatches=None):
     wanted = set(correlations or ())
+    path_dispatches = dispatches if isinstance(dispatches, dict) else {}
     found, last_total, count = set(), None, 0
     for line in lines:
         try:
@@ -5222,6 +5258,12 @@ def parse_codex_rollout_lines(lines, correlations):
             message = payload.get("message")
             if isinstance(message, str):
                 found.update(corr for corr in wanted if corr in message)
+                fingerprints = _rollout_path_fingerprints(message)
+                found.update(
+                    corr for corr, paths in path_dispatches.items()
+                    if isinstance(paths, (list, tuple, set))
+                    and fingerprints.intersection(paths)
+                )
         elif payload.get("type") == "token_count":
             info = payload.get("info")
             total = info.get("total_token_usage") if isinstance(info, dict) else None
@@ -5234,12 +5276,16 @@ def parse_codex_rollout_lines(lines, correlations):
 
 
 def match_codex_rollouts(root, correlations):
-    wanted, candidates = set(correlations or ()), {}
+    dispatches = correlations if isinstance(correlations, dict) else {}
+    wanted = set(dispatches) if dispatches else set(correlations or ())
+    candidates = {}
     for path in _walk_jsonl_files(root):
         found, usage, count = parse_codex_rollout_lines(
-            _iter_jsonl_lines(path), wanted)
+            _iter_jsonl_lines(path), wanted, dispatches)
         if usage is None:
             continue
+        if dispatches and len(found) > 1:
+            found = {max(found, key=lambda corr: (count, path, corr))}
         for corr in found:
             current = candidates.get(corr)
             if current is None or (count, path) > (current[0], current[1]):
@@ -5250,9 +5296,14 @@ def match_codex_rollouts(root, correlations):
 def _ledger_codex_usage(records, home):
     delegated = [r for r in records if r.get("executor") == "codex"
                  and r.get("status") == "delegated"]
+    dispatches = {
+        r["corr"]: r.get("paths", [])
+        for r in delegated
+        if isinstance(r.get("corr"), str)
+    }
     measured = match_codex_rollouts(
         _codex_sessions_root(home),
-        [r.get("corr") for r in delegated if isinstance(r.get("corr"), str)])
+        dispatches)
     tokens, extra = _zero_tokens(), {
         "cache_write_input_tokens": 0, "reasoning_output_tokens": 0}
     for record in records:
@@ -5379,7 +5430,7 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                     if not measured and delegated:
                         out[name] = {
                             "attributable": False,
-                            "reason": "codex delegated but no rollout matched",
+                            "reason": "codex delegation may have no rollout yet or correlation may have failed",
                             "delegated": len(delegated), "measured": 0,
                         }
                         continue

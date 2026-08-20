@@ -123,6 +123,26 @@ class RunLedgerSanitizingTests(unittest.TestCase):
             dict(base, status="not-a-real-status"))
         self.assertNotIn("status", invented)
 
+    def test_paths_allowlist_is_exact(self):
+        base = {"executor": "codex", "cls": "standard", "status": "delegated"}
+        good_paths = ["0123456789abcdef", "abcdef0123456789"]
+        self.assertEqual(
+            agent_exec.sanitize_run_ledger_record(dict(base, paths=good_paths))["paths"],
+            good_paths)
+        invalid = (
+            "0123456789abcdef",
+            {"path": "0123456789abcdef"},
+            ["0123456789abcdeg"],
+            ["0123456789abcdef0"],
+            ["0123456789abcdef"] * 9,
+            ["/private/contract.md"],
+        )
+        for paths in invalid:
+            with self.subTest(paths=paths):
+                result = agent_exec.sanitize_run_ledger_record(dict(base, paths=paths))
+                self.assertNotIn("paths", result)
+                self.assertEqual(result["status"], "delegated")
+
     def test_bad_run_field_is_dropped_rest_survives(self):
         base = {"executor": "copilot", "cls": "standard", "status": "ok",
                 "input_tokens": 9}
@@ -385,6 +405,7 @@ class DelegatedDispatchCorrelationTests(unittest.TestCase):
         prompt = tempfile.NamedTemporaryFile(mode="w", delete=False)
         prompt.write("hello")
         prompt.close()
+        self._prompt_path = prompt.name
         old_resolve_config = agent_exec.resolve_config
         old_resolve_route = agent_exec.resolve_route
         agent_exec.resolve_config = lambda: (
@@ -437,6 +458,14 @@ class DelegatedDispatchCorrelationTests(unittest.TestCase):
             record = lines[0]
             self.assertEqual(record["status"], "delegated")
             self.assertEqual(record["corr"], corr)
+            self.assertEqual(len(record["paths"]), 1)
+            self.assertRegex(record["paths"][0], r"^[0-9a-f]{16}$")
+            ledger_path = os.path.join(
+                tmp, "runs", "session-dispatch", "001-wf_a1b2c3d4e5f6.jsonl")
+            with open(ledger_path, encoding="utf-8") as f:
+                written = f.read()
+            self.assertNotIn("/", written)
+            self.assertNotIn(os.path.dirname(self._prompt_path), written)
             for token_key in (
                 "input_tokens", "output_tokens", "cached_input_tokens",
                 "cache_write_input_tokens", "reasoning_output_tokens",
