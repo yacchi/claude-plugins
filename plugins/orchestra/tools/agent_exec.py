@@ -221,6 +221,11 @@ Usage:
                   [--no-cooldown] [--isolate auto|always|never] [--task ID]
                   --prompt-file F [--prompt-file G ...] --workdir W
                   [--resume SID] [--capture] [--run-id ID]
+  agent-exec dispatch prepare --class <cls> --prompt-file F [--prompt-file G ...]
+                  --workdir W [--archetype A] [--run-id R]
+                  [--isolate auto|always|never] [--task ID] [--json]
+  agent-exec dispatch --token dsp-<12 lowercase hex> [--capture]
+                  [--exhausted a,b]
                                   one-call resolve + dispatch: resolves the
                                   route, then runs it. If the winning
                                   executor is `dispatch: cli` (e.g. copilot),
@@ -970,6 +975,7 @@ _RUN_LEDGER_FILE_RE = re.compile(r"^([0-9]+)-([A-Za-z0-9_-]{1,64})\.jsonl$")
 _RUN_LEDGER_SESSION_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 _RUN_LEDGER_CORR_RE = re.compile(r"^oxc-[0-9a-f]{12}$")
 _ledger_retention_ran = False
+_DISPATCH_TOKEN_RE = re.compile(r"^dsp-[0-9a-f]{12}$")
 
 
 def _is_nonneg_int(v):
@@ -1209,29 +1215,204 @@ def run_ledger_append(record, run_id, cfg):
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(sanitized, ensure_ascii=False, separators=(",", ":")) + "\n")
         _telemetry_enforce_cap(path)
-        if not _ledger_retention_ran:
-            _ledger_retention_ran = True
-            try:
-                days = ledger_cfg.get("retention_days", DEFAULTS["ledger"]["retention_days"])
-                if not isinstance(days, int) or isinstance(days, bool) or days <= 0:
-                    days = DEFAULTS["ledger"]["retention_days"]
-                cutoff = time.time() - days * 86400
-                directories = [directory]
-                for name in os.listdir(directory):
-                    candidate_dir = os.path.join(directory, name)
-                    if os.path.isdir(candidate_dir):
-                        directories.append(candidate_dir)
-                for current in directories:
-                    for name in os.listdir(current):
-                        if not (name.endswith(".jsonl") or name.startswith(".ordinal-")):
-                            continue
-                        candidate = os.path.join(current, name)
-                        if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
-                            os.remove(candidate)
-            except Exception:
-                pass
+        _sweep_retention(cfg)
     except Exception:
         pass
+
+
+def _token_dir_from_cfg(cfg):
+    return os.path.join(os.path.dirname(os.path.abspath(_ledger_dir_from_cfg(cfg))), "tokens")
+
+
+def _sweep_retention(cfg):
+    global _ledger_retention_ran
+    if _ledger_retention_ran:
+        return
+    _ledger_retention_ran = True
+    try:
+        ledger_cfg = (cfg or {}).get("ledger")
+        if not isinstance(ledger_cfg, dict):
+            ledger_cfg = {}
+        days = ledger_cfg.get("retention_days", DEFAULTS["ledger"]["retention_days"])
+        if not isinstance(days, int) or isinstance(days, bool) or days <= 0:
+            days = DEFAULTS["ledger"]["retention_days"]
+        cutoff = time.time() - days * 86400
+        ledger_dir = _ledger_dir_from_cfg(cfg)
+        if os.path.isdir(ledger_dir):
+            directories = [ledger_dir]
+            for name in os.listdir(ledger_dir):
+                candidate_dir = os.path.join(ledger_dir, name)
+                if os.path.isdir(candidate_dir):
+                    directories.append(candidate_dir)
+            for current in directories:
+                for name in os.listdir(current):
+                    if not (name.endswith(".jsonl") or name.startswith(".ordinal-")):
+                        continue
+                    candidate = os.path.join(current, name)
+                    if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
+                        os.remove(candidate)
+        token_dir = _token_dir_from_cfg(cfg)
+        if os.path.isdir(token_dir):
+            for name in os.listdir(token_dir):
+                if not name.endswith(".json"):
+                    continue
+                candidate = os.path.join(token_dir, name)
+                if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
+                    os.remove(candidate)
+    except Exception:
+        pass
+
+
+def _mint_dispatch_token():
+    return "dsp-" + os.urandom(6).hex()
+
+
+def _write_dispatch_token(cfg, spec):
+    token_dir = _token_dir_from_cfg(cfg)
+    os.makedirs(token_dir, mode=0o700, exist_ok=True)
+    os.chmod(token_dir, 0o700)
+    for _ in range(10):
+        token = _mint_dispatch_token()
+        path = os.path.join(token_dir, token + ".json")
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(spec, handle, ensure_ascii=False, separators=(",", ":"))
+        return token
+    raise OSError("could not allocate dispatch token")
+
+
+def _load_dispatch_token(cfg, token):
+    if not isinstance(token, str) or not _DISPATCH_TOKEN_RE.fullmatch(token):
+        raise ValueError(token)
+    token_dir = _token_dir_from_cfg(cfg)
+    path = os.path.join(token_dir, token + ".json")
+    try:
+        if hasattr(os, "O_NOFOLLOW"):
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, "r", encoding="utf-8") as handle:
+                spec = json.load(handle)
+        else:
+            with open(path, "r", encoding="utf-8") as handle:
+                spec = json.load(handle)
+    except (OSError, ValueError, TypeError):
+        raise ValueError(token)
+    required = ("class", "archetype", "workdir", "run_id", "isolate", "task", "prompt_files")
+    if not isinstance(spec, dict) or any(key not in spec for key in required):
+        raise ValueError(token)
+    if (not isinstance(spec["class"], str) or not isinstance(spec["archetype"], str)
+            or not isinstance(spec["workdir"], str)
+            or not isinstance(spec["isolate"], str)
+            or spec["isolate"] not in ("auto", "always", "never")
+            or (spec["run_id"] is not None and not isinstance(spec["run_id"], str))
+            or (spec["task"] is not None and not isinstance(spec["task"], str))
+            or not isinstance(spec["prompt_files"], list)
+            or not all(isinstance(path, str) and os.path.isabs(path)
+                       for path in spec["prompt_files"])):
+        raise ValueError(token)
+    return spec
+
+
+def cmd_dispatch_prepare(args):
+    cls = None
+    archetype = "default"
+    prompt_files = []
+    workdir = None
+    isolate_mode = "auto"
+    task = None
+    run_id = None
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--class":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --class\n")
+                return 2
+            cls = args[i + 1]
+            i += 2
+        elif tok == "--prompt-file":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --prompt-file\n")
+                return 2
+            prompt_files.append(args[i + 1])
+            i += 2
+        elif tok == "--workdir":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --workdir\n")
+                return 2
+            workdir = args[i + 1]
+            i += 2
+        elif tok == "--archetype":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --archetype\n")
+                return 2
+            archetype = args[i + 1]
+            i += 2
+        elif tok == "--run-id":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --run-id\n")
+                return 2
+            run_id = args[i + 1]
+            if not _parse_run_id(run_id, "dispatch"):
+                return 2
+            i += 2
+        elif tok == "--isolate":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --isolate\n")
+                return 2
+            isolate_mode = args[i + 1]
+            if isolate_mode not in ("auto", "always", "never"):
+                sys.stderr.write("agent-exec: dispatch: --isolate must be auto|always|never\n")
+                return 2
+            i += 2
+        elif tok == "--task":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --task\n")
+                return 2
+            task = args[i + 1]
+            i += 2
+        elif tok == "--json":
+            i += 1
+        else:
+            sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
+            return 2
+    if cls is None:
+        sys.stderr.write("agent-exec: dispatch: missing required option: --class\n")
+        return 2
+    if not prompt_files:
+        sys.stderr.write("agent-exec: dispatch: missing required option: --prompt-file\n")
+        return 2
+    if workdir is None:
+        sys.stderr.write("agent-exec: dispatch: missing required option: --workdir\n")
+        return 2
+    try:
+        read_prompt_files(prompt_files)
+    except ValueError as exc:
+        sys.stderr.write("agent-exec: dispatch: %s\n" % exc)
+        return 2
+    resolved, err = resolve_config()
+    if err is not None:
+        sys.stderr.write(err + "\n")
+        return 1
+    _sweep_retention(resolved)
+    spec = {
+        "class": cls,
+        "archetype": archetype,
+        "workdir": os.path.abspath(workdir),
+        "run_id": run_id,
+        "isolate": isolate_mode,
+        "task": task,
+        "prompt_files": [os.path.abspath(path) for path in prompt_files],
+    }
+    try:
+        token = _write_dispatch_token(resolved, spec)
+    except OSError as exc:
+        sys.stderr.write("agent-exec: dispatch: %s\n" % exc)
+        return 1
+    print(json.dumps({"token": token}, ensure_ascii=False))
+    return 0
 
 
 def _ledger_run_filename(session_directory, run_id):
@@ -4014,6 +4195,7 @@ def cmd_route(args):
     if err is not None:
         sys.stderr.write(err + "\n")
         return 1
+    _sweep_retention(resolved)
 
     doctor_report = _build_doctor_report()
     cooldowns = None
@@ -4040,6 +4222,8 @@ def cmd_route(args):
 
 
 def cmd_dispatch_route(args):
+    if args and args[0] == "prepare":
+        return cmd_dispatch_prepare(args[1:])
     cls = None
     archetype = "default"
     exhausted = []
@@ -4056,6 +4240,7 @@ def cmd_dispatch_route(args):
     isolate_mode = "auto"
     task = None
     run_id = None
+    token = None
 
     i = 0
     while i < len(args):
@@ -4063,6 +4248,12 @@ def cmd_dispatch_route(args):
         if tok == "--capture":
             capture = True
             i += 1
+        elif tok == "--token":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --token\n")
+                return 2
+            token = args[i + 1]
+            i += 2
         elif tok == "--isolate":
             if i + 1 >= len(args):
                 sys.stderr.write("agent-exec: dispatch: missing value for --isolate\n")
@@ -4131,6 +4322,60 @@ def cmd_dispatch_route(args):
             sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
             return 2
 
+    if token is not None:
+        conflicts = []
+        if "--class" in args:
+            conflicts.append("--class")
+        if "--prompt-file" in args:
+            conflicts.append("--prompt-file")
+        if "--workdir" in args:
+            conflicts.append("--workdir")
+        if "--archetype" in args:
+            conflicts.append("--archetype")
+        if "--run-id" in args:
+            conflicts.append("--run-id")
+        if "--isolate" in args:
+            conflicts.append("--isolate")
+        if "--task" in args:
+            conflicts.append("--task")
+        if "--resume" in args:
+            conflicts.append("--resume")
+        if "--no-cooldown" in args:
+            conflicts.append("--no-cooldown")
+        if conflicts:
+            sys.stderr.write(
+                "agent-exec: dispatch: --token conflicts with %s\n"
+                % ", ".join(conflicts)
+            )
+            return 2
+        resolved, err = resolve_config()
+        if err is not None:
+            sys.stderr.write(err + "\n")
+            return 1
+        _sweep_retention(resolved)
+        try:
+            spec = _load_dispatch_token(resolved, token)
+        except ValueError:
+            sys.stderr.write("agent-exec: dispatch: invalid token: %s\n" % token)
+            return 2
+        delegated_args = [
+            "--class", spec["class"],
+            "--archetype", spec["archetype"],
+            "--workdir", spec["workdir"],
+            "--isolate", spec["isolate"],
+        ]
+        for path in spec["prompt_files"]:
+            delegated_args.extend(["--prompt-file", path])
+        if spec["run_id"] is not None:
+            delegated_args.extend(["--run-id", spec["run_id"]])
+        if spec["task"] is not None:
+            delegated_args.extend(["--task", spec["task"]])
+        if capture:
+            delegated_args.append("--capture")
+        if exhausted:
+            delegated_args.extend(["--exhausted", ",".join(exhausted)])
+        return cmd_dispatch_route(delegated_args)
+
     if cls is None:
         sys.stderr.write("agent-exec: dispatch: missing required option: --class\n")
         return 2
@@ -4151,6 +4396,7 @@ def cmd_dispatch_route(args):
         sys.stderr.write(err + "\n")
         return 1
 
+    _sweep_retention(resolved)
     doctor_report = _build_doctor_report()
     cooldowns = None
     cooldown_cfg = resolved.get("cooldown")

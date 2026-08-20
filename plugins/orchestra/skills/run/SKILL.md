@@ -139,17 +139,22 @@ function routingFlags(r) {
 // Same call shape whether it resolves to Copilot or to a Claude tier.
 async function dispatchClass(cls, promptText, opts = {}) {
   const promptFiles = Array.isArray(promptText) ? promptText : [promptText]
+  // The token keeps the relay from reading what it dispatches; a path in its prompt is enough for it to try.
+  const dispatchToken = opts.dispatchToken
   const relayPrompt =
-    'Run `agent-exec dispatch --class ' + cls +
-    (opts.archetype ? ' --archetype ' + opts.archetype : '') +
+    'Run `agent-exec dispatch --token ' + dispatchToken +
     (exhausted.size ? ' --exhausted ' + [...exhausted].join(',') : '') +
-    promptFiles.map(file => ' --prompt-file ' + file).join('') +
-    ' --workdir ' + (opts.workdir || '.') + ' --run-id ' + RUN_ID + ' --capture`' +
+    ' --capture`' +
     ' as ONE foreground Bash call with timeout 600000. It routinely takes many minutes: just ' +
     'wait for it. Never background it, never poll it, never start a monitor, never report ' +
     'progress. When it returns, print its stdout JSON verbatim - nothing else.'
 
-  const raw = await agent(relayPrompt, { label: (opts.label || cls) + '-dispatch', model: 'haiku', effort: 'low' })
+  const raw = await agent(relayPrompt, {
+    label: (opts.label || cls) + '-dispatch',
+    agentType: 'orchestra:orchestra-relay',
+    // Fallback when the plugin-scoped relay type does not resolve:
+    // model: 'haiku', effort: 'low',
+  })
   // Relays wrap the JSON in a ```json fence often enough that parsing the raw
   // string throws on work that actually succeeded. Strip a fence before parsing.
   const r = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''))
@@ -183,7 +188,8 @@ async function dispatchClass(cls, promptText, opts = {}) {
 }
 
 // `tasks` comes from `args` when this workflow is saved and re-run. Each task
-// needs: id, cls ('light'|'standard'|'deep'), workerPromptFile (path to the
+// needs: id, cls ('light'|'standard'|'deep'), dispatchToken (prepared by the
+// instructor with `agent-exec dispatch prepare`), workerPromptFile (path to the
 // literal spec + edge cases + verify command), workerPrompt (same contract text
 // for runtime correction packets), verifierPrompt (what to re-check + which
 // adversarial cases to add). Optional: workdir, baseline (a snapshot ref - see
@@ -235,6 +241,7 @@ async function runTask(task) {
         })
       : await dispatchClass(cls, task.workerPromptFile, {
           label: task.id + '-work-' + gate, workdir: task.workdir,
+          dispatchToken: task.dispatchToken,
         })
 
     // A worker that hits a design decision, a boundary crossing, or an

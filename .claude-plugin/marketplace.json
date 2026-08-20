@@ -21,7 +21,7 @@
       "name": "orchestra",
       "source": "./plugins/orchestra",
       "description": "Cost-tiered multi-agent orchestration: expensive instructor, cheap workers, adversarial verifiers",
-      "version": "0.21.0",
+      "version": "0.22.0",
       "category": "productivity",
       "tags": ["orchestration", "subagents", "cost-optimization", "workflow", "multi-agent"]
     },
