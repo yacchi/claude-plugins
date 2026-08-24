@@ -132,6 +132,18 @@ function routingFlags(r) {
     (r.effort ? ' --effort ' + r.effort : '')
 }
 
+// Working-tree preamble for every `agent()` call that touches files. `agent()`
+// starts in the USER's tree, so without this (or `isolation: 'worktree'`) a
+// worker edits the user's uncommitted work - see §12. Empty when there is no
+// isolated tree, i.e. dispatch reported it could not make one.
+function treeLine(path) {
+  return path
+    ? 'WORKING TREE: ' + path + '\ncd there FIRST and do every read, edit, test, and ' +
+      'command inside it. Never touch, revert, or inspect files outside that path - ' +
+      'other trees hold work you did not author.\n\n'
+    : ''
+}
+
 // Dispatch one task at a capability class ('light' | 'standard' | 'deep').
 // Selection is `agent-exec route`'s job, not this function's and not yours.
 // Same call shape whether it resolves to Copilot or to a Claude tier.
@@ -157,6 +169,14 @@ async function dispatchClass(cls, promptText, opts = {}) {
   // string throws on work that actually succeeded. Strip a fence before parsing.
   const r = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''))
 
+  // EVERY dispatch outcome reports `isolation` - `agent-exec dispatch` creates the
+  // per-task worktree BEFORE it decides whether a CLI runs the work or you do (§12).
+  // Record its path: the delegate branch below and the correction round in runTask()
+  // must land in that SAME tree, and `agent-exec isolate diff --task <id>` reads it.
+  const iso = r.isolation || {}
+  if (opts.iso) opts.iso.path = iso.isolate ? iso.path : null
+  if (!iso.isolate) log('NOT isolated: ' + (opts.label || cls) + ' - ' + (iso.reason || 'no reason given'))
+
   if (r.status === 'ok') return r.answer // a CLI executor (e.g. Copilot) already ran it.
   if (r.status === 'delegate') {
     // route picked Claude or an agent-dispatch executor (e.g. Codex) - only
@@ -173,9 +193,18 @@ async function dispatchClass(cls, promptText, opts = {}) {
     const agentPrompt = r.correlation_id
       ? '[orchestra-run-correlation: ' + r.correlation_id + ']\n' + directPrompt
       : directPrompt
+    // Isolation is NOT automatic on this path. `agent()` starts in the user's tree,
+    // so a delegated worker edits the user's uncommitted work unless you say otherwise
+    // - the asymmetry that used to make Claude-routed workers the only unisolated ones.
+    // dispatch already made the tree: point the worker at it (a fresh `isolation:
+    // 'worktree'` here would be a SECOND tree, losing the carried-in uncommitted work
+    // and the per-task reuse that lets retry rounds see each other's files). Only when
+    // dispatch could not isolate does `agent()` open one itself.
+    const cwdLine = treeLine(iso.isolate ? iso.path : null)
+    const isoOpt = iso.isolate ? {} : { isolation: 'worktree' }
     const answer = r.agent_type
-      ? await agent(agentPrompt + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type })
-      : await agent(directPrompt, { label: opts.label || cls, model: r.model, effort: r.effort })
+      ? await agent(cwdLine + agentPrompt + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type, ...isoOpt })
+      : await agent(cwdLine + agentPrompt, { label: opts.label || cls, model: r.model, effort: r.effort, ...isoOpt })
     if (answer === null) {
       exhausted.add(r.executor)
       return dispatchClass(cls, promptText, opts)
@@ -191,7 +220,9 @@ async function dispatchClass(cls, promptText, opts = {}) {
 
 // `tasks` comes from `args` when this workflow is saved and re-run. Each task
 // needs: id, cls ('light'|'standard'|'deep'), dispatchToken (prepared by the
-// instructor with `agent-exec dispatch prepare`), workerPromptFile (path to the
+// instructor with `agent-exec dispatch prepare --isolate always --task <id>` -
+// `--isolate always` and a task id are what put EVERY worker, CLI or Claude, in
+// its own tree; without them the delegate path lands in the user's), workerPromptFile (path to the
 // literal spec + edge cases + verify command), workerPrompt (same contract text
 // for runtime correction packets), verifierPrompt (what to re-check + which
 // adversarial cases to add). Optional: workdir, baseline (a snapshot ref - see
@@ -203,8 +234,12 @@ const NEXT_CLASS = { light: 'standard', standard: 'deep', deep: 'deep' }
 
 // Self-contained correction packet (§6). It must stand alone: a FRESH worker
 // invocation reads it, not the one that failed - see §11.3.
-function correctionPacket(task, verdict, gate) {
-  return task.workerPrompt +
+function correctionPacket(task, verdict, gate, isoPath) {
+  return (isoPath
+      ? treeLine(isoPath) + 'That tree holds your predecessor\'s attempt.\n\n'
+      : 'You are in a FRESH tree: your predecessor\'s files may be absent. If a path named below ' +
+        'does not exist, implement it from the contract instead of hunting for it elsewhere.\n\n') +
+    task.workerPrompt +
     '\n\n--- CORRECTION PACKET (gate ' + gate + ') ---\n' +
     'Your predecessor attempted this task and was REJECTED. Its files are still on disk ' +
     'at the paths named in the contract above; read them first, then fix exactly what is ' +
@@ -217,7 +252,10 @@ function correctionPacket(task, verdict, gate) {
 
 // A correction packet is assembled at runtime from the reviewer verdict, so it has no
 // file on disk. A correction round therefore bypasses the relay and goes straight to a
-// pinned Claude tier via `agent()`.
+// pinned Claude tier via `agent()` - which means IT is on you to isolate, exactly as in
+// the delegate branch above: reuse the task's worktree so the packet's "your
+// predecessor's files are on disk" is true, and only fall back to a fresh `isolation:
+// 'worktree'` when round 1 could not be isolated at all.
 
 // A re-gate is incremental, not a fresh audit (§11.2).
 function regatePrompt(task, verdict) {
@@ -235,15 +273,19 @@ function regatePrompt(task, verdict) {
 async function runTask(task) {
   let cls = task.cls || 'light'   // per the task's design latitude (§3)
   let prior = null
+  const iso = {}                  // dispatchClass fills iso.path with the task's tree
 
   for (let gate = 1; gate <= MAX_GATES; gate++) {
     const work = prior
-      ? await agent(correctionPacket(task, prior, gate), {
+      ? await agent(correctionPacket(task, prior, gate, iso.path), {
           label: task.id + '-work-' + gate, model: 'sonnet',
+          // No tree from round 1 means it ran in the user's tree; a fresh worktree
+          // costs the predecessor's files but keeps this round off that tree.
+          ...(iso.path ? {} : { isolation: 'worktree' }),
         })
       : await dispatchClass(cls, task.workerPromptFile, {
           label: task.id + '-work-' + gate, workdir: task.workdir,
-          dispatchToken: task.dispatchToken,
+          dispatchToken: task.dispatchToken, iso,
         })
 
     // A worker that hits a design decision, a boundary crossing, or an
@@ -259,7 +301,10 @@ async function runTask(task) {
 
     // Review stays pinned to Sonnet and unrouted: `priority.review` is
     // `[claude]`-only, so routing it would just add a relay hop.
-    const verdict = await agent(prior ? regatePrompt(task, prior) : task.verifierPrompt, {
+    // The reviewer audits the tree the work landed in, not the session cwd: an
+    // isolated worker's diff is invisible from there, and a review that passes
+    // against untouched files is worse than no review at all.
+    const verdict = await agent(treeLine(iso.path) + (prior ? regatePrompt(task, prior) : task.verifierPrompt), {
       label: task.id + '-verify-' + gate,
       model: 'sonnet',
       schema: VERDICT_SCHEMA,
@@ -320,7 +365,7 @@ The run id rides in the dispatch token, not in the relay command: pass `--run-id
 
 **Decision rule: serialize only for a real ordering dependency** — one task must read another task's *output* to do its own work. Two tasks editing the same file is not that; it is a merge, and merges are mechanized now. If the interface between the tasks can be written down before either starts, the dependency is on the contract, not on the code, and the tasks run in parallel.
 
-**Isolate every file-changing worker, dirty tree or not.** A prompt that names the files a worker owns does not constrain the worker — only a separate tree does. Observed: a documentation-only worker, told it owned three `.md` files and nothing else, truncated an implementation file it had never been asked to open to zero bytes. Disjoint ownership likewise does not protect the *user's* uncommitted work: workers of every model tier run `git checkout --`/`restore`/`reset --hard` over changes they did not author, because a diff a worker did not write reads as contamination whatever its prompt says. So give every file-changing worker its own tree — `agent-exec dispatch --isolate always --task <id>` for CLI executors, `isolation: 'worktree'` for `agent()` calls. `--isolate auto` only covers the dirty-tree case; a clean tree is exactly where this gets skipped, and a clean tree still holds work that is only recoverable if it was committed. Collect with `agent-exec isolate diff --task <id>`. Full guidance: `references/isolation.md`.
+**Isolate every file-changing worker, dirty tree or not.** A prompt that names the files a worker owns does not constrain the worker — only a separate tree does. Observed: a documentation-only worker, told it owned three `.md` files and nothing else, truncated an implementation file it had never been asked to open to zero bytes. Disjoint ownership likewise does not protect the *user's* uncommitted work: workers of every model tier run `git checkout --`/`restore`/`reset --hard` over changes they did not author, because a diff a worker did not write reads as contamination whatever its prompt says. So give every file-changing worker its own tree — `agent-exec dispatch --isolate always --task <id>` for CLI executors, `isolation: 'worktree'` for `agent()` calls. **The `status: "delegate"` path needs this said out loud:** dispatch does not run that worker, *you* do, so an `agent()` call that omits both the worktree and the working-directory line puts Claude- and Codex-routed workers straight into the user's tree while CLI-routed ones stay isolated. dispatch has already created the task's tree by then and reports it as `isolation.path` — point the worker at that path rather than opening a second one, and carry the same path into the correction round (§5). `--isolate auto` only covers the dirty-tree case; a clean tree is exactly where this gets skipped, and a clean tree still holds work that is only recoverable if it was committed. Collect with `agent-exec isolate diff --task <id>`. Full guidance: `references/isolation.md`.
 
 **On `agentType`:** the plugin-scoped names (`orchestra:orchestra-light` / `-deep` / `-review`) may or may not resolve as `agent()`'s `agentType` in this environment — check the available-subagents list before relying on them, and fall back to explicit `model:`. See `references/authoring.md` §1.
 

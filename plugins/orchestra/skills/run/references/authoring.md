@@ -34,14 +34,22 @@ This restructures `runTask` (author-tests worker owns the `tests/` paths, impl w
 // (dispatchClass(), correctionPacket(), regatePrompt(), NEXT_CLASS, MAX_GATES and
 // the module-level `exhausted` Set are defined in §5/§11 above - this
 // restructuring only changes runTask, not the rest of the script.)
+// `treeLine(iso.path)` is the working-tree preamble from SKILL.md §5: it names
+// `iso.path` and orders the agent to cd there and stay inside it, or is empty
+// when dispatch reported that it could not isolate.
 async function runTask(task) {
+  const iso = {}   // dispatchClass fills iso.path with this task's tree
   // Author adversarial tests from the SPEC, concurrently with the first
   // implementation. Disjoint paths (tests/ vs src/), so no write conflict.
   // The test-authoring side stays pinned to Sonnet, same reasoning as the
   // review stage below (`priority.review` is `[claude]`-only, §9).
+  // Abridged: every `agent()` here still needs the task's tree, exactly as in
+  // SKILL.md §5 - the test author writes files, so a plain `agent()` writes them
+  // into the USER's tree while the isolated worker builds against a different one.
+  // Thread `iso` through dispatchClass and prefix each prompt with `iso.path`.
   await parallel([
-    () => dispatchClass(task.cls || 'light', task.workerPromptFile, { label: task.id + '-work-1', workdir: task.workdir }),
-    () => agent(task.authorTestsPrompt, { label: task.id + '-authtests', model: 'sonnet' }),
+    () => dispatchClass(task.cls || 'light', task.workerPromptFile, { label: task.id + '-work-1', workdir: task.workdir, iso }),
+    () => agent(treeLine(iso.path) + task.authorTestsPrompt, { label: task.id + '-authtests', model: 'sonnet' }),
   ])
 
   let cls = task.cls || 'light'
@@ -60,7 +68,7 @@ async function runTask(task) {
     }
     // Verify = RUN the pre-authored tests + whitebox glance. No re-authoring.
     // Gate 2 is incremental (§11.2). Unrouted, same as §5's review stage.
-    const verdict = await agent(prior ? regatePrompt(task, prior) : task.runTestsPrompt, {
+    const verdict = await agent(treeLine(iso.path) + (prior ? regatePrompt(task, prior) : task.runTestsPrompt), {
       label: task.id + '-verify-' + gate, model: 'sonnet', schema: VERDICT_SCHEMA,
     })
     if (!verdict) return { id: task.id, pass: false, summary: 'review unavailable (skipped or errored)', rounds: gate }
