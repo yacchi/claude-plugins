@@ -222,7 +222,14 @@ priority:
 # prompts that produce those turns ("作業を続けて", "実装して", "y") look small
 # when classified and only reveal their size once work is underway. Subagent
 # edits are not counted. ORCHESTRA_TURN_GUARD=off disables it.
+#
+# session_cleanup (default "on"): removes the finishing session's orchestra
+# worktrees at SessionEnd, keeping any that still hold uncollected changes.
+# Values are the strings "on" (default) or "off"; an unrecognized value falls
+# back to "on". ORCHESTRA_SESSION_CLEANUP=off disables it regardless of this
+# config value.
 enforcement:
   light_class: "off"
   worker_vcs: "block"
   turn_edits: 8
+  session_cleanup: "on"

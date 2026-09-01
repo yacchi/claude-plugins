@@ -637,6 +637,392 @@ class RemoveSessionTests(_RepoMixin, unittest.TestCase):
         self.assertEqual(rc, 2)
 
 
+class CollectedMarkerTests(_RepoMixin, unittest.TestCase):
+    """The collected-marker digest: `isolate diff`/`collect`/`integrate` write
+    it, `isolate remove`'s dirty check reads it."""
+
+    def _create(self, task="t1", **kw):
+        return agent_exec.isolate_create(self.repo, task, backend="git", **kw)
+
+    def _run(self, *args):
+        import io
+        import contextlib
+
+        buf_out, buf_err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            rc = agent_exec.cmd_isolate(list(args))
+        return rc, buf_out.getvalue(), buf_err.getvalue()
+
+    def _edit(self, path, content="worker line\n"):
+        with open(os.path.join(path, "README.md"), "a") as fh:
+            fh.write(content)
+
+    def test_never_collected_refuses_with_the_exact_reason_text(self):
+        r = self._create()
+        self._edit(r["path"])
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+        self.assertEqual(
+            out["reason"],
+            "worktree holds 1 changed file(s) not yet collected; "
+            "collect the diff or pass --force",
+        )
+
+    def test_diff_marks_it_collected_so_remove_then_succeeds(self):
+        r = self._create()
+        self._edit(r["path"])
+        rc, out, err = self._run("diff", "--task", "t1", "--repo", self.repo)
+        self.assertEqual(rc, 0, err)
+        out2 = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out2["status"], "removed")
+
+    def test_editing_again_after_collection_refuses_again(self):
+        r = self._create()
+        self._edit(r["path"])
+        self._run("diff", "--task", "t1", "--repo", self.repo)
+        self._edit(r["path"], "more worker changes\n")
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+
+    def test_reverting_to_collected_content_is_removable(self):
+        """The digest is content-based, not event-based."""
+        r = self._create()
+        self._edit(r["path"])
+        with open(os.path.join(r["path"], "README.md")) as fh:
+            collected_content = fh.read()
+        self._run("diff", "--task", "t1", "--repo", self.repo)
+        with open(os.path.join(r["path"], "README.md"), "a") as fh:
+            fh.write("temporary\n")
+        with open(os.path.join(r["path"], "README.md"), "w") as fh:
+            fh.write(collected_content)
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "removed")
+
+    def test_untouched_worktree_removes_with_no_marker(self):
+        self._create()
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "removed")
+
+    def test_untouched_worktree_removes_even_with_a_stale_marker(self):
+        r = self._create()
+        self._edit(r["path"])
+        self._run("diff", "--task", "t1", "--repo", self.repo)
+        _git(r["path"], "checkout", "--", "README.md")
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "removed")
+
+    def test_force_removes_in_every_dirty_state(self):
+        for label in ("never-collected", "re-edited-after-collect"):
+            r = self._create(task=label)
+            self._edit(r["path"])
+            if label == "re-edited-after-collect":
+                self._run("diff", "--task", label, "--repo", self.repo)
+                self._edit(r["path"], "again\n")
+            out = agent_exec.isolate_remove(self.repo, label, force=True)
+            self.assertEqual(out["status"], "removed", label)
+
+    def test_collect_on_a_nonexistent_worktree_is_absent_not_an_error(self):
+        rc, out, err = self._run("collect", "--task", "never-existed", "--repo", self.repo)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(json.loads(out), {"status": "absent", "task": "never-existed"})
+
+    def test_collect_by_session_marks_every_worktree_removable(self):
+        _set_session(self, "aaaaaaaa-cur")
+        r1 = self._create(task="one")
+        r2 = self._create(task="two")
+        self._edit(r1["path"], "one change\n")
+        self._edit(r2["path"], "two change\n")
+        rc, out, err = self._run("collect", "--session", "aaaaaaaa", "--repo", self.repo)
+        self.assertEqual(rc, 0, err)
+        payload = json.loads(out)
+        self.assertEqual(payload["status"], "collected")
+        self.assertEqual({e["status"] for e in payload["collected"]}, {"collected"})
+
+        rc, out, err = self._run("remove", "--session", "aaaaaaaa", "--repo", self.repo)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(agent_exec.isolate_list(self.repo), [])
+
+    def test_collect_output_never_contains_patch_text(self):
+        r = self._create()
+        self._edit(r["path"], "+++ not a real patch line\n@@ neither is this @@\n")
+        rc, out, err = self._run("collect", "--task", "t1", "--repo", self.repo)
+        self.assertEqual(rc, 0, err)
+        for line in out.splitlines():
+            self.assertFalse(line.lstrip().startswith("+++"))
+            self.assertFalse(line.lstrip().startswith("---"))
+            self.assertFalse(line.lstrip().startswith("@@"))
+        self.assertNotIn("not a real patch line", out)
+        self.assertNotIn("neither is this", out)
+
+    def test_corrupt_marker_file_is_treated_as_not_collected(self):
+        r = self._create()
+        self._edit(r["path"])
+        gitdir = agent_exec._worktree_gitdir(r["path"])
+        with open(os.path.join(gitdir, agent_exec._COLLECTED_FILE), "wb") as fh:
+            fh.write(b"\xff\xfe\x00garbage-not-utf8")
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+
+
+class IgnoredSurfaceDigestTests(_RepoMixin, unittest.TestCase):
+    """F1 regression coverage: a collected worktree's gitignored surface (new
+    files/dirs `git diff`/`git add -A -N` never see) must still be protected
+    from the internal `--force` on the "already collected" removal path."""
+
+    def _create(self, task="t1", **kw):
+        return agent_exec.isolate_create(self.repo, task, backend="git", **kw)
+
+    def _run(self, *args):
+        import io
+        import contextlib
+
+        buf_out, buf_err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            rc = agent_exec.cmd_isolate(list(args))
+        return rc, buf_out.getvalue(), buf_err.getvalue()
+
+    def _edit(self, path, content="worker line\n"):
+        with open(os.path.join(path, "README.md"), "a") as fh:
+            fh.write(content)
+
+    def _collect(self, task="t1"):
+        rc, out, err = self._run("collect", "--task", task, "--repo", self.repo)
+        self.assertEqual(rc, 0, err)
+        return json.loads(out)
+
+    def test_new_gitignored_file_after_collection_refuses_and_preserves_it(self):
+        r = self._create()
+        self._edit(r["path"])
+        self._collect()
+        ignored_path = os.path.join(r["path"], ".env")
+        with open(ignored_path, "w") as fh:
+            fh.write("SECRET=1\n")
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+        self.assertEqual(
+            out["reason"],
+            "worktree holds %d changed file(s) not yet collected; "
+            "collect the diff or pass --force" % len(out["files"]),
+        )
+        self.assertTrue(os.path.isfile(ignored_path))
+
+    def test_new_gitignored_directory_after_collection_refuses_and_preserves_contents(self):
+        r = self._create()
+        self._edit(r["path"])
+        self._collect()
+        nm = os.path.join(r["path"], "node_modules")
+        os.makedirs(nm)
+        marker = os.path.join(nm, "f.txt")
+        with open(marker, "w") as fh:
+            fh.write("dependency payload\n")
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+        self.assertTrue(os.path.isfile(marker))
+
+    def test_mutating_an_already_ignored_directory_does_not_regress_removal(self):
+        """The case that must NOT regress: `isolate create` carries deps into
+        every worktree, so a worker touching an already-ignored directory
+        (e.g. `node_modules`) must not become permanently uncollectable."""
+        r = self._create()
+        os.makedirs(os.path.join(r["path"], "node_modules"))
+        with open(os.path.join(r["path"], "node_modules", "a.txt"), "w") as fh:
+            fh.write("a\n")
+        self._edit(r["path"])
+        self._collect()
+        # Mutate inside the already-ignored directory after collection.
+        with open(os.path.join(r["path"], "node_modules", "b.txt"), "w") as fh:
+            fh.write("b\n")
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "removed")
+
+    def test_deleting_a_collected_ignored_entry_refuses(self):
+        r = self._create()
+        os.makedirs(os.path.join(r["path"], "node_modules"))
+        with open(os.path.join(r["path"], "node_modules", "a.txt"), "w") as fh:
+            fh.write("a\n")
+        self._edit(r["path"])
+        self._collect()
+        import shutil as _shutil
+
+        _shutil.rmtree(os.path.join(r["path"], "node_modules"))
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+
+    def test_force_removes_despite_new_ignored_surface(self):
+        for label in ("new-file", "new-dir", "deleted-dir"):
+            r = self._create(task=label)
+            self._edit(r["path"])
+            self._collect(label)
+            if label == "new-file":
+                with open(os.path.join(r["path"], ".env"), "w") as fh:
+                    fh.write("x\n")
+            elif label == "new-dir":
+                os.makedirs(os.path.join(r["path"], "node_modules"))
+                with open(os.path.join(r["path"], "node_modules", "f.txt"), "w") as fh:
+                    fh.write("x\n")
+            else:
+                os.makedirs(os.path.join(r["path"], "node_modules"))
+                with open(os.path.join(r["path"], "node_modules", "f.txt"), "w") as fh:
+                    fh.write("x\n")
+                self._collect(label)
+                import shutil as _shutil
+
+                _shutil.rmtree(os.path.join(r["path"], "node_modules"))
+            out = agent_exec.isolate_remove(self.repo, label, force=True)
+            self.assertEqual(out["status"], "removed", label)
+
+    def test_ignored_digest_does_not_enumerate_files_in_a_large_directory(self):
+        r = self._create()
+        nm = os.path.join(r["path"], "node_modules")
+        os.makedirs(nm)
+        for i in range(50):
+            with open(os.path.join(nm, "f%d.js" % i), "w") as fh:
+                fh.write("x\n")
+        before = agent_exec._ignored_entries(r["path"])
+        self.assertEqual(before, ["node_modules/"])
+        for i in range(50, 120):
+            with open(os.path.join(nm, "f%d.js" % i), "w") as fh:
+                fh.write("x\n")
+        after = agent_exec._ignored_entries(r["path"])
+        self.assertEqual(after, ["node_modules/"])
+        self.assertEqual(before, after)
+
+
+class CreateTimeIgnoredMarkerTests(_RepoMixin, unittest.TestCase):
+    """F2 regression coverage: a never-collected worktree whose only ignored
+    surface is what `isolate create` itself put there (carried dependency
+    directories) must still be removable without `--force` -- that is the
+    normal state of nearly every worktree, so refusing it defeats cleanup."""
+
+    def _create(self, task="t1", **kw):
+        return agent_exec.isolate_create(self.repo, task, backend="git", **kw)
+
+    def _run(self, *args):
+        import io
+        import contextlib
+
+        buf_out, buf_err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            rc = agent_exec.cmd_isolate(list(args))
+        return rc, buf_out.getvalue(), buf_err.getvalue()
+
+    def _edit(self, path, content="worker line\n"):
+        with open(os.path.join(path, "README.md"), "a") as fh:
+            fh.write(content)
+
+    def _collect(self, task="t1"):
+        rc, out, err = self._run("collect", "--task", task, "--repo", self.repo)
+        self.assertEqual(rc, 0, err)
+        return json.loads(out)
+
+    def test_carried_dependency_dir_alone_is_removable_never_collected(self):
+        """The F2 case: zero tracked changes, a carried gitignored dir, never
+        collected -> must remove without --force."""
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        self._write("node_modules/x.js")
+        r = self._create(carry=True)
+        self.assertIn("node_modules", r["carried"])
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "removed")
+
+    def test_mutating_the_carried_dir_still_removes_never_collected(self):
+        """Traditional-mode collapse: mutating inside the already-ignored dir
+        leaves the ignored-entry list unchanged."""
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        self._write("node_modules/x.js")
+        r = self._create(carry=True)
+        with open(os.path.join(r["path"], "node_modules", "installed.js"), "w") as fh:
+            fh.write("more deps\n")
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "removed")
+
+    def test_new_ignored_path_since_create_refuses_even_with_no_tracked_changes(self):
+        """Zero tracked changes, but a NEW gitignored path appeared since
+        creation (not present at create time) -> refuse: unreviewed work,
+        even though nothing tracked changed."""
+        r = self._create()
+        with open(os.path.join(r["path"], ".env"), "w") as fh:
+            fh.write("SECRET=1\n")
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+        self.assertNotEqual(
+            out["reason"],
+            "worktree holds %d changed file(s) not yet collected; "
+            "collect the diff or pass --force" % len(out.get("files") or []),
+        )
+        self.assertIn("collect", out["reason"])
+        self.assertIn("--force", out["reason"])
+
+    def test_collected_and_ignored_surface_unchanged_since_create_removes(self):
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        self._write("node_modules/x.js")
+        r = self._create(carry=True)
+        self._edit(r["path"])
+        self._collect()
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "removed")
+
+    def test_no_create_marker_and_nonempty_ignored_surface_never_collected_refuses(self):
+        """Simulates an older worktree, created before this marker existed."""
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        self._write("node_modules/x.js")
+        r = self._create(carry=True)
+        gitdir = agent_exec._worktree_gitdir(r["path"])
+        os.remove(os.path.join(gitdir, agent_exec._CREATED_IGNORED_FILE))
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+
+    def test_no_create_marker_but_matching_collected_marker_removes(self):
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        self._write("node_modules/x.js")
+        r = self._create(carry=True)
+        self._edit(r["path"])
+        self._collect()
+        gitdir = agent_exec._worktree_gitdir(r["path"])
+        os.remove(os.path.join(gitdir, agent_exec._CREATED_IGNORED_FILE))
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "removed")
+
+    def test_force_removes_despite_missing_create_marker_and_ignored_surface(self):
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        self._write("node_modules/x.js")
+        r = self._create(carry=True)
+        gitdir = agent_exec._worktree_gitdir(r["path"])
+        os.remove(os.path.join(gitdir, agent_exec._CREATED_IGNORED_FILE))
+        out = agent_exec.isolate_remove(self.repo, "t1", force=True)
+        self.assertEqual(out["status"], "removed")
+
+    def test_force_removes_despite_new_ignored_path_since_create(self):
+        r = self._create()
+        with open(os.path.join(r["path"], ".env"), "w") as fh:
+            fh.write("SECRET=1\n")
+        out = agent_exec.isolate_remove(self.repo, "t1", force=True)
+        self.assertEqual(out["status"], "removed")
+
+    def test_tracked_changes_refusal_reason_is_byte_identical(self):
+        r = self._create()
+        self._edit(r["path"])
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+        self.assertEqual(
+            out["reason"],
+            "worktree holds 1 changed file(s) not yet collected; "
+            "collect the diff or pass --force",
+        )
+
+    def test_ignored_surface_refusal_reason_is_distinct_text(self):
+        r = self._create()
+        with open(os.path.join(r["path"], ".env"), "w") as fh:
+            fh.write("SECRET=1\n")
+        out = agent_exec.isolate_remove(self.repo, "t1")
+        self.assertEqual(out["status"], "dirty")
+        self.assertNotEqual(
+            out["reason"],
+            "worktree holds 0 changed file(s) not yet collected; "
+            "collect the diff or pass --force",
+        )
+
+
 class CarryMethodTests(_RepoMixin, unittest.TestCase):
     """`carry_method`/`carry_note`, driven by monkeypatching the copy attempt
     rather than depending on the host filesystem's CoW support."""
@@ -792,7 +1178,7 @@ class DispatchIsolationTests(_RepoMixin, unittest.TestCase):
         agent_exec._run_copilot_capture = self._orig_capture
         super().tearDown()
 
-    def _dispatch(self, *extra, cls="review"):
+    def _dispatch(self, *extra, cls="review", workdir=None):
         """cls=review resolves to claude (no subprocess); light hits copilot."""
         import contextlib
         import copy as _copy
@@ -809,7 +1195,8 @@ class DispatchIsolationTests(_RepoMixin, unittest.TestCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc = agent_exec.cmd_dispatch_route(
-                ["--class", cls, "--prompt-file", prompt_file, "--workdir", self.repo]
+                ["--class", cls, "--prompt-file", prompt_file,
+                 "--workdir", workdir or self.repo]
                 + list(extra)
             )
         return rc, json.loads(buf.getvalue())
@@ -882,6 +1269,69 @@ class DispatchIsolationTests(_RepoMixin, unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertFalse(out["isolation"]["isolate"])
         self.assertIn("disk full", out["isolation"]["reason"])
+
+    def test_subdirectory_workdir_survives_isolation(self):
+        """A --workdir under the repo root must stay at the same relative
+        depth inside the fresh worktree, not collapse to the worktree root."""
+        self._write("sub/pkg/file.txt", "hi\n")
+        sub_workdir = os.path.join(self.repo, "sub", "pkg")
+        rc, out = self._dispatch(
+            "--task", "t1", "--isolate", "always", workdir=sub_workdir
+        )
+        self.assertEqual(rc, 0)
+        iso = out["isolation"]
+        self.assertTrue(iso["isolate"])
+        self.assertEqual(
+            os.path.normpath(iso["workdir"]),
+            os.path.normpath(os.path.join(iso["path"], "sub", "pkg")),
+        )
+        self.assertNotEqual(iso["path"], iso["workdir"])
+        # `path` must still be the worktree root, not the subdirectory.
+        self.assertFalse(iso["path"].rstrip(os.sep).endswith(os.path.join("sub", "pkg")))
+        # The reported workdir must actually exist on disk.
+        self.assertTrue(os.path.isdir(iso["workdir"]))
+
+    def test_repo_root_workdir_workdir_equals_path(self):
+        """When --workdir is the repo root itself, `workdir` and `path` agree."""
+        rc, out = self._dispatch("--task", "t2", "--isolate", "always")
+        self.assertEqual(rc, 0)
+        iso = out["isolation"]
+        self.assertTrue(iso["isolate"])
+        self.assertEqual(iso["workdir"], iso["path"])
+
+    def test_untracked_ignored_subdirectory_falls_back_to_worktree_root(self):
+        """A subdirectory that exists only as an ignored/untracked directory
+        in the user's tree is not carried into the fresh worktree, so the
+        dispatch must degrade to the worktree root -- and say so -- rather
+        than pointing the worker at a directory that does not exist."""
+        with open(os.path.join(self.repo, ".gitignore"), "a") as fh:
+            fh.write("ignored_sub/\n")
+        self._write("ignored_sub/pkg/file.txt", "hi\n")
+        ignored_workdir = os.path.join(self.repo, "ignored_sub", "pkg")
+        rc, out = self._dispatch(
+            "--task", "t3", "--isolate", "always", workdir=ignored_workdir
+        )
+        self.assertEqual(rc, 0)
+        iso = out["isolation"]
+        self.assertTrue(iso["isolate"])
+        self.assertEqual(iso["workdir"], iso["path"])
+        self.assertIn("does not exist", iso["reason"])
+
+    def test_isolation_path_still_serves_diff_after_subdirectory_workdir(self):
+        """`agent-exec isolate diff --task <id>` operates on `isolation.path`
+        (the worktree root); a subdirectory --workdir must not break that."""
+        self._write("sub/pkg/file.txt", "hi\n")
+        sub_workdir = os.path.join(self.repo, "sub", "pkg")
+        rc, out = self._dispatch(
+            "--task", "t4", "--isolate", "always", workdir=sub_workdir
+        )
+        self.assertEqual(rc, 0)
+        iso = out["isolation"]
+        self.assertTrue(iso["isolate"])
+
+        result = agent_exec.isolate_diff(self.repo, "t4")
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(os.path.normpath(result["path"]), os.path.normpath(iso["path"]))
 
 
 if __name__ == "__main__":

@@ -177,6 +177,27 @@ class ConflictTests(_IntegrateRepo):
         self.assertEqual(self._by_task(reverse)["beta"]["status"], "applied")
 
 
+class CollectedMarkerTests(_IntegrateRepo):
+    """A successful `integrate` marks its applied source tasks collected."""
+
+    def setUp(self):
+        super().setUp()
+        self._make_task("alpha", {10: "ALPHA WINS\n"})
+        self._make_task("beta", {10: "BETA WINS\n"})
+
+    def test_applied_task_is_removable_without_force_conflicted_is_not(self):
+        result = agent_exec.isolate_integrate(self.repo, ["alpha", "beta"])
+        entries = self._by_task(result)
+        self.assertEqual(entries["alpha"]["status"], "applied")
+        self.assertEqual(entries["beta"]["status"], "conflicted")
+
+        out_alpha = agent_exec.isolate_remove(self.repo, "alpha")
+        self.assertEqual(out_alpha["status"], "removed")
+
+        out_beta = agent_exec.isolate_remove(self.repo, "beta")
+        self.assertEqual(out_beta["status"], "dirty")
+
+
 class DegenerateTaskTests(_IntegrateRepo):
     """Tasks that produced nothing, or never ran at all."""
 

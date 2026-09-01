@@ -144,10 +144,14 @@ DEFAULTS = {
     # hooks/count-turn-edits.sh: once the main thread has hand-edited this
     # many files inside one turn, the hook asks it once to re-classify into
     # the orchestrated lane. Set to "off" to disable.
+    # "session_cleanup" removes the finishing session's orchestra worktrees
+    # at SessionEnd, keeping any that still hold uncollected changes.
+    # Consumed by hooks/cleanup-worktrees.sh. Set to "off" to disable.
     "enforcement": {
         "light_class": "off",
         "worker_vcs": "block",
         "turn_edits": 8,
+        "session_cleanup": "on",
     },
     # auth and nonzero-exit are transient, not resource exhaustion, so 0 means
     # "no cooldown" for those reasons.
@@ -918,6 +922,16 @@ def resolve_config():
         enforcement["turn_edits"] = "off"
     elif isinstance(turn_edits, bool) or not isinstance(turn_edits, int) or turn_edits <= 0:
         enforcement["turn_edits"] = DEFAULTS["enforcement"]["turn_edits"]
+    # session_cleanup normalizes like worker_vcs: only an explicit "off" --
+    # as a string, or as the bareword YAML 1.1 loads as False -- turns it
+    # off. Any other value (missing, None, True, or an unrecognized string)
+    # falls back to the default "on" rather than being silently treated as
+    # "off".
+    session_cleanup = enforcement.get("session_cleanup")
+    if session_cleanup is False or (isinstance(session_cleanup, str) and session_cleanup.strip().lower() == "off"):
+        enforcement["session_cleanup"] = "off"
+    else:
+        enforcement["session_cleanup"] = "on"
 
     return resolved, None
 
@@ -2810,6 +2824,19 @@ GTR_FALLBACK_COPY_INCLUDE = (".env", ".env.*", "*.local")
 
 _BASELINE_FILE = "orchestra-baseline"
 
+# Sibling marker to the baseline: records that a worktree's current diff has
+# already been taken out (via `isolate diff`, `isolate integrate`, or the
+# explicit `isolate collect`), so the SessionEnd cleanup hook can reclaim it.
+_COLLECTED_FILE = "orchestra-collected"
+
+# Sibling marker recording the ignored-entry surface as orchestra itself left
+# it at `isolate create` time (after carried dependency directories were
+# copied in). This is what lets `isolate remove` tell "what orchestra put
+# there" apart from "what the worker added afterwards" without requiring
+# every worktree to be explicitly collected just because it carries
+# `node_modules`.
+_CREATED_IGNORED_FILE = "orchestra-created-ignored"
+
 
 def git_config_env(pairs, base_env=None):
     """Return an env dict that adds `pairs` to git's config lookup.
@@ -3065,6 +3092,120 @@ def _read_baseline(worktree):
     return out.strip() if rc == 0 else None
 
 
+def _ignored_entries(worktree):
+    """Sorted gitignored paths in `worktree`, git's *traditional* `--ignored` mode.
+
+    Traditional mode collapses a wholly-ignored directory to one entry (e.g.
+    `node_modules/`) instead of listing its contents. `isolate create`
+    intentionally copies gitignored dependency directories (`node_modules`,
+    `.venv`, ...) into every worktree, so per-file enumeration here would be
+    both enormous and needlessly volatile, while the collapsed entry stays
+    stable across a dependency install and across a worker mutating those
+    directories.
+    """
+    rc, out = _git(worktree, "status", "--porcelain", "--ignored")
+    if rc != 0:
+        return []
+    entries = []
+    for line in out.splitlines():
+        if line.startswith("!! "):
+            entries.append(line[3:].strip())
+    return sorted(entries)
+
+
+def _collected_digest(files, patch, ignored=None):
+    """Stable content digest of a task's current changes vs its baseline.
+
+    Deliberately content-based, not event-based: the same digest recorded at
+    collection time must reproduce identically at removal time from the same
+    inputs (the changed-file list, the patch text, and the sorted gitignored
+    entries -- see `_ignored_entries`), so both call sites run this exact
+    helper over exactly the diff data they already computed -- never a fresh
+    `git diff`/`git status` invocation of their own. The ignored component is
+    what closes the family-data-loss hole: `git diff`/`git add -A -N` never
+    surface gitignored paths, so without it a worker creating a new
+    gitignored file after collection would go undetected and be destroyed by
+    the internal `--force` on the "already collected" path.
+    """
+    payload = (
+        "\x00".join(sorted(files or []))
+        + "\x00" + (patch or "")
+        + "\x00" + "\x00".join(sorted(ignored or []))
+    )
+    return hashlib.sha256(payload.encode("utf-8", "surrogateescape")).hexdigest()
+
+
+def _ignored_digest(entries):
+    """Stable digest of a sorted ignored-entry list, for the create-time marker.
+
+    Uses the SAME entries `_ignored_entries` produces (traditional-mode,
+    directory-collapsed) so it can be compared directly against a freshly
+    computed ignored-entry hash without any new git invocation shape.
+    """
+    payload = "\x00".join(sorted(entries or []))
+    return hashlib.sha256(payload.encode("utf-8", "surrogateescape")).hexdigest()
+
+
+def _write_created_ignored(worktree, digest):
+    gitdir = _worktree_gitdir(worktree)
+    if not gitdir:
+        return
+    try:
+        with open(os.path.join(gitdir, _CREATED_IGNORED_FILE), "w") as fh:
+            fh.write(digest + "\n")
+    except OSError:
+        pass
+
+
+def _read_created_ignored(worktree):
+    """The ignored-entry hash recorded at `isolate create` time, or None.
+
+    None covers both "no marker" (worktree predates this marker, or the
+    gitdir was unreadable at create time) and "corrupt marker" -- neither is
+    an error, both just mean the create-time baseline is unknown and callers
+    must fall back conservatively.
+    """
+    gitdir = _worktree_gitdir(worktree)
+    if not gitdir:
+        return None
+    try:
+        with open(os.path.join(gitdir, _CREATED_IGNORED_FILE)) as fh:
+            digest = fh.read().strip()
+        return digest or None
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+
+
+def _write_collected(worktree, digest):
+    gitdir = _worktree_gitdir(worktree)
+    if not gitdir:
+        return
+    try:
+        with open(os.path.join(gitdir, _COLLECTED_FILE), "w") as fh:
+            fh.write(digest + "\n")
+    except OSError:
+        pass
+
+
+def _read_collected(worktree):
+    """The digest recorded at last collection, or None if never/unreadably so.
+
+    Unlike `_read_baseline` this has no branch-tip fallback: "no marker" and
+    "corrupt marker" both mean exactly one thing -- not collected -- and must
+    never raise, since a stale/garbled file is an expected steady state, not
+    an error.
+    """
+    gitdir = _worktree_gitdir(worktree)
+    if not gitdir:
+        return None
+    try:
+        with open(os.path.join(gitdir, _COLLECTED_FILE)) as fh:
+            digest = fh.read().strip()
+        return digest or None
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+
+
 def gtr_available():
     rc, _ = _git(None, "gtr", "version")
     return rc == 0
@@ -3209,6 +3350,10 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
 
     existing = _worktree_for_branch(root, branch)
     if existing:
+        # A worktree reused across retry rounds may predate this marker;
+        # backfill it so it is not left permanently markerless.
+        if _read_created_ignored(existing) is None:
+            _write_created_ignored(existing, _ignored_digest(_ignored_entries(existing)))
         return {
             "status": "exists", "task": task, "branch": branch, "path": existing,
             "backend": "existing", "carried": [], "carry_method": "none",
@@ -3257,6 +3402,11 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
                 carry_method = "copy"
             elif carry_method == "none":
                 carry_method = "clone"
+
+    # Record the ignored surface exactly as orchestra hands the tree to the
+    # worker -- after carried dependency directories landed -- so `isolate
+    # remove` can later tell that surface apart from anything the worker adds.
+    _write_created_ignored(path, _ignored_digest(_ignored_entries(path)))
 
     result = {
         "status": "created", "task": task, "branch": branch, "path": path,
@@ -3336,6 +3486,49 @@ def isolate_diff(root, task, session_id=None):
     }
 
 
+def isolate_collect(root, task=None, session_id=None):
+    """Mark `task`'s worktree collected without printing its patch.
+
+    The explicit "I have taken this content out by other means" verb: unlike
+    `isolate diff`/`isolate integrate`, which mark collection as a side effect
+    of a route that already produced the content elsewhere, this exists for
+    routes (integration worktrees, above all) that nothing else ever collects.
+    """
+    root = repo_root(root)
+    if root is None:
+        return {"status": "error", "reason": "not a git repository"}
+    task = sanitize_task_id(task)
+    branch, entry = _resolve_worktree(
+        root, task, session_id if session_id is not None else _current_session()
+    )
+    if not entry:
+        return {"status": "absent", "task": task}
+    path = entry.get("path")
+    diff = isolate_diff(root, task, session_id=session_id)
+    if diff.get("status") != "ok":
+        return {
+            "status": "error", "task": task,
+            "reason": diff.get("reason") or "could not compute diff for %s" % task,
+        }
+    digest = _collected_digest(
+        diff.get("files") or [], diff.get("patch") or "", _ignored_entries(path)
+    )
+    _write_collected(path, digest)
+    return {"status": "collected", "task": task, "digest": digest}
+
+
+def isolate_collect_session(root, session_id):
+    wanted = _session_component(session_id)
+    if wanted is None:
+        raise ValueError("invalid session id")
+    entries = isolate_list(root)
+    results = []
+    for entry in entries:
+        if entry["session"] == wanted:
+            results.append(isolate_collect(root, entry["task"], session_id=wanted))
+    return {"status": "collected", "session": wanted, "collected": results}
+
+
 def isolate_remove(root, task=None, force=False, session_id=None):
     """Delete a task's worktree and branch, refusing to discard unreviewed work."""
     root = repo_root(root)
@@ -3349,17 +3542,53 @@ def isolate_remove(root, task=None, force=False, session_id=None):
         return {"status": "absent", "task": task}
     path = entry.get("path")
 
+    git_force = force
     if not force:
         diff = isolate_diff(root, task, session_id=session_id)
-        if diff.get("files"):
+        files = diff.get("files") or []
+        # Gitignored paths are part of the surface too: `git diff`/`git add
+        # -A -N` never see them, so a worker that adds a new gitignored file
+        # or directory after collection must still flip this dirty, or the
+        # internal `--force` below would silently destroy it. But nearly
+        # every worktree carries SOME ignored surface by design (the carried
+        # `node_modules` and friends), so "any ignored entries at all" cannot
+        # be the trigger -- only ignored entries that differ from what
+        # `isolate create` itself put there count as unreviewed.
+        ignored = _ignored_entries(path)
+        stored_collected = _read_collected(path)
+        full_digest = _collected_digest(files, diff.get("patch") or "", ignored)
+        digest_matches_collected = (
+            stored_collected is not None and stored_collected == full_digest
+        )
+        tracked_ok = (not files) or digest_matches_collected
+
+        created_ignored_hash = _read_created_ignored(path)
+        ignored_now_hash = _ignored_digest(ignored)
+        ignored_ok = (
+            (created_ignored_hash is not None and created_ignored_hash == ignored_now_hash)
+            or digest_matches_collected
+        )
+
+        if not tracked_ok:
             return {
-                "status": "dirty", "task": task, "path": path, "files": diff["files"],
+                "status": "dirty", "task": task, "path": path, "files": files,
                 "reason": "worktree holds %d changed file(s) not yet collected; "
-                          "collect the diff or pass --force" % len(diff["files"]),
+                          "collect the diff or pass --force" % len(files),
             }
+        if not ignored_ok:
+            return {
+                "status": "dirty", "task": task, "path": path, "files": files,
+                "reason": "worktree's ignored files changed since it was created "
+                          "and were never collected; collect the diff or pass --force",
+            }
+        # Vetted as safe to discard by our own collected-digest/ignored-surface
+        # check, but `git worktree remove` itself still refuses any worktree
+        # with modified/untracked files unless told to force -- that plain-git
+        # rule is orthogonal to our review gate above.
+        git_force = True
 
     argv = ["worktree", "remove", path]
-    if force:
+    if git_force:
         argv.append("--force")
     rc, _ = _git(root, *argv)
     if rc != 0:
@@ -3545,6 +3774,18 @@ def isolate_integrate(root, tasks, onto=None, into="integrate"):
         # not the ref we would have picked, is the truth about where it starts.
         onto_sha = _read_baseline(wt_path) or onto_sha
 
+    def _mark_source_collected(task, files, patch):
+        # Same digest helper the CLI's `isolate diff`/`isolate collect` paths
+        # use, over the exact files/patch this run already computed for the
+        # task -- never a fresh `git diff` of the source worktree. The
+        # ignored-entries component is still read fresh from the source
+        # worktree, same as every other call site.
+        _, src_entry = _resolve_worktree(resolved_root, task, _current_session())
+        src_path = src_entry.get("path") if src_entry else None
+        if src_path:
+            digest = _collected_digest(files, patch, _ignored_entries(src_path))
+            _write_collected(src_path, digest)
+
     results = []
     for change in changes:
         task = change["task"]
@@ -3553,6 +3794,8 @@ def isolate_integrate(root, tasks, onto=None, into="integrate"):
                 "task": task, "status": change["state"],
                 "files_changed": 0, "conflicts": [],
             })
+            if change["state"] == "empty":
+                _mark_source_collected(task, change["files"], change["patch"])
             continue
         rc = _apply_patch_3way(wt_path, change["patch"])
         conflicts = _unmerged_conflicts(wt_path) if rc != 0 else []
@@ -3562,9 +3805,12 @@ def isolate_integrate(root, tasks, onto=None, into="integrate"):
         _git(wt_path, "add", "-A")
         _git(wt_path, *(_INTEGRATE_IDENTITY + (
             "commit", "-q", "--allow-empty", "-m", "orchestra integrate %s" % task)))
+        status = "applied" if rc == 0 else "conflicted"
+        if status == "applied":
+            _mark_source_collected(task, change["files"], change["patch"])
         results.append({
             "task": task,
-            "status": "applied" if rc == 0 else "conflicted",
+            "status": status,
             "files_changed": len(change["files"]),
             "conflicts": conflicts,
         })
@@ -3667,12 +3913,84 @@ def cmd_isolate_integrate(args):
     return 3
 
 
+def _parse_collect_args(args):
+    """Parse `isolate collect` flags. Returns (options, error_message).
+
+    Mirrors `isolate remove`'s exactly-one-of --task/--session contract, plus
+    the --json/--text pair `isolate integrate` already uses.
+    """
+    opts = {"task": None, "session": None, "repo": os.getcwd(), "json": False, "text": False}
+    seen = set()
+    value_flags = {"--task": "task", "--session": "session", "--repo": "repo"}
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok in seen:
+            return None, "duplicate option: %s" % tok
+        if tok in value_flags:
+            if i + 1 >= len(args):
+                return None, "missing value for %s" % tok
+            seen.add(tok)
+            opts[value_flags[tok]] = args[i + 1]
+            i += 2
+            continue
+        if tok in ("--json", "--text"):
+            seen.add(tok)
+            opts[tok[2:]] = True
+            i += 1
+            continue
+        return None, "unknown option: %s" % tok
+    if opts["json"] and opts["text"]:
+        return None, "--json and --text are mutually exclusive"
+    if (opts["task"] is None) == (opts["session"] is None):
+        return None, "provide exactly one of --task or --session"
+    return opts, None
+
+
+def format_collect_text(result):
+    """Compact human rendering of an `isolate collect` result. No patch text."""
+    if "session" in result:
+        lines = ["collect %s  session %s" % (result.get("status"), result.get("session"))]
+        for entry in result.get("collected") or []:
+            lines.append("  %-16s %-10s %s" % (
+                entry.get("task"), entry.get("status"), (entry.get("digest") or "-")[:12],
+            ))
+        return "\n".join(lines)
+    digest = result.get("digest")
+    return "collect %-10s task %-16s %s" % (
+        result.get("status"), result.get("task"), (digest[:12] if digest else "-"),
+    )
+
+
+def cmd_isolate_collect(args):
+    opts, error = _parse_collect_args(args)
+    if error is not None:
+        sys.stderr.write("agent-exec: isolate collect: %s\n" % error)
+        return 2
+    try:
+        result = (
+            isolate_collect_session(opts["repo"], opts["session"])
+            if opts["session"] is not None
+            else isolate_collect(opts["repo"], opts["task"])
+        )
+    except ValueError as exc:
+        sys.stderr.write("agent-exec: isolate collect: %s\n" % exc)
+        return 2
+    if opts["text"]:
+        print(format_collect_text(result))
+    else:
+        print(json.dumps(result, ensure_ascii=False))
+    return 1 if result.get("status") == "error" else 0
+
+
 def _isolate_usage(stream=sys.stderr):
     stream.write(
-        "usage: agent-exec isolate {create|list|diff|integrate|remove|should} [options]\n"
+        "usage: agent-exec isolate {create|list|diff|collect|integrate|remove|should} [options]\n"
         "  create    --task <id> [--repo <path>] [--backend auto|gtr|git] [--no-carry]\n"
         "  list      [--repo <path>] [--session <id>]\n"
         "  diff      --task <id> [--repo <path>] [--names-only]\n"
+        "  collect   --task <id> [--repo <path>] [--json|--text]\n"
+        "  collect   --session <id> [--repo <path>] [--json|--text]\n"
         "  integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>]\n"
         "            [--json|--text]\n"
         "  remove    --task <id> [--repo <path>] [--force]\n"
@@ -3686,16 +4004,19 @@ def cmd_isolate(args):
         _isolate_usage()
         return 2
     sub = args[0]
-    if sub not in ("create", "list", "diff", "integrate", "remove", "should"):
+    if sub not in ("create", "list", "diff", "collect", "integrate", "remove", "should"):
         sys.stderr.write("agent-exec: isolate: unknown subcommand: %s\n" % sub)
         _isolate_usage()
         return 2
 
-    # `integrate` has its own flag set and its own exit-code contract
-    # (0 clean / 1 conflicted / 2 usage / 3 environment), so it parses and
-    # returns on its own rather than sharing the single-task plumbing below.
+    # `integrate` and `collect` have their own flag sets (and, for integrate,
+    # its own exit-code contract: 0 clean / 1 conflicted / 2 usage /
+    # 3 environment), so they parse and return on their own rather than
+    # sharing the single-task plumbing below.
     if sub == "integrate":
         return cmd_isolate_integrate(args[1:])
+    if sub == "collect":
+        return cmd_isolate_collect(args[1:])
 
     task = None
     session = None
@@ -3758,6 +4079,17 @@ def cmd_isolate(args):
             result = {"worktrees": isolate_list(directory, session_id=session)}
         elif sub == "diff":
             result = isolate_diff(directory, task)
+            if result.get("status") == "ok":
+                # Reuse exactly the files/patch this call already computed --
+                # the refusal in `isolate remove` literally tells the caller
+                # to "collect the diff", so a real diff result marks it done.
+                _write_collected(
+                    result.get("path"),
+                    _collected_digest(
+                        result.get("files") or [], result.get("patch") or "",
+                        _ignored_entries(result.get("path")),
+                    ),
+                )
             if names_only:
                 result.pop("patch", None)
         elif sub == "remove":
@@ -4453,17 +4785,50 @@ def cmd_dispatch_route(args):
                           % isolation["reason"],
             }
         else:
+            original_workdir = workdir
             try:
                 created = isolate_create(workdir, task)
             except ValueError as exc:
                 created = {"status": "error", "reason": str(exc)}
             if created.get("status") in ("created", "exists") and created.get("path"):
-                workdir = created["path"]
+                worktree_root = created["path"]
+                effective_workdir = worktree_root
+                fallback_reason = None
+                original_root = repo_root(original_workdir)
+                if original_root is not None:
+                    # `repo_root` shells out to `git rev-parse --show-toplevel`,
+                    # which resolves symlinks (e.g. macOS's /tmp -> /private/tmp).
+                    # Compare against a like-for-like resolved workdir so an
+                    # unresolved-vs-resolved mismatch doesn't look like an escape.
+                    rel = os.path.relpath(
+                        os.path.realpath(original_workdir), original_root
+                    )
+                    if rel == ".":
+                        effective_workdir = worktree_root
+                    elif rel.startswith(os.pardir):
+                        fallback_reason = (
+                            "--workdir resolved outside its own repository root; "
+                            "using the worktree root instead"
+                        )
+                    else:
+                        candidate = os.path.join(worktree_root, rel)
+                        if os.path.isdir(candidate):
+                            effective_workdir = candidate
+                        else:
+                            fallback_reason = (
+                                "--workdir's subdirectory (%s) does not exist in the "
+                                "fresh worktree; using the worktree root instead" % rel
+                            )
+                workdir = effective_workdir
+                reason = isolation["reason"]
+                if fallback_reason:
+                    reason = "%s; %s" % (reason, fallback_reason)
                 isolation = {
                     "isolate": True,
                     "mode": isolate_mode,
-                    "reason": isolation["reason"],
-                    "path": created["path"],
+                    "reason": reason,
+                    "path": worktree_root,
+                    "workdir": effective_workdir,
                     "branch": created.get("branch"),
                     "backend": created.get("backend"),
                     "carried": created.get("carried", []),

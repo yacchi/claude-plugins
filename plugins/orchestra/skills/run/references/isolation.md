@@ -22,13 +22,14 @@ agent-exec dispatch --class light --task <task-id> \
 # --isolate never   : opt out, e.g. a strictly sequential phase on one tree
 ```
 
-Every dispatch result carries an `isolation` object saying which tree was used and why, so a run always knows where to collect from:
+Every dispatch result carries an `isolation` object saying which tree was used and why, so a run always knows where to collect from. `isolation.path` is always the worktree ROOT — the argument `isolate diff`/`remove` below expect. `isolation.workdir` is the directory the dispatch actually ran in: normally the same as `path`, but when `--workdir` named a subdirectory of the repo, `workdir` preserves that depth inside the fresh worktree while `path` still names the root.
 
 ```bash
-agent-exec isolate diff   --task <id>            # patch + file list, worker's changes only
-agent-exec isolate list                          # orchestra-created worktrees
-agent-exec isolate remove --task <id>            # refuses while changes are uncollected
-agent-exec isolate remove --session <id>          # clean up every worktree for a session
+agent-exec isolate diff    --task <id>            # patch + file list, worker's changes only
+agent-exec isolate list                           # orchestra-created worktrees
+agent-exec isolate collect --task <id>            # mark collected without printing the patch
+agent-exec isolate remove  --task <id>            # refuses while changes are uncollected
+agent-exec isolate remove  --session <id>         # clean up every worktree for a session
 ```
 
 Task lookup first tries the current session's branch. If absent, a unique
@@ -36,6 +37,16 @@ cross-session `orchestra/*/<task>` or legacy `orchestra/<task>` branch is used
 and its owner is reported; multiple candidates are an exit-2 ambiguity error,
 never a guess. `isolate list` includes `session` and `current` fields, and
 `--session` accepts either a full session id or its eight-character prefix.
+
+`isolate diff` and `isolate integrate` mark a task collected implicitly, as a
+side effect of the route that already produced the content elsewhere.
+`isolate collect` is the explicit verb for content taken out by any other
+route — integration worktrees especially, since nothing else ever collects
+those. Either way, collection is content-based, not a one-way flag: a
+worktree edited again after being collected goes back to being uncollected,
+because what was taken out no longer matches what is sitting in the tree.
+
+`isolate remove` compares the worktree's gitignored surface against what `isolate create` originally placed there, using git's collapsed ignored listing where an entire directory counts as one entry. A wholly-new ignored path — a build artifact, a `.env` file, a generated output directory — appears as a new entry and blocks removal, surviving with the tree because orchestra has no record of that addition. By contrast, files created inside carried dependency directories (`node_modules`, `.venv`, `vendor`, `target`, and their peers) do not block removal and are discarded with the worktree. This is deliberate: those directories are copies orchestra made because they are cheap to reproduce; the deliverable they correspond to is the lockfile or manifest, which the collection digest covers; and per-file enumeration of a dependency tree would be both prohibitively slow within the SessionEnd budget and so volatile under ordinary install churn that every worktree would become permanently unremovable.
 
 What `isolate create` does for you, so a worktree is not a downgrade for the worker:
 
@@ -72,11 +83,11 @@ Create as many descendant branches as the work wants — per task, per attempt, 
 
 **The branch that becomes the PR is the exception.** It carries the deliverable and nothing else: no per-attempt checkpoints, no rejected variants, no scratch commits, no spec or worker-only files, no revert-of-a-revert churn. Build it by applying the *accepted diff* onto the baseline — squash, or cherry-pick a reconstructed set of focused commits (implementation / tests / docs separately when that helps review) — rather than by merging the working branch's history wholesale. If a task commit mixes accepted deliverables with context-only files or rejected paths, reconstruct it; do not cherry-pick it as-is.
 
-**Clean up when the run ends.** Delete the worktrees and agent branches you created once the deliverable is integrated and the user confirms nothing more needs inspecting — but verify each exact target first, and never use a glob, an unresolved variable, or a recursive delete rooted anywhere near the repository root or the home directory. Keeping the artifacts until that confirmation is deliberate: they are the only record of what was tried.
+**Clean up when the run ends.** Delete the worktrees and agent branches you created once the deliverable is integrated and the user confirms nothing more needs inspecting — but verify each exact target first, and never use a glob, an unresolved variable, or a recursive delete rooted anywhere near the repository root or the home directory. Keeping the artifacts until that confirmation is deliberate: they are the only record of what was tried. The SessionEnd cleanup hook already does this part automatically for every worktree marked collected; whatever it leaves behind at session end is, by construction, the uncollected worktrees — the ones still worth a manual look before you delete them yourself.
 
 ## 2. Worktrees: isolate so you can be aggressive
 
-`agent()` accepts `isolation: 'worktree'`, which gives that Claude subagent a fresh git worktree; `agent-exec dispatch --isolate` (§0) creates one itself — for CLI executors, which `agent()`'s option cannot reach, *and* for the routes it hands back as `status: "delegate"`, where you make the `agent()` call. On that delegate path the tree already exists and is reported as `isolation.path`: point the worker (and the reviewer, and every correction round) at that path instead of opening a second worktree, which would start from a fresh checkout without the carried-in uncommitted work and without the previous round's files. Passing neither is what silently exempts Claude- and Codex-routed workers from isolation while CLI-routed ones stay isolated — see `SKILL.md` §5. Beyond the safety case in §0 — where isolation is simply the default on a dirty tree — isolation also removes the constraint that has been shaping every parallelism decision in this playbook so far.
+`agent()` accepts `isolation: 'worktree'`, which gives that Claude subagent a fresh git worktree; `agent-exec dispatch --isolate` (§0) creates one itself — for CLI executors, which `agent()`'s option cannot reach, *and* for the routes it hands back as `status: "delegate"`, where you make the `agent()` call. On that delegate path the tree already exists and the directory to work in is reported as `isolation.workdir` (fall back to `isolation.path` when `workdir` is absent): point the worker (and the reviewer, and every correction round) at that path instead of opening a second worktree, which would start from a fresh checkout without the carried-in uncommitted work and without the previous round's files. Passing neither is what silently exempts Claude- and Codex-routed workers from isolation while CLI-routed ones stay isolated — see `SKILL.md` §5. Beyond the safety case in §0 — where isolation is simply the default on a dirty tree — isolation also removes the constraint that has been shaping every parallelism decision in this playbook so far.
 
 The base rule elsewhere in the skill (`authoring.md` §1) is *partition file ownership so parallel workers never collide*. That rule is correct for same-tree runs and it is also a real limit: it forbids parallelizing exactly the work that is most tangled, and tangled work is usually the slow work. Worktree isolation lifts the limit — collisions become merge decisions instead of silent corruption.
 

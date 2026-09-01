@@ -171,10 +171,13 @@ async function dispatchClass(cls, promptText, opts = {}) {
 
   // EVERY dispatch outcome reports `isolation` - `agent-exec dispatch` creates the
   // per-task worktree BEFORE it decides whether a CLI runs the work or you do (§12).
-  // Record its path: the delegate branch below and the correction round in runTask()
-  // must land in that SAME tree, and `agent-exec isolate diff --task <id>` reads it.
+  // `isolation.path` is always the worktree ROOT - that is what `agent-exec isolate
+  // diff/remove --task <id>` operate on. `isolation.workdir` is the directory the
+  // work actually ran in (it can sit below the root when `--workdir` named a
+  // subdirectory); use THAT for the worker's tree line. Record it: the delegate
+  // branch below and the correction round in runTask() must land in that SAME dir.
   const iso = r.isolation || {}
-  if (opts.iso) opts.iso.path = iso.isolate ? iso.path : null
+  if (opts.iso) opts.iso.path = iso.isolate ? (iso.workdir || iso.path) : null
   if (!iso.isolate) log('NOT isolated: ' + (opts.label || cls) + ' - ' + (iso.reason || 'no reason given'))
 
   if (r.status === 'ok') return r.answer // a CLI executor (e.g. Copilot) already ran it.
@@ -200,7 +203,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
     // 'worktree'` here would be a SECOND tree, losing the carried-in uncommitted work
     // and the per-task reuse that lets retry rounds see each other's files). Only when
     // dispatch could not isolate does `agent()` open one itself.
-    const cwdLine = treeLine(iso.isolate ? iso.path : null)
+    const cwdLine = treeLine(iso.isolate ? (iso.workdir || iso.path) : null)
     const isoOpt = iso.isolate ? {} : { isolation: 'worktree' }
     const answer = r.agent_type
       ? await agent(cwdLine + agentPrompt + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type, ...isoOpt })
@@ -365,7 +368,7 @@ The run id rides in the dispatch token, not in the relay command: pass `--run-id
 
 **Decision rule: serialize only for a real ordering dependency** — one task must read another task's *output* to do its own work. Two tasks editing the same file is not that; it is a merge, and merges are mechanized now. If the interface between the tasks can be written down before either starts, the dependency is on the contract, not on the code, and the tasks run in parallel.
 
-**Isolate every file-changing worker, dirty tree or not.** A prompt that names the files a worker owns does not constrain the worker — only a separate tree does. Observed: a documentation-only worker, told it owned three `.md` files and nothing else, truncated an implementation file it had never been asked to open to zero bytes. Disjoint ownership likewise does not protect the *user's* uncommitted work: workers of every model tier run `git checkout --`/`restore`/`reset --hard` over changes they did not author, because a diff a worker did not write reads as contamination whatever its prompt says. So give every file-changing worker its own tree — `agent-exec dispatch --isolate always --task <id>` for CLI executors, `isolation: 'worktree'` for `agent()` calls. **The `status: "delegate"` path needs this said out loud:** dispatch does not run that worker, *you* do, so an `agent()` call that omits both the worktree and the working-directory line puts Claude- and Codex-routed workers straight into the user's tree while CLI-routed ones stay isolated. dispatch has already created the task's tree by then and reports it as `isolation.path` — point the worker at that path rather than opening a second one, and carry the same path into the correction round (§5). `--isolate auto` only covers the dirty-tree case; a clean tree is exactly where this gets skipped, and a clean tree still holds work that is only recoverable if it was committed. Collect with `agent-exec isolate diff --task <id>`. Full guidance: `references/isolation.md`.
+**Isolate every file-changing worker, dirty tree or not.** A prompt that names the files a worker owns does not constrain the worker — only a separate tree does. Observed: a documentation-only worker, told it owned three `.md` files and nothing else, truncated an implementation file it had never been asked to open to zero bytes. Disjoint ownership likewise does not protect the *user's* uncommitted work: workers of every model tier run `git checkout --`/`restore`/`reset --hard` over changes they did not author, because a diff a worker did not write reads as contamination whatever its prompt says. So give every file-changing worker its own tree — `agent-exec dispatch --isolate always --task <id>` for CLI executors, `isolation: 'worktree'` for `agent()` calls. **The `status: "delegate"` path needs this said out loud:** dispatch does not run that worker, *you* do, so an `agent()` call that omits both the worktree and the working-directory line puts Claude- and Codex-routed workers straight into the user's tree while CLI-routed ones stay isolated. dispatch has already created the task's tree by then and reports the directory the work should run in as `isolation.workdir` (falling back to `isolation.path`, the worktree root, when `workdir` is absent) — point the worker at that path rather than opening a second one, and carry the same path into the correction round (§5). `isolation.path` always names the worktree root, which is what `agent-exec isolate diff/remove --task <id>` operate on; `isolation.workdir` is the (possibly deeper) directory the dispatch actually ran in. `--isolate auto` only covers the dirty-tree case; a clean tree is exactly where this gets skipped, and a clean tree still holds work that is only recoverable if it was committed. Collect with `agent-exec isolate diff --task <id>`; if you take the result out by any other route (an integration worktree, above all), run `agent-exec isolate collect --task <id>` so the SessionEnd hook can reclaim it too. Full guidance: `references/isolation.md`.
 
 **On `agentType`:** the plugin-scoped names (`orchestra:orchestra-light` / `-deep` / `-review`) may or may not resolve as `agent()`'s `agentType` in this environment — check the available-subagents list before relying on them, and fall back to explicit `model:`. See `references/authoring.md` §1.
 
