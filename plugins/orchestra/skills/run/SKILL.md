@@ -146,7 +146,17 @@ function treeLine(path) {
 
 // Dispatch one task at a capability class ('light' | 'standard' | 'deep').
 // Selection is `agent-exec route`'s job, not this function's and not yours.
-// Same call shape whether it resolves to Copilot or to a Claude tier.
+// Same call shape whether it resolves to Copilot, Codex's `dispatch: cli`, or
+// a Claude tier.
+//
+// opts.out — optional object; on every return path that can carry a session
+// (i.e. actually reached a dispatch), dispatchClass sets out.sessionId
+// (string|null, from the dispatch result's `session_id`) and out.resumed
+// (bool, from `resumed`) before returning. A `dispatch: agent`/Claude
+// "delegate" answer has no session concept, so it sets both to null/false.
+// opts.noResume — when true, appends `--no-resume` to the dispatch call so
+// agent-exec's per-task session store is not consulted for this call, even
+// though `--task` is present (used on class escalation - B4 below).
 async function dispatchClass(cls, promptText, opts = {}) {
   const promptFiles = Array.isArray(promptText) ? promptText : [promptText]
   // The token keeps the relay from reading what it dispatches; a path in its prompt is enough for it to try.
@@ -154,6 +164,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
   const relayPrompt =
     'Run `agent-exec dispatch --token ' + dispatchToken +
     (exhausted.size ? ' --exhausted ' + [...exhausted].join(',') : '') +
+    (opts.noResume ? ' --no-resume' : '') +
     ' --capture`' +
     ' as ONE foreground Bash call with timeout 600000. It routinely takes many minutes: just ' +
     'wait for it. Never background it, never poll it, never start a monitor, never report ' +
@@ -180,7 +191,11 @@ async function dispatchClass(cls, promptText, opts = {}) {
   if (opts.iso) opts.iso.path = iso.isolate ? (iso.workdir || iso.path) : null
   if (!iso.isolate) log('NOT isolated: ' + (opts.label || cls) + ' - ' + (iso.reason || 'no reason given'))
 
-  if (r.status === 'ok') return r.answer // a CLI executor (e.g. Copilot) already ran it.
+  if (r.status === 'ok') {
+    // a CLI executor (e.g. Copilot, opencode, or Codex's `dispatch: cli`) already ran it.
+    if (opts.out) { opts.out.sessionId = r.session_id ?? null; opts.out.resumed = !!r.resumed }
+    return r.answer
+  }
   if (r.status === 'delegate') {
     // route picked Claude or an agent-dispatch executor (e.g. Codex) - only
     // your own agent() call can spawn either, so detecting ITS unavailability
@@ -212,6 +227,9 @@ async function dispatchClass(cls, promptText, opts = {}) {
       exhausted.add(r.executor)
       return dispatchClass(cls, promptText, opts)
     }
+    // `agent()` (Claude or a `dispatch: agent` plugin subagent) has no
+    // session-store concept - always report no session on this path.
+    if (opts.out) { opts.out.sessionId = null; opts.out.resumed = false }
     return answer
   }
   if (r.status === 'unavailable') {
@@ -227,38 +245,80 @@ async function dispatchClass(cls, promptText, opts = {}) {
 // `--isolate always` and a task id are what put EVERY worker, CLI or Claude, in
 // its own tree; without them the delegate path lands in the user's), workerPromptFile (path to the
 // literal spec + edge cases + verify command), workerPrompt (same contract text
-// for runtime correction packets), verifierPrompt (what to re-check + which
+// for the fallback correction packet), verifierPrompt (what to re-check + which
 // adversarial cases to add). Optional: workdir, baseline (a snapshot ref - see
 // references/isolation.md - so a bad attempt can be rolled back instead of
 // patched, and the re-gate can diff against something real).
+//
+// Also optional, and what makes a correction round resume the executor's
+// session instead of falling back to a pinned Sonnet invocation (§11):
+//   correctionPromptFile  - a path that does NOT exist yet at prepare time
+//     (this is supported, see `references/external-executors.md` §5/dispatch
+//     prepare). The REVIEWER writes the correction packet here on FAIL - see
+//     the verdict prompt below. Never written by the instructor.
+//   correctionTokenFull   - `agent-exec dispatch prepare` token for this task,
+//     minted with `--prompt-file <workerPromptFile> --prompt-file
+//     <correctionPromptFile> --task <id> --isolate always` (same task id/tree
+//     as the round-1 token). Used when round 1 reported no session, or on a
+//     class escalation (B4 below).
+//   correctionTokenDelta  - same, but `--prompt-file <correctionPromptFile>`
+//     ONLY (no contract - the resumed session already holds it). Used when
+//     round 1 reported a session and the class did not escalate.
 const tasks = (typeof args !== 'undefined' && args && args.tasks) ? args.tasks : []
 
 const NEXT_CLASS = { light: 'standard', standard: 'deep', deep: 'deep' }
 
-// Self-contained correction packet (§6). It must stand alone: a FRESH worker
-// invocation reads it, not the one that failed - see §11.3.
+// Shared correction-packet body (§6 rule 7 / §11). Two shapes that must never
+// drift apart: `hasSession` picks the delta wording (the resumed executor
+// already holds the contract in-session) vs. the full wording (a reader with
+// no session needs pointing at the files on disk). `findings` is either the
+// literal JSON (when this script builds the packet itself, in the fallback
+// path below) or a placeholder string (when the REVIEWER is the one filling
+// it in, see reviewerPacketInstructions() below).
+function correctionPacketBody(gate, hasSession, findings) {
+  const intro = hasSession
+    ? 'You already hold this task\'s contract from your previous turn in this session. Do not re-read it.\n' +
+      'You were REJECTED. Fix exactly the findings below and nothing else.'
+    : 'Your predecessor attempted this task and was REJECTED. Its files are still on disk ' +
+      'at the paths named in the contract; read them first, then fix exactly what is ' +
+      'listed below and nothing else.'
+  return '--- CORRECTION PACKET (gate ' + gate + ') ---\n' + intro + '\n' +
+    'Every finding cites the contract line it violates - if a finding contradicts the contract, ' +
+    'reply ESCALATE instead of guessing. Honor every `must_not_change` field: those are already accepted.\n' +
+    'Rejection findings:\n' + findings +
+    '\nThe next review will check ONLY these findings plus regressions they could cause.'
+}
+
+// Fallback-path correction packet (§11 edge case: no correction tokens were
+// prepared for this task, or round 1 could not be isolated at all - so there
+// is no session to resume and no token to dispatch through). It must stand
+// alone: a FRESH worker invocation reads it, not the one that failed. Always
+// the full shape - see `correctionPacketBody()` above, which this reduces to
+// so the two paths never drift.
 function correctionPacket(task, verdict, gate, isoPath) {
   return (isoPath
       ? treeLine(isoPath) + 'That tree holds your predecessor\'s attempt.\n\n'
       : 'You are in a FRESH tree: your predecessor\'s files may be absent. If a path named below ' +
         'does not exist, implement it from the contract instead of hunting for it elsewhere.\n\n') +
-    task.workerPrompt +
-    '\n\n--- CORRECTION PACKET (gate ' + gate + ') ---\n' +
-    'Your predecessor attempted this task and was REJECTED. Its files are still on disk ' +
-    'at the paths named in the contract above; read them first, then fix exactly what is ' +
-    'listed below and nothing else. Every finding cites the contract line it violates - ' +
-    'if a finding contradicts the contract, report ESCALATE instead of guessing.\n' +
-    'Honor every `must_not_change` field: those paths/behaviors are already accepted.\n' +
-    'Rejection findings:\n' + JSON.stringify(verdict.feedback) +
-    '\nThe next review will check ONLY these findings plus regressions they could cause.'
+    task.workerPrompt + '\n\n' +
+    correctionPacketBody(gate, false, JSON.stringify(verdict.feedback))
 }
 
-// A correction packet is assembled at runtime from the reviewer verdict, so it has no
-// file on disk. A correction round therefore bypasses the relay and goes straight to a
-// pinned Claude tier via `agent()` - which means IT is on you to isolate, exactly as in
-// the delegate branch above: reuse the task's worktree so the packet's "your
-// predecessor's files are on disk" is true, and only fall back to a fresh `isolation:
-// 'worktree'` when round 1 could not be isolated at all.
+// Appended to the verdict-generating agent()'s prompt (both the first-gate
+// verifierPrompt and the re-gate prompt below). On FAIL - and ONLY on FAIL -
+// the reviewer itself writes the correction packet to task.correctionPromptFile,
+// in the exact shape a resumed vs. fresh next-round worker needs (§11 B3).
+// `hasSession` reflects whether THIS round's work call reported a session
+// (out.sessionId after it ran) - that determines what the NEXT round's
+// worker will already hold.
+function reviewerPacketInstructions(task, gate, hasSession) {
+  if (!task.correctionPromptFile) return ''
+  return '\n\n--- IF (AND ONLY IF) YOUR VERDICT IS FAIL ---\n' +
+    'Also write the exact text below to ' + task.correctionPromptFile + ' (create it, or replace it ' +
+    'if present), substituting the verdict\'s `feedback` array (as JSON) where marked:\n\n' +
+    correctionPacketBody(gate, hasSession, '<the verdict\'s `feedback` array as JSON>') +
+    '\n\nIf your verdict is PASS, do NOT write or touch ' + task.correctionPromptFile + '.'
+}
 
 // A re-gate is incremental, not a fresh audit (§11.2).
 function regatePrompt(task, verdict) {
@@ -275,21 +335,52 @@ function regatePrompt(task, verdict) {
 
 async function runTask(task) {
   let cls = task.cls || 'light'   // per the task's design latitude (§3)
+  let sessionClass = cls          // class in effect when `out` below was last populated
   let prior = null
   const iso = {}                  // dispatchClass fills iso.path with the task's tree
+  const out = { sessionId: null, resumed: false } // dispatchClass fills this from the last dispatch (§11 B1)
 
   for (let gate = 1; gate <= MAX_GATES; gate++) {
-    const work = prior
-      ? await agent(correctionPacket(task, prior, gate, iso.path), {
+    let work
+    if (prior) {
+      // Correction round: go back through dispatchClass, same as round 1, so
+      // agent-exec's per-task session store (keyed on task.dispatchToken's
+      // `--task <id>`) auto-resumes the SAME executor that did round 1 - it
+      // never sees the contract go cold. A class escalation forces the full,
+      // non-resuming token regardless of out.sessionId: the resumed session
+      // belongs to the OLD class's executor, which the new class may not even
+      // route to (§11 B4). Otherwise, full vs delta is chosen by whether
+      // round 1 reported a session at all (§11 B2).
+      const escalated = cls !== sessionClass
+      const token = escalated
+        ? task.correctionTokenFull
+        : (out.sessionId ? task.correctionTokenDelta : task.correctionTokenFull)
+      if (token) {
+        const files = (escalated || !out.sessionId)
+          ? [task.workerPromptFile, task.correctionPromptFile]
+          : [task.correctionPromptFile]
+        work = await dispatchClass(cls, files, {
+          label: task.id + '-work-' + gate, workdir: task.workdir,
+          dispatchToken: token, iso, out, noResume: escalated,
+        })
+        sessionClass = cls
+      } else {
+        // No correction token prepared for this task (or round 1 could not be
+        // isolated at all): fall back to the pinned-Sonnet path, unchanged.
+        work = await agent(correctionPacket(task, prior, gate, iso.path), {
           label: task.id + '-work-' + gate, model: 'sonnet',
           // No tree from round 1 means it ran in the user's tree; a fresh worktree
           // costs the predecessor's files but keeps this round off that tree.
           ...(iso.path ? {} : { isolation: 'worktree' }),
         })
-      : await dispatchClass(cls, task.workerPromptFile, {
-          label: task.id + '-work-' + gate, workdir: task.workdir,
-          dispatchToken: task.dispatchToken, iso,
-        })
+      }
+    } else {
+      work = await dispatchClass(cls, task.workerPromptFile, {
+        label: task.id + '-work-' + gate, workdir: task.workdir,
+        dispatchToken: task.dispatchToken, iso, out,
+      })
+      sessionClass = cls
+    }
 
     // A worker that hits a design decision, a boundary crossing, or an
     // unexplained failure reports ESCALATE instead of looping (§11.3). Bump the
@@ -307,11 +398,15 @@ async function runTask(task) {
     // The reviewer audits the tree the work landed in, not the session cwd: an
     // isolated worker's diff is invisible from there, and a review that passes
     // against untouched files is worse than no review at all.
-    const verdict = await agent(treeLine(iso.path) + (prior ? regatePrompt(task, prior) : task.verifierPrompt), {
-      label: task.id + '-verify-' + gate,
-      model: 'sonnet',
-      schema: VERDICT_SCHEMA,
-    })
+    const verdict = await agent(
+      treeLine(iso.path) + (prior ? regatePrompt(task, prior) : task.verifierPrompt) +
+        reviewerPacketInstructions(task, gate, out.sessionId != null),
+      {
+        label: task.id + '-verify-' + gate,
+        model: 'sonnet',
+        schema: VERDICT_SCHEMA,
+      },
+    )
 
     // agent() returns null when skipped or on a terminal error - guard, or the
     // whole task silently drops.
@@ -388,7 +483,7 @@ Mandatory for every `workerPrompt`:
 4. **Name the files the worker owns** — and, when other workers run concurrently, say that everything else is off-limits (§5's same-tree safety rule, or give it a worktree per `references/isolation.md`).
 5. **Permit escalation explicitly.** State that a decision the packet doesn't settle, a change crossing the ownership boundary, or a failure it can't explain locally should come back as `ESCALATE` rather than a guess (§11.3).
 6. **Keep relay-dispatched worker prompts on disk.** Write the prompt to a FILE and give the relay only its path. Never put task text, a base64 blob, or any other payload in the relay's prompt: it is a model and will act on the text or fail to reproduce it verbatim. Split shared preamble and per-task contract into separate files and pass `--prompt-file` twice rather than duplicating the preamble.
-7. **A correction packet must stand alone.** It goes to a *fresh* worker, so it carries: the original contract in full, the rejection findings with their `cited_contract`, the `must_not_change` paths, the fact that the previous attempt's files are still on disk, and what the next gate will check. `correctionPacket()` in §5 does this; hand-written prompts must include all six.
+7. **A correction packet has two shapes, chosen at runtime.** When the round-1 executor's session can be resumed (§11), the packet is a *delta*: just the rejection findings with their `cited_contract`, the `must_not_change` paths, and what the next gate checks — the session already holds the contract. When there is no session to resume (a Claude tier, or a task with no correction tokens prepared), the packet must stand alone: the original contract in full, plus the same findings/`must_not_change`/next-gate text, plus the fact that the previous attempt's files are still on disk. `correctionPacketBody()` in §5 builds both shapes from one source so they never drift; `correctionPacket()` wraps the full shape for the no-session fallback path.
 
 **Density:** write worker/verifier prompts terse, imperative, English — they are read by cheap models, not humans. **Compress the scaffolding, never the contract:** enumerated I/O examples, boundary values, and the verification command are compression-exempt, and structure (tables, example rows, the response `schema`) beats terse prose for removing ambiguity. Reasoning and the thinking-inflation trap: `references/authoring.md` §3.
 
@@ -429,7 +524,7 @@ Rounds are the pipeline's real cost. Slow runs are usually not slow because a mo
 - **Findings carry a defect `family`; the reviewer sweeps siblings before reporting.** One round closes the class, not one instance.
 - **Gate 2 is a re-gate, not a re-audit** (`regatePrompt()`, §5). If it reports `new_family`, the loop stops and hands back to you: the first sweep was wrong, so another automatic round just finds the next sibling.
 - **Escalate the class on `ESCALATE` or a twice-failing family** — that doesn't consume a gate, since a mis-sized packet is not a defect. Start auth/session/concurrency/security work at `standard`/`deep` rather than proving it through a cheap failure. Escalation never widens scope.
-- **Corrections go to a *fresh* invocation**, never back to the rejected worker, which is anchored on the reasoning that produced the defect. Resume (`SendMessage`) only when a long investigation would be expensive to reconstruct.
+- **Corrections resume the round-1 executor's session when one exists, and fall back to a fresh invocation only when it doesn't.** `runTask()` (§5) sends a correction round back through `dispatchClass()` with a per-task correction token, so agent-exec's session store picks the SAME executor back up mid-conversation — the anchoring cost of returning to the "same" worker is outweighed by not re-sending the full contract on every round. A class escalation always forces a full, non-resuming token regardless: the resumed session belongs to the OLD class's executor, which the new class may not even route to. Only a Claude-tier round-1, or a task with no correction tokens prepared, falls back to a genuinely fresh pinned-Sonnet `agent()` call with the full packet.
 - **Budget invocations:** ~12 shell calls per worker and per review, 6 per re-gate. An interrupted or budget-exhausted review is a FAIL, never a PASS.
 
 Rationale, failure modes, and the family taxonomy: `references/gates.md`.

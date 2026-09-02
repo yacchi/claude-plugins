@@ -25,9 +25,17 @@ Codex CLI 0.144+はGPT-5.6を3つのサイズティアで提供している — 
 
 **長文コンテキストに関する注意:** Lunaは長文コンテキストの想起が測定可能なレベルで弱い。名目上light/standardクラスのタスクであっても、大規模リポジトリの深い探索が必要な場合(単なる小さな自己完結の変更ではない場合)は、そのタスクに限り`deep`(Sol/xhigh)にエスカレーションすること — サンプル設定の`long_context_escalation`フィールドがこのトリガーを明示的に文書化しているので、毎回ゼロから判断する必要はない。
 
-Codexは公式の`codex:codex-rescue`エージェントを通る`dispatch: agent`のままにする。実行コストは相関IDでラン単位に帰属でき、台帳はセッション単位でも既定で有効なので、`agent-exec usage --run <workflow-run-id>`または`agent-exec usage --session <session-id>`で確認する。
+**(方針転換、v0.27.0)** Codexは今や`dispatch: cli`が既定であり、Copilot/opencodeと同じ`agent-exec dispatch`/`run`経路で`codex exec --json` / `codex exec resume <SESSION_ID> --json`として直接起動する。理由は3つ:
 
-相関マーカーの配置理由とルールは`references/config.md`を参照すること。
+1. `codex-companion.mjs`(`codex:codex-rescue`が内部で叩くラッパー)が提供する継続手段は`--resume-last`(このリポジトリで最も新しいスレッド)だけで、並列タスク下では**間違ったセッションを拾う**。CLIを直接叩けば明示的なセッションUUIDを渡せる。
+2. 直接起動なら`turn.completed`イベントからセッションIDとトークン内訳をその場で得られる — 旧来の、`~/.codex/sessions/**/*.jsonl`を相関IDや経路の指紋でスキャンする事後突合(`parse_codex_rollout_lines`/`match_codex_rollouts`)は、それでも`dispatch: agent`側の帰属機構としては引き続き使われる(下記)。
+3. §1のモデルポリシー(Sol/Terra/Luna + effort)自体は変わらない — 変わるのは起動経路だけである。
+
+`codex:codex-rescue`を通る**`dispatch: agent`は、明示的なオーバーライドとして引き続きフルサポートされる**(`external_executors.codex.dispatch: agent`を`orchestra.yaml`で指定する)。この経路を選んだ場合、実行コストは相関ID(パス指紋が主・マーカーが副)でラン単位に帰属し、台帳はセッション単位でも既定で有効なので、`agent-exec usage --run <workflow-run-id>`または`agent-exec usage --session <session-id>`で確認する。相関マーカーの配置理由とルールは`references/config.md`を参照すること。
+
+**タスクごとのセッションストアと自動再開(`dispatch: cli`のCodex専用)。** パス`~/.claude/orchestra/sessions/codex-<task>.json`(ディレクトリ0700・ファイル0600、作成はO_CREAT|O_EXCL、更新はatomic replace)に、タスクごとの直近セッションを`{"executor":"codex","task":"<task id>","session_id":"<uuid>","workdir":"<abspath>","updated":"<ISO8601 UTC>"}`の形で保持する。`agent-exec dispatch --task <id>`(`--resume`未指定)は、このストアを`(executor, task)`で引き、ヒットすれば自動再開(`resumed: true`)、ミスなら新規セッション(`resumed: false` — ミスはエラーでも警告でもない通常状態)。明示`--resume SID`は常にストアより優先。`--no-resume`はそのコール限りストア参照自体をオプトアウトする。保存された`workdir`が今回の`--workdir`と異なる場合はミス扱い(=別ツリーで再利用されたタスクIDが他人のセッションを拾わない)。保存はretentionの新しい設定キーを持たず、台帳/トークンの掃除と同じ`retention_days`を再利用する(`_sweep_retention`)。`agent-exec dispatch session --task <id> [--executor codex] [--json]`で保存済みレコード(無ければ`{"status":"none"}`)を確認でき、これ自体は何も作成・変更しない。
+
+`run` SKILL.md §5/§11の相関ラウンド(correction round)は、まさにこのセッションストアを使ってCodexの会話を再開する — `dispatchClass()`が`--task <id>`付きの`correctionTokenDelta`/`correctionTokenFull`をディスパッチするだけで、agent-exec側が自動再開を判断する。
 
 ## 2. Copilotのモデルカタログ・候補・CLI利用方法
 
@@ -166,7 +174,19 @@ agent-exec copilot --resume={session_id} -p {promptfile} --model {model} --effor
 - パーミッションのマッチはトップレベルコマンドの前方一致で、**子プロセスは対象外**。そのため`--add-dir`の付与を許可ルール側で強制することはできない(ルールは`copilot`/`agent-exec`で始まる任意の呼び出しを許可する)。`--add-dir <workdir>`によるファイルアクセス限定は`command`テンプレート(§2)側で担保する。
 - **`--deny-tool`はオプションの参考程度の知見であって、境界(boundary)ではない(M2)。** さらに絞りたい向きに`--deny-tool 'shell(git push:*)'`のような否定ルールを`command`テンプレートに足す運用は可能だが、M2で実測した通りCopilotのツール除外系フラグ(`--allow-tool`/`--deny-tool`/`--excluded-tools`)はエージェントによる迂回(別ツール経由の再実行)を防げない。これは安全側の追加ヒントであって、これに依存した権限設計をしないこと。真の封じ込めは外部OSサンドボックス側の課題(§2冒頭のM2の注記、future work)である。
 
-Codexの`dispatch: agent`(codex:codex-rescueサブエージェント経由)はこれらの設定を必要としない — 生のBashコマンドではなくサブエージェント呼び出しだからである。
+**Codexの生CLIレシピ(§1参照、`dispatch: cli`が既定):**
+
+```bash
+agent-exec codex exec --json --model {model} --config model_reasoning_effort={effort} \
+  --sandbox workspace-write --output-last-message {outfile} --cd {workdir} < {promptfile}
+# resume:
+agent-exec codex exec resume {session_id} --json --model {model} --config model_reasoning_effort={effort} \
+  --sandbox workspace-write --output-last-message {outfile} --cd {workdir} < {promptfile}
+```
+
+CopilotやopencodeがCLI起動フラグで`--resume`/`--session`を持つのと同じ意味で、Codexも`exec resume <SESSION_ID>`によりセッション継続可能(session-continuable)なエグゼキュータである — この点でCopilot/opencodeと並ぶ扱いになる(Codexだけ別枠、という以前の位置づけは撤回)。
+
+`dispatch: agent`(`codex:codex-rescue`サブエージェント経由、上記の明示的オーバーライド)はこれらのBashパーミッション設定を必要としない — 生のBashコマンドではなくサブエージェント呼び出しだからである。
 
 ## 3. 公式の単価表と、実際の請求に関する注意
 
@@ -267,7 +287,8 @@ priority:
 **エグゼキュータ別のunavailableシグナル(§1・§2・§3で説明した各エグゼキュータの実体と対応):**
 
 - **Claude(`claude`sentinel、`agent()`経由)**: `agent()`が`null`を返す(リトライ後も終了しないエラー)場合をunavailableとみなし、次の候補に降格する。(`null`はユーザーによるagentスキップも意味しうるが、いずれも「先に進む」という結論は同じなので、このオーバーロードは許容する。)
-- **Codex(`dispatch: agent`、`codex:codex-rescue`)**: `codex:codex-rescue`エージェントが`null`/エラーを返した場合、またはリレーされたテキストが使用上限/レートリミット/「resets at」/429系のメッセージを報告した場合。
+- **Codex(既定の`dispatch: cli`)**: Copilot/opencodeと同じ判定パス — §2で示した安価なHaikuの**リレーエージェント**が`codex exec --json`を実行し、その結果(終了コード・イベント内容)を検査する。終了コードが非ゼロ、または使用上限/レートリミット/「resets at」/429系のメッセージが見えた場合にunavailableと報告する。
+- **Codex(`dispatch: agent`、`codex:codex-rescue`への明示的オーバーライド時のみ)**: `codex:codex-rescue`エージェントが`null`/エラーを返した場合、またはリレーされたテキストが同様のメッセージを報告した場合。
 - **Copilot(`dispatch: cli`)**: §2で示した安価なHaikuの**リレーエージェント**がCopilot CLIを実行し、その結果(終了コード・出力内容)を検査する。終了コードが非ゼロ、またはエラー/quota/credits/premium-request/認証系のリミット表示が見えた場合にunavailableと報告する。このリレーは生のCLIログをinstructorに渡してはならず、判定結果だけを短く返す。
 
   **ただしリミット表示の走査対象は「裏付けのある出力」に限る(default-deny)。** 走査するのはstderr全文・JSONとしてパースできなかったstdout行(平文のquota/認証エラーはまさにここに出る)・そして`session.error`のようなエラー種別イベントだけであり、`assistant.message`に加えて`tool.execution_complete`・`system.message`・reasoning・リクエストのエコーといった**ワーカー自身のテキストを運ぶイベントは走査しない**。これは実害から導かれた規則である: ワーカーが書いていたREADMEに含まれるHTTP 429のバックオフ表や、「Implement JWT auth ...」というタスクプロンプトのエコーが、`exit_code: 0`で正常に回答を返したランを`unavailable`(reason: rate-limit / auth)に転ばせていた。cooldownはこの判定を1時間の実可用性喪失へ増幅するため、`record_unavailable_cooldown`側にも「終了コード0かつ非空の回答があるならcooldownを書かない」という二重の歯止めを置いてある。
@@ -388,9 +409,9 @@ Codex independent-reviewに渡すプロンプト末尾の指示例: 『Reply wit
 - **`agent-exec run <profile> --model M --effort E --workdir W --prompt-file F [--prompt-file G ...] [...]`** — profile(現状`copilot`)ごとのCLIフラグ規約と安全側デフォルト(`--disable-builtin-mcps`・`--add-dir`・`--output-format`)を一本化した、正規化ずみのディスパッチ入口。§2で示した生の`agent-exec copilot -p ... --model ... --effort ... --add-dir ... --output-format json --disable-builtin-mcps`と等価なコマンドを、`agent-exec run copilot --model gpt-5.6-luna --effort medium --workdir "$WORKDIR" --prompt-file TASK.md`のように短く書けるようにするもの。allow-allの注入は無い(M1のまま)。
   - **`--capture`を付けると、`os.execvpe`によるプロセス置換ではなく、copilotをサブプロセスとして起動してstdout/stderrをキャプチャし、そのJSONLをパースして`{ status, answer, session_id, reason, exit_code }`という正規化JSONオブジェクトを1つ、agent-exec自身のstdoutに出して終了コード0で返す。** `status`は`"ok"`または`"unavailable"`(quota/credits/auth/rate-limit/nonzero-exit/errorのいずれかが`reason`に入る)。エグゼキュータ側のunavailableは非ゼロ終了で表現されず、この`status`フィールドで表現される点に注意 — Haikuリレーはこの1つのJSONを読むだけでよく、jqでのJSONLパースはリレー側にはもう不要(§2)。`--capture`を付けない場合は従来どおり`os.execvpe`によるハンドオフのままで、挙動に変化はない。
 - **`agent-exec route --class <light|standard|deep|review|independent-review> [--archetype default|investigation] [--exhausted a,b] [--json|--text]`**(v0.11.0で追加)— §4の`priority`ウォークをコード側で実行する読み取り専用サブコマンド。4層configをマージし、各候補を`enabled`・binary/agent解決可否・`doctor`相当の`ready.<x>.ok`・`class_policy`該当有無・呼び出し側の`--exhausted`でゲートしたうえで、生き残った先頭候補を`{ class, archetype, executor, dispatch, model, effort, agent_type, candidates, remaining, skipped, source }`として返す(`skipped`には各候補が外れた理由が`{executor, reason}`で入る)。instructorはこれを呼ぶだけで、`priority`リストを手で読んで降格判定する作業から解放される。
-- **`agent-exec dispatch --class <cls> --prompt-file F [--prompt-file G ...] --workdir W [...]`**(v0.11.0で追加)— `route`をさらに一歩進めた、実際にディスパッチまで行うサブコマンド。内部で`route`を呼び、勝者が`dispatch: cli`のエグゼキュータ(Copilot)なら実際に実行して`{ status: "ok"|"unavailable", answer, session_id, reason, exit_code, executor, model, effort, route }`を返す。勝者がClaudeまたは`dispatch: agent`のエグゼキュータ(Codex)なら、実行はinstructor自身の`agent()`/Agentツール呼び出しでしか行えないため`{ status: "delegate", executor, model, effort, agent_type, route }`を返すに留める。有効な候補が一つも残らなければ`{ status: "unroutable", route }`。**これが`run` SKILL.md §5の`dispatchClass()`が包んでいる1回の呼び出しそのものであり、instructorが`light`/`standard`タスクのエグゼキュータを自分で決めることは無くなった — 1つの安価なリレーエージェント経由でこれを尋ね、返ってきたJSONで分岐するだけになる。**
+- **`agent-exec dispatch --class <cls> --prompt-file F [--prompt-file G ...] --workdir W [...]`**(v0.11.0で追加)— `route`をさらに一歩進めた、実際にディスパッチまで行うサブコマンド。内部で`route`を呼び、勝者が`dispatch: cli`のエグゼキュータ(Copilot・opencode・既定のCodex)なら実際に実行して`{ status: "ok"|"unavailable", answer, session_id, resumed, reason, exit_code, executor, model, effort, route }`を返す(`session_id`/`resumed`はセッション概念を持たないエグゼキュータでは`null`/`false`)。勝者がClaudeまたは`dispatch: agent`のエグゼキュータ(明示的にオーバーライドされたCodexなど)なら、実行はinstructor自身の`agent()`/Agentツール呼び出しでしか行えないため`{ status: "delegate", executor, model, effort, agent_type, route }`を返すに留める。有効な候補が一つも残らなければ`{ status: "unroutable", route }`。**これが`run` SKILL.md §5の`dispatchClass()`が包んでいる1回の呼び出しそのものであり、instructorが`light`/`standard`タスクのエグゼキュータを自分で決めることは無くなった — 1つの安価なリレーエージェント経由でこれを尋ね、返ってきたJSONで分岐するだけになる。** `--task <id>`かつ`--resume`未指定なら、`dispatch: cli`エグゼキュータについてタスクごとのセッションストアを自動参照する(上記「タスクごとのセッションストアと自動再開」参照)。`--no-resume`はこの参照だけをオプトアウトする。`agent-exec dispatch session --task <id> [--executor codex] [--json]`は保存済みレコードを読むだけの副作用なしサブコマンド。
 - **`agent-exec doctor [--json | --text]`**(既定`--json`)— シム自身のインストール状況(パス・PATH上か・マーケットプレイス/cacheどちらを指しているか)、`uv`の有無、`agent-exec config`と同じ4層configマージ結果(同じ`warnings`配列を`config.warnings`として含む)、`permissions.allow`中の`Bash(agent-exec:*)`ルールの有無(ベストエフォート)、そして各cliエグゼキュータの総合可否`ready.<name>.ok`(未充足の`missing[]`付き)を1回でまとめて返す、読み取り専用の診断サブコマンド。上記§4の認可事前チェックはこれ1本に集約する。**解決済みのconfig全体(`tiers`/`available`注記つき`external_executors`/`priority`)を`config.values`として同梱する**(解決失敗時は`null`、理由は`config.error`)ため、instructorは起動時の`doctor`1回で「可否verdict」と「解決済みモデルポリシー」の両方を得られ、`agent-exec config`を別途呼ぶ必要はない(config単体が欲しいときだけ`config`を使う)。シムが未インストールでもブートストラップパス経由で直接呼び出せ、レポート自体が「未準備」を表現するため、内部エラーでない限り常に終了コード0。
-  - `executors`セクションは、有効化済み`dispatch: cli`のものだけでなく**既知の全エグゼキュータ**(`codex`・`copilot`)を`enabled`/`dispatch`/`binary`/`available`つきで網羅する — `dispatch: agent`のCodexも`available`(バイナリのPATH上の有無、参考情報)と、実際の可否はサブエージェントのセッション解決に依存し`agent-exec`からは判定不能である旨の`note`付きで含まれる。`ready.<name>.ok`は従来どおり有効化済み`dispatch: cli`エグゼキュータのみに付与され、Codexのようなagent dispatchには`ready`の verdict を作らない(判定不能なため)。`setup`スキルはこれにより、`codex`/`copilot`いずれについても個別の`command -v`を実行する必要がない。
+  - `executors`セクションは、有効化済み`dispatch: cli`のものだけでなく**既知の全エグゼキュータ**(`codex`・`copilot`・`opencode`)を`enabled`/`dispatch`/`binary`/`available`つきで網羅する — 既定の`dispatch: cli`のCodexは他のcliエグゼキュータと同じく`ready.<name>.ok`(と`missing[]`)を持つ。`dispatch: agent`へ明示的にオーバーライドされた場合のみ、`available`(バイナリのPATH上の有無、参考情報)と、実際の可否はサブエージェントのセッション解決に依存し`agent-exec`からは判定不能である旨の`note`付きに切り替わり、`ready`のverdictは作られない(判定不能なため)。`setup`スキルはこれにより、`codex`/`copilot`/`opencode`いずれについても個別の`command -v`を実行する必要がない。
 
 ## 6. `agent-exec telemetry` — オプトインの匿名テレメトリ
 
@@ -560,4 +581,4 @@ Codex CLIは`~/.codex/config.toml`の`service_tier = "fast"`(値はモデルメ�
 
 したがって`external_executors.opencode`の`class_policy`は`github-copilot/*`のままにしてある。`openai/*`は「ChatGPTプラン側の枠を使いたい」「Copilotの枠を温存したい」場合の選択肢であって、コスト計測を捨てる判断とセットになる。
 
-**方針(決定済み): Codexはopencode経由に寄せず、`dispatch: agent`(`codex:codex-rescue`)のまま据え置く。** Copilotをopencodeに置き換える判断には、トークン効率(新規入力が約1/3)とドル建てコストという明確な利点があった。Codexについては同等の利点が無い — `openai/*`経由にしてもコストは0で返り、トークン効率もCodex CLI自体が既に軽い(新規入力11-13k)。つまり乗り換えの動機がなく、`codex:codex-rescue`が持つ相関IDによるコスト帰属を失うだけになる。opencodeの`openai/*`は、上記の枠の都合が生じたときに個別に検討する対象に留める。
+**方針(決定済み): Codexはopencode経由に寄せず、独自の`dispatch: cli`(§1、`codex exec`直接起動)のまま据え置く。** Copilotをopencodeに置き換える判断には、トークン効率(新規入力が約1/3)とドル建てコストという明確な利点があった。Codexについては同等の利点が無い — `openai/*`経由にしてもコストは0で返り、トークン効率もCodex CLI自体が既に軽い(新規入力11-13k)。つまり乗り換えの動機がなく、`codex exec --json`が直接返すセッションID・トークン内訳を失うだけになる。opencodeの`openai/*`は、上記の枠の都合が生じたときに個別に検討する対象に留める。(なお、これは§1で撤回した「`dispatch: agent`のまま据え置く」という*旧*方針とは別の判断軸である — こちらはopencode経由に寄せるかどうか、§1はCLI直接起動かサブエージェント経由かの選択。)

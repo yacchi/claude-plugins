@@ -28,7 +28,7 @@ For tasks with modest design latitude, call `dispatchClass('standard', workerPro
 
 **Overlap adversarial-test authoring with implementation, and author once.** §7 measured that the review pass's dominant cost is *authoring* adversarial tests — and those tests derive from the **spec, not the implementation** (the `formatBytes(1048575) → "1 MiB"` boundary test that caught the PoC bug is fully spec-derivable). So author them *concurrently with* the first implementation, and author them **once** — the spec doesn't change across retries, only the implementation does. Each verify step then merely *runs* the pre-authored tests plus a whitebox glance, which is cheap. The pre-authored tests are exactly `orchestra-review`'s "≥3 additional adversarial tests"; only their authoring moves earlier.
 
-This restructures `runTask` (author-tests worker owns the `tests/` paths, impl worker owns the `src/` paths — disjoint, per the same-tree safety rule above):
+This restructures `runTask` (author-tests worker owns the `tests/` paths, impl worker owns the `src/` paths — disjoint, per the same-tree safety rule above). **This sample predates session-aware corrections (`SKILL.md` §5/§11) and is abridged accordingly** — its correction round still calls `correctionPacket()` directly rather than going back through `dispatchClass()` with a correction token. Apply the same resume-when-possible restructuring from `SKILL.md` §5's `runTask()` here too when you actually use this variant: the delta vs. full choice, the escalation-forces-full rule, and the reviewer writing `correctionPromptFile` on FAIL:
 
 ```javascript
 // (dispatchClass(), correctionPacket(), regatePrompt(), NEXT_CLASS, MAX_GATES and

@@ -501,10 +501,13 @@ class ResolveRouteTests(unittest.TestCase):
         self.assertEqual(route["remaining"], [])
 
     def test_agent_dispatch_not_gated_on_binary_presence(self):
-        # codex is dispatch: agent. Point `standard`'s priority straight at
-        # it and give it NO ready entry at all (a real doctor report never
-        # populates `ready` for dispatch: agent names) -- it must still win.
+        # codex defaults to dispatch: cli now, so this exercises a user
+        # override back to `dispatch: agent`. Point `standard`'s priority
+        # straight at it and give it NO ready entry at all (a real doctor
+        # report never populates `ready` for dispatch: agent names) -- it
+        # must still win.
         cfg = self._cfg()
+        cfg["external_executors"]["codex"]["dispatch"] = "agent"
         cfg["priority"]["standard"]["default"] = ["codex"]
         route = agent_exec.resolve_route(cfg, {"ready": {}}, "standard")
         self.assertEqual(route["executor"], "codex")
@@ -1025,7 +1028,10 @@ class DispatchCommandBehaviorTests(unittest.TestCase):
         self.assertEqual(output["route"]["executor"], "claude")
 
     def test_delegate_status_for_agent_dispatch_does_not_spawn_subprocess(self):
+        # `dispatch: agent` is a supported user override of the codex default
+        # (cli); this pins that the delegate payload it produces is unchanged.
         cfg = copy.deepcopy(agent_exec.DEFAULTS)
+        cfg["external_executors"]["codex"]["dispatch"] = "agent"
         cfg["priority"]["standard"]["default"] = ["codex"]
         doctor_report = {"ready": {}}
 
@@ -1091,6 +1097,32 @@ class DispatchCommandBehaviorTests(unittest.TestCase):
         self.assertIn("route", output)
         self.assertEqual(output["route"]["executor"], "copilot")
         self.assertEqual(output["route"]["remaining"], ["claude"])
+        # Session-continuity keys ride on every cli dispatch result, not only
+        # the executors that actually have resumable sessions.
+        self.assertIn("session_id", output)
+        self.assertIs(output["resumed"], False)
+
+    def test_codex_defaults_to_cli_dispatch_and_is_gated_on_its_binary(self):
+        """A5: codex ships `dispatch: cli`, so it is readiness-gated exactly
+        like copilot/opencode instead of being waved through as an agent."""
+        cfg = copy.deepcopy(agent_exec.DEFAULTS)
+        self.assertEqual(
+            cfg["external_executors"]["codex"]["dispatch"], "cli")
+        cfg["priority"]["standard"]["default"] = ["codex"]
+
+        route = agent_exec.resolve_route(cfg, {"ready": {}}, "standard")
+        self.assertIsNone(route["executor"])
+        self.assertEqual(
+            route["skipped"],
+            [{"executor": "codex", "reason": "not-ready:unknown"}],
+        )
+
+        ready = {"ready": {"codex": {"ok": True, "missing": []}}}
+        route = agent_exec.resolve_route(cfg, ready, "standard")
+        self.assertEqual(route["executor"], "codex")
+        self.assertEqual(route["dispatch"], "cli")
+        # `agent_type` is only reported for a `dispatch: agent` route.
+        self.assertIsNone(route["agent_type"])
 
     def test_unroutable_status(self):
         cfg = copy.deepcopy(agent_exec.DEFAULTS)

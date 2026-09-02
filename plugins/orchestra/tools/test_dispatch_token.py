@@ -66,17 +66,40 @@ class DispatchTokenTests(unittest.TestCase):
 
     def test_prepare_rejects_invalid_inputs_without_spec(self):
         cases = [
-            ("--class", "standard", "--prompt-file", str(self.root / "missing"),
-             "--workdir", str(self.root)),
             ("--prompt-file", str(self.contract), "--workdir", str(self.root)),
-            ("--class", "standard", "--prompt-file", str(self.root / "missing")),
             ("--class", "standard", "--prompt-file", str(self.contract)),
+            ("--class", "standard", "--workdir", str(self.root)),
         ]
         for extra in cases:
             result = self.run_cli("dispatch", "prepare", *extra)
             self.assertEqual(result.returncode, 2)
             self.assertEqual(result.stdout, "")
         self.assertFalse(self.token_dir().exists())
+
+    def test_prepare_accepts_a_prompt_file_that_does_not_exist_yet(self):
+        """A correction round's feedback file is written between prepare and
+        dispatch, so prepare must not stat the prompt files."""
+        missing = self.root / "feedback-not-written-yet.md"
+        result = self.run_cli(
+            "dispatch", "prepare", "--class", "standard",
+            "--prompt-file", str(missing), "--workdir", str(self.root),
+            "--isolate", "never", "--json",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        token = json.loads(result.stdout)["token"]
+        self.assertRegex(token, r"^dsp-[0-9a-f]{12}$")
+
+        # Existence is enforced at dispatch time, with the path named.
+        failed = self.run_cli("dispatch", "--token", token, "--capture")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn(str(missing), failed.stderr)
+        self.assertEqual(failed.stdout, "")
+
+        # ... and the same token works once the file lands.
+        missing.write_text("late contract\n", encoding="utf-8")
+        ok = self.run_cli("dispatch", "--token", token, "--capture")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertIn("status", json.loads(ok.stdout))
 
     def test_token_dispatch_matches_direct_and_is_reusable(self):
         token = self.prepare()

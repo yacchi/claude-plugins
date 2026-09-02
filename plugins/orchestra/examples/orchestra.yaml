@@ -46,8 +46,22 @@ tiers:
 external_executors:
   codex:
     enabled: true
-    dispatch: agent
-    agent_type: codex:codex-rescue
+    # `dispatch: cli` is the default as of v0.27.0: direct `codex exec`/`codex
+    # exec resume <SESSION_ID>` invocation, same shape as copilot/opencode
+    # below — this replaced the old `dispatch: agent` (via `codex:codex-rescue`)
+    # default because the CLI takes an explicit session UUID (the rescue
+    # agent's only continuation, `--resume-last`, grabs the wrong session
+    # under parallel tasks) and reports session id + token usage inline
+    # instead of needing post-hoc rollout-file scanning. `dispatch: agent` +
+    # `agent_type: codex:codex-rescue` remains a fully supported override —
+    # see run skill references/external-executors.md §1.
+    dispatch: cli
+    command: >-
+      agent-exec codex exec --json --model {model} --config model_reasoning_effort={effort}
+      --sandbox workspace-write --output-last-message {outfile} --cd {workdir} < {promptfile}
+    resume_command: >-
+      agent-exec codex exec resume {session_id} --json --model {model} --config model_reasoning_effort={effort}
+      --sandbox workspace-write --output-last-message {outfile} --cd {workdir} < {promptfile}
     classes:
       - standard
       - deep

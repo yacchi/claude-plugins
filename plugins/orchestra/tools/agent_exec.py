@@ -60,15 +60,26 @@ PROFILES = {
         "mode": "headless",
         "inject_args": ["--auto"],
     },
+    # codex runs headless through `codex exec --json`. Nothing needs to be
+    # injected into a raw passthrough call: the flags that make a dispatch
+    # non-interactive (`exec`, `--json`, the sandbox mode) are added by
+    # `_build_codex_argv`, which is the only builder `run`/`dispatch` use.
+    "codex": {
+        "exec": "codex",
+        "env": {},
+        "mode": "headless",
+        "inject_args": [],
+    },
 }
 
 # Registry of executors agent-exec knows about even when they have no CLI
-# passthrough profile (e.g. codex, which is dispatch: agent and never gets
-# exec'd directly by agent-exec). Used so `doctor` can report presence/
-# absence for every known executor, not just ones enabled with dispatch=cli.
+# passthrough profile. Used so `doctor` can report presence/absence for every
+# known executor, not just ones enabled with dispatch=cli. Every entry here
+# happens to have a passthrough profile today; the registry stays separate so
+# a `dispatch: agent`-only executor can still be reported on.
 KNOWN_EXECUTORS = {
     "copilot": {"binary": "copilot", "default_dispatch": "cli"},
-    "codex": {"binary": "codex", "default_dispatch": "agent"},
+    "codex": {"binary": "codex", "default_dispatch": "cli"},
     "opencode": {"binary": "opencode", "default_dispatch": "cli"},
 }
 
@@ -118,9 +129,16 @@ DEFAULTS = {
                 "standard": {"model": "gpt-5.6-luna", "effort": "medium"},
             },
         },
+        # codex dispatches through the `codex exec` CLI (`dispatch: cli`), so
+        # agent-exec captures its thread id directly from the `--json` stream
+        # and can resume the SAME session for a retry round (see
+        # `read_task_session`/`write_task_session`). `agent_type` is retained
+        # because a user override of `dispatch: agent` still needs it: that
+        # path keeps working exactly as before, delegating to the
+        # `codex:codex-rescue` subagent with a correlation id.
         "codex": {
             "enabled": True,
-            "dispatch": "agent",
+            "dispatch": "cli",
             "agent_type": "codex:codex-rescue",
             "classes": ["standard", "deep", "review"],
             "class_policy": {
@@ -260,12 +278,24 @@ Usage:
   agent-exec dispatch --class <cls> [--archetype A] [--exhausted a,b]
                   [--no-cooldown] [--isolate auto|always|never] [--task ID]
                   --prompt-file F [--prompt-file G ...] --workdir W
-                  [--resume SID] [--capture] [--run-id ID]
+                  [--resume SID] [--no-resume] [--capture] [--run-id ID]
   agent-exec dispatch prepare --class <cls> --prompt-file F [--prompt-file G ...]
                   --workdir W [--archetype A] [--run-id R]
                   [--isolate auto|always|never] [--task ID] [--json]
+                                  mint a dispatch token for the run. The
+                                  --prompt-file paths need not exist yet (a
+                                  correction round's feedback file is often
+                                  written between prepare and dispatch); they
+                                  must exist when the token is dispatched.
+  agent-exec dispatch session --task ID [--executor N] [--json]
+                                  print the session record a `dispatch: cli`
+                                  executor with resumable sessions (codex)
+                                  stored for that task, or status `none`.
+                                  --executor defaults to codex. Read-only:
+                                  it never creates or changes anything, and
+                                  exits 0 either way.
   agent-exec dispatch --token dsp-<12 lowercase hex> [--capture]
-                  [--exhausted a,b]
+                  [--exhausted a,b] [--no-resume]
                                   one-call resolve + dispatch: resolves the
                                   route, then runs it. If the winning
                                   executor is `dispatch: cli` (e.g. copilot),
@@ -285,6 +315,14 @@ Usage:
                                   --capture`. Also self-logs a "dispatch"
                                   telemetry record for the cli branch, same
                                   as `run --capture`.
+                                  With --task, a `dispatch: cli` executor that
+                                  has resumable sessions (codex) continues
+                                  that task's previous session instead of
+                                  starting cold, so a correction round keeps
+                                  the contract it already read. --resume SID
+                                  overrides the lookup, --no-resume skips it;
+                                  the result carries `session_id` and
+                                  `resumed`.
                                   --isolate (default auto) runs the worker in
                                   its own git worktree when the tree is dirty,
                                   so a worker cannot destroy the user's
@@ -1281,6 +1319,111 @@ def _token_dir_from_cfg(cfg):
     return os.path.join(os.path.dirname(os.path.abspath(_ledger_dir_from_cfg(cfg))), "tokens")
 
 
+# --- per-task executor session store ----------------------------------------
+#
+# A `dispatch: cli` executor with a resumable session (codex today) keeps one
+# session per orchestra task id, so a retry/correction round continues the
+# SAME conversation instead of paying for a cold re-read of the whole
+# contract. The store is a sibling of the run ledger and the dispatch tokens
+# (`~/.claude/orchestra/sessions/` with the default ledger dir), is swept by
+# the same `ledger.retention_days` knob, and is advisory only: every read
+# failure degrades to "no stored session", which just means a fresh run.
+
+_SESSION_RECORD_KEYS = ("executor", "task", "session_id", "workdir", "updated")
+
+
+def _session_store_dir_from_cfg(cfg):
+    return os.path.join(
+        os.path.dirname(os.path.abspath(_ledger_dir_from_cfg(cfg))), "sessions"
+    )
+
+
+def _session_store_path(cfg, executor, task):
+    """Path of the (executor, task) session record.
+
+    Both components go through `sanitize_task_id`, so neither an executor
+    name nor a task id out of a config file can escape the store directory."""
+    return os.path.join(
+        _session_store_dir_from_cfg(cfg),
+        "%s-%s.json" % (sanitize_task_id(executor), sanitize_task_id(task)),
+    )
+
+
+def read_task_session(cfg, executor, task):
+    """Return the stored session record for (executor, task), or None.
+
+    None -- never an exception -- for every failure mode: the store does not
+    exist, the file is unreadable, the JSON is malformed/truncated, or a
+    required key is missing or not a non-empty string. A miss is the NORMAL
+    first-round state and is never reported to the caller as a problem."""
+    try:
+        path = _session_store_path(cfg, executor, task)
+    except ValueError:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            record = json.load(handle)
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    for key in _SESSION_RECORD_KEYS:
+        value = record.get(key)
+        if not isinstance(value, str) or value == "":
+            return None
+    return record
+
+
+def write_task_session(cfg, executor, task, session_id, workdir):
+    """Create/replace the (executor, task) session record; return it.
+
+    Directory 0700, file 0600. The record is written to a private temp file
+    opened O_CREAT|O_EXCL and then atomically renamed over the target, so a
+    concurrent reader sees either the old record or the new one, never a
+    half-written file."""
+    directory = _session_store_dir_from_cfg(cfg)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    os.chmod(directory, 0o700)
+    path = _session_store_path(cfg, executor, task)
+    record = {
+        "executor": executor,
+        "task": task,
+        "session_id": session_id,
+        "workdir": os.path.abspath(workdir),
+        "updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    payload = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+    for attempt in range(10):
+        tmp_path = "%s.tmp-%d-%d" % (path, os.getpid(), attempt)
+        try:
+            fd = os.open(tmp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            continue
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(payload)
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+        return record
+    raise OSError("could not write session record: %s" % path)
+
+
+def _same_workdir(a, b):
+    """True iff both paths name the same existing-or-not directory.
+
+    Symlinks are resolved on both sides (macOS's /tmp -> /private/tmp is the
+    common case) so an unresolved-vs-resolved pair is not mistaken for a
+    task id reused in a different tree."""
+    if not isinstance(a, str) or not isinstance(b, str) or not a or not b:
+        return False
+    return os.path.realpath(os.path.abspath(a)) == os.path.realpath(os.path.abspath(b))
+
+
 def _sweep_retention(cfg):
     global _ledger_retention_ran
     if _ledger_retention_ran:
@@ -1308,12 +1451,13 @@ def _sweep_retention(cfg):
                     candidate = os.path.join(current, name)
                     if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
                         os.remove(candidate)
-        token_dir = _token_dir_from_cfg(cfg)
-        if os.path.isdir(token_dir):
-            for name in os.listdir(token_dir):
+        for directory in (_token_dir_from_cfg(cfg), _session_store_dir_from_cfg(cfg)):
+            if not os.path.isdir(directory):
+                continue
+            for name in os.listdir(directory):
                 if not name.endswith(".json"):
                     continue
-                candidate = os.path.join(token_dir, name)
+                candidate = os.path.join(directory, name)
                 if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
                     os.remove(candidate)
     except Exception:
@@ -1444,11 +1588,11 @@ def cmd_dispatch_prepare(args):
     if workdir is None:
         sys.stderr.write("agent-exec: dispatch: missing required option: --workdir\n")
         return 2
-    try:
-        read_prompt_files(prompt_files)
-    except ValueError as exc:
-        sys.stderr.write("agent-exec: dispatch: %s\n" % exc)
-        return 2
+    # The prompt file is deliberately NOT read here. `prepare` mints a token
+    # for work whose contract may still be being written -- a correction
+    # round's feedback file is produced between prepare and dispatch. The
+    # file must exist at `dispatch --token` time, and the hard error naming
+    # the missing path is raised there.
     resolved, err = resolve_config()
     if err is not None:
         sys.stderr.write(err + "\n")
@@ -2510,6 +2654,193 @@ def _run_opencode_capture(profile_name, model, effort, workdir, prompt_text, res
     return 0, parse_opencode_jsonl(proc.stdout, proc.stderr, proc.returncode)
 
 
+
+# --- codex ------------------------------------------------------------------
+
+# Sandbox mode is spelled differently on the two codex forms on purpose.
+# Measured against codex-cli 0.152.0:
+#   `codex exec --sandbox workspace-write ...`   accepted
+#   `codex exec resume <SID> --sandbox ...`      REJECTED, exit 2:
+#       "error: unexpected argument '--sandbox' found"
+# `codex exec resume` takes no --sandbox/-C/--add-dir; the only way to set the
+# sandbox on a resumed turn is the generic config override, which every codex
+# subcommand accepts. `-c sandbox_mode=workspace-write` is exactly equivalent
+# (the value fails to parse as TOML and is used as a literal string).
+_CODEX_SANDBOX = "workspace-write"
+
+
+def _build_codex_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt):
+    """Build the `codex exec` argv for a single headless invocation.
+
+    Fresh:   codex exec --json --sandbox workspace-write
+                  [-m M] [-c model_reasoning_effort=E] -- <prompt>
+    Resume:  codex exec resume <SID> --json -c sandbox_mode=workspace-write
+                  [-m M] [-c model_reasoning_effort=E] -- <prompt>
+
+    `model`/`effort` are omitted entirely when the route left them null, so a
+    null never reaches the CLI as the string "None". `output_fmt` is accepted
+    for signature parity with the copilot/opencode builders but unused: codex
+    exec has exactly one machine-readable output form, `--json`.
+
+    The trailing `--` makes the prompt unambiguously positional regardless
+    of its content (spaces, newlines, a leading `-`) -- see the comment
+    above `argv.append("--")` below for the empirical verification.
+
+    The working directory is NOT a flag here. `codex exec` does have `-C`, but
+    `codex exec resume` does not, so both forms are run with `cwd=workdir` by
+    `_run_codex_capture` -- one mechanism for both, and the same one the
+    copilot/opencode runners already use."""
+    del output_fmt, workdir  # see docstring: cwd= is set by the runner
+    argv = [exec_name, "exec"]
+    if resume is not None:
+        argv += ["resume", resume, "--json", "-c", "sandbox_mode=%s" % _CODEX_SANDBOX]
+    else:
+        argv += ["--json", "--sandbox", _CODEX_SANDBOX]
+    if model:
+        argv += ["-m", model]
+    if effort:
+        argv += ["-c", "model_reasoning_effort=%s" % effort]
+    # `--` marks the end of options so a prompt whose first line begins with
+    # `-` (e.g. a markdown bullet like "- fix X") is never parsed as a flag
+    # by clap. Verified empirically against codex-cli 0.152.0: without it,
+    # `codex exec --json --sandbox read-only "-say PONG only"` fails with
+    # "the argument '--sandbox <SANDBOX_MODE>' cannot be used multiple
+    # times" because clap consumes `-s` out of the prompt string.
+    argv.append("--")
+    argv.append(prompt_value)
+    return argv
+
+
+def parse_codex_jsonl(stdout_text, stderr_text, exit_code, resumed=False):
+    """Pure parser: `codex exec --json` stdout + stderr + exit code -> the same
+    normalized result dict `parse_copilot_jsonl` returns, plus `resumed`.
+
+    Event names observed directly from codex-cli 0.152.0 (`codex exec --json`
+    on a trivial prompt, and `codex exec resume <SID> --json`):
+
+      {"type":"thread.started","thread_id":"01a0632d-...-56bb74d466c8"}
+      {"type":"turn.started"}
+      {"type":"item.completed","item":{"id":"item_0","type":"agent_message",
+                                       "text":"PONG"}}
+      {"type":"turn.completed","usage":{"input_tokens":14578,
+        "cached_input_tokens":9984,"cache_write_input_tokens":0,
+        "output_tokens":6,"reasoning_output_tokens":0}}
+
+    So: `thread.started.thread_id` is the session/thread UUID (a resumed run
+    re-emits the SAME id, which is what makes it usable as the store key),
+    `item.completed` with `item.type == "agent_message"` carries the final
+    assistant message, and `turn.completed.usage` carries the token counts.
+    codex reports NO cost figure, so `cost_micro_usd` is left absent exactly
+    the way opencode's parser leaves it absent when opencode reported none --
+    an unavailable number is never fabricated.
+
+    The availability scan is default-deny in the same way as the copilot and
+    opencode parsers: only unparseable lines, stderr, and events
+    `_is_error_bearing_event` recognizes (which covers codex's `turn.failed`,
+    since it carries an `error` object) are scanned. `agent_message` text is
+    the worker's own answer and is never scanned, so a worker writing about
+    rate limits does not mark codex exhausted."""
+    session_id = None
+    messages = []
+    tokens = {}
+    scannable_lines = []
+
+    for line in (stdout_text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            scannable_lines.append(line)
+            continue
+        if not isinstance(event, dict):
+            continue
+
+        etype = event.get("type")
+
+        if etype == "thread.started":
+            tid = event.get("thread_id")
+            if isinstance(tid, str) and tid != "":
+                session_id = tid
+
+        if _is_error_bearing_event(event):
+            scannable_lines.append(line)
+
+        if etype == "item.completed":
+            item = event.get("item")
+            if isinstance(item, dict) and item.get("type") == "agent_message":
+                text = item.get("text")
+                if isinstance(text, str) and text != "":
+                    messages.append(text)
+
+        if etype == "turn.completed":
+            usage = event.get("usage")
+            if isinstance(usage, dict):
+                for key in (
+                    "input_tokens", "output_tokens", "cached_input_tokens",
+                    "cache_write_input_tokens", "reasoning_output_tokens",
+                ):
+                    _accumulate_int(tokens, key, usage.get(key))
+
+    answer = "\n".join(messages) if messages else None
+
+    combined_text = "\n".join(scannable_lines) + "\n" + (stderr_text or "")
+    reason = None
+    for candidate_reason, pattern in _UNAVAILABLE_PATTERNS:
+        if pattern.search(combined_text):
+            reason = candidate_reason
+            break
+
+    if reason is not None:
+        status = "unavailable"
+    elif exit_code != 0:
+        status = "unavailable"
+        reason = "nonzero-exit"
+    else:
+        status = "ok"
+
+    usage_out = {"tokens": tokens} if tokens else None
+
+    return {
+        "status": status,
+        "answer": answer,
+        "session_id": session_id,
+        "resumed": bool(resumed),
+        "reason": reason,
+        "exit_code": exit_code,
+        "usage": usage_out,
+    }
+
+
+def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json"):
+    """codex counterpart of `_run_copilot_capture`. Same (exit_code,
+    result_or_None) contract, including the 127/None missing-binary case."""
+    profile = PROFILES[profile_name]
+    exec_name = profile["exec"]
+
+    resolved = shutil.which(exec_name)
+    if resolved is None:
+        return 127, None
+
+    argv = _build_codex_argv(
+        exec_name, model, effort, workdir, prompt_text, resume, output_fmt
+    )
+    # The prompt is a positional argument, so stdin must be an empty, already
+    # closed pipe: `codex exec` otherwise blocks reading stdin and appends
+    # whatever it finds there to the prompt as a <stdin> block.
+    proc = subprocess.run(
+        argv,
+        input="",
+        cwd=_existing_dir(workdir),
+        capture_output=True,
+        text=True,
+    )
+    return 0, parse_codex_jsonl(
+        proc.stdout, proc.stderr, proc.returncode, resumed=resume is not None
+    )
+
+
 # One place that knows which executor owns which argv/capture shape. Both
 # lookups go through the module globals rather than a captured reference so
 # a test that monkeypatches `_run_copilot_capture` still intercepts the
@@ -2517,10 +2848,12 @@ def _run_opencode_capture(profile_name, model, effort, workdir, prompt_text, res
 _ARGV_BUILDERS = {
     "copilot": "_build_copilot_argv",
     "opencode": "_build_opencode_argv",
+    "codex": "_build_codex_argv",
 }
 _CAPTURE_RUNNERS = {
     "copilot": "_run_copilot_capture",
     "opencode": "_run_opencode_capture",
+    "codex": "_run_codex_capture",
 }
 
 
@@ -4844,9 +5177,65 @@ def cmd_route(args):
     return 0
 
 
+def cmd_dispatch_session(args):
+    """`agent-exec dispatch session --task ID [--executor N] [--json]`.
+
+    Strictly read-only: it never creates the store, never sweeps it, and
+    never mutates a record. Exit 0 whether or not anything is stored -- a
+    miss is the normal first-round state, reported as status `none`."""
+    task = None
+    executor = "codex"
+    as_json = False
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--task":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --task\n")
+                return 2
+            task = args[i + 1]
+            i += 2
+        elif tok == "--executor":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --executor\n")
+                return 2
+            executor = args[i + 1]
+            i += 2
+        elif tok == "--json":
+            as_json = True
+            i += 1
+        else:
+            sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
+            return 2
+    if task is None:
+        sys.stderr.write("agent-exec: dispatch: missing required option: --task\n")
+        return 2
+
+    resolved, err = resolve_config()
+    if err is not None:
+        sys.stderr.write(err + "\n")
+        return 1
+
+    record = read_task_session(resolved, executor, task)
+    if record is None:
+        if as_json:
+            print(json.dumps({"status": "none"}, ensure_ascii=False))
+        else:
+            print("status=none")
+        return 0
+    if as_json:
+        print(json.dumps(record, ensure_ascii=False))
+    else:
+        for key in _SESSION_RECORD_KEYS:
+            print("%s=%s" % (key, record[key]))
+    return 0
+
+
 def cmd_dispatch_route(args):
     if args and args[0] == "prepare":
         return cmd_dispatch_prepare(args[1:])
+    if args and args[0] == "session":
+        return cmd_dispatch_session(args[1:])
     cls = None
     archetype = "default"
     exhausted = []
@@ -4864,6 +5253,7 @@ def cmd_dispatch_route(args):
     task = None
     run_id = None
     token = None
+    no_resume = False
 
     i = 0
     while i < len(args):
@@ -4941,6 +5331,9 @@ def cmd_dispatch_route(args):
         elif tok == "--no-cooldown":
             no_cooldown = True
             i += 1
+        elif tok == "--no-resume":
+            no_resume = True
+            i += 1
         else:
             sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
             return 2
@@ -4995,6 +5388,8 @@ def cmd_dispatch_route(args):
             delegated_args.extend(["--task", spec["task"]])
         if capture:
             delegated_args.append("--capture")
+        if no_resume:
+            delegated_args.append("--no-resume")
         if exhausted:
             delegated_args.extend(["--exhausted", ",".join(exhausted)])
         return cmd_dispatch_route(delegated_args)
@@ -5171,10 +5566,27 @@ def cmd_dispatch_route(args):
 
     exec_name = profile["exec"]
 
+    # Per-task session continuity. Precedence, highest first:
+    #   1. an explicit --resume SID (the caller knows exactly what it wants)
+    #   2. --no-resume: never consult the store for this call
+    #   3. the store record for (executor, task), when its workdir matches
+    #   4. a fresh session
+    # A store miss is the normal first-round state: no warning, no error. A
+    # record whose workdir is a different tree is treated as a miss, because
+    # a task id reused in another worktree must not resume a foreign session
+    # -- and is overwritten below once this run produces its own id.
+    resumed = resume is not None
+    effective_resume = resume
+    if effective_resume is None and task is not None and not no_resume:
+        stored = read_task_session(resolved, profile_name, task)
+        if stored is not None and _same_workdir(stored.get("workdir"), workdir):
+            effective_resume = stored["session_id"]
+            resumed = True
+
     if os.environ.get("AGENT_EXEC_DRYRUN"):
         argv = _build_executor_argv(
             profile_name, exec_name, model, effort, workdir, prompt_text,
-            resume, "json",
+            effective_resume, "json",
         )
         print("PROFILE: %s" % profile_name)
         print("MODE: headless")
@@ -5187,7 +5599,7 @@ def cmd_dispatch_route(args):
         return 0
 
     exit_code, result = _run_executor_capture(
-        profile_name, model, effort, workdir, prompt_text, resume, "json"
+        profile_name, model, effort, workdir, prompt_text, effective_resume, "json"
     )
     if result is None:
         run_ledger_append(
@@ -5208,7 +5620,7 @@ def cmd_dispatch_route(args):
                 exit_code=result.get("exit_code"),
                 answer=result.get("answer"),
             )
-        record = build_dispatch_record(profile_name, result, resume, cls)
+        record = build_dispatch_record(profile_name, result, effective_resume, cls)
         telemetry_cfg = resolved if isinstance(resolved, dict) else DEFAULTS
         telemetry_append(record, telemetry_cfg)
         run_ledger_append(
@@ -5220,10 +5632,26 @@ def cmd_dispatch_route(args):
         # Telemetry must never break dispatch.
         pass
 
+    # Only a run that both succeeded and produced a session id updates the
+    # store: a failed round must leave the last good session intact so the
+    # correction round still has something to resume.
+    new_session_id = result.get("session_id")
+    if (task is not None and result.get("status") == "ok"
+            and isinstance(new_session_id, str) and new_session_id != ""):
+        try:
+            write_task_session(
+                resolved, profile_name, task, new_session_id, workdir
+            )
+        except (OSError, ValueError):
+            # The store is advisory; failing to persist it costs a cold
+            # start next round, never the dispatch.
+            pass
+
     output = dict(result)
     output["executor"] = profile_name
     output["model"] = model
     output["effort"] = effort
+    output["resumed"] = resumed
     output["route"] = route
     output["isolation"] = isolation
     print(json.dumps(output, ensure_ascii=False))

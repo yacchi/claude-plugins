@@ -40,11 +40,15 @@ Going the other direction is cheaper still: route authentication, authorization,
 
 Escalating the class never authorizes expanding scope. A `deep` worker on an escalated packet still owns exactly the files the packet named.
 
-## 5. Why corrections go to a fresh invocation
+## 5. Why corrections resume the executor's session when one exists
 
-Resuming the rejected worker looks cheaper and usually isn't. That instance is anchored on the reasoning that produced the defect, and its context is now full of dead ends you re-pay for on every subsequent turn. A self-contained correction packet to a fresh worker starts from the contract plus precise findings, with none of that weight.
+The old rule here was "always a fresh worker" — reasoning that resuming the rejected instance is anchored on the reasoning that produced the defect, and its context is now full of dead ends you re-pay for on every subsequent turn. That reasoning still holds for a genuinely fresh *reasoning* re-start. But it turns out to be the wrong lesson to draw for *executor sessions*: an executor's per-task session (Copilot/Codex/opencode, via `agent-exec`'s per-task session store) is not "the same worker re-guessing" — it is the SAME worker being handed precise findings instead of the whole contract again, and the anchoring cost is small next to not re-sending everything it already has.
 
-The packet must therefore actually stand alone: the original contract in full, the findings with their `cited_contract`, the `must_not_change` paths (behavior already accepted, which the fix must not disturb), the fact that the previous attempt's files are still on disk and must be read first, and what the next gate will check. `correctionPacket()` in `SKILL.md` §5 assembles this.
+So `runTask()` (`SKILL.md` §5) now sends a correction round back through `dispatchClass()` with a per-task correction token, so agent-exec auto-resumes the round-1 session when one exists. This is a **delta** packet: just the findings, `cited_contract`, and `must_not_change` — no contract restatement, because the session already holds it. Only when there is genuinely nothing to resume — a Claude-tier round 1 (`agent()` has no session concept), or a task with no correction tokens prepared at all — does the correction fall back to a fresh pinned-Sonnet `agent()` call with the full, stand-alone packet described below.
+
+**A class escalation always forces the full, non-resuming packet**, even if a session exists: the resumed session belongs to the OLD class's executor, and the new class may resolve to a different one entirely (or none) — resuming it would hand the wrong findings to the wrong conversation.
+
+**The full-shape packet must actually stand alone**: the original contract in full, the findings with their `cited_contract`, the `must_not_change` paths (behavior already accepted, which the fix must not disturb), the fact that the previous attempt's files are still on disk and must be read first, and what the next gate will check. `correctionPacketBody()` in `SKILL.md` §5 builds both the delta and full shapes from one source so they never drift; `correctionPacket()` wraps the full shape for the no-session fallback path. The reviewer itself writes whichever shape applies to `task.correctionPromptFile` on a FAIL verdict — never a separate scribe step, and never on a PASS.
 
 Resume the same instance (`SendMessage`) only when the reasoning history is genuinely expensive to reconstruct — a long investigation, not a routine fix. Note the asymmetry with the *supervisor* tier: `orchestra-delegate` should be resumed across rounds, because its accumulated context is the thing of value.
 
