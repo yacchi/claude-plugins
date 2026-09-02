@@ -44,11 +44,29 @@ Add plugins to `marketplace.json` with:
 
 ## Commit Message Convention
 
-Use Conventional Commits format in English:
-- `feat:` for new features
-- `fix:` for bug fixes
-- `docs:` for documentation
-- `chore:` for maintenance tasks
+Conventional Commits, **with the subject written in Japanese**:
+
+```
+<type>(<plugin-name>): <日本語の説明> (vX.Y.Z)
+```
+
+- `type`: `feat` / `fix` / `docs` / `chore` (also `refactor`, `test`, `perf`, `style`)
+- Scope is the plugin directory name (`orchestra`, `compact-companion`, …). Omit it for
+  marketplace-level changes — e.g. `feat: jobcan プラグインをマーケットプレイスに追加`.
+- Append ` (vX.Y.Z)` when the change bumps a plugin's version. That version must
+  be updated in **both** `plugins/<name>/.claude-plugin/plugin.json` and the
+  plugin's entry in `.claude-plugin/marketplace.json`, in the same commit.
+- The body (Japanese, a few lines) explains **why**, not what the diff already shows.
+
+Examples from the history:
+
+```
+feat(orchestra): SessionEndでセッションのworktreeを後始末する (v0.26.0)
+fix(orchestra): delegate経路のワーカーを隔離ツリーへ寄せる (v0.25.0)
+```
+
+A handful of early commits are in English; they predate this convention and are
+not a precedent.
 
 ## Testing
 
