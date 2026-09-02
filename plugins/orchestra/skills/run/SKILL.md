@@ -18,7 +18,7 @@ You are the **instructor** — the main session, on an expensive model. This ski
 | `references/gates.md` | A gate rule (§11) is biting and you need the why: a reviewer's rejection looks out of scope, rounds keep closing one sibling at a time, or you must decide whether to spend a third round. |
 | `references/isolation.md` | A worker will touch a tree holding uncommitted work (isolation is the default there), or the run needs rollback on failure, a real diff for the reviewer, worktree-isolated parallelism, competing implementations of one contract, or an approval budget for non-interactive workers. |
 | `references/config.md` | A configuration question actually arises: key semantics, four-layer merge, why `route` dropped a candidate, `enforcement.light_class`, telemetry fields. |
-| `references/external-executors.md` | Choosing or second-guessing a Codex/Copilot model+effort, or needing the raw CLI recipe / pricing. |
+| `references/external-executors.md` | Choosing or second-guessing a Codex/Copilot/opencode model+effort, or needing the raw CLI recipe / pricing. opencode (§7) is the executor to reach for when a run needs exact per-task cost. |
 | `references/poc-findings.md` | Making a model-policy decision that depends on specific benchmark numbers. |
 
 ## 1. Instructor code of conduct
@@ -55,8 +55,8 @@ The full pipeline on every request is overkill. **Express only when ALL hold:**
 |---|---|---|
 | Instructor | Fable / Opus — fixed, never routed | Decomposition, contracts, script writing, exception judgment ONLY |
 | `deep` | `agent-exec route --class deep` — Opus (`orchestra-deep`); Codex Sol/xhigh only if Claude is unavailable | Real design latitude: algorithm choice, API shape, tradeoffs |
-| `standard` | `agent-exec route --class standard` — Copilot `gpt-5.6-luna`/medium by default, Sonnet otherwise | Ordinary implementation; review needing adversarial test design and failure interpretation |
-| `light` | `agent-exec route --class light` — Copilot `gpt-5.6-luna`/medium by default, Haiku otherwise | Implementation or review whose procedure is 100% prescribed |
+| `standard` | `agent-exec route --class standard` — opencode `github-copilot/gpt-5.6-luna`/medium by default, then Copilot, Sonnet otherwise | Ordinary implementation; review needing adversarial test design and failure interpretation |
+| `light` | `agent-exec route --class light` — opencode `github-copilot/gpt-5.6-luna`/medium by default, then Copilot, Haiku otherwise | Implementation or review whose procedure is 100% prescribed |
 
 **Review class:** `standard` is the default. `light` suffices only when the review procedure is fully prescribed (exact commands, explicit pass criteria). For review needing heavy design judgment, pass `model: 'opus'` inline — there is deliberately no `deep`-class review agent. The template's own same-run `review` stage stays pinned to Sonnet and unrouted, because `priority.review` is `[claude]`-only by design.
 

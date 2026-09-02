@@ -104,6 +104,31 @@ external_executors:
         model: gpt-5.6-luna
         effort: medium
 
+  # opencode reaches the SAME Copilot-billed models through one interface, and
+  # is the only executor that reports a dollar cost directly: `run --format
+  # json` emits tokens (input/output/reasoning/cache) plus `cost`, which
+  # agent-exec stores as integer micro-USD in the run ledger. It is preferred
+  # AHEAD of copilot for the implementation bands: measured on an identical
+  # task, quality and wall-clock tied while opencode processed about a third
+  # of copilot's fresh input tokens. Note the
+  # `provider/model` form of `model` — a bare model id will not resolve.
+  # v1 (`opencode`) only; v2 ships as a separate `opencode2` binary whose
+  # plugin/server APIs are still in beta. See run skill
+  # references/external-executors.md §7.
+  opencode:
+    enabled: true
+    dispatch: cli
+    classes:
+      - light
+      - standard
+    class_policy:
+      light:
+        model: github-copilot/gpt-5.6-luna
+        effort: medium
+      standard:
+        model: github-copilot/gpt-5.6-luna
+        effort: medium
+
 # Ordered executor preference per class/role (and, for the implementation classes,
 # per task archetype) — this list is still the single source of truth for
 # preference order, but the WALK ITSELF is executed by `agent-exec route` /
@@ -116,7 +141,7 @@ external_executors:
 # returns a wrong result is NOT a fallback signal — that stays on the SAME executor
 # and goes through the normal review/retry loop.
 #
-# Entries are an `external_executors` key (`codex`, `copilot`, ...) or the sentinel
+# Entries are an `external_executors` key (`codex`, `copilot`, `opencode`, ...) or the sentinel
 # `claude` (the built-in `tiers.<name>` model). An executor named here must have a
 # matching `class_policy.<class>` on its `external_executors` block, or `route`
 # skips it as misconfigured. Once `route`/`dispatch` finds an executor unavailable
@@ -167,11 +192,11 @@ priority:
     # for the light band (and for investigation fan-out). copilot ships
     # `enabled: true` above, so this actually prefers it whenever `agent-exec
     # route` finds it ready; only drops to claude on a genuine unavailable signal.
-    investigation: [copilot, claude]
-    default: [copilot, claude]
+    investigation: [opencode, copilot, claude]
+    default: [opencode, copilot, claude]
   standard:
     # luna clears sonnet-class work too, so it also leads the standard band.
-    default: [copilot, claude, codex]
+    default: [opencode, copilot, claude, codex]
   deep:
     default: [claude, codex]
   review:

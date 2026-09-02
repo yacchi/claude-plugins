@@ -49,6 +49,17 @@ PROFILES = {
         "mode": "headless",
         "inject_args": ["--disable-builtin-mcps"],
     },
+    # opencode reaches the same GitHub Copilot model catalog (and every other
+    # provider it supports) through one interface. `--auto` is what makes the
+    # run non-interactive: it auto-approves permissions that are not
+    # explicitly denied, which is the opencode analogue of the headless
+    # behavior copilot's `-p` already has.
+    "opencode": {
+        "exec": "opencode",
+        "env": {},
+        "mode": "headless",
+        "inject_args": ["--auto"],
+    },
 }
 
 # Registry of executors agent-exec knows about even when they have no CLI
@@ -58,6 +69,7 @@ PROFILES = {
 KNOWN_EXECUTORS = {
     "copilot": {"binary": "copilot", "default_dispatch": "cli"},
     "codex": {"binary": "codex", "default_dispatch": "agent"},
+    "opencode": {"binary": "opencode", "default_dispatch": "cli"},
 }
 
 DEFAULTS = {
@@ -73,6 +85,30 @@ DEFAULTS = {
     # automatically. Defaulting to enabled here only changes behavior on a
     # machine where the executor is actually ready.
     "external_executors": {
+        # opencode reaches the SAME Copilot-billed models as the `copilot`
+        # executor and is preferred ahead of it for the implementation
+        # bands. Measured on an identical task (same model, same effort,
+        # 65 hidden test cases): quality and wall-clock were a tie, but
+        # opencode processed roughly a third of copilot's fresh input
+        # tokens (13k vs 35k) and is the only executor that reports a
+        # computed `cost` in USD, where the Copilot CLI reports only
+        # premium requests and nano-AIU. `model` carries opencode's
+        # `provider/model` form, not a bare model id.
+        "opencode": {
+            "enabled": True,
+            "dispatch": "cli",
+            "classes": ["light", "standard"],
+            "class_policy": {
+                "light": {
+                    "model": "github-copilot/gpt-5.6-luna",
+                    "effort": "medium",
+                },
+                "standard": {
+                    "model": "github-copilot/gpt-5.6-luna",
+                    "effort": "medium",
+                },
+            },
+        },
         "copilot": {
             "enabled": True,
             "dispatch": "cli",
@@ -102,8 +138,7 @@ DEFAULTS = {
                 ),
                 "class": "deep",
             },
-        },
-    },
+        },    },
     # Ordered executor preference per class/role (and, for the implementation
     # classes, per task archetype). See `resolve_route()` for the algorithm
     # and the `run` skill's SKILL.md §9 for the human-readable version this
@@ -112,11 +147,11 @@ DEFAULTS = {
     # fall back to the legacy `classes`-membership scan.
     "priority": {
         "light": {
-            "investigation": ["copilot", "claude"],
-            "default": ["copilot", "claude"],
+            "investigation": ["opencode", "copilot", "claude"],
+            "default": ["opencode", "copilot", "claude"],
         },
         "standard": {
-            "default": ["copilot", "claude", "codex"],
+            "default": ["opencode", "copilot", "claude", "codex"],
         },
         "deep": {
             "default": ["claude", "codex"],
@@ -964,7 +999,7 @@ def cmd_config(args):
 
 _TELEMETRY_EVENTS = ("run_summary", "dispatch")
 _TELEMETRY_LANES = ("express", "orchestrated")
-_TELEMETRY_EXECUTORS = ("claude", "copilot", "codex")
+_TELEMETRY_EXECUTORS = ("claude", "copilot", "codex", "opencode")
 _TELEMETRY_CLASSES = ("light", "standard", "deep", "review")
 _TELEMETRY_STATUSES = ("ok", "unavailable")
 _TELEMETRY_REASONS = (
@@ -979,7 +1014,7 @@ _TELEMETRY_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _TELEMETRY_ROUND_KEY_RE = re.compile(r"^[1-9][0-9]*$")
 
 _TELEMETRY_MAX_LINES = 10000
-_RUN_LEDGER_EXECUTORS = ("copilot", "codex", "claude")
+_RUN_LEDGER_EXECUTORS = ("copilot", "codex", "claude", "opencode")
 _RUN_LEDGER_CLASSES = ("light", "standard", "deep")
 _RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "delegated")
 _RUN_LEDGER_MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,64}$")
@@ -1093,7 +1128,7 @@ def sanitize_telemetry_record(raw):
         if isinstance(value, dict):
             sanitized = {}
             for k, v in value.items():
-                if k in ("copilot", "codex") and isinstance(v, bool):
+                if k in ("copilot", "codex", "opencode") and isinstance(v, bool):
                     sanitized[k] = v
             out["external_enabled"] = sanitized
 
@@ -1184,6 +1219,7 @@ def sanitize_run_ledger_record(raw):
         "input_tokens", "output_tokens", "cached_input_tokens", "aiu_nano",
         "premium_requests", "api_duration_ms", "session_duration_ms",
         "cache_write_input_tokens", "reasoning_output_tokens",
+        "cost_micro_usd",
     ):
         value = raw.get(key)
         if _is_nonneg_int(value):
@@ -1507,12 +1543,19 @@ def build_run_ledger_record(executor, model, cls, result):
     if isinstance(usage, dict):
         for key in (
             "premium_requests", "api_duration_ms", "session_duration_ms", "aiu_nano",
+            # opencode is the only executor that reports a currency figure
+            # directly; it arrives already rounded to integer micro-USD so it
+            # survives the ledger's non-negative-int sanitizer.
+            "cost_micro_usd",
         ):
             if key in usage:
                 record[key] = usage[key]
         tokens = usage.get("tokens")
         if isinstance(tokens, dict):
-            for key in ("input_tokens", "output_tokens", "cached_input_tokens"):
+            for key in (
+                "input_tokens", "output_tokens", "cached_input_tokens",
+                "cache_write_input_tokens", "reasoning_output_tokens",
+            ):
                 if key in tokens:
                     record[key] = tokens[key]
     return record
@@ -2247,9 +2290,16 @@ def _run_copilot_capture(profile_name, model, effort, workdir, prompt_text, resu
             otel_path = None
 
     try:
+        # `--add-dir` grants ACCESS to the workdir; it does not make it the
+        # process's working directory. Without `cwd`, a worker told to create
+        # `foo.py` "in the working directory" writes it wherever agent-exec
+        # happened to be invoked from -- outside the isolated worktree the
+        # whole dispatch was built around. Measured: a copilot run with
+        # `--workdir <tmp>` created its file in the caller's cwd instead.
         proc = subprocess.run(
             argv,
             env=env,
+            cwd=_existing_dir(workdir),
             capture_output=True,
             text=True,
         )
@@ -2271,6 +2321,223 @@ def _run_copilot_capture(profile_name, model, effort, workdir, prompt_text, resu
                 os.unlink(otel_path)
             except Exception:
                 pass
+
+
+def _existing_dir(path):
+    """`cwd=` for an executor subprocess: the workdir when it is a real
+    directory, else None (inherit). Returning None rather than raising keeps
+    a caller that passed a not-yet-created path working exactly as before."""
+    if isinstance(path, str) and path and os.path.isdir(path):
+        return path
+    return None
+
+
+def _build_opencode_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt):
+    """Build the opencode CLI argv for a single headless invocation.
+
+    The prompt is NOT in argv: `_run_opencode_capture` feeds it on stdin,
+    which `opencode run` accepts in place of the positional message. That
+    keeps a large contract out of ARG_MAX and stops a prompt whose first
+    line begins with `-` from being parsed as a flag. `prompt_value` is
+    therefore accepted (so the signature matches the copilot builder, which
+    the dry-run preview and both call sites share) but deliberately unused.
+
+    `effort` maps to opencode's `--variant`, which is its provider-specific
+    reasoning-effort selector, and `model` must carry opencode's
+    `provider/model` form (e.g. `github-copilot/gpt-5.6-luna`)."""
+    del prompt_value  # supplied on stdin; see docstring
+    argv = [exec_name, "run", "--format", output_fmt, "--auto"]
+    if model:
+        argv += ["--model", model]
+    if effort:
+        argv += ["--variant", effort]
+    if workdir:
+        argv += ["--dir", workdir]
+    if resume is not None:
+        argv += ["--session", resume]
+    return argv
+
+
+def _accumulate_int(target, key, value):
+    """Add `value` to `target[key]` iff it is a non-negative int."""
+    if _is_nonneg_int(value):
+        target[key] = target.get(key, 0) + value
+
+
+def parse_opencode_jsonl(stdout_text, stderr_text, exit_code):
+    """Pure parser: opencode `run --format json` stdout + stderr + exit code
+    -> the same normalized result dict `parse_copilot_jsonl` returns.
+
+    opencode emits one JSON object per line, each carrying `sessionID`:
+
+      {"type":"step_start","part":{...}}
+      {"type":"text","part":{"id":"prt_…","text":"…"}}
+      {"type":"step_finish","part":{"tokens":{"input":…,"output":…,
+        "reasoning":…,"cache":{"write":…,"read":…}},"cost":0.0026}}
+      {"type":"error","error":{"name":"…","data":{"message":"…"}}}
+
+    The availability scan is default-deny in exactly the way the copilot
+    parser documents: only unparseable lines, stderr, and events
+    `_is_error_bearing_event` recognizes are scanned. `text` events are the
+    worker's own answer and are never scanned, so a worker writing about
+    rate limits does not mark the executor exhausted."""
+    text_by_part = {}
+    part_order = []
+    session_id = None
+    tokens = {}
+    cost_usd = 0.0
+    saw_cost = False
+    scannable_lines = []
+
+    for line in (stdout_text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            scannable_lines.append(line)
+            continue
+        if not isinstance(event, dict):
+            continue
+
+        sid = event.get("sessionID")
+        if isinstance(sid, str) and sid != "":
+            session_id = sid
+
+        if _is_error_bearing_event(event):
+            scannable_lines.append(line)
+
+        etype = event.get("type")
+        part = event.get("part")
+        if not isinstance(part, dict):
+            continue
+
+        if etype == "text":
+            chunk = part.get("text")
+            if isinstance(chunk, str):
+                # Key on the part id so a streamed part that arrives in
+                # several events collapses to its latest value instead of
+                # being concatenated with itself.
+                key = part.get("id")
+                if not isinstance(key, str) or key == "":
+                    key = "\x00idx-%d" % len(part_order)
+                if key not in text_by_part:
+                    part_order.append(key)
+                text_by_part[key] = chunk
+
+        if etype == "step_finish":
+            raw_tokens = part.get("tokens")
+            if isinstance(raw_tokens, dict):
+                _accumulate_int(tokens, "input_tokens", raw_tokens.get("input"))
+                _accumulate_int(tokens, "output_tokens", raw_tokens.get("output"))
+                _accumulate_int(
+                    tokens, "reasoning_output_tokens", raw_tokens.get("reasoning")
+                )
+                cache = raw_tokens.get("cache")
+                if isinstance(cache, dict):
+                    _accumulate_int(
+                        tokens, "cached_input_tokens", cache.get("read")
+                    )
+                    _accumulate_int(
+                        tokens, "cache_write_input_tokens", cache.get("write")
+                    )
+            cost = part.get("cost")
+            if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+                if cost >= 0:
+                    cost_usd += float(cost)
+                    saw_cost = True
+
+    answer = "".join(text_by_part[key] for key in part_order)
+    if answer == "":
+        answer = None
+
+    combined_text = "\n".join(scannable_lines) + "\n" + (stderr_text or "")
+    reason = None
+    for candidate_reason, pattern in _UNAVAILABLE_PATTERNS:
+        if pattern.search(combined_text):
+            reason = candidate_reason
+            break
+
+    if reason is not None:
+        status = "unavailable"
+    elif exit_code != 0:
+        status = "unavailable"
+        reason = "nonzero-exit"
+    else:
+        status = "ok"
+
+    usage = {}
+    if tokens:
+        usage["tokens"] = tokens
+    if saw_cost:
+        # Stored as integer micro-USD: the run ledger's sanitizer accepts
+        # non-negative ints only, and a float would be dropped there.
+        usage["cost_micro_usd"] = int(round(cost_usd * 1000000))
+
+    return {
+        "status": status,
+        "answer": answer,
+        "session_id": session_id,
+        "reason": reason,
+        "exit_code": exit_code,
+        "usage": usage or None,
+    }
+
+
+def _run_opencode_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json"):
+    """opencode counterpart of `_run_copilot_capture`. Same (exit_code,
+    result_or_None) contract, including the 127/None missing-binary case."""
+    profile = PROFILES[profile_name]
+    exec_name = profile["exec"]
+
+    resolved = shutil.which(exec_name)
+    if resolved is None:
+        return 127, None
+
+    argv = _build_opencode_argv(
+        exec_name, model, effort, workdir, prompt_text, resume, output_fmt
+    )
+    # opencode's `--dir` already sets its working directory, but `cwd` is set
+    # too so both executors resolve relative paths identically.
+    proc = subprocess.run(
+        argv,
+        input=prompt_text,
+        cwd=_existing_dir(workdir),
+        capture_output=True,
+        text=True,
+    )
+    return 0, parse_opencode_jsonl(proc.stdout, proc.stderr, proc.returncode)
+
+
+# One place that knows which executor owns which argv/capture shape. Both
+# lookups go through the module globals rather than a captured reference so
+# a test that monkeypatches `_run_copilot_capture` still intercepts the
+# dispatch path.
+_ARGV_BUILDERS = {
+    "copilot": "_build_copilot_argv",
+    "opencode": "_build_opencode_argv",
+}
+_CAPTURE_RUNNERS = {
+    "copilot": "_run_copilot_capture",
+    "opencode": "_run_opencode_capture",
+}
+
+
+def _build_executor_argv(profile_name, exec_name, model, effort, workdir,
+                         prompt_value, resume, output_fmt):
+    builder = globals()[_ARGV_BUILDERS.get(profile_name, "_build_copilot_argv")]
+    return builder(
+        exec_name, model, effort, workdir, prompt_value, resume, output_fmt
+    )
+
+
+def _run_executor_capture(profile_name, model, effort, workdir, prompt_text,
+                          resume, output_fmt="json"):
+    runner = globals()[_CAPTURE_RUNNERS.get(profile_name, "_run_copilot_capture")]
+    return runner(
+        profile_name, model, effort, workdir, prompt_text, resume, output_fmt
+    )
 
 
 def cmd_run(args):
@@ -2363,7 +2630,10 @@ def cmd_run(args):
     cls = opts["--cls"]
 
     def build_argv(prompt_value):
-        return _build_copilot_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt)
+        return _build_executor_argv(
+            profile_name, exec_name, model, effort, workdir, prompt_value,
+            resume, output_fmt,
+        )
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
         argv = build_argv(prompt_text)
@@ -2373,13 +2643,13 @@ def cmd_run(args):
         print("EXEC: %s" % " ".join(argv))
         if capture:
             print(
-                "CAPTURE: yes (would subprocess-run copilot and emit "
-                "normalized JSON)"
+                "CAPTURE: yes (would subprocess-run %s and emit "
+                "normalized JSON)" % profile_name
             )
         return 0
 
     if capture:
-        exit_code, result = _run_copilot_capture(
+        exit_code, result = _run_executor_capture(
             profile_name, model, effort, workdir, prompt_text, resume, output_fmt
         )
         if result is None:
@@ -4902,7 +5172,10 @@ def cmd_dispatch_route(args):
     exec_name = profile["exec"]
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
-        argv = _build_copilot_argv(exec_name, model, effort, workdir, prompt_text, resume, "json")
+        argv = _build_executor_argv(
+            profile_name, exec_name, model, effort, workdir, prompt_text,
+            resume, "json",
+        )
         print("PROFILE: %s" % profile_name)
         print("MODE: headless")
         print("ENV: (none)")
@@ -4913,7 +5186,9 @@ def cmd_dispatch_route(args):
         )
         return 0
 
-    exit_code, result = _run_copilot_capture(profile_name, model, effort, workdir, prompt_text, resume, "json")
+    exit_code, result = _run_executor_capture(
+        profile_name, model, effort, workdir, prompt_text, resume, "json"
+    )
     if result is None:
         run_ledger_append(
             build_run_ledger_record(profile_name, model, cls, {"status": "unavailable"}),
@@ -4965,7 +5240,7 @@ def cmd_dispatch_route(args):
 # its native shape maps onto this vocabulary.
 _USAGE_TOKEN_KEYS = ("input_tokens", "output_tokens", "cached_input_tokens")
 
-_USAGE_SOURCES = ("claude", "codex", "copilot")
+_USAGE_SOURCES = ("claude", "codex", "copilot", "opencode")
 
 _USAGE_WINDOW_RE = re.compile(r"^(\d+)([mhd])$")
 _USAGE_WINDOW_SECONDS = {"m": 60, "h": 3600, "d": 86400}
@@ -5579,14 +5854,14 @@ def collect_claude_scoped_usage(home=None, config_dir=None, run_ids=(),
 
 def _ledger_usage(records, executor):
     acc = {"tokens": _zero_tokens(), "aiu_nano": 0,
-           "premium_requests": 0, "records": 0}
+           "premium_requests": 0, "cost_micro_usd": 0, "records": 0}
     for record in records:
         if record.get("executor") != executor:
             continue
         acc["records"] += 1
         for key in _USAGE_TOKEN_KEYS:
             acc["tokens"][key] += _coerce_count(record.get(key))
-        for key in ("aiu_nano", "premium_requests"):
+        for key in ("aiu_nano", "premium_requests", "cost_micro_usd"):
             acc[key] += _coerce_count(record.get(key))
     return acc
 
@@ -5735,10 +6010,12 @@ def collect_codex_usage(cutoff, home=None):
     }
 
 
-def collect_copilot_usage(cutoff, cfg):
+def collect_copilot_usage(cutoff, cfg, executor="copilot"):
     """I/O shell over aggregate_copilot_records. copilot usage only exists in
     orchestra's own telemetry log, so a disabled/absent log is reported as
-    "unavailable" -- reporting zeros would read as "copilot cost nothing"."""
+    "unavailable" -- reporting zeros would read as "copilot cost nothing".
+    The same shape serves every cli-dispatch executor whose usage is recorded
+    the same way (opencode), hence the `executor` selector."""
     entry = {
         "status": "unavailable",
         "scope": "global",
@@ -5748,7 +6025,9 @@ def collect_copilot_usage(cutoff, cfg):
         "records": 0,
     }
     if not _telemetry_enabled(cfg):
-        entry["note"] = "telemetry disabled; no copilot usage is recorded"
+        entry["note"] = (
+            "telemetry disabled; no %s usage is recorded" % executor
+        )
         return entry
 
     path = os.path.join(_telemetry_dir_from_cfg(cfg), "records.jsonl")
@@ -5761,7 +6040,7 @@ def collect_copilot_usage(cutoff, cfg):
         entry["note"] = "telemetry records unreadable"
         return entry
 
-    acc = aggregate_copilot_records(records, cutoff)
+    acc = aggregate_copilot_records(records, cutoff, executor=executor)
     return {
         "status": "ok" if acc["records"] else "empty",
         "scope": "global",
@@ -5784,7 +6063,7 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
         if scoped and name == "claude":
             out[name] = collect_claude_scoped_usage(
                 home=home, run_ids=run_ids, session_ids=session_ids)
-        elif scoped and name in ("copilot", "codex"):
+        elif scoped and name in ("copilot", "codex", "opencode"):
             if run_ids or session_ids:
                 ledger_dir = _ledger_dir_from_cfg(cfg)
                 paths = _ledger_selected_paths(ledger_dir, run_ids, session_ids)
@@ -5815,6 +6094,7 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                         "tokens": acc["tokens"],
                         "aiu_nano": acc["aiu_nano"],
                         "premium_requests": acc["premium_requests"],
+                        "cost_micro_usd": acc.get("cost_micro_usd", 0),
                         "records": acc["records"],
                     }
                     if session_ids:
@@ -5850,7 +6130,9 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
         elif name == "codex":
             out[name] = collect_codex_usage(cutoff=since, home=home)
         else:
-            out[name] = collect_copilot_usage(cutoff=since, cfg=cfg)
+            out[name] = collect_copilot_usage(
+                cutoff=since, cfg=cfg, executor=name
+            )
     if run_ids and session_ids:
         scope = {"kind": "run+session", "run_ids": list(run_ids),
                  "session_ids": list(session_ids)}
@@ -5999,6 +6281,13 @@ def _print_usage_text(report):
                     _coerce_count(entry.get("aiu_nano")),
                     _coerce_count(entry.get("premium_requests")),
                 )
+            )
+        elif name == "opencode":
+            # opencode is the one executor that reports a currency figure, so
+            # it gets a dollar line instead of copilot's billing-unit line.
+            print(
+                "           cost: $%.6f"
+                % (_coerce_count(entry.get("cost_micro_usd")) / 1000000.0)
             )
         if scope.get("kind") in ("session", "run+session") and entry.get("runs"):
             print("           runs: %s" % " ".join(

@@ -1,6 +1,8 @@
-# 外部エグゼキュータ(Codex/Copilot)の運用リファレンス
+# 外部エグゼキュータ(Codex/Copilot/opencode)の運用リファレンス
 
-`external_executors`を設定してCodex/Copilotをorchestraのパイプラインに組み込む際の、モデル選定・CLI利用方法・料金の詳細。`SKILL.md` §9はこの機能の存在と設定スキーマだけを説明しているため、実際にディスパッチする段になったらこのファイルを読むこと。
+`external_executors`を設定してCodex/Copilot/opencodeをorchestraのパイプラインに組み込む際の、モデル選定・CLI利用方法・料金の詳細。`SKILL.md` §9はこの機能の存在と設定スキーマだけを説明しているため、実際にディスパッチする段になったらこのファイルを読むこと。
+
+**opencodeについては§7を読むこと。** Copilotと同じモデル群に到達しつつ、トークン内訳とドル建てコストを直接返す唯一のエグゼキュータであり、`priority`ではCopilotの次に置かれている。
 
 背景にある調査結果(なぜこのポリシーになったか)は`poc-findings.md`を、再試験の手順は`poc-fixtures/README.md`を参照。
 
@@ -72,7 +74,9 @@ For deterministic accounting, use `--run-id <workflow-run-id>` when dispatching 
 
 **封じ込め(containment)に関する注意(実測: M2) — 重要。** `copilot -p`は自身のツール許可フラグ(`--allow-tool`/`--deny-tool`/`--excluded-tools`)では確実に閉じ込められない。実測では、`--excluded-tools='bash'`でbashツールを除外しても、エージェントは**`task`ツール経由で同じシェルコマンドを実行するよう迂回した**。つまりこれらのフラグは個別ツール名単位の除外であり、エージェントがそれを回避する経路(サブタスク委譲など)を持っている限り、セキュリティ境界にはならない。これらは多層防御(defense-in-depth)の一枚であって境界(boundary)ではない — 真の最小権限を実現するには、コンテナ・`sandbox-exec`・制限ユーザー・ネットワーク egress 制御・使い捨てworktreeのような**OS外部のサンドボックス**が必要であり、これは本プラグインでは未実装(将来課題)である。
 
-`--add-dir`は、`--allow-all-paths`の代わりにファイルアクセスを作業ディレクトリに限定する(ただしこれもプロセス内の制御であり、M2の外部サンドボックスに置き換わるものではない)。`--output-format json`はJSONLイベントを出力し、最終的な人間可読の回答とセッションIDの両方がそこに含まれる。
+`--add-dir`は、`--allow-all-paths`の代わりにファイルアクセスを作業ディレクトリに限定する(ただしこれもプロセス内の制御であり、M2の外部サンドボックスに置き換わるものではない)。
+
+**`--add-dir`は「アクセス許可」であって「作業ディレクトリの指定」ではない(実測: M3、2026-09-02)。** `--workdir`付きでディスパッチしたにもかかわらず、`duration.py`を「作業ディレクトリのルートに作れ」と指示されたCopilotワーカーは、**agent-execを起動した側のcwd**にファイルを作成した — 直前に用意した隔離worktreeの外である。`agent-exec`は`_run_copilot_capture`/`_run_opencode_capture`の`subprocess.run`に`cwd=<workdir>`を渡すことでこれを塞いでいる。生の`copilot -p`を手で叩く場合は、**自分でそのディレクトリにcdしてから実行すること** — `--add-dir`だけでは足りない。`--output-format json`はJSONLイベントを出力し、最終的な人間可読の回答とセッションIDの両方がそこに含まれる。
 
 **このJSONLを`jq`で手動パースする必要はもうない。** `agent-exec run copilot --capture ...`(§5)がこのパース(回答の抽出・セッションIDの抽出・quota/credits/auth/rate-limitシグナルからのok/unavailable判定)を1コマンドに集約し、`{ status, answer, session_id, reason, exit_code }`という正規化されたJSONオブジェクトをstdoutにそのまま出す。リレーエージェントはこのJSONを読むだけでよく、jqでイベント種別ごとに`select`する処理はリレー側にはもう残っていない。
 
@@ -180,6 +184,8 @@ GitHubはCopilotモデルの単価を[Models and pricing](https://docs.github.co
 `mai-code-1-flash`は、このテーブルの中で最安のLightweightモデルになっている(Lunaより安い) — CLIでの利用可否を継続的に再確認する理由がもう1つ増えたことになる。
 
 **注意 — この表は、Copilotのサブスクリプションが実際に1回あたり請求する額とは限らない。** このプラグイン自身のPoCでの全実行が、使用モデルによらず最終`result`イベントの`usage`に`"premiumRequests": 1`と記録していた — これは生のトークン単価ではなく、旧来の「フラットなプレミアムリクエスト」課金モデル(モデルごとの倍率をリクエスト枠に掛ける方式)と整合的である。GitHubの料金ページは、現行の課金世代についての倍率表を公開していないため、標準的なサブスクリプションの実際のコスト影響がこのドル建ての数字に連動しているのか、別の枠倍率の仕組みなのかはCLIだけからはわからない。上表は方向性としての序列(おおよそSol > Terra > Codex ≈ Kimi > Luna > MAI、コストの観点で)として扱い、大量利用を伴う判断の前には各自のCopilot利用状況/請求ダッシュボードで実際のコストを確認すること。
+
+**(2026-09-02 追記)** Copilot CLI 1.0.82の`usage`は`premiumRequests`だけではなくなっている — 実測では`{"premium_requests":1,"api_duration_ms":2357,"session_duration_ms":4816,"aiu_nano":386800000,"tokens":{"input_tokens":30878,"output_tokens":14}}`を返した。それでもドル額そのものではないため、正確なコストが要る用途では§7のopencode経路を使うこと。
 
 **対照的に、Codex CLIのコストは直接測定できる**: `codex exec --json`は`turn.completed`イベントで`usage.input_tokens`・`usage.cached_input_tokens`・`usage.output_tokens`を返し、これは上表と単純に掛け合わせられる(CodexもCopilotも同じGPT-5.6モデル群に課金される)。`poc-findings.md`のCodex側のコスト数値はすべてここから算出している — Codexのコスト数値は確度が高く、Copilotのものは(`premiumRequests: 1`の注意点により)方向性の参考程度と考えること。
 
@@ -411,7 +417,7 @@ Codex independent-reviewに渡すプロンプト末尾の指示例: 『Reply wit
 | `event` | `run_summary` \| `dispatch` |
 | `lane` | `express` \| `orchestrated` |
 | `orchestra_version` | semver |
-| `executor` | `claude` \| `copilot` \| `codex` |
+| `executor` | `claude` \| `copilot` \| `codex` \| `opencode` |
 | `cls` | `light` \| `standard` \| `deep` \| `review` |
 | `status` | `ok` \| `unavailable` |
 | `reason` | `quota` \| `rate-limit` \| `credits` \| `auth` \| `nonzero-exit` \| `error` |
@@ -422,3 +428,136 @@ Codex independent-reviewに渡すプロンプト末尾の指示例: 『Reply wit
 **`agent-exec run ... --capture`の自動ログ。** §5の`run`サブコマンドに`--cls CLASS`(`light`/`standard`/`deep`/`review`)を渡すと、そのディスパッチの能力クラスとしてタグ付けされる。`--capture`を付けたときは、結果を出力した後に`event: dispatch`のレコードを1件、`agent-exec`自身が自動でtelemetryに追記する(`status`/`reason`/`cls`など)。これはLLMを介さず`agent-exec`内部で完結する。Copilotの`answer`(回答本文)がtelemetryに記録されることは絶対にない。`agent-exec dispatch --class <cls> ... --capture`(§5)も内部で`run`と同じCLI実行パスを通るため、`--class`から`cls`が自動的に埋まった同じ`dispatch`レコードが同様に自動で記録される — instructor側で`--cls`を別途渡す必要はない。
 
 **run_summaryはinstructor自身ではなくリレー経由。** 1回のオーケストレーション実行の終わりに、telemetryが有効なら(`doctor`の`config.values.telemetry.enabled`で判定)、instructorは安価なHaikuリレーエージェントに`agent-exec telemetry record --json '...'`を1回実行させ、`run_summary`レコードを1件だけ記録する — instructor自身が直接実行することは絶対にない。無効なら何もせずスキップする。これはinstructorのコンテキストを汚さないための設計であり、また`record`はどのみちカテゴリ値/数値フィールドしか受け付けないため、instructorが直接叩いても得られる自由度は無い。
+
+## 7. opencode(`dispatch: cli`) — 同じモデル、正確なコスト
+
+opencodeは複数プロバイダに単一インターフェースで到達するコーディングエージェントCLIである。orchestraがこれを持つ理由は、**GitHub Copilotと同じモデル群に到達しながら、Copilot CLIでは取れない情報を返すから**である。
+
+**v1(`opencode`)を対象とする。v2(`opencode2`)には対応していない。** v2はプラグインAPI・サーバAPI・設定キーが非互換で、公式に「APIs, configuration, and plugin APIs may change」とされたベータであるため。将来v2を足すときは、バイナリ名と`run`のフラグ・出力パースを差し替える形になる(`PROFILES`/`_build_opencode_argv`/`parse_opencode_jsonl`が差し替え点)。
+
+### 7.1 なぜCopilotと併存させるのか
+
+| | `copilot` | `opencode` |
+|---|---|---|
+| 到達できるモデル | Copilotのカタログ | 同じCopilotカタログ + 他プロバイダ |
+| コスト情報 | `premium_requests` / `aiu_nano` / tokens | **tokens(input/output/reasoning/cache) + `cost`(ドル)** |
+| resume | `--resume <session_id>` | `--session <id>`(`--fork`で分岐も可) |
+| effort | `--effort` | `--variant` |
+| プロンプト投入 | `-p <text>`(argv) | **stdin**(ARG_MAX と先頭ハイフンを回避) |
+
+実測(2026-09-02、opencode 1.18.26、`github-copilot/gpt-5.6-luna`、同一の些細なプロンプト):
+
+- 入力トークンは **Copilot CLI 30,878 に対し opencode 10,768** — ハーネスが約1/3の軽さ。
+- 初回 `cost: 0.00269905`、`--session`で再開した2ターン目は`cache.read: 10765`が効いて `cost: 0.0002455` まで落ちた。**リトライラウンドはキャッシュが効くぶん安い。**
+
+`priority`の既定は`["copilot", "opencode", "claude"]`(light/standard)。Copilotを置き換えるのではなく、Copilotが枯渇・未認可・未準備のときにClaudeへ落ちる前に挟まる位置に置いている。
+
+### 7.2 モデルIDはプロバイダ接頭辞つき
+
+opencodeの`--model`は`provider/model`形式で、`class_policy.model`にもこの形で書く:
+
+```yaml
+external_executors:
+  opencode:
+    enabled: true
+    dispatch: cli
+    classes: [light, standard]
+    class_policy:
+      light:    { model: "github-copilot/gpt-5.6-luna", effort: medium }
+      standard: { model: "github-copilot/gpt-5.6-luna", effort: medium }
+```
+
+利用可能なモデルは`opencode models`で確認する(2026-09-02時点でgithub-copilot配下に22件。`gpt-5.6-luna`/`kimi-k2.7-code`/`mai-code-1-flash-picker`はいずれも在る)。
+
+### 7.3 ディスパッチ
+
+パイプラインからは他のエグゼキュータと同じく`agent-exec dispatch --class light`を使う(`route`がCopilot→opencode→Claudeの順に降格する)。opencodeを名指しする生コマンドは次の形になる:
+
+```bash
+agent-exec run opencode --capture   --model github-copilot/gpt-5.6-luna --effort medium   --workdir "$WORKDIR" --prompt-file TASK.md
+# resume:
+agent-exec run opencode --capture --resume "$SESSION_ID"   --model github-copilot/gpt-5.6-luna --effort medium   --workdir "$WORKDIR" --prompt-file FEEDBACK.md
+```
+
+出力はCopilotと同じ正規化JSONで、`usage`が厚い:
+
+```json
+{"status":"ok","answer":"E2EOK","session_id":"ses_…","reason":null,"exit_code":0,
+ "usage":{"tokens":{"input_tokens":16,"output_tokens":8,"reasoning_output_tokens":0,
+                    "cached_input_tokens":10753,"cache_write_input_tokens":0},
+          "cost_micro_usd":229}}
+```
+
+`cost_micro_usd`は**整数のマイクロUSD**である(実行台帳のサニタイザが非負整数しか通さないため、ドルのfloatをそのまま持たない)。`agent-exec usage --run <id>` / `--session <id>`が`cost: $0.000229`の形で出す。
+
+### 7.4 封じ込めと権限
+
+`--auto`は「明示的に拒否されていない権限を自動承認する」フラグで、これが非対話実行を成立させている。**§2のM2と同じ注意がそのまま当てはまる** — これはプロセス内の制御であって境界ではない。真の最小権限はOS外部のサンドボックス(コンテナ・`sandbox-exec`・使い捨てworktree)側の課題である。ファイルアクセスは`--dir`で作業ディレクトリに限定する。
+
+Claude Code側の許可設定は**Copilotと同じ1行で足りる** — リレーが叩くのは`agent-exec`だからである:
+
+```jsonc
+{ "permissions": { "allow": ["Bash(agent-exec:*)"] } }
+```
+
+### 7.5 既知のリスク(上流の未解決issue、2026-09-02時点)
+
+- **自動コンパクションが発火せず、GitHub Copilot経由でトークン/クレジットが暴走する**(open)。orchestraはワーカーを使い捨てにするため致命傷にはなりにくいが、長尺タスクを投げる場合は`agent-exec usage --run`で実測を確認すること。
+- **`GITHUB_TOKEN`が意図せずgithub-copilotプロバイダを有効化する**(open)。ディスパッチ環境に`GITHUB_TOKEN`がある場合、プロバイダ選択が意図とズレうる。
+
+### 7.6 Orca配下では動かない(2026-09-02時点)
+
+Orca(コーディングエージェント用のワークスペースマネージャ)はopencode用のステータスフックを同梱しているが、`orca agent hooks status`の対応一覧(claude/codex/gemini/copilot)に**opencodeは含まれていない**。そのためOrcaはopencodeのライフサイクルを検出できず、`worker-start --agent opencode`は`agent_prompt_stalled`で失敗する。opencodeはheadlessエグゼキュータとして使うこと。
+
+### 7.7 Copilotとの実測比較(2026-09-02)
+
+同一モデル(`gpt-5.6-luna` / `github-copilot/gpt-5.6-luna`)・同一effort(medium)・同一の仕様書で、`parse_duration`/`format_duration`の実装タスクを各2回投げた。採点は**両者に渡していない65ケースの隠しテスト**(正しい参照実装で65/65になることを事前に確認済み)。
+
+| 実行 | 所要 | 入力 | 出力 | キャッシュ読 | reasoning | コスト | 採点 |
+|---|---|---|---|---|---|---|---|
+| copilot #1 | 42.3s | 134,492 | 3,664 | 98,720 | — | aiu 765,650,000 | 65/65 |
+| copilot #2 | 29.8s | 99,252 | 2,088 | 65,218 | — | aiu 615,878,000 | 65/65 |
+| opencode #1 | 32.7s | 13,095 | 1,479 | 48,303 | 334 | **$0.006415** | 65/65 |
+| opencode #2 | 38.2s | 13,566 | 1,537 | 48,110 | 730 | **$0.007073** | 65/65 |
+
+読み取り:
+
+- **品質は互角。** 4実行すべてが65/65で、いずれも仕様通り`duration.py`のみを生成し、正規表現に頼らない手書きパーサを53〜65行で書いた。この難度では差がつかない。
+- **速度も互角**(平均 copilot 36.1s / opencode 35.4s)。差は実行ごとのばらつきの範囲内。
+- **トークンは大差。** 総処理トークン(入力+キャッシュ読)は copilot 約13.3万/16.4万に対し opencode 約6.1万。新規入力だけで見ると copilot 約3.6万 vs opencode 約1.3万で、**ハーネスの重さが3倍近く違う**。
+- **コストの可視性が違う。** opencodeはドル建てで出る。CopilotはAIU/premium requestのままで、ドルに換算するには別途レートが要る。
+
+したがって**「同じモデルなら opencode の方がコンテキストを食わず、コストが正確に分かる」**が、品質・速度で優位があるわけではない。`priority`でCopilotを先に置いたままにしているのはこのためである。
+
+注意: これは1タスク×2回の小さなサンプルであり、難度の高いタスクや長文コンテキストでの優劣は測っていない。
+
+### 7.8 opencode経由でCodex系(openaiプロバイダ)を使う場合
+
+opencodeは`github-copilot/*`だけでなく`openai/*`にも到達できる。`opencode auth list`に`OpenAI oauth`があれば(=ChatGPTサブスクリプションでのログイン。APIキーではない)、Codex CLIと同じモデル群をopencodeのハーネスから使える。
+
+**Codexの`service_tier`に相当するものは、opencodeでは別モデルIDとして露出している:**
+
+```
+openai/gpt-5.6-luna        openai/gpt-5.6-luna-fast
+openai/gpt-5.6-sol         openai/gpt-5.6-sol-fast
+openai/gpt-5.6-terra       openai/gpt-5.6-terra-fast
+openai/gpt-5.4             openai/gpt-5.4-fast          ...
+```
+
+Codex CLIは`~/.codex/config.toml`の`service_tier = "fast"`(値はモデルメタデータの`additional_speed_tiers`側)で指定するのに対し、opencodeでは`-m openai/gpt-5.6-luna-fast`と書く。**`-c model_service_tier=...`のようなキーはCodex CLIには存在しない** — 誤ったキーは黙って捨てられ、エラーにならないので気付けない。
+
+実測(2026-09-02、`--variant xhigh`、7.7と同一課題・同一の隠しテスト65ケース、各3回):
+
+| モデル | 所要(平均) | 新規入力(平均) | コスト | 採点 |
+|---|---|---|---|---|
+| `openai/gpt-5.6-luna-fast` | **58.5s**(55.5-61.2) | 23,179 | **報告なし(0)** | 65/65 ×3 |
+| `openai/gpt-5.6-luna` | 75.5s(59.7-98.4) | 17,466 | **報告なし(0)** | 65/65 ×3 |
+
+- **fastは効く。** 平均 -23%、ばらつきも大幅に縮む(range 39s幅 → 6s幅)。Codex CLI側で測った`service_tier="fast"`の -18% と同じ方向で、独立に再現した。
+- **品質は差なし**(全6実行65/65)。
+- **重要: `openai/*`では`cost`が0で返る。** opencodeに当該プロバイダの価格データが無い(サブスクリプション課金のため)。**§7.1で挙げた「ドル建てコストが取れる」という利点は`github-copilot/*`限定**であり、`openai/*`に切り替えると台帳のコスト欄は空になる。
+- xhighのため7.7のmedium実行(35秒台)より遅いが、これはeffortの差でありプロバイダの差ではない。
+
+したがって`external_executors.opencode`の`class_policy`は`github-copilot/*`のままにしてある。`openai/*`は「ChatGPTプラン側の枠を使いたい」「Copilotの枠を温存したい」場合の選択肢であって、コスト計測を捨てる判断とセットになる。
+
+**方針(決定済み): Codexはopencode経由に寄せず、`dispatch: agent`(`codex:codex-rescue`)のまま据え置く。** Copilotをopencodeに置き換える判断には、トークン効率(新規入力が約1/3)とドル建てコストという明確な利点があった。Codexについては同等の利点が無い — `openai/*`経由にしてもコストは0で返り、トークン効率もCodex CLI自体が既に軽い(新規入力11-13k)。つまり乗り換えの動機がなく、`codex:codex-rescue`が持つ相関IDによるコスト帰属を失うだけになる。opencodeの`openai/*`は、上記の枠の都合が生じたときに個別に検討する対象に留める。

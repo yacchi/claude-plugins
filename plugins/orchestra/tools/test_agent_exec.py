@@ -418,9 +418,14 @@ class ResolveRouteTests(unittest.TestCase):
         self.assertEqual(route["model"], "gpt-5.6-luna")
         self.assertEqual(route["effort"], "medium")
         self.assertEqual(route["source"], "priority")
-        self.assertEqual(route["candidates"], ["copilot", "claude"])
+        self.assertEqual(route["candidates"], ["opencode", "copilot", "claude"])
         self.assertEqual(route["remaining"], ["claude"])
-        self.assertEqual(route["skipped"], [])
+        # opencode leads the band but has no readiness verdict in this
+        # fixture, so the walk steps over it before landing on copilot.
+        self.assertEqual(
+            route["skipped"],
+            [{"executor": "opencode", "reason": "not-ready:unknown"}],
+        )
 
     def test_light_falls_back_to_claude_when_copilot_not_ready(self):
         cfg = self._cfg()
@@ -433,7 +438,11 @@ class ResolveRouteTests(unittest.TestCase):
         self.assertEqual(route["model"], "haiku")
         self.assertEqual(
             route["skipped"],
-            [{"executor": "copilot", "reason": "not-ready:executor-binary-unavailable"}],
+            [
+                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "copilot",
+                 "reason": "not-ready:executor-binary-unavailable"},
+            ],
         )
         self.assertEqual(route["remaining"], [])
 
@@ -442,7 +451,13 @@ class ResolveRouteTests(unittest.TestCase):
         cfg["external_executors"]["copilot"]["enabled"] = False
         route = agent_exec.resolve_route(cfg, {"ready": {}}, "light")
         self.assertEqual(route["executor"], "claude")
-        self.assertEqual(route["skipped"], [{"executor": "copilot", "reason": "disabled"}])
+        self.assertEqual(
+            route["skipped"],
+            [
+                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "copilot", "reason": "disabled"},
+            ],
+        )
 
     def test_light_falls_back_to_claude_when_class_policy_missing(self):
         cfg = self._cfg()
@@ -451,7 +466,11 @@ class ResolveRouteTests(unittest.TestCase):
         route = agent_exec.resolve_route(cfg, doctor_report, "light")
         self.assertEqual(route["executor"], "claude")
         self.assertEqual(
-            route["skipped"], [{"executor": "copilot", "reason": "no-class-policy"}]
+            route["skipped"],
+            [
+                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "copilot", "reason": "no-class-policy"},
+            ],
         )
 
     def test_light_not_configured_when_no_external_executors_entry(self):
@@ -460,7 +479,11 @@ class ResolveRouteTests(unittest.TestCase):
         route = agent_exec.resolve_route(cfg, {"ready": {}}, "light")
         self.assertEqual(route["executor"], "claude")
         self.assertEqual(
-            route["skipped"], [{"executor": "copilot", "reason": "not-configured"}]
+            route["skipped"],
+            [
+                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "copilot", "reason": "not-configured"},
+            ],
         )
 
     def test_exhausted_copilot_falls_back_to_claude_with_correct_remaining(self):
@@ -468,7 +491,13 @@ class ResolveRouteTests(unittest.TestCase):
         doctor_report = {"ready": {"copilot": self._ready(True)}}
         route = agent_exec.resolve_route(cfg, doctor_report, "light", exhausted=["copilot"])
         self.assertEqual(route["executor"], "claude")
-        self.assertEqual(route["skipped"], [{"executor": "copilot", "reason": "exhausted"}])
+        self.assertEqual(
+            route["skipped"],
+            [
+                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "copilot", "reason": "exhausted"},
+            ],
+        )
         self.assertEqual(route["remaining"], [])
 
     def test_agent_dispatch_not_gated_on_binary_presence(self):
@@ -492,7 +521,7 @@ class ResolveRouteTests(unittest.TestCase):
         route = agent_exec.resolve_route(cfg, doctor_report, "light")
         self.assertEqual(route["source"], "classes-legacy")
         self.assertEqual(route["executor"], "copilot")
-        self.assertEqual(route["candidates"], ["copilot", "claude"])
+        self.assertEqual(route["candidates"], ["opencode", "copilot", "claude"])
 
     def test_review_resolves_to_claude_sonnet(self):
         cfg = self._cfg()
@@ -530,6 +559,7 @@ class ResolveRouteTests(unittest.TestCase):
         self.assertEqual(
             route["skipped"],
             [
+                {"executor": "opencode", "reason": "not-ready:unknown"},
                 {"executor": "copilot", "reason": "exhausted"},
                 {"executor": "claude", "reason": "exhausted"},
             ],
@@ -597,7 +627,10 @@ class ResolveConfigBackwardCompatTests(_IsolatedConfigMixin, unittest.TestCase):
     def test_priority_omitted_inherits_new_default(self):
         resolved, err = self._isolated_resolve("tiers:\n  light: haiku\n")
         self.assertIsNone(err)
-        self.assertEqual(resolved["priority"]["light"]["default"], ["copilot", "claude"])
+        self.assertEqual(
+            resolved["priority"]["light"]["default"],
+            ["opencode", "copilot", "claude"],
+        )
         self.assertEqual(resolved["priority"]["review"]["default"], ["claude"])
 
     def test_no_config_at_all_still_gets_full_defaults(self):
@@ -711,7 +744,13 @@ class ResolveRouteCooldownTests(unittest.TestCase):
             cooldowns={"copilot": {"reason": "rate-limit", "until": 200}},
         )
         self.assertEqual(route["executor"], "claude")
-        self.assertEqual(route["skipped"], [{"executor": "copilot", "reason": "cooldown:rate-limit"}])
+        self.assertEqual(
+            route["skipped"],
+            [
+                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "copilot", "reason": "cooldown:rate-limit"},
+            ],
+        )
         self.assertEqual(route["cooldowns_applied"], [{"executor": "copilot", "reason": "rate-limit", "until": 200}])
         self.assertFalse(route["cooldown_bypassed"])
 
