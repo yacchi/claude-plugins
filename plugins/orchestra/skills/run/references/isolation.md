@@ -30,7 +30,30 @@ agent-exec isolate list                           # orchestra-created worktrees
 agent-exec isolate collect --task <id>            # mark collected without printing the patch
 agent-exec isolate remove  --task <id>            # refuses while changes are uncollected
 agent-exec isolate remove  --session <id>         # clean up every worktree for a session
+agent-exec isolate sweep   --dry-run              # repo-wide leftovers, previewed
+agent-exec isolate sweep   [--older-than <days>]  # ...and reclaimed
 ```
+
+**Sweep at run end, every run.** The moment the last gate closes and every diff has been collected, run
+`agent-exec isolate sweep --include-current`. That is the primary cleanup. The `SessionEnd` hook is only
+insurance, and weak insurance: it never fires for a session that is killed, crashes, or has its terminal
+closed, and when it does fire it is racing a teardown timeout that a slow removal loses. Run end has neither
+problem — nothing is racing you and the content is already out.
+
+`isolate sweep` is the repo-wide, after-the-fact reclaim: the SessionEnd hook only
+ever covers the session it belongs to, so a crashed session, a legacy sessionless
+worktree, or a tree deliberately kept because it was dirty has nothing else to
+clean it up. It prunes stale worktree records first, applies the same review gate
+as `isolate remove` (so uncollected work is reported, never destroyed), skips the
+running session's own trees unless `--include-current`, and deletes `orchestra/*`
+branches that outlived their worktree only with `--branches`.
+
+Other sessions running in the same repo are protected by a heartbeat rather than
+by luck: every `agent-exec isolate`/`dispatch`/`route`/`run` command touches
+`alive/<session8>` next to the run ledger, and a sweep skips any session seen
+within `--live-window` (default 120 minutes). A session with no heartbeat at all —
+anything predating this — counts as dead and is reclaimed normally. Users reach
+all of it through the `/cleanup` skill.
 
 Task lookup first tries the current session's branch. If absent, a unique
 cross-session `orchestra/*/<task>` or legacy `orchestra/<task>` branch is used

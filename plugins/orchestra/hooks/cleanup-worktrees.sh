@@ -10,6 +10,14 @@
 # work is the only record of what a worker tried, so it must be kept and
 # surfaced to the user rather than silently discarded.
 #
+# BACKSTOP, NOT THE MECHANISM (v0.30.0). A SessionEnd hook is unreliable in
+# both directions: it never runs at all when the session is killed, crashes, or
+# has its terminal closed, and when it does run it is racing session teardown,
+# so a slow removal is simply cut off. The pipeline therefore sweeps at RUN END
+# (`skills/run/SKILL.md` §5/§10), where neither problem exists. What is left
+# here is insurance for express-lane work and for runs that ended abnormally;
+# `agent-exec isolate sweep` (the `/cleanup` skill) is the manual catch-all.
+#
 # SCOPE.
 #   - Only the session that is ending. `agent-exec isolate remove --session
 #     <id>` never touches another session's worktrees.
@@ -154,7 +162,8 @@ if dirty:
         lines.append("  %s: %s" % (task, path))
     lines.append(
         "  inspect: agent-exec isolate diff --task <id>   |   "
-        "discard: agent-exec isolate remove --task <id> --force"
+        "discard: agent-exec isolate remove --task <id> --force   |   "
+        "review all leftovers later: /cleanup"
     )
 
 if errors:

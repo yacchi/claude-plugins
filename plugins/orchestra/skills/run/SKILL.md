@@ -452,6 +452,23 @@ async function runTask(task) {
 // verify. No barrier between stages, unlike parallel().
 const results = await pipeline(tasks, runTask)
 
+// Reclaim this run's worktrees HERE, while the run is definitively over. Do
+// not leave it to the SessionEnd hook: that hook does not run at all when the
+// session is killed, crashes, or has its terminal closed, and when it does run
+// it is racing a teardown timeout -- which is exactly how repos end up holding
+// dozens of orphaned orchestra worktrees. Run end is the moment when nothing
+// is racing us and every diff has already been collected, so this is the
+// primary cleanup and SessionEnd is only insurance. Nothing here can discard
+// an unread verdict: the sweep applies the same review gate as `isolate
+// remove`, so any tree still holding uncollected work survives and is
+// reported. Fold the telemetry emission (§10) into this same relay call when
+// telemetry is enabled, rather than spending a second agent on it.
+await agent(
+  'Run `agent-exec isolate sweep --include-current --text` as ONE foreground Bash call ' +
+    'with timeout 120000. Print its stdout verbatim - nothing else.',
+  { label: 'cleanup', model: 'haiku', effort: 'low' },
+)
+
 return results
 ```
 
@@ -471,7 +488,7 @@ The run id rides in the dispatch token, not in the relay command: pass `--run-id
 
 **Follow-up rounds:** when a subagent's work needs another pass, resume that same instance with `SendMessage` rather than spawning a fresh one — it still holds what already failed and what it has tried, so nothing needs re-explaining.
 
-**At run end:** if `doctor`'s `config.values.telemetry.enabled` is true, have a cheap haiku relay agent emit one `run_summary` via `agent-exec telemetry record --json '...'` — never yourself. If disabled, skip silently (§10).
+**At run end, always:** have a cheap haiku relay agent run `agent-exec isolate sweep --include-current --text` — never yourself, and never conditionally. This is the *primary* worktree cleanup, not a nicety: the SessionEnd hook cannot be relied on (a killed or crashed session never fires it, and a slow removal gets cut off by the teardown timeout), whereas run end is a moment you control and every diff has already been collected by then. The sweep keeps anything still holding uncollected work, so it cannot destroy a verdict you have not read. If `doctor`'s `config.values.telemetry.enabled` is true, have that *same* relay also emit one `run_summary` via `agent-exec telemetry record --json '...'`; if disabled, skip that half silently (§10). If you ran without a Workflow (§8), run the sweep yourself once the delegate returns.
 
 ## 6. Writing worker prompts
 
@@ -545,4 +562,4 @@ Isolation is still the default whenever the tree is dirty, not a special-case op
 
 Beyond safety, isolation also lifts the disjoint-file-ownership constraint (§5) — use it to parallelize genuinely tangled work, make exploratory failures free, and run **competing implementations of one contract**, where variant disagreement is a defect report about your *spec*. N× tokens, so spend that variant-fanout on the risky core.
 
-Workers never touch VCS state; snapshots, merges, and cleanup are the supervisor's. Descendant agent branches are disposable and unrestricted; the PR branch is built from the accepted diff and stays clean. Never commit to, rebase, or push the user's branch without an explicit request. Full guidance: `references/isolation.md`.
+Workers never touch VCS state; snapshots, merges, and cleanup are the supervisor's — and "cleanup" has a deadline: reclaim the run's worktrees at run end (see §5's tail), because the SessionEnd hook is insurance that a killed session never collects. `agent-exec isolate sweep` is the verb; `--include-current` covers this run, and it clears dead sessions' leftovers at the same time while leaving trees of other sessions seen within the live window alone. Descendant agent branches are disposable and unrestricted; the PR branch is built from the accepted diff and stays clean. Never commit to, rebase, or push the user's branch without an explicit request. Full guidance: `references/isolation.md`.

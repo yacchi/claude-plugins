@@ -359,6 +359,23 @@ Usage:
                                   uncollected changes remain unless --force.
   agent-exec isolate list [--repo P]
                                   orchestra-created worktrees in this repo.
+  agent-exec isolate sweep [--repo P] [--older-than DAYS] [--include-current]
+                  [--include-live] [--live-window MIN] [--branches] [--dry-run]
+                  [--force] [--json|--text]
+                                  reclaim leftover worktrees repo-wide, not
+                                  just the current session's: the after-the-
+                                  fact counterpart to the SessionEnd cleanup
+                                  hook, for sessions that crashed, predate it,
+                                  or had it turned off. Same review gate as
+                                  `remove`, so a worktree holding uncollected
+                                  work is reported and kept; the running
+                                  session's own trees are skipped unless
+                                  --include-current, and another session seen
+                                  within --live-window (default 120 min) is
+                                  treated as still running unless
+                                  --include-live. orchestra branches that
+                                  outlived their worktree are reported and
+                                  deleted only with --branches.
   agent-exec isolate should [--repo P] [--mode auto|always|never]
                                   the isolation verdict for this tree, without
                                   creating anything.
@@ -4061,8 +4078,15 @@ def isolate_remove_session(root, session_id, force=False):
     return {"status": "removed", "session": wanted, "removed": results}
 
 
-def isolate_diff(root, task, session_id=None):
-    """What the worker changed in its worktree, as a patch plus a file list."""
+def isolate_diff(root, task, session_id=None, with_patch=True):
+    """What the worker changed in its worktree, as a patch plus a file list.
+
+    `with_patch=False` returns the file list alone and skips `git diff
+    --binary`, which is the expensive half on any tree holding real content.
+    Callers that only need to know WHETHER something changed (the removal gate,
+    and through it every sweep and the SessionEnd hook) pass False so a repo
+    full of leftover worktrees can be reclaimed inside a hook's timeout.
+    """
     root = repo_root(root)
     if root is None:
         return {"status": "error", "reason": "not a git repository"}
@@ -4081,10 +4105,13 @@ def isolate_diff(root, task, session_id=None):
     _git(path, "add", "-A", "-N")
     rc, names = _git(path, "diff", "--name-only", baseline)
     files = [f for f in names.splitlines() if f.strip()] if rc == 0 else []
-    rc, patch = _git(path, "diff", "--binary", baseline)
+    patch = ""
+    if with_patch:
+        rc, out = _git(path, "diff", "--binary", baseline)
+        patch = out if rc == 0 else ""
     return {
         "status": "ok", "task": task, "path": path, "baseline": baseline,
-        "files": files, "patch": patch if rc == 0 else "",
+        "files": files, "patch": patch,
         "branch": branch, "session": _branch_session(branch),
     }
 
@@ -4132,6 +4159,62 @@ def isolate_collect_session(root, session_id):
     return {"status": "collected", "session": wanted, "collected": results}
 
 
+def _uncollected(root, path, task, session_id=None):
+    """Why this worktree still holds unreviewed work, or None if it is safe to
+    discard.
+
+    Extracted so `isolate remove`'s refusal gate and `isolate sweep`'s dry-run
+    preview cannot drift: a sweep that previewed "would-remove" and then hit a
+    refusal, or previewed "dirty" and then destroyed the tree, would be worse
+    than no preview at all.
+    """
+    # The patch text is only ever needed to recompute the collected digest, and
+    # that comparison can only succeed when a collected marker exists at all.
+    # Reading the marker first turns the common case -- a worktree nobody ever
+    # collected -- into one `git diff --name-only` instead of that plus a full
+    # `git diff --binary`, which is what made bulk cleanup outrun its timeout.
+    stored_collected = _read_collected(path)
+    diff = isolate_diff(
+        root, task, session_id=session_id, with_patch=stored_collected is not None
+    )
+    files = diff.get("files") or []
+    # Gitignored paths are part of the surface too: `git diff`/`git add -A -N`
+    # never see them, so a worker that adds a new gitignored file or directory
+    # after collection must still flip this dirty, or the internal `--force` in
+    # `isolate remove` would silently destroy it. But nearly every worktree
+    # carries SOME ignored surface by design (the carried `node_modules` and
+    # friends), so "any ignored entries at all" cannot be the trigger -- only
+    # ignored entries that differ from what `isolate create` itself put there
+    # count as unreviewed.
+    ignored = _ignored_entries(path)
+    digest_matches_collected = (
+        stored_collected is not None
+        and stored_collected == _collected_digest(files, diff.get("patch") or "", ignored)
+    )
+    tracked_ok = (not files) or digest_matches_collected
+
+    created_ignored_hash = _read_created_ignored(path)
+    ignored_now_hash = _ignored_digest(ignored)
+    ignored_ok = (
+        (created_ignored_hash is not None and created_ignored_hash == ignored_now_hash)
+        or digest_matches_collected
+    )
+
+    if not tracked_ok:
+        return {
+            "files": files,
+            "reason": "worktree holds %d changed file(s) not yet collected; "
+                      "collect the diff or pass --force" % len(files),
+        }
+    if not ignored_ok:
+        return {
+            "files": files,
+            "reason": "worktree's ignored files changed since it was created "
+                      "and were never collected; collect the diff or pass --force",
+        }
+    return None
+
+
 def isolate_remove(root, task=None, force=False, session_id=None):
     """Delete a task's worktree and branch, refusing to discard unreviewed work."""
     root = repo_root(root)
@@ -4147,43 +4230,9 @@ def isolate_remove(root, task=None, force=False, session_id=None):
 
     git_force = force
     if not force:
-        diff = isolate_diff(root, task, session_id=session_id)
-        files = diff.get("files") or []
-        # Gitignored paths are part of the surface too: `git diff`/`git add
-        # -A -N` never see them, so a worker that adds a new gitignored file
-        # or directory after collection must still flip this dirty, or the
-        # internal `--force` below would silently destroy it. But nearly
-        # every worktree carries SOME ignored surface by design (the carried
-        # `node_modules` and friends), so "any ignored entries at all" cannot
-        # be the trigger -- only ignored entries that differ from what
-        # `isolate create` itself put there count as unreviewed.
-        ignored = _ignored_entries(path)
-        stored_collected = _read_collected(path)
-        full_digest = _collected_digest(files, diff.get("patch") or "", ignored)
-        digest_matches_collected = (
-            stored_collected is not None and stored_collected == full_digest
-        )
-        tracked_ok = (not files) or digest_matches_collected
-
-        created_ignored_hash = _read_created_ignored(path)
-        ignored_now_hash = _ignored_digest(ignored)
-        ignored_ok = (
-            (created_ignored_hash is not None and created_ignored_hash == ignored_now_hash)
-            or digest_matches_collected
-        )
-
-        if not tracked_ok:
-            return {
-                "status": "dirty", "task": task, "path": path, "files": files,
-                "reason": "worktree holds %d changed file(s) not yet collected; "
-                          "collect the diff or pass --force" % len(files),
-            }
-        if not ignored_ok:
-            return {
-                "status": "dirty", "task": task, "path": path, "files": files,
-                "reason": "worktree's ignored files changed since it was created "
-                          "and were never collected; collect the diff or pass --force",
-            }
+        uncollected = _uncollected(root, path, task, session_id=session_id)
+        if uncollected is not None:
+            return dict(uncollected, status="dirty", task=task, path=path)
         # Vetted as safe to discard by our own collected-digest/ignored-surface
         # check, but `git worktree remove` itself still refuses any worktree
         # with modified/untracked files unless told to force -- that plain-git
@@ -4200,6 +4249,294 @@ def isolate_remove(root, task=None, force=False, session_id=None):
     return {
         "status": "removed", "task": task, "path": path,
         "branch": branch, "session": _branch_session(branch),
+    }
+
+
+# --- session heartbeat --------------------------------------------------------
+#
+# WHY THIS EXISTS. `isolate sweep` reclaims worktrees repo-wide, so it will meet
+# trees belonging to a DIFFERENT Claude Code session that is still running --
+# every parallel session in the same repo. It cannot ask the OS whether that
+# session is alive: orchestra never learns another session's pid, and a session
+# id is not a process. Liveness therefore has to be *recorded* rather than
+# probed. Every orchestra command that implies "a session is doing work here"
+# touches a file named after that session's eight-character id; a sweep treats
+# a session touched inside the live window as in use and leaves its worktrees
+# alone.
+#
+# Advisory, never authoritative: a missing, unreadable, or stale heartbeat
+# degrades to "not live", which merely means the removal gate is again the only
+# thing between that tree and reclamation -- the behaviour before heartbeats
+# existed, and still safe, because uncollected work is what the gate protects.
+# One `open()` per command keeps it cheap enough for the hot path.
+
+_HEARTBEAT_WINDOW_MINUTES = 120
+
+# Heartbeats for sessions that have not been seen in this long are garbage;
+# sweeps delete them so the directory does not grow without bound.
+_HEARTBEAT_RETENTION_DAYS = 30
+
+_heartbeat_dir_cache = None
+
+
+def _heartbeat_dir():
+    """`alive/`, a sibling of the run ledger, token, and session-store dirs."""
+    global _heartbeat_dir_cache
+    if _heartbeat_dir_cache is None:
+        # The override exists because this directory is shared by every session
+        # on the machine: a test suite (or a sandboxed run) that spawns the CLI
+        # would otherwise deposit heartbeats in the real user's home.
+        override = os.environ.get("ORCHESTRA_ALIVE_DIR")
+        if override:
+            _heartbeat_dir_cache = os.path.expanduser(override)
+            return _heartbeat_dir_cache
+        directory = os.path.expanduser("~/.claude/orchestra/alive")
+        try:
+            cfg, err = resolve_config()
+            if err is None and cfg:
+                directory = os.path.join(
+                    os.path.dirname(os.path.abspath(_ledger_dir_from_cfg(cfg))), "alive"
+                )
+        except Exception:
+            pass
+        _heartbeat_dir_cache = directory
+    return _heartbeat_dir_cache
+
+
+def heartbeat_touch(session_id=None):
+    """Record that this session is alive. Returns the path, or None. Never raises."""
+    session = _session_component(session_id if session_id is not None else _current_session())
+    if session is None:
+        return None
+    try:
+        directory = _heartbeat_dir()
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        path = os.path.join(directory, session)
+        with open(path, "w"):
+            pass
+        return path
+    except (OSError, ValueError):
+        return None
+
+
+def _session_last_seen(session):
+    """Epoch seconds this session was last active, or None if never recorded."""
+    if not session:
+        return None
+    try:
+        return os.path.getmtime(os.path.join(_heartbeat_dir(), session))
+    except OSError:
+        return None
+
+
+def _session_is_live(session, window_minutes, now=None):
+    seen = _session_last_seen(session)
+    if seen is None:
+        return False
+    if window_minutes <= 0:
+        return False
+    reference = time.time() if now is None else now
+    return (reference - seen) < window_minutes * 60.0
+
+
+def _prune_heartbeats(now=None):
+    """Drop heartbeats far past any plausible live window. Never raises."""
+    reference = time.time() if now is None else now
+    cutoff = reference - _HEARTBEAT_RETENTION_DAYS * 86400.0
+    try:
+        directory = _heartbeat_dir()
+        for name in os.listdir(directory):
+            path = os.path.join(directory, name)
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+            except OSError:
+                continue
+    except OSError:
+        return
+
+
+# --- isolate sweep ------------------------------------------------------------
+#
+# WHY THIS EXISTS. `hooks/cleanup-worktrees.sh` reclaims a session's worktrees
+# at `SessionEnd`, but only that session's, and only when the hook actually
+# runs. Everything else accumulates with nothing to reclaim it: a session that
+# crashed or was killed, a run from before the cleanup hook shipped, a legacy
+# `orchestra/<task>` branch with no session segment, `ORCHESTRA_SESSION_CLEANUP
+# =off`, or a worktree that was dirty at SessionEnd and stayed behind by
+# design. What users report is a repo holding dozens of orchestra worktrees and
+# no verb that clears them.
+#
+# `sweep` is that verb: an after-the-fact reclaim over the WHOLE repo rather
+# than one session. It is deliberately conservative -- it applies exactly the
+# same review gate as `isolate remove` (`_uncollected`), so a worktree holding
+# work nobody collected is reported and kept, never discarded, and the running
+# session's own trees are left alone unless asked for. Branches that outlived
+# their worktree are reported by default and deleted only on an explicit
+# `--branches`, because a branch is the last copy of whatever it holds.
+
+def _branch_age_days(root, branch, now=None):
+    """Days since `branch`'s tip commit, or None when it cannot be read."""
+    if not branch:
+        return None
+    rc, out = _git(root, "log", "-1", "--format=%ct", branch, "--")
+    if rc != 0:
+        return None
+    try:
+        committed = int(out.strip().splitlines()[0])
+    except (ValueError, IndexError):
+        return None
+    reference = time.time() if now is None else now
+    return round(max(0.0, (reference - committed) / 86400.0), 2)
+
+
+def _orphan_branches(root):
+    """orchestra/* branches with no worktree checked out on them."""
+    rc, out = _git(
+        root, "for-each-ref", "--format=%(refname:short)",
+        "refs/heads/" + ISOLATE_BRANCH_PREFIX,
+    )
+    if rc != 0:
+        return []
+    held = set()
+    for entry in _worktree_entries(root):
+        branch = entry.get("branch")
+        if branch:
+            held.add(branch)
+    return [b for b in (line.strip() for line in out.splitlines()) if b and b not in held]
+
+
+def isolate_sweep(root, older_than=None, include_current=False, branches=False,
+                  dry_run=False, force=False, live_window=_HEARTBEAT_WINDOW_MINUTES,
+                  include_live=False):
+    """Reclaim leftover orchestra worktrees across the whole repo.
+
+    `older_than` (days) skips anything whose branch tip is newer.
+    `include_current` opts the running session's own worktrees in -- they are
+    skipped by default because they may still be in use. `live_window`
+    (minutes) is how recently ANOTHER session must have been seen for its
+    worktrees to count as in use; `include_live` sweeps them anyway.
+    `branches` opts into deleting orchestra branches that no longer have a
+    worktree. `force` discards uncollected work, exactly as `isolate remove
+    --force` does.
+    """
+    resolved = repo_root(root)
+    if resolved is None:
+        return {"status": "error", "reason": "not a git repository"}
+
+    # A worktree whose directory was deleted by hand still occupies an admin
+    # record, and `git worktree list` keeps reporting it. Pruning first means
+    # the sweep sees the real surface -- but it mutates, so a dry run skips it.
+    pruned = False
+    if not dry_run:
+        rc, _ = _git(resolved, "worktree", "prune")
+        pruned = rc == 0
+
+    current = _session_component(_current_session())
+    now = time.time()
+    if not dry_run:
+        _prune_heartbeats(now=now)
+    worktrees = []
+    for entry in isolate_list(resolved):
+        task = entry["task"]
+        path = entry.get("path")
+        session = entry.get("session")
+        record = {
+            "task": task, "branch": entry.get("branch"), "path": path,
+            "session": session,
+            "current": session is not None and session == current,
+            "age_days": _branch_age_days(resolved, entry.get("branch"), now=now),
+        }
+        last_seen = _session_last_seen(session)
+        record["session_idle_minutes"] = (
+            None if last_seen is None else round(max(0.0, (now - last_seen) / 60.0), 1)
+        )
+        if record["current"] and not include_current:
+            record["status"] = "skipped"
+            record["reason"] = ("belongs to the running session; "
+                               "pass --include-current to sweep it")
+            worktrees.append(record)
+            continue
+        # Another session that was active moments ago is very likely mid-run.
+        # Its dirty trees are protected by the gate below anyway, but a clean
+        # one it is about to write into would come back as a confusing
+        # "absent", so leave live sessions alone unless told otherwise.
+        if (not record["current"] and not include_live
+                and _session_is_live(session, live_window, now=now)):
+            record["status"] = "skipped"
+            record["reason"] = (
+                "session %s was active %.0f min ago; pass --include-live to sweep it"
+                % (session, record["session_idle_minutes"] or 0.0)
+            )
+            worktrees.append(record)
+            continue
+        if older_than is not None and (
+            record["age_days"] is None or record["age_days"] < older_than
+        ):
+            record["status"] = "skipped"
+            record["reason"] = "newer than --older-than %g day(s)" % older_than
+            worktrees.append(record)
+            continue
+        if dry_run:
+            uncollected = None if force else _uncollected(
+                resolved, path, task, session_id=session
+            )
+            if uncollected is None:
+                record["status"] = "would-remove"
+            else:
+                record["status"] = "dirty"
+                record["reason"] = uncollected["reason"]
+                record["files"] = uncollected["files"]
+            worktrees.append(record)
+            continue
+        outcome = isolate_remove(resolved, task, force=force, session_id=session)
+        record["status"] = outcome.get("status")
+        if outcome.get("reason"):
+            record["reason"] = outcome["reason"]
+        if outcome.get("files"):
+            record["files"] = outcome["files"]
+        worktrees.append(record)
+
+    branch_records = []
+    for branch in _orphan_branches(resolved):
+        age = _branch_age_days(resolved, branch, now=now)
+        record = {"branch": branch, "age_days": age, "session": _branch_session(branch)}
+        if older_than is not None and (age is None or age < older_than):
+            record["status"] = "skipped"
+            record["reason"] = "newer than --older-than %g day(s)" % older_than
+        elif not branches:
+            record["status"] = "orphan"
+            record["reason"] = "no worktree; pass --branches to delete it"
+        elif dry_run:
+            record["status"] = "would-delete"
+        else:
+            rc, _ = _git(resolved, "branch", "-D", branch)
+            record["status"] = "deleted" if rc == 0 else "error"
+            if rc != 0:
+                record["reason"] = "git branch -D failed"
+        branch_records.append(record)
+
+    def _count(records, *statuses):
+        return len([r for r in records if r.get("status") in statuses])
+
+    return {
+        "status": "ok",
+        "repo": resolved,
+        "dry_run": dry_run,
+        "pruned": pruned,
+        "worktrees": worktrees,
+        "branches": branch_records,
+        "summary": {
+            "removed": _count(worktrees, "removed"),
+            "would_remove": _count(worktrees, "would-remove"),
+            "dirty": _count(worktrees, "dirty"),
+            "skipped": _count(worktrees, "skipped"),
+            "absent": _count(worktrees, "absent"),
+            "errors": _count(worktrees, "error") + _count(branch_records, "error"),
+            "branches_orphan": _count(branch_records, "orphan"),
+            "branches_deleted": _count(branch_records, "deleted"),
+            "branches_would_delete": _count(branch_records, "would-delete"),
+        },
     }
 
 
@@ -4586,9 +4923,129 @@ def cmd_isolate_collect(args):
     return 1 if result.get("status") == "error" else 0
 
 
+def _parse_sweep_args(args):
+    """Parse `isolate sweep` flags. Returns (options, error_message)."""
+    opts = {
+        "repo": os.getcwd(), "older_than": None, "include_current": False,
+        "branches": False, "dry_run": False, "force": False,
+        "live_window": _HEARTBEAT_WINDOW_MINUTES, "include_live": False,
+        "json": False, "text": False,
+    }
+    seen = set()
+    value_flags = {
+        "--repo": "repo", "--older-than": "older_than", "--live-window": "live_window",
+    }
+    bool_flags = {
+        "--include-current": "include_current", "--include-live": "include_live",
+        "--branches": "branches", "--dry-run": "dry_run", "--force": "force",
+    }
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok in seen:
+            return None, "duplicate option: %s" % tok
+        if tok in value_flags:
+            if i + 1 >= len(args):
+                return None, "missing value for %s" % tok
+            seen.add(tok)
+            opts[value_flags[tok]] = args[i + 1]
+            i += 2
+            continue
+        if tok in bool_flags:
+            seen.add(tok)
+            opts[bool_flags[tok]] = True
+            i += 1
+            continue
+        if tok in ("--json", "--text"):
+            seen.add(tok)
+            opts[tok[2:]] = True
+            i += 1
+            continue
+        return None, "unknown option: %s" % tok
+    if opts["json"] and opts["text"]:
+        return None, "--json and --text are mutually exclusive"
+    if opts["older_than"] is not None:
+        try:
+            opts["older_than"] = float(opts["older_than"])
+        except (TypeError, ValueError):
+            return None, "--older-than takes a number of days"
+        if opts["older_than"] < 0:
+            return None, "--older-than takes a number of days"
+    try:
+        opts["live_window"] = float(opts["live_window"])
+    except (TypeError, ValueError):
+        return None, "--live-window takes a number of minutes"
+    if opts["live_window"] < 0:
+        return None, "--live-window takes a number of minutes"
+    return opts, None
+
+
+def format_sweep_text(result):
+    """Compact human rendering of an `isolate sweep` result."""
+    if result.get("status") == "error":
+        return "sweep error  %s" % result.get("reason")
+    head = "sweep %s%s" % (result.get("repo"), "  (dry-run)" if result.get("dry_run") else "")
+    lines = [head]
+    for entry in result.get("worktrees") or []:
+        age = entry.get("age_days")
+        lines.append("  %-12s %-16s %-9s %s%s" % (
+            entry.get("status"),
+            entry.get("task"),
+            ("%.1fd" % age) if age is not None else "-",
+            entry.get("path") or "-",
+            ("  (%s)" % entry["reason"]) if entry.get("reason") else "",
+        ))
+    for entry in result.get("branches") or []:
+        age = entry.get("age_days")
+        lines.append("  %-12s %-16s %-9s %s" % (
+            entry.get("status"), "(branch)",
+            ("%.1fd" % age) if age is not None else "-",
+            entry.get("branch"),
+        ))
+    s = result.get("summary") or {}
+    lines.append(
+        "summary: removed %d, would-remove %d, dirty %d, skipped %d, errors %d, "
+        "branches %d orphan / %d deleted"
+        % (s.get("removed", 0), s.get("would_remove", 0), s.get("dirty", 0),
+           s.get("skipped", 0), s.get("errors", 0), s.get("branches_orphan", 0),
+           s.get("branches_deleted", 0))
+    )
+    if s.get("dirty"):
+        lines.append(
+            "  inspect: agent-exec isolate diff --task <id>   |   "
+            "discard: agent-exec isolate sweep --force"
+        )
+    return "\n".join(lines)
+
+
+def cmd_isolate_sweep(args):
+    opts, error = _parse_sweep_args(args)
+    if error is not None:
+        sys.stderr.write("agent-exec: isolate sweep: %s\n" % error)
+        return 2
+    try:
+        result = isolate_sweep(
+            opts["repo"], older_than=opts["older_than"],
+            include_current=opts["include_current"], branches=opts["branches"],
+            dry_run=opts["dry_run"], force=opts["force"],
+            live_window=opts["live_window"], include_live=opts["include_live"],
+        )
+    except ValueError as exc:
+        sys.stderr.write("agent-exec: isolate sweep: %s\n" % exc)
+        return 2
+    if opts["text"]:
+        print(format_sweep_text(result))
+    else:
+        print(json.dumps(result, ensure_ascii=False))
+    if result.get("status") == "error":
+        return 1
+    return 1 if (result.get("summary") or {}).get("errors") else 0
+
+
 def _isolate_usage(stream=sys.stderr):
     stream.write(
-        "usage: agent-exec isolate {create|list|diff|collect|integrate|remove|should} [options]\n"
+        "usage: agent-exec isolate\n"
+        "         {create|list|diff|collect|integrate|remove|sweep|should} [options]\n"
         "  create    --task <id> [--repo <path>] [--backend auto|gtr|git] [--no-carry]\n"
         "  list      [--repo <path>] [--session <id>]\n"
         "  diff      --task <id> [--repo <path>] [--names-only]\n"
@@ -4598,6 +5055,9 @@ def _isolate_usage(stream=sys.stderr):
         "            [--json|--text]\n"
         "  remove    --task <id> [--repo <path>] [--force]\n"
         "  remove    --session <id> [--repo <path>] [--force]\n"
+        "  sweep     [--repo <path>] [--older-than <days>] [--include-current]\n"
+        "            [--include-live] [--live-window <minutes>] [--branches]\n"
+        "            [--dry-run] [--force] [--json|--text]\n"
         "  should    [--repo <path>] [--mode auto|always|never]\n"
     )
 
@@ -4607,7 +5067,7 @@ def cmd_isolate(args):
         _isolate_usage()
         return 2
     sub = args[0]
-    if sub not in ("create", "list", "diff", "collect", "integrate", "remove", "should"):
+    if sub not in ("create", "list", "diff", "collect", "integrate", "remove", "sweep", "should"):
         sys.stderr.write("agent-exec: isolate: unknown subcommand: %s\n" % sub)
         _isolate_usage()
         return 2
@@ -4620,6 +5080,8 @@ def cmd_isolate(args):
         return cmd_isolate_integrate(args[1:])
     if sub == "collect":
         return cmd_isolate_collect(args[1:])
+    if sub == "sweep":
+        return cmd_isolate_sweep(args[1:])
 
     task = None
     session = None
@@ -6852,6 +7314,12 @@ def main(argv):
         return 0
 
     tok = argv[0]
+
+    # Anything below this line means a session is actively orchestrating in
+    # some repo. Recording it here rather than in each command keeps the one
+    # signal `isolate sweep` uses for cross-session liveness in a single place.
+    if tok in ("isolate", "dispatch", "route", "run"):
+        heartbeat_touch()
 
     if tok == "install":
         return cmd_install()

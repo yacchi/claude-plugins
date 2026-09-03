@@ -19,6 +19,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent_exec  # noqa: E402
 
+# Heartbeats are machine-shared (`~/.claude/orchestra/alive`); redirect this
+# whole suite -- including every CLI subprocess it spawns -- into a throwaway
+# directory so a test run never writes into the real user's home.
+_ALIVE_TMP = tempfile.mkdtemp(prefix="orch-alive-")
+os.environ["ORCHESTRA_ALIVE_DIR"] = _ALIVE_TMP
+agent_exec._heartbeat_dir_cache = _ALIVE_TMP
+
 
 def _append_from_child(directory, run_id):
     os.environ["CLAUDE_CODE_SESSION_ID"] = "parallel-session"

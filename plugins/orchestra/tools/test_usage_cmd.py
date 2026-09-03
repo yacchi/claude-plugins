@@ -23,6 +23,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent_exec  # noqa: E402
 
+# Heartbeats are machine-shared (`~/.claude/orchestra/alive`); redirect this
+# whole suite -- including every CLI subprocess it spawns -- into a throwaway
+# directory so a test run never writes into the real user's home.
+_ALIVE_TMP = tempfile.mkdtemp(prefix="orch-alive-")
+os.environ["ORCHESTRA_ALIVE_DIR"] = _ALIVE_TMP
+agent_exec._heartbeat_dir_cache = _ALIVE_TMP
+
 AGENT_EXEC_PY = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "agent_exec.py")
 
