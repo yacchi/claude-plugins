@@ -98,7 +98,7 @@ A second layer backs this up: `hooks/guard-worker-vcs.sh` denies destructive VCS
 
 **Who does what.** Workers never touch VCS state — `orchestra-light`/`orchestra-deep` are explicitly forbidden from committing. Snapshots, rollbacks, and merges belong to the supervising layer (the Workflow script's own steps, or `orchestra-delegate`). Keep them on agent-owned branches (`agent/<task>-<attempt>` or similar); **never commit to, rebase, or push the user's branch without an explicit request in the current turn.** Integration into the user's branch is a separate, user-approved step.
 
-**Recovery.** If work is lost anyway, jj's operation log (`jj op log` → `jj op restore`) recovers states that git alone would not, including uncommitted working-copy snapshots. That is precisely why keeping jj colocated is worth it even in a git-first repo.
+**Recovery.** If work is lost anyway, jj's operation log (`jj op log` → `jj op restore`) recovers states that git alone would not, including uncommitted working-copy snapshots. That is precisely why keeping jj colocated is worth it even in a git-first repo. It covers the **main** tree only: jj refuses to run inside a git linked worktree ("Cannot create a colocated jj repo inside a Git worktree" as of jj 0.45), and its own `jj workspace add` creates a directory with no `.git`, which `agent-exec isolate`, gtr, and every git-based executor cannot use. So jj is not a per-worktree stash replacement either; inside a worker's worktree that job is `agent-exec shelf`.
 
 ## 1a. Branch hygiene: messy underneath, clean on top
 

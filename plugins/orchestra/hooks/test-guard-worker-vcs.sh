@@ -177,7 +177,7 @@ run_hook "$(worker 'git stash list')"
 assert_allow "20. worker: git stash list is read-only"
 
 run_hook "$(worker 'git stash pop')"
-assert_allow "21. worker: git stash pop restores rather than discards"
+assert_deny "21. worker: git stash pop may take another worktree's entry"
 
 run_hook "$(worker 'npm test -- --watch=false')"
 assert_allow "22. worker: an unrelated command containing --"
@@ -214,6 +214,31 @@ assert_allow "31. outside a repository there is nothing to protect"
 
 run_hook "$(make_payload "ag_1" "orchestra:orchestra-light" "$SHARED_REPO" 'git reset --hard HEAD' 'x' "Read")"
 assert_allow "32. non-Bash tools are out of scope"
+
+# --- refs/stash is shared by every worktree: denied even in an orchestra one --
+# Observed: two parallel workers stashed 4s apart and each popped the other's
+# entry, swapping their changes between worktrees.
+run_hook "$(make_payload "ag_1" "orchestra:orchestra-light" "$ISO_REPO" 'git stash push -u -m wip' 'set aside')"
+assert_deny "34. worker inside an orchestra worktree: git stash push"
+case "$OUT" in
+    *"shared by EVERY worktree"*) echo "PASS: 34b. stash denial explains the shared stack"; PASS=$((PASS + 1)) ;;
+    *) echo "FAIL: 34b. stash denial explains the shared stack -- got: $OUT"; FAIL=$((FAIL + 1)) ;;
+esac
+
+run_hook "$(make_payload "ag_1" "orchestra:orchestra-light" "$ISO_REPO" 'git stash pop' 'restore')"
+assert_deny "35. worker inside an orchestra worktree: git stash pop"
+
+run_hook "$(make_payload "ag_1" "orchestra:orchestra-light" "$ISO_REPO" 'git stash apply stash@{0}' 'restore')"
+assert_deny "36. worker inside an orchestra worktree: git stash apply"
+
+run_hook "$(make_payload "ag_1" "orchestra:orchestra-light" "$ISO_REPO" 'git stash list' 'look')"
+assert_allow "37. worker inside an orchestra worktree: git stash list is read-only"
+
+run_hook "$(make_payload "ag_1" "orchestra:orchestra-light" "$ISO_REPO" 'git stash drop' 'x [orchestra:allow-vcs: my own entry]')"
+assert_allow "38. escape hatch still works for the stash stack"
+
+run_hook "$(make_payload "ag_1" "orchestra:orchestra-light" "$ISO_REPO" 'git reset --hard HEAD' 'undo my own work')"
+assert_allow "39. other destructive commands stay allowed in an orchestra worktree"
 
 # --- other subagents are covered too (the 7/23-7/28 accidents were generic) --
 run_hook "$(make_payload "ag_9" "general-purpose" "$SHARED_REPO" 'git checkout -- go.sum' 'tidy up')"

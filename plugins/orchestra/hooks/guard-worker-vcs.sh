@@ -32,6 +32,12 @@
 #   - the cwd is a git repository whose branch is NOT one of orchestra's own
 #     worktree branches (`orchestra/*`). Inside its own worktree a worker may
 #     freely reset: there is nothing there but its own work.
+#     EXCEPTION: `git stash` push/pop/apply/drop/clear is denied in EVERY
+#     worktree, orchestra's included. refs/stash is one stack shared by all
+#     worktrees of a repository; two parallel workers each ran stash/pop four
+#     seconds apart and each popped the other's entry, swapping their changes
+#     between worktrees. Isolation cannot help there -- the ref is not
+#     per-worktree -- so the only fix is not to use the stack at all.
 #   - `agent_type` is not the supervising layer. `orchestra-delegate` owns
 #     snapshots and rollbacks by design (references/isolation.md §1).
 #   - no escape hatch fired (below).
@@ -117,7 +123,13 @@ try:
             return any(re.match(r"^-[A-Za-z]*f", w) for w in words)
         if verb == "stash":
             sub = words[0] if words else "push"
-            return sub in ("push", "save", "create", "store") or sub.startswith("-")
+            # refs/stash is ONE stack shared by every worktree of the repo, so
+            # anything that pushes to, pops from, applies or drops it can take
+            # the entry of another worker -- denied even inside an orchestra
+            # worktree ("shared"). list/show only read it.
+            if sub in ("push", "save", "store", "pop", "apply", "drop", "clear", "branch") or sub.startswith("-"):
+                return "shared"
+            return sub == "create"
         if verb == "worktree":
             return len(words) >= 1 and words[0] == "remove" and (
                 "-f" in words or "--force" in words
@@ -125,7 +137,8 @@ try:
         return False
 
     segments = re.split(r"(?:\|\||&&|[;&|\n])", body)
-    hit = "1" if any(destructive(seg) for seg in segments) else "0"
+    kinds = [destructive(seg) for seg in segments]
+    hit = "2" if "shared" in kinds else ("1" if any(kinds) else "0")
 
     print(tool_name)
     print(agent_id)
@@ -148,7 +161,10 @@ SESSION_ID=$(printf '%s' "$PARSED" | sed -n '7p')
 
 # Fail-open: an unparseable payload leaves every field empty.
 [ "$TOOL_NAME" = "Bash" ] || exit 0
-[ "$DESTRUCTIVE" = "1" ] || exit 0
+case "$DESTRUCTIVE" in
+    1|2) ;;
+    *) exit 0 ;;
+esac
 [ -n "$AGENT_ID" ] || exit 0          # main thread: not our business
 [ "$ESCAPE" = "1" ] && exit 0
 
@@ -166,9 +182,13 @@ if [ -z "$BRANCH" ]; then
     # there is no shared working tree to protect here.
     exit 0
 fi
-case "$BRANCH" in
-    orchestra/*) exit 0 ;;   # the worker's own isolated worktree
-esac
+# The worker's own isolated worktree is its to reset -- but not the stash
+# stack, which every worktree of the repository shares (DESTRUCTIVE=2).
+if [ "$DESTRUCTIVE" = "1" ]; then
+    case "$BRANCH" in
+        orchestra/*) exit 0 ;;
+    esac
+fi
 
 # --- config, cached per session ---------------------------------------------
 WORKER_VCS=""
@@ -211,7 +231,11 @@ fi
 
 [ "$WORKER_VCS" = "block" ] || exit 0
 
+if [ "$DESTRUCTIVE" = "2" ]; then
+REASON="orchestra: a worker must not use git stash (push/pop/apply/drop). refs/stash is a single stack shared by EVERY worktree of this repository, so parallel workers pop each other's entries -- this has swapped two workers' changes between their worktrees. Use the per-worktree equivalent instead, which nobody else can see or pop: 'agent-exec shelf push [--keep-index] [-- PATH...]', then 'agent-exec shelf pop' (also: list, apply, drop). To override deliberately, include [orchestra:allow-vcs: <reason>] in the command or its description."
+else
 REASON="orchestra: a worker must not run destructive VCS commands against the user's shared working tree (branch '${BRANCH}'). This tree holds work from other tasks and from the user; a diff you did not author is not contamination and must not be reverted, stashed, or reset. If your task genuinely needs to undo something, undo only what YOU wrote, by editing the file back. If you need a tree of your own, ask the supervisor to dispatch you with 'agent-exec dispatch --isolate always --task <id>', which gives you a worktree where this restriction does not apply. To override deliberately, include [orchestra:allow-vcs: <reason>] in the command or its description."
+fi
 
 python3 - "$REASON" <<'PYEOF' 2>/dev/null
 import sys, json

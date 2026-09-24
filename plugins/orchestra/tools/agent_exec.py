@@ -379,6 +379,19 @@ Usage:
   agent-exec isolate should [--repo P] [--mode auto|always|never]
                                   the isolation verdict for this tree, without
                                   creating anything.
+  agent-exec shelf push [-m MSG] [--keep-index] [--repo P] [-- PATH...]
+  agent-exec shelf pop|apply|drop [ID] [--repo P]
+  agent-exec shelf list [--repo P]
+                                  a per-worktree `git stash`: set changes
+                                  (untracked files included) aside and bring
+                                  them back. Entries are binary patches in the
+                                  worktree's OWN git dir, so parallel workers
+                                  never see or pop each other's -- unlike
+                                  refs/stash, which every worktree shares.
+                                  --keep-index leaves the staged state in the
+                                  tree. Refuses the main working tree unless
+                                  --allow-main-tree. pop keeps the entry on a
+                                  conflict (exit 1).
   agent-exec usage [--since W|--run ID[,ID...]|--session ID[,ID...]]
                    [--list-runs] [--json|--text] [--source a,b] [--all-projects]
                                   aggregate token usage across all three
@@ -7308,6 +7321,244 @@ def cmd_usage(args):
     return 0
 
 
+# --- shelf: a per-worktree stash -----------------------------------------------
+#
+# `git stash` keeps ONE stack in refs/stash, shared by every worktree of the
+# repository. Parallel workers popping it take each other's entries -- observed
+# swapping two workers' changes between their worktrees -- so the worker guard
+# denies it. Workers still have real reasons to set changes aside: confirming
+# a new test fails without the fix, verifying one commit's staged state alone,
+# checking whether a failure predates their change. `shelf` does that job with
+# nothing shared: each entry is a binary patch (untracked files included) in
+# the worktree's OWN git dir (`.git/worktrees/<name>/orchestra-shelf/` for a
+# linked worktree), so no other worktree can see or pop it. No setup, no refs,
+# no commits.
+
+_SHELF_DIRNAME = "orchestra-shelf"
+
+
+def _shelf_dir(root):
+    rc, out = _git(root, "rev-parse", "--path-format=absolute", "--git-dir")
+    if rc != 0 or not out.strip():
+        return None
+    return os.path.join(out.strip(), _SHELF_DIRNAME)
+
+
+def _is_linked_worktree(root):
+    rc, out = _git(root, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir")
+    lines = out.split("\n") if rc == 0 else []
+    if len(lines) < 2:
+        return False
+    return os.path.realpath(lines[0].strip()) != os.path.realpath(lines[1].strip())
+
+
+def _z_list(root, *args):
+    rc, out = _git(root, *args)
+    if rc != 0:
+        return []
+    return [p for p in out.split("\0") if p]
+
+
+def _shelf_entries(directory):
+    if not directory or not os.path.isdir(directory):
+        return []
+    entries = []
+    for name in os.listdir(directory):
+        if not name.endswith(".json"):
+            continue
+        meta = _shelf_read_json(os.path.join(directory, name))
+        if isinstance(meta, dict) and isinstance(meta.get("id"), int):
+            entries.append(meta)
+    return sorted(entries, key=lambda e: e["id"])
+
+
+def _shelf_read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def shelf_push(root, paths=None, message="", keep_index=False):
+    """Set the changes under `paths` (default: the whole tree) aside.
+
+    Without keep_index the tree goes back to HEAD for those paths; with it, back
+    to the index -- the staged state is what remains, which is how a worker
+    checks that one commit's worth of changes builds and passes on its own.
+    """
+    directory = _shelf_dir(root)
+    if directory is None:
+        return {"status": "error", "reason": "not a git repository"}
+    spec = ["--"] + (paths or ["."])
+
+    untracked = _z_list(root, "ls-files", "--others", "--exclude-standard", "-z", *spec)
+    if untracked:
+        # Intent-to-add makes new files show up in `git diff` as additions.
+        _git(root, "add", "--intent-to-add", "--", *untracked)
+
+    base = [] if keep_index else ["HEAD"]
+    changed = _z_list(root, "diff", "--name-only", "-z", *base, *spec)
+    added = set(_z_list(root, "diff", "--name-only", "-z", "--diff-filter=A", *base, *spec))
+    if not changed:
+        if untracked:
+            _git(root, "reset", "-q", "--", *untracked)
+        return {"status": "empty", "files": []}
+
+    os.makedirs(directory, exist_ok=True)
+    entries = _shelf_entries(directory)
+    entry_id = (entries[-1]["id"] + 1) if entries else 0
+    patch = os.path.join(directory, "%d.patch" % entry_id)
+    rc, _ = _git(root, "diff", "--binary", "--output=" + patch, *base, *spec)
+    if rc != 0 or not os.path.exists(patch):
+        if untracked:
+            _git(root, "reset", "-q", "--", *untracked)
+        return {"status": "error", "reason": "could not write the patch"}
+
+    # Put the tree back. Untracked (and, without keep_index, staged-new) files
+    # are removed; everything else is checked out from HEAD or the index.
+    if untracked:
+        _git(root, "reset", "-q", "--", *untracked)
+    if not keep_index:
+        _git(root, "reset", "-q", "--", *[p for p in changed if p not in untracked])
+    restore = [p for p in changed if p not in added and p not in untracked]
+    if restore:
+        _git(root, "checkout", "-q", *base, "--", *restore)
+    for rel in set(untracked) | added:
+        try:
+            os.remove(os.path.join(root, rel))
+        except OSError:
+            pass
+
+    meta = {"id": entry_id, "message": message, "keep_index": keep_index,
+            "files": changed, "created": int(time.time())}
+    with open(os.path.join(directory, "%d.json" % entry_id), "w") as f:
+        json.dump(meta, f)
+    return {"status": "ok", "id": entry_id, "files": changed}
+
+
+def _shelf_pick(root, entry_id):
+    directory = _shelf_dir(root)
+    entries = _shelf_entries(directory)
+    if not entries:
+        return directory, None
+    if entry_id is None:
+        return directory, entries[-1]
+    for e in entries:
+        if e["id"] == entry_id:
+            return directory, e
+    return directory, None
+
+
+def _shelf_forget(directory, entry_id):
+    for ext in (".patch", ".json"):
+        try:
+            os.remove(os.path.join(directory, "%d%s" % (entry_id, ext)))
+        except OSError:
+            pass
+
+
+def shelf_apply(root, entry_id=None, drop=True):
+    """Re-apply an entry (default: the newest). Drops it only on a clean apply."""
+    directory, entry = _shelf_pick(root, entry_id)
+    if entry is None:
+        return {"status": "error", "reason": "no such shelf entry"}
+    patch = os.path.join(directory, "%d.patch" % entry["id"])
+    rc, _ = _git(root, "apply", "--binary", patch)
+    status = "ok"
+    if rc != 0:
+        # The tree moved since the push; a 3-way apply may still land it, and
+        # leaves conflict markers (and the entry) when it cannot.
+        rc, _ = _git(root, "apply", "--binary", "--3way", patch)
+        if rc != 0:
+            return {"status": "conflicted", "id": entry["id"], "files": entry["files"],
+                    "note": "entry kept; resolve the markers, then `agent-exec shelf drop %d`" % entry["id"]}
+        _git(root, "reset", "-q", "--", *entry["files"])
+        status = "ok-3way"
+    if drop:
+        _shelf_forget(directory, entry["id"])
+    return {"status": status, "id": entry["id"], "files": entry["files"], "dropped": drop}
+
+
+def shelf_drop(root, entry_id=None):
+    directory, entry = _shelf_pick(root, entry_id)
+    if entry is None:
+        return {"status": "error", "reason": "no such shelf entry"}
+    _shelf_forget(directory, entry["id"])
+    return {"status": "ok", "id": entry["id"]}
+
+
+def cmd_shelf(args):
+    usage = (
+        "usage: agent-exec shelf push [-m MSG] [--keep-index] [--repo P] [-- PATH...]\n"
+        "       agent-exec shelf pop|apply|drop [ID] [--repo P]\n"
+        "       agent-exec shelf list [--repo P]\n"
+    )
+    if not args or args[0] not in ("push", "pop", "apply", "drop", "list"):
+        sys.stderr.write(usage)
+        return 2
+    sub = args[0]
+    directory = os.getcwd()
+    message = ""
+    keep_index = False
+    allow_main = False
+    entry_id = None
+    paths = []
+    i = 1
+    while i < len(args):
+        tok = args[i]
+        if tok == "--":
+            paths = args[i + 1:]
+            break
+        if tok in ("--repo", "-m", "--message"):
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: shelf: missing value for %s\n" % tok)
+                return 2
+            if tok == "--repo":
+                directory = args[i + 1]
+            else:
+                message = args[i + 1]
+            i += 2
+        elif tok == "--keep-index" and sub == "push":
+            keep_index = True
+            i += 1
+        elif tok == "--allow-main-tree":
+            allow_main = True
+            i += 1
+        elif sub in ("pop", "apply", "drop") and entry_id is None and tok.isdigit():
+            entry_id = int(tok)
+            i += 1
+        else:
+            sys.stderr.write("agent-exec: shelf: unknown argument: %s\n%s" % (tok, usage))
+            return 2
+
+    root = repo_root(directory)
+    if root is None:
+        print(json.dumps({"status": "error", "reason": "not a git repository"}))
+        return 3
+
+    if sub == "list":
+        print(json.dumps({"status": "ok", "entries": _shelf_entries(_shelf_dir(root))}, ensure_ascii=False))
+        return 0
+    if sub == "push":
+        # The main tree may hold other tasks' and the user's uncommitted work;
+        # shelving it would make those files vanish from under them.
+        if not _is_linked_worktree(root) and not allow_main:
+            print(json.dumps({"status": "error", "reason":
+                "refusing to shelve in the main working tree, which other tasks and the user share; "
+                "work in your own worktree, or pass --allow-main-tree if you are alone in it"}))
+            return 3
+        result = shelf_push(root, paths or None, message, keep_index)
+    elif sub == "drop":
+        result = shelf_drop(root, entry_id)
+    else:
+        result = shelf_apply(root, entry_id, drop=(sub == "pop"))
+    print(json.dumps(result, ensure_ascii=False))
+    if result["status"] == "conflicted":
+        return 1
+    return 0 if result["status"] in ("ok", "ok-3way", "empty") else 3
+
+
 def main(argv):
     if len(argv) == 0 or argv[0] in ("-h", "--help"):
         print_usage()
@@ -7344,6 +7595,9 @@ def main(argv):
 
     if tok == "isolate":
         return cmd_isolate(argv[1:])
+
+    if tok == "shelf":
+        return cmd_shelf(argv[1:])
 
     if tok == "telemetry":
         return cmd_telemetry(argv[1:])

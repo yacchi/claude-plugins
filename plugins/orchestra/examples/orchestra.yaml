@@ -244,7 +244,10 @@ priority:
 # worker_vcs (default "block", i.e. ON): deny destructive VCS commands
 # (checkout -- / restore / reset --hard / clean -f / stash push) when they come
 # from a SUBAGENT and target a tree that is not one of orchestra's own
-# (orchestra/* branch). This one ships on because it prevents data loss, not
+# (orchestra/* branch). `git stash` push/pop/apply/drop is denied even inside
+# orchestra's own worktrees: refs/stash is ONE stack shared by every worktree,
+# and parallel workers popping it have swapped each other's changes. Workers
+# use `agent-exec shelf push`/`pop` instead: same job, stored per worktree. This one ships on because it prevents data loss, not
 # because it steers a cost decision: worker prompts carrying three escalating
 # generations of "never run git reset" still produced 35 such commands across
 # seven weeks of transcripts. The main thread is never affected, a worker
@@ -253,6 +256,16 @@ priority:
 # mentions the commands is not mistaken for running them. Escapes:
 # `[orchestra:allow-vcs: <reason>]` in the command or description, and
 # ORCHESTRA_VCS_GUARD=off. Set to "off" here to disable entirely.
+#
+# worktree_lease (default "block", i.e. ON): one writing subagent per linked
+# worktree at a time. The first subagent to write into a worktree takes its
+# lease; a DIFFERENT subagent writing there while the holder was active within
+# worktree_lease_window seconds (default 120) is denied. A SubagentStop hook
+# releases the lease, so back-to-back rounds are never blocked. Exists because
+# a message to a running workflow agent once resumed a copy of it and both
+# committed into the same worktree. The main worktree, the main thread, and
+# orchestra-delegate are never affected. Escapes: `[orchestra:allow-lease:
+# <reason>]` and ORCHESTRA_LEASE_GUARD=off.
 #
 # turn_edits (default 8, or "off"): once the MAIN THREAD has hand-edited this
 # many files inside one turn, a PostToolUse hook asks it once to re-classify
@@ -270,5 +283,7 @@ priority:
 enforcement:
   light_class: "off"
   worker_vcs: "block"
+  worktree_lease: "block"
+  worktree_lease_window: 120
   turn_edits: 8
   session_cleanup: "on"
