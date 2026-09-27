@@ -145,6 +145,34 @@ function treeLine(path) {
     : ''
 }
 
+// Thrown by dispatchClass() when the RELAY (not the dispatch it relayed)
+// failed: its reply had no recoverable JSON, or it gave up on --detach/wait
+// polling. Callers must treat this as retriable relay noise, never as a
+// package/task failure - marking a dependent chain `blocked` over a relay
+// hiccup is strictly worse than leaving one package `failed`.
+class RelayFailureError extends Error {}
+
+// Best-effort JSON extraction from a relay reply. A relay wraps the JSON in
+// a ```json fence, or a banner/log line, often enough that parsing the raw
+// string throws on work that actually succeeded - strip a fence, then fall
+// back to the outermost {...} span before giving up.
+function extractDispatchJson(raw) {
+  const text = raw.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '')
+  try {
+    return JSON.parse(text)
+  } catch (e) { /* fall through to bracket extraction */ }
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('relay reply had no JSON object: ' + text.slice(0, 500))
+  }
+  try {
+    return JSON.parse(text.slice(start, end + 1))
+  } catch (e) {
+    throw new Error('relay reply JSON unparsable: ' + text.slice(0, 500))
+  }
+}
+
 // Dispatch one task at a capability class ('light' | 'standard' | 'deep').
 // Selection is `agent-exec route`'s job, not this function's and not yours.
 // Same call shape whether it resolves to Copilot, Codex's `dispatch: cli`, or
@@ -162,14 +190,27 @@ async function dispatchClass(cls, promptText, opts = {}) {
   const promptFiles = Array.isArray(promptText) ? promptText : [promptText]
   // The token keeps the relay from reading what it dispatches; a path in its prompt is enough for it to try.
   const dispatchToken = opts.dispatchToken
-  const relayPrompt =
-    'Run `agent-exec dispatch --token ' + dispatchToken +
+  const commonFlags =
+    ' --class ' + cls +
     (exhausted.size ? ' --exhausted ' + [...exhausted].join(',') : '') +
-    (opts.noResume ? ' --no-resume' : '') +
-    ' --capture`' +
-    ' as ONE foreground Bash call with timeout 600000. It routinely takes many minutes: just ' +
-    'wait for it. Never background it, never poll it, never start a monitor, never report ' +
-    'progress. When it returns, print its stdout JSON verbatim - nothing else.'
+    (opts.noResume ? ' --no-resume' : '')
+  // A codex/copilot dispatch routinely runs past any hard per-call timeout a
+  // relay's Bash tool enforces (commonly ~600s) -- long enough on a
+  // session-sized package that the relay's OWN call gets killed mid-dispatch
+  // and reports prose instead of the dispatch's JSON. `--detach` starts the
+  // dispatch as a background child immediately; `dispatch wait` then polls it
+  // in bounded windows the relay's timeout can always survive, and is safe to
+  // call again (and again) while the child is still running.
+  const relayPrompt =
+    'Run `agent-exec dispatch --token ' + dispatchToken + commonFlags +
+    ' --capture --detach` as ONE foreground Bash call with timeout 30000. It returns ' +
+    'immediately with {"status":"detached"|"running"|"done", ...} -- do not wait for it to ' +
+    'finish, do not add --capture output expectations to it.\n' +
+    'Then run `agent-exec dispatch wait --token ' + dispatchToken + '` as ONE foreground Bash ' +
+    'call with timeout 600000. If its stdout JSON has "status":"running", run that exact same ' +
+    '`dispatch wait` command again immediately (up to 20 times total) -- do not sleep, do not ' +
+    'poll any other way, never report progress. Stop looping the moment the JSON\'s "status" is ' +
+    'anything else. When you stop, print that final stdout JSON verbatim - nothing else.'
 
   const raw = await agent(relayPrompt, {
     label: (opts.label || cls) + '-dispatch',
@@ -177,9 +218,28 @@ async function dispatchClass(cls, promptText, opts = {}) {
     // Fallback when the plugin-scoped relay type does not resolve:
     // model: 'haiku', effort: 'low',
   })
-  // Relays wrap the JSON in a ```json fence often enough that parsing the raw
-  // string throws on work that actually succeeded. Strip a fence before parsing.
-  const r = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''))
+
+  // The relay is a model, not a program: a decorated or truncated reply, or
+  // one still reporting {"status":"running"} after its retry budget, is a
+  // RELAY failure, not a package failure - retrying the SAME relay call once
+  // is usually enough (the underlying detached dispatch is untouched either
+  // way, so a retry costs one cheap relay hop, not the work itself). Only
+  // after a retry also fails/relay-fails does this become a real error the
+  // caller (runTask/runPackage) must see and must NOT blame on the worker.
+  const retries = opts.relayRetries || 0
+  let r
+  try {
+    r = extractDispatchJson(raw)
+  } catch (e) {
+    if (retries >= 1) throw new RelayFailureError(e.message)
+    return dispatchClass(cls, promptText, { ...opts, relayRetries: retries + 1 })
+  }
+  if (r.status === 'running' || r.status === 'relay-failed') {
+    if (retries >= 1) {
+      throw new RelayFailureError(r.status + ': ' + (r.raw || JSON.stringify(r)).slice(0, 500))
+    }
+    return dispatchClass(cls, promptText, { ...opts, relayRetries: retries + 1 })
+  }
 
   // EVERY dispatch outcome reports `isolation` - `agent-exec dispatch` creates the
   // per-task worktree BEFORE it decides whether a CLI runs the work or you do (§12).
@@ -255,8 +315,9 @@ async function dispatchClass(cls, promptText, opts = {}) {
 // session instead of falling back to a pinned Sonnet invocation (§11):
 //   correctionPromptFile  - a path that does NOT exist yet at prepare time
 //     (this is supported, see `references/external-executors.md` §5/dispatch
-//     prepare). The REVIEWER writes the correction packet here on FAIL - see
-//     the verdict prompt below. Never written by the instructor.
+//     prepare). `runTask()` itself writes the correction packet here on FAIL,
+//     via `writeCorrectionPacket()` below - never the reviewer, never the
+//     instructor.
 //   correctionTokenFull   - `agent-exec dispatch prepare` token for this task,
 //     minted with `--prompt-file <workerPromptFile> --prompt-file
 //     <correctionPromptFile> --task <id> --isolate always` (same task id/tree
@@ -272,10 +333,10 @@ const NEXT_CLASS = { light: 'standard', standard: 'deep', deep: 'deep' }
 // Shared correction-packet body (§6 rule 7 / §11). Two shapes that must never
 // drift apart: `hasSession` picks the delta wording (the resumed executor
 // already holds the contract in-session) vs. the full wording (a reader with
-// no session needs pointing at the files on disk). `findings` is either the
-// literal JSON (when this script builds the packet itself, in the fallback
-// path below) or a placeholder string (when the REVIEWER is the one filling
-// it in, see reviewerPacketInstructions() below).
+// no session needs pointing at the files on disk). `findings` is the
+// verdict's `feedback` array, JSON-stringified by the caller
+// (`writeCorrectionPacket()` or the no-session `correctionPacket()` fallback
+// below).
 function correctionPacketBody(gate, hasSession, findings) {
   const intro = hasSession
     ? 'You already hold this task\'s contract from your previous turn in this session. Do not re-read it.\n' +
@@ -305,20 +366,26 @@ function correctionPacket(task, verdict, gate, isoPath) {
     correctionPacketBody(gate, false, JSON.stringify(verdict.feedback))
 }
 
-// Appended to the verdict-generating agent()'s prompt (both the first-gate
-// verifierPrompt and the re-gate prompt below). On FAIL - and ONLY on FAIL -
-// the reviewer itself writes the correction packet to task.correctionPromptFile,
-// in the exact shape a resumed vs. fresh next-round worker needs (§11 B3).
-// `hasSession` reflects whether THIS round's work call reported a session
-// (out.sessionId after it ran) - that determines what the NEXT round's
-// worker will already hold.
-function reviewerPacketInstructions(task, gate, hasSession) {
-  if (!task.correctionPromptFile) return ''
-  return '\n\n--- IF (AND ONLY IF) YOUR VERDICT IS FAIL ---\n' +
-    'Also write the exact text below to ' + task.correctionPromptFile + ' (create it, or replace it ' +
-    'if present), substituting the verdict\'s `feedback` array (as JSON) where marked:\n\n' +
-    correctionPacketBody(gate, hasSession, '<the verdict\'s `feedback` array as JSON>') +
-    '\n\nIf your verdict is PASS, do NOT write or touch ' + task.correctionPromptFile + '.'
+// Writes the correction packet to task.correctionPromptFile on FAIL. This is
+// the SCRIPT's job, not the reviewer's: an earlier version asked the
+// reviewer agent to write the file itself as a trailing prompt instruction,
+// and it routinely returned a well-formed FAIL verdict without writing
+// anything - a schema-constrained `agent()` call optimizes for the schema,
+// not for prose instructions appended after it. A missing file then failed
+// the whole task at the next dispatch (`could not read prompt file`) even
+// though both the work and the review had already succeeded. Building the
+// packet here from the verdict JSON we already hold removes the reviewer
+// as a dependency entirely.
+async function writeCorrectionPacket(task, gate, hasSession, verdict) {
+  if (!task.correctionPromptFile) return
+  await agent(
+    'Write the EXACT text between the --- markers below to ' + task.correctionPromptFile +
+      ' using the Write tool (create it, or replace it if present). Do not alter, summarize, ' +
+      'or add to the text.\n---\n' +
+      correctionPacketBody(gate, hasSession, JSON.stringify(verdict.feedback)) +
+      '\n---',
+    { label: task.id + '-correction-write-' + gate, model: 'haiku', effort: 'low' },
+  )
 }
 
 // A re-gate is incremental, not a fresh audit (§11.2).
@@ -400,8 +467,7 @@ async function runTask(task) {
     // isolated worker's diff is invisible from there, and a review that passes
     // against untouched files is worse than no review at all.
     const verdict = await agent(
-      treeLine(iso.path) + (prior ? regatePrompt(task, prior) : task.verifierPrompt) +
-        reviewerPacketInstructions(task, gate, out.sessionId != null),
+      treeLine(iso.path) + (prior ? regatePrompt(task, prior) : task.verifierPrompt),
       {
         label: task.id + '-verify-' + gate,
         model: 'sonnet',
@@ -441,6 +507,8 @@ async function runTask(task) {
     if (prior && (verdict.feedback || []).some(f => (prior.feedback || []).some(p => p.family === f.family))) {
       cls = NEXT_CLASS[cls]
     }
+    // Guaranteed before the next gate reads it - see writeCorrectionPacket().
+    await writeCorrectionPacket(task, gate, out.sessionId != null, verdict)
     prior = verdict
   }
 
@@ -521,6 +589,8 @@ Launch `orchestra-delegate` (Sonnet, pinned in its own frontmatter) via the Agen
 ## 9. Configuration and external executors
 
 Everything you normally need is one call: **`agent-exec doctor --json`** returns both the readiness verdicts (`ready.<executor>.ok`) and the resolved config (`config.values` — `tiers`, `external_executors`, `priority`, `telemetry.enabled`) already deep-merged from all four layers (defaults ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`).
+
+**Run this `doctor --json` check yourself, once, before writing the Workflow script — not delegated to a relay.** If its `shim.installed` is false, STOP and tell the user to run `agent-exec install` (or point them at the `setup` skill) before proceeding. A missing shim is not a hard error anywhere downstream — `route`/`dispatch` just gate every external executor on `ready.<x>.ok` and fall through to `claude`, exactly as designed for a machine with no Copilot/Codex — but that silent, correct-looking fallback means every task in the run bills the user's OWN Claude quota instead of the external executor they configured, with no error to notice until it is gone. Observed: a run with the shim missing exhausted a session's entire weekly quota on work that should have gone to Copilot/Codex.
 
 **You never walk the priority list.** `agent-exec route --class <cls>` does: it gates every candidate on reality (disabled, binary missing, `ready.ok` false, no `class_policy` for the class, or listed in `--exhausted`) and returns the survivor; `agent-exec dispatch` additionally runs a `dispatch: cli` winner. Copilot and Codex ship `enabled: true`, which is safe precisely because of that gate — on a machine with neither installed, everything resolves to `claude`.
 

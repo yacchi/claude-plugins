@@ -382,6 +382,28 @@ class OntoAndIntoTests(_IntegrateRepo):
         self.assertEqual(diff["status"], "ok")
         self.assertEqual(diff["files"], ["shared.txt"])
 
+    def test_integration_worktree_ignored_drift_is_not_reported_as_dirty(self):
+        # A rolling integration base regenerates gitignored build output
+        # (e.g. `pnpm run build:wasm`) across rounds; that drift is routine
+        # for THIS role and must not make `isolate sweep` treat it the same
+        # as an ordinary task worktree's unreviewed ignored surface.
+        self._make_task("alpha", {2: "ALPHA\n"})
+        result = agent_exec.isolate_integrate(self.repo, ["alpha"], into="round-2")
+        path = result["integration"]["path"]
+        self.assertEqual(agent_exec._read_role(path), "integration")
+
+        # Collect the tracked diff (the integrated task's change) so only the
+        # ignored surface is left to differ -- isolating exactly the case
+        # this fix addresses.
+        collected = agent_exec.isolate_collect(self.repo, "round-2")
+        self.assertEqual(collected["status"], "collected")
+
+        os.makedirs(os.path.join(path, "node_modules"))
+        with open(os.path.join(path, "node_modules", "dep.js"), "w") as fh:
+            fh.write("built artifact\n")
+
+        self.assertIsNone(agent_exec._uncollected(self.repo, path, "round-2"))
+
 
 class IntegrateUsageTests(_IntegrateRepo):
     """Usage errors exit 2 and keep stdout empty."""

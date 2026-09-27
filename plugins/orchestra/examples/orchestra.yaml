@@ -200,6 +200,16 @@ cooldown:
     auth: 0
     nonzero-exit: 0
 
+# Additional gitignored directory names (or relative paths, matched by
+# basename) that `isolate create` should copy into a fresh worktree, on top
+# of the built-in list (node_modules, .venv, venv, .tox, vendor, target,
+# .next, .nuxt, .svelte-kit, .gradle, Pods, .bundle, .dart_tool). Use this for
+# a gitignored build prerequisite the built-in list does not cover, so a
+# worker does not have to rebuild it from scratch in every worktree.
+isolation:
+  carry_extra: []
+  # carry_extra: [pkg]   # e.g. packages/core-wasm/pkg, a generated wasm package
+
 priority:
   light:
     # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated executor

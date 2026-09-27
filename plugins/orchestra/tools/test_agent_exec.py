@@ -454,7 +454,7 @@ class ResolveRouteTests(unittest.TestCase):
         self.assertEqual(
             route["skipped"],
             [
-                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "opencode", "reason": "disabled:copilot-shared-quota"},
                 {"executor": "copilot", "reason": "disabled"},
             ],
         )
@@ -494,7 +494,7 @@ class ResolveRouteTests(unittest.TestCase):
         self.assertEqual(
             route["skipped"],
             [
-                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "opencode", "reason": "exhausted:copilot-shared-quota"},
                 {"executor": "copilot", "reason": "exhausted"},
             ],
         )
@@ -562,7 +562,7 @@ class ResolveRouteTests(unittest.TestCase):
         self.assertEqual(
             route["skipped"],
             [
-                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "opencode", "reason": "exhausted:copilot-shared-quota"},
                 {"executor": "copilot", "reason": "exhausted"},
                 {"executor": "claude", "reason": "exhausted"},
             ],
@@ -750,7 +750,7 @@ class ResolveRouteCooldownTests(unittest.TestCase):
         self.assertEqual(
             route["skipped"],
             [
-                {"executor": "opencode", "reason": "not-ready:unknown"},
+                {"executor": "opencode", "reason": "cooldown:copilot-shared-quota:rate-limit"},
                 {"executor": "copilot", "reason": "cooldown:rate-limit"},
             ],
         )

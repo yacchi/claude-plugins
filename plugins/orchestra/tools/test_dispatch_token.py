@@ -120,7 +120,7 @@ class DispatchTokenTests(unittest.TestCase):
     def test_token_conflicts_and_exhausted(self):
         token = self.prepare()
         for flag, value in (
-            ("--class", "standard"), ("--prompt-file", str(self.contract)),
+            ("--prompt-file", str(self.contract)),
             ("--workdir", str(self.root)), ("--archetype", "default"),
             ("--run-id", "run-1"), ("--isolate", "never"), ("--task", "task-1"),
         ):
@@ -135,6 +135,71 @@ class DispatchTokenTests(unittest.TestCase):
             item["executor"] == "claude" and item["reason"] == "exhausted"
             for item in output["route"]["skipped"]
         ))
+
+    def test_class_may_escalate_a_token(self):
+        # --class alongside --token overrides the token's own class (e.g. a
+        # correction round escalating light -> deep); the token itself still
+        # supplies everything else (prompt files, workdir, isolate mode).
+        token = self.prepare()
+        result = self.run_cli("dispatch", "--token", token, "--class", "deep", "--exhausted", "claude")
+        self.assertEqual(result.returncode, 0)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["route"]["class"], "deep")
+
+    def test_detach_and_wait_matches_a_synchronous_dispatch(self):
+        token = self.prepare()
+        direct = self.run_cli("dispatch", "--token", token, "--capture")
+        self.assertEqual(direct.returncode, 0, direct.stderr)
+
+        token2 = self.prepare()
+        detached = self.run_cli("dispatch", "--token", token2, "--capture", "--detach")
+        self.assertEqual(detached.returncode, 0, detached.stderr)
+        detached_out = json.loads(detached.stdout)
+        self.assertEqual(detached_out["status"], "detached")
+        self.assertIn("pid", detached_out)
+
+        waited = self.run_cli("dispatch", "wait", "--token", token2, "--max-wait", "20")
+        self.assertEqual(waited.returncode, 0, waited.stderr)
+        self.assertEqual(json.loads(waited.stdout), json.loads(direct.stdout))
+
+        # The detach state is consumed by a successful `wait`: a second call
+        # with no new `--detach` must fail rather than silently re-running.
+        again = self.run_cli("dispatch", "wait", "--token", token2)
+        self.assertEqual(again.returncode, 2)
+        self.assertIn(token2, again.stderr)
+
+    def test_detach_is_idempotent_while_the_child_is_running(self):
+        # A slow-executing detached run must report "running" (not start a
+        # second child, not error) if the relay's `--detach` call is retried.
+        token = self.prepare()
+        first = self.run_cli("dispatch", "--token", token, "--capture", "--detach")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        first_out = json.loads(first.stdout)
+        self.assertEqual(first_out["status"], "detached")
+
+        second = self.run_cli("dispatch", "--token", token, "--capture", "--detach")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        second_out = json.loads(second.stdout)
+        self.assertIn(second_out["status"], ("running", "done"))
+        if second_out["status"] == "running":
+            self.assertEqual(second_out["pid"], first_out["pid"])
+
+        # Drain it either way so the test does not leak a background process.
+        self.run_cli("dispatch", "wait", "--token", token, "--max-wait", "20")
+
+    def test_wait_without_a_detached_run_is_an_error(self):
+        token = self.prepare()
+        result = self.run_cli("dispatch", "wait", "--token", token)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(token, result.stderr)
+
+    def test_detach_requires_token(self):
+        result = self.run_cli(
+            "dispatch", "--class", "standard", "--prompt-file", str(self.contract),
+            "--workdir", str(self.root), "--isolate", "never", "--detach",
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--detach requires --token", result.stderr)
 
     def test_bad_tokens_never_escape_token_directory(self):
         outside = self.root / "outside"

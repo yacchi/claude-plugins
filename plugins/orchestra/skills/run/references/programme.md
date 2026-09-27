@@ -177,9 +177,25 @@ function enqueue(id) {
   return new Promise(done => { queue.push({ id, done }); if (!draining) draining = drain() })
 }
 
-async function runPackage(p) {
+// A RelayFailureError (skill §5) means the RELAY lost the JSON, not that the
+// package's work or review failed - `dispatchClass()` already retries the
+// relay call itself once, so seeing this here means it failed twice in a
+// row. Retry the whole package once more at this level before giving up;
+// only a failure that survives both retries becomes a real `failed` (which
+// is what cascades dependents to `blocked` below) - a relay hiccup must
+// never blocked-cascade an otherwise-healthy dependency chain.
+async function runPackage(p, relayRetry = 0) {
   state[p.id] = 'running'
-  const verdict = await runTask(p)            // two gates, class escalation, isolation: skill §5
+  let verdict
+  try {
+    verdict = await runTask(p)                // two gates, class escalation, isolation: skill §5
+  } catch (e) {
+    if (e instanceof RelayFailureError && relayRetry < 1) {
+      log('relay failure on ' + p.id + ', retrying package once: ' + e.message)
+      return runPackage(p, relayRetry + 1)
+    }
+    throw e
+  }
   results[p.id] = verdict
   if (!verdict.pass) { state[p.id] = 'failed'; return }
   state[p.id] = 'approved'

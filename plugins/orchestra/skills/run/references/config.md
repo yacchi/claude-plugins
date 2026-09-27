@@ -140,6 +140,13 @@ ledger:
   dir: "~/.claude/orchestra/runs"
   retention_days: 30
 
+# Extra gitignored directory names (or relative paths, matched by basename)
+# `isolate create` copies into a fresh worktree, on top of the built-in list
+# (node_modules, .venv, venv, .tox, vendor, target, .next, .nuxt,
+# .svelte-kit, .gradle, Pods, .bundle, .dart_tool) - see references/isolation.md.
+isolation:
+  carry_extra: []
+
 # Nudges and guards, never hard walls - see the `enforcement` paragraphs below
 # for the escape hatches. NOTE: quote "off" - YAML 1.1 parses a bareword `off`
 # as boolean False, not the string "off".

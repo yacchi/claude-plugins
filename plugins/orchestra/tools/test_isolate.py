@@ -222,6 +222,19 @@ class DetectCarryDirsTests(_RepoMixin, unittest.TestCase):
         found = agent_exec.detect_carry_dirs(self.repo)
         self.assertEqual(found, ["node_modules"])
 
+    def test_extra_names_are_not_carried_by_default(self):
+        self._write("packages/core-wasm/.gitignore", "pkg/\n")
+        os.makedirs(os.path.join(self.repo, "packages", "core-wasm", "pkg"))
+        self._write("packages/core-wasm/pkg/index.js")
+        self.assertEqual(agent_exec.detect_carry_dirs(self.repo), [])
+
+    def test_carry_extra_names_a_gitignored_dir_by_basename(self):
+        self._write("packages/core-wasm/.gitignore", "pkg/\n")
+        os.makedirs(os.path.join(self.repo, "packages", "core-wasm", "pkg"))
+        self._write("packages/core-wasm/pkg/index.js")
+        found = agent_exec.detect_carry_dirs(self.repo, extra_names=("pkg",))
+        self.assertIn(os.path.join("packages", "core-wasm", "pkg"), found)
+
 
 class CopyTreeTests(unittest.TestCase):
     def test_copies_contents_and_reports_success(self):
@@ -1156,6 +1169,21 @@ class IsolateCommandTests(_RepoMixin, unittest.TestCase):
     def test_unknown_subcommand_is_a_usage_error(self):
         rc, _ = self._run("frobnicate")
         self.assertEqual(rc, 2)
+
+    def test_top_level_help_exits_zero(self):
+        rc, out = self._run("--help")
+        self.assertEqual(rc, 0)
+        self.assertIn("isolate", out.lower() + "isolate")  # usage text is non-empty
+
+    def test_create_help_exits_zero_without_creating_anything(self):
+        rc, _ = self._run("create", "--help")
+        self.assertEqual(rc, 0)
+        self.assertEqual(agent_exec.isolate_list(self.repo), [])
+
+    def test_create_accepts_and_ignores_json_flag(self):
+        rc, out = self._run("create", "--task", "t1", "--repo", self.repo, "--backend", "git", "--json")
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "created")
 
     def test_main_routes_isolate(self):
         rc = agent_exec.main(["isolate", "should", "--repo", self.repo])

@@ -228,6 +228,15 @@ DEFAULTS = {
         "dir": "~/.claude/orchestra/runs",
         "retention_days": 30,
     },
+    # `carry_extra` names additional gitignored directories (matched by
+    # basename, same rule as the built-in CARRY_DIR_NAMES) that `isolate
+    # create` should copy into a fresh worktree alongside node_modules etc.
+    # Needed for a project whose gitignored build prerequisite (e.g. a wasm
+    # package) is not one of the built-in names and would otherwise have to
+    # be rebuilt from scratch in every worktree.
+    "isolation": {
+        "carry_extra": [],
+    },
 }
 
 USAGE = """\
@@ -330,6 +339,34 @@ Usage:
                                   worktree so retry rounds reuse one. Every
                                   result carries an `isolation` object saying
                                   which tree was used and why.
+                                  --class may be given alongside --token to
+                                  escalate the class of a prepared token (the
+                                  token's own class is the default when
+                                  omitted); everything else about the run
+                                  still comes from the token.
+  agent-exec dispatch --token dsp-<12 lowercase hex> --detach
+                                  starts the dispatch as a detached background
+                                  child (stdout captured to a file) and
+                                  returns immediately with {{"status":
+                                  "detached", token, pid}} instead of
+                                  blocking — for a run that can outlive the
+                                  caller's own timeout. Re-issuing --detach
+                                  for the same token is idempotent: {{"status":
+                                  "running", ...}} while the child is alive,
+                                  {{"status": "done", token}} once it has
+                                  exited (call `dispatch wait` to collect the
+                                  result). All other dispatch flags may be
+                                  combined with --detach.
+  agent-exec dispatch wait --token dsp-<12 lowercase hex> [--max-wait N]
+                                  polls a --detach'd run for up to N seconds
+                                  (default 560, chosen to fit under a common
+                                  600s foreground-call timeout) and returns
+                                  its normalized result once it exits, or
+                                  {{"status": "running", token, pid}} if it is
+                                  still going — call `wait` again to keep
+                                  polling. A malformed/undecodable captured
+                                  output reports {{"status": "relay-failed",
+                                  token, raw}} instead of raising.
   agent-exec isolate create --task ID [--repo P] [--backend auto|gtr|git]
                   [--no-carry]
                                   create (or return) that task's worktree,
@@ -1606,6 +1643,9 @@ def cmd_dispatch_prepare(args):
             i += 2
         elif tok == "--json":
             i += 1
+        elif tok in ("-h", "--help"):
+            print_usage()
+            return 0
         else:
             sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
             return 2
@@ -3470,6 +3510,14 @@ _COLLECTED_FILE = "orchestra-collected"
 # `node_modules`.
 _CREATED_IGNORED_FILE = "orchestra-created-ignored"
 
+# Sibling marker naming a worktree's role. Today the only role written is
+# "integration" (an `isolate_integrate` target, e.g. a programme's `--into`
+# tree): its ignored surface is expected to keep changing as later rounds
+# rebuild generated artifacts (e.g. `pnpm run build:wasm`), so `isolate
+# sweep` must not report that as worker-caused drift the way it would for an
+# ordinary task worktree.
+_ROLE_FILE = "orchestra-role"
+
 
 def git_config_env(pairs, base_env=None):
     """Return an env dict that adds `pairs` to git's config lookup.
@@ -3607,15 +3655,20 @@ def _is_git_ignored(root, relpath):
     return rc == 0
 
 
-def detect_carry_dirs(root):
+def detect_carry_dirs(root, extra_names=()):
     """Find gitignored dependency/build directories worth copying into a worktree.
 
     Only ignored directories qualify: a tracked `vendor/` already arrives with
     the worktree, and copying an untracked-but-not-ignored directory would
     smuggle files into the diff handed back to the user.
+
+    `extra_names` (from config `isolation.carry_extra`) are matched the same
+    way as the built-in `CARRY_DIR_NAMES`: by basename, at any depth up to
+    `CARRY_SCAN_MAX_DEPTH`.
     """
     found = []
     root = os.path.abspath(root)
+    dir_names = set(CARRY_DIR_NAMES) | set(extra_names)
 
     def walk(current, depth):
         try:
@@ -3629,7 +3682,7 @@ def detect_carry_dirs(root):
             if not os.path.isdir(full) or os.path.islink(full):
                 continue
             rel = os.path.relpath(full, root)
-            if name in CARRY_DIR_NAMES and _is_git_ignored(root, rel):
+            if name in dir_names and _is_git_ignored(root, rel):
                 # Do not descend: nested copies (node_modules/.pnpm/*/node_modules)
                 # ride along inside the parent copy.
                 found.append(rel)
@@ -3746,6 +3799,22 @@ def _ignored_entries(worktree):
     return sorted(entries)
 
 
+def _ignored_for_digest(path):
+    """Ignored entries to fold into a collected-digest, or `()` for an
+    integration worktree.
+
+    An integration worktree's ignored surface is expected to keep changing
+    (regenerated build output across rounds - see `_ROLE_FILE`), so it must
+    never be part of what "collected" pins down there: folding it in anyway
+    would make the digest never re-match once a rebuild happened, forcing
+    every tracked change to look uncollected too even though `_uncollected`'s
+    separate ignored_ok check already exempts this role on its own.
+    """
+    if _read_role(path) == "integration":
+        return ()
+    return _ignored_entries(path)
+
+
 def _collected_digest(files, patch, ignored=None):
     """Stable content digest of a task's current changes vs its baseline.
 
@@ -3805,6 +3874,31 @@ def _read_created_ignored(worktree):
         with open(os.path.join(gitdir, _CREATED_IGNORED_FILE)) as fh:
             digest = fh.read().strip()
         return digest or None
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+
+
+def _write_role(worktree, role):
+    gitdir = _worktree_gitdir(worktree)
+    if not gitdir:
+        return
+    try:
+        with open(os.path.join(gitdir, _ROLE_FILE), "w") as fh:
+            fh.write(role + "\n")
+    except OSError:
+        pass
+
+
+def _read_role(worktree):
+    """The role recorded at `isolate create` time, or None for an ordinary
+    task worktree (covers both "no marker" and "corrupt marker")."""
+    gitdir = _worktree_gitdir(worktree)
+    if not gitdir:
+        return None
+    try:
+        with open(os.path.join(gitdir, _ROLE_FILE)) as fh:
+            role = fh.read().strip()
+        return role or None
     except (OSError, ValueError, UnicodeDecodeError):
         return None
 
@@ -3965,7 +4059,7 @@ def _worktree_entries(root):
     return entries
 
 
-def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id=None):
+def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id=None, carry_extra=()):
     """Create (or return) the worktree for `task`. Idempotent per task.
 
     `onto` names the commit the worktree starts from. Left at None it means
@@ -4025,7 +4119,7 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
     carried = []
     carry_method = "none"
     if carry:
-        for rel in detect_carry_dirs(root):
+        for rel in detect_carry_dirs(root, extra_names=carry_extra):
             method = copy_tree_fast_method(os.path.join(root, rel), os.path.join(path, rel))
             if method != "failed":
                 carried.append(rel)
@@ -4154,7 +4248,7 @@ def isolate_collect(root, task=None, session_id=None):
             "reason": diff.get("reason") or "could not compute diff for %s" % task,
         }
     digest = _collected_digest(
-        diff.get("files") or [], diff.get("patch") or "", _ignored_entries(path)
+        diff.get("files") or [], diff.get("patch") or "", _ignored_for_digest(path)
     )
     _write_collected(path, digest)
     return {"status": "collected", "task": task, "digest": digest}
@@ -4202,7 +4296,7 @@ def _uncollected(root, path, task, session_id=None):
     ignored = _ignored_entries(path)
     digest_matches_collected = (
         stored_collected is not None
-        and stored_collected == _collected_digest(files, diff.get("patch") or "", ignored)
+        and stored_collected == _collected_digest(files, diff.get("patch") or "", _ignored_for_digest(path))
     )
     tracked_ok = (not files) or digest_matches_collected
 
@@ -4211,6 +4305,11 @@ def _uncollected(root, path, task, session_id=None):
     ignored_ok = (
         (created_ignored_hash is not None and created_ignored_hash == ignored_now_hash)
         or digest_matches_collected
+        # An integration worktree (`isolate integrate`'s target) is expected
+        # to grow its own ignored surface across rounds -- e.g. a build step
+        # regenerating a gitignored package -- so drift there is routine, not
+        # unreviewed worker output.
+        or _read_role(path) == "integration"
     )
 
     if not tracked_ok:
@@ -4726,6 +4825,7 @@ def isolate_integrate(root, tasks, onto=None, into="integrate"):
         # Reusing an integration tree from an earlier round: its own baseline,
         # not the ref we would have picked, is the truth about where it starts.
         onto_sha = _read_baseline(wt_path) or onto_sha
+    _write_role(wt_path, "integration")
 
     def _mark_source_collected(task, files, patch):
         # Same digest helper the CLI's `isolate diff`/`isolate collect` paths
@@ -5080,6 +5180,9 @@ def cmd_isolate(args):
         _isolate_usage()
         return 2
     sub = args[0]
+    if sub in ("-h", "--help"):
+        _isolate_usage()
+        return 0
     if sub not in ("create", "list", "diff", "collect", "integrate", "remove", "sweep", "should"):
         sys.stderr.write("agent-exec: isolate: unknown subcommand: %s\n" % sub)
         _isolate_usage()
@@ -5133,6 +5236,13 @@ def cmd_isolate(args):
         elif tok == "--names-only":
             names_only = True
             i += 1
+        elif tok in ("-h", "--help"):
+            _isolate_usage()
+            return 0
+        elif tok == "--json":
+            # Output is already JSON; accepted for parity with other
+            # subcommands (e.g. `isolate sweep --json`) and ignored.
+            i += 1
         else:
             sys.stderr.write("agent-exec: isolate: unknown option: %s\n" % tok)
             return 2
@@ -5152,7 +5262,16 @@ def cmd_isolate(args):
 
     try:
         if sub == "create":
-            result = isolate_create(directory, task, backend=backend, carry=carry)
+            carry_extra = ()
+            if carry:
+                resolved, err = resolve_config()
+                if err is not None:
+                    sys.stderr.write(err + "\n")
+                    return 1
+                carry_extra = (resolved.get("isolation") or {}).get("carry_extra") or ()
+            result = isolate_create(
+                directory, task, backend=backend, carry=carry, carry_extra=carry_extra
+            )
         elif sub == "list":
             result = {"worktrees": isolate_list(directory, session_id=session)}
         elif sub == "diff":
@@ -5165,7 +5284,7 @@ def cmd_isolate(args):
                     result.get("path"),
                     _collected_digest(
                         result.get("files") or [], result.get("patch") or "",
-                        _ignored_entries(result.get("path")),
+                        _ignored_for_digest(result.get("path")),
                     ),
                 )
             if names_only:
@@ -5268,6 +5387,24 @@ def _route_skip_reason(
     policy = class_policy.get(cls) if isinstance(class_policy, dict) else None
     if not isinstance(policy, dict):
         return "no-class-policy"
+
+    # opencode's default class_policy points at Copilot-billed models
+    # (`github-copilot/*`) -- the SAME quota as the `copilot` executor. A
+    # caller that marks `copilot` exhausted/cooldown/disabled almost always
+    # means "stop spending that Copilot allowance", so route opencode out of
+    # the way too rather than silently burning the same allowance through a
+    # different executor name.
+    model = policy.get("model")
+    if name != "copilot" and isinstance(model, str) and model.startswith("github-copilot/"):
+        if "copilot" in exhausted_set:
+            return "exhausted:copilot-shared-quota"
+        if cooldown_map and "copilot" in cooldown_map:
+            entry = cooldown_map.get("copilot")
+            reason = entry.get("reason") if isinstance(entry, dict) else None
+            return "cooldown:copilot-shared-quota:" + (reason or "unknown")
+        copilot_cfg = external_executors.get("copilot")
+        if isinstance(copilot_cfg, dict) and copilot_cfg.get("enabled") is not True:
+            return "disabled:copilot-shared-quota"
 
     dispatch = ecfg.get("dispatch")
     if dispatch == "cli":
@@ -5679,6 +5816,9 @@ def cmd_dispatch_session(args):
         elif tok == "--json":
             as_json = True
             i += 1
+        elif tok in ("-h", "--help"):
+            print_usage()
+            return 0
         else:
             sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
             return 2
@@ -5706,11 +5846,209 @@ def cmd_dispatch_session(args):
     return 0
 
 
+# --- detached dispatch --------------------------------------------------
+#
+# A `dispatch: cli` run (codex, copilot) can routinely run past the caller's
+# own timeout (a relay agent's Bash call is typically capped around 600s;
+# see the orchestra `run` skill). `--detach` spawns the same `dispatch
+# --token` invocation as a background child whose stdout is captured to a
+# file instead of blocking the caller, and `dispatch wait` polls that child
+# for a bounded window, so a caller with a hard per-call timeout can retry
+# `wait` instead of losing the whole run when the timeout fires.
+
+def _detach_dir_from_cfg(cfg):
+    return os.path.join(_token_dir_from_cfg(cfg), "detach")
+
+
+def _detach_state_path(cfg, token):
+    return os.path.join(_detach_dir_from_cfg(cfg), "%s.json" % token)
+
+
+def _detach_out_path(cfg, token):
+    return os.path.join(_detach_dir_from_cfg(cfg), "%s.out" % token)
+
+
+def _pid_alive(pid):
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _extract_json_object(raw):
+    """Best-effort JSON object extraction from possibly-decorated output.
+
+    A CLI's captured stdout is usually exactly one JSON object, but some
+    executors interleave banner/log lines around it. Try the whole trimmed
+    string first, then fall back to the outermost {...} span."""
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        return json.loads(text[start:end + 1])
+    except ValueError:
+        return None
+
+
+def cmd_dispatch_detach(cfg, token, delegated_args):
+    """Start `dispatch --token TOKEN <delegated_args>` as a detached child.
+
+    Idempotent per token: re-issuing `--detach` while the child is still
+    running just reports its current state instead of starting a second
+    child, and once the child has finished it reports `done` without
+    consuming the captured output (that is `dispatch wait`'s job)."""
+    detach_dir = _detach_dir_from_cfg(cfg)
+    os.makedirs(detach_dir, exist_ok=True)
+    state_path = _detach_state_path(cfg, token)
+    out_path = _detach_out_path(cfg, token)
+
+    if os.path.exists(state_path):
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                state = json.load(f)
+        except (OSError, ValueError):
+            state = {}
+        if _pid_alive(state.get("pid")):
+            print(json.dumps(
+                {"status": "running", "token": token, "pid": state["pid"]},
+                ensure_ascii=False,
+            ))
+            return 0
+        print(json.dumps({"status": "done", "token": token}, ensure_ascii=False))
+        return 0
+
+    # `delegated_args` is the resolved-from-token, --token-FREE flag set
+    # (--class/--archetype/--workdir/--isolate/--prompt-file/...) built by
+    # the caller -- not `--token TOKEN`, which `dispatch` rejects in
+    # combination with those same flags. The child runs the dispatch
+    # synchronously exactly as a non-detached `--token` call would have.
+    exe = shutil.which("agent-exec")
+    argv = [exe] if exe else [sys.executable, os.path.abspath(__file__)]
+    argv += ["dispatch"] + list(delegated_args)
+    with open(out_path, "w", encoding="utf-8") as outf:
+        proc = subprocess.Popen(
+            argv,
+            stdout=outf,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    with open(state_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {"pid": proc.pid, "token": token, "started": time.time(), "out": out_path},
+            f,
+        )
+    print(json.dumps(
+        {"status": "detached", "token": token, "pid": proc.pid}, ensure_ascii=False
+    ))
+    return 0
+
+
+_DEFAULT_DISPATCH_WAIT_SECONDS = 560
+
+
+def cmd_dispatch_wait_cli(args):
+    token = None
+    max_wait = _DEFAULT_DISPATCH_WAIT_SECONDS
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--token":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --token\n")
+                return 2
+            token = args[i + 1]
+            i += 2
+        elif tok == "--max-wait":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: dispatch: missing value for --max-wait\n")
+                return 2
+            try:
+                max_wait = int(args[i + 1])
+            except ValueError:
+                sys.stderr.write("agent-exec: dispatch: --max-wait must be an integer\n")
+                return 2
+            i += 2
+        elif tok in ("-h", "--help"):
+            print_usage()
+            return 0
+        else:
+            sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
+            return 2
+    if token is None:
+        sys.stderr.write("agent-exec: dispatch: missing required option: --token\n")
+        return 2
+
+    resolved, err = resolve_config()
+    if err is not None:
+        sys.stderr.write(err + "\n")
+        return 1
+
+    state_path = _detach_state_path(resolved, token)
+    if not os.path.exists(state_path):
+        sys.stderr.write(
+            "agent-exec: dispatch: no detached run for token: %s "
+            "(use `dispatch --token %s --detach` first)\n" % (token, token)
+        )
+        return 2
+    with open(state_path, "r", encoding="utf-8") as f:
+        state = json.load(f)
+    pid = state.get("pid")
+    out_path = state.get("out", _detach_out_path(resolved, token))
+
+    deadline = time.time() + max(0, max_wait)
+    while _pid_alive(pid) and time.time() < deadline:
+        time.sleep(2)
+
+    if _pid_alive(pid):
+        print(json.dumps({"status": "running", "token": token, "pid": pid}, ensure_ascii=False))
+        return 0
+
+    try:
+        with open(out_path, "r", encoding="utf-8") as f:
+            raw = f.read()
+    except OSError:
+        raw = ""
+    result = _extract_json_object(raw)
+    try:
+        os.remove(state_path)
+    except OSError:
+        pass
+    try:
+        os.remove(out_path)
+    except OSError:
+        pass
+    if result is None:
+        print(json.dumps(
+            {"status": "relay-failed", "token": token, "raw": raw[-2000:]},
+            ensure_ascii=False,
+        ))
+        return 0
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def cmd_dispatch_route(args):
     if args and args[0] == "prepare":
         return cmd_dispatch_prepare(args[1:])
     if args and args[0] == "session":
         return cmd_dispatch_session(args[1:])
+    if args and args[0] == "wait":
+        return cmd_dispatch_wait_cli(args[1:])
+    if args and args[0] in ("-h", "--help"):
+        print_usage()
+        return 0
     cls = None
     archetype = "default"
     exhausted = []
@@ -5729,12 +6067,16 @@ def cmd_dispatch_route(args):
     run_id = None
     token = None
     no_resume = False
+    detach = False
 
     i = 0
     while i < len(args):
         tok = args[i]
         if tok == "--capture":
             capture = True
+            i += 1
+        elif tok == "--detach":
+            detach = True
             i += 1
         elif tok == "--token":
             if i + 1 >= len(args):
@@ -5809,14 +6151,15 @@ def cmd_dispatch_route(args):
         elif tok == "--no-resume":
             no_resume = True
             i += 1
+        elif tok in ("-h", "--help"):
+            print_usage()
+            return 0
         else:
             sys.stderr.write("agent-exec: dispatch: unknown option: %s\n" % tok)
             return 2
 
     if token is not None:
         conflicts = []
-        if "--class" in args:
-            conflicts.append("--class")
         if "--prompt-file" in args:
             conflicts.append("--prompt-file")
         if "--workdir" in args:
@@ -5850,7 +6193,10 @@ def cmd_dispatch_route(args):
             sys.stderr.write("agent-exec: dispatch: invalid token: %s\n" % token)
             return 2
         delegated_args = [
-            "--class", spec["class"],
+            # --class may be passed alongside --token to escalate the class
+            # of an already-prepared token (e.g. light -> deep after a
+            # correction round); the token's own class is the default.
+            "--class", cls if cls is not None else spec["class"],
             "--archetype", spec["archetype"],
             "--workdir", spec["workdir"],
             "--isolate", spec["isolate"],
@@ -5867,8 +6213,13 @@ def cmd_dispatch_route(args):
             delegated_args.append("--no-resume")
         if exhausted:
             delegated_args.extend(["--exhausted", ",".join(exhausted)])
+        if detach:
+            return cmd_dispatch_detach(resolved, token, delegated_args)
         return cmd_dispatch_route(delegated_args)
 
+    if detach:
+        sys.stderr.write("agent-exec: dispatch: --detach requires --token\n")
+        return 2
     if cls is None:
         sys.stderr.write("agent-exec: dispatch: missing required option: --class\n")
         return 2
@@ -5927,7 +6278,10 @@ def cmd_dispatch_route(args):
         else:
             original_workdir = workdir
             try:
-                created = isolate_create(workdir, task)
+                created = isolate_create(
+                    workdir, task,
+                    carry_extra=(resolved.get("isolation") or {}).get("carry_extra") or (),
+                )
             except ValueError as exc:
                 created = {"status": "error", "reason": str(exc)}
             if created.get("status") in ("created", "exists") and created.get("path"):
