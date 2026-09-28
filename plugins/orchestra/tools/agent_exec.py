@@ -409,7 +409,8 @@ Usage:
   agent-exec isolate integrate --tasks a,b,c [--repo P] [--onto REF]
                   [--into ID] [--on-conflict keep|skip|stop]
                   [--verify CMD] [--verify-timeout SEC]
-                  [--bisect] [--bisect-max N] [--json|--text]
+                  [--bisect] [--bisect-max N] [--progress-jsonl PATH]
+                  [--json|--text]
                                   replay each task's diff, in that order, onto
                                   one integration worktree (default task id
                                   `integrate`, started from the first task's
@@ -572,6 +573,10 @@ Usage:
                   [--detail TEXT]
                                   hand a package back to the runner and
                                   clear its needs entries
+  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]
+                                  start (or reuse) the local zero-token
+                                  dashboard on 127.0.0.1 and print its
+                                  tokenized URL; --stop ends it
   agent-exec <profile> [args...] dispatch: inject profile env, exec the
                                   target CLI with args passed through verbatim
   agent-exec -h | --help          show this help
@@ -4956,6 +4961,11 @@ def _run_verify_cmd(wt_path, cmd, timeout):
                 pass
     seconds = time.time() - start
     passed = exit_code == 0 and not timed_out
+    rc, status_out = _git(wt_path, "status", "--porcelain")
+    dirtied = len(status_out.splitlines()) if rc == 0 else 0
+    if dirtied:
+        _git(wt_path, "reset", "-q", "--hard", "HEAD")
+        _git(wt_path, "clean", "-fdq")
     return {
         "status": "pass" if passed else "fail",
         "exit": exit_code,
@@ -4964,11 +4974,27 @@ def _run_verify_cmd(wt_path, cmd, timeout):
         "excerpt": "" if passed else agent_exec_checks.failure_excerpt(output or ""),
         "baseline": None,
         "reason": "",
+        "dirtied": dirtied,
     }
 
 
+def _emit_progress(progress, event, pkg, detail):
+    """Report one integration stage to `progress`, never letting it break us.
+
+    `progress` is an optional callable taking `{"event", "pkg", "detail"}`;
+    whatever it raises is swallowed -- observability must not fail a merge.
+    """
+    if progress is None:
+        return
+    try:
+        progress({"event": event, "pkg": pkg, "detail": detail})
+    except Exception:
+        pass
+
+
 def _bisect_integration(root, wt_path, branch, base_sha, applied_commits,
-                         results_by_task, verify_cmd, verify_timeout, bisect_max):
+                         results_by_task, verify_cmd, verify_timeout, bisect_max,
+                         progress=None, dirtied_initial=0):
     """Binary-search a verify failure to the applied commit that caused it,
     revert it, and repeat (up to `bisect_max` rounds) until verify passes at
     the tip or the round budget runs out. Returns the final verify dict.
@@ -4989,9 +5015,18 @@ def _bisect_integration(root, wt_path, branch, base_sha, applied_commits,
     def _reattach():
         _git(wt_path, "checkout", "-q", branch)
 
+    dirtied_total = dirtied_initial
+
+    def _verify(command):
+        nonlocal dirtied_total
+        result = _run_verify_cmd(wt_path, command, verify_timeout)
+        dirtied_total += result.get("dirtied", 0)
+        return result
+
     try:
         _detach(base_sha)
-        last_verify = _run_verify_cmd(wt_path, verify_cmd, verify_timeout)
+        last_verify = _verify(verify_cmd)
+        last_verify["dirtied"] = dirtied_total
         if last_verify["status"] == "fail":
             last_verify["baseline"] = "fail"
             return last_verify
@@ -5008,7 +5043,11 @@ def _bisect_integration(root, wt_path, branch, base_sha, applied_commits,
                 _detach(sha_mid)
                 for culprit in reverted_shas:
                     _git(wt_path, "revert", "--no-commit", culprit)
-                probe = _run_verify_cmd(wt_path, verify_cmd, verify_timeout)
+                probe = _verify(verify_cmd)
+                probe["dirtied"] = dirtied_total
+                _emit_progress(progress, "bisect-probe", applied_commits[mid][0], {
+                    "commit": sha_mid, "result": probe["status"],
+                })
                 _git(wt_path, "reset", "--hard", sha_mid)
                 _git(wt_path, "clean", "-fdq")
                 if probe["status"] == "fail":
@@ -5021,7 +5060,8 @@ def _bisect_integration(root, wt_path, branch, base_sha, applied_commits,
                 # failed, so something in range must have. If it somehow
                 # does, report the real tip state rather than loop forever.
                 _reattach()
-                last_verify = _run_verify_cmd(wt_path, verify_cmd, verify_timeout)
+                last_verify = _verify(verify_cmd)
+                last_verify["dirtied"] = dirtied_total
                 last_verify["baseline"] = "pass"
                 break
             mid, sha_mid, probe = first_bad
@@ -5031,6 +5071,7 @@ def _bisect_integration(root, wt_path, branch, base_sha, applied_commits,
             if rc != 0:
                 _git(wt_path, "revert", "--abort")
                 results_by_task[task_mid]["revert"] = "conflicted"
+                _emit_progress(progress, "revert", task_mid, {"result": "conflicted"})
                 last_verify = probe
                 last_verify["baseline"] = "pass"
                 return last_verify
@@ -5039,9 +5080,11 @@ def _bisect_integration(root, wt_path, branch, base_sha, applied_commits,
                 "commit", "-q", "--allow-empty", "-m", "orchestra revert %s" % task_mid)))
             results_by_task[task_mid]["status"] = "reverted"
             results_by_task[task_mid]["verify_excerpt"] = probe["excerpt"]
+            _emit_progress(progress, "revert", task_mid, {"result": "reverted"})
             _clear_source_collected(root, task_mid)
             reverted_shas.append(sha_mid)
-            last_verify = _run_verify_cmd(wt_path, verify_cmd, verify_timeout)
+            last_verify = _verify(verify_cmd)
+            last_verify["dirtied"] = dirtied_total
             last_verify["baseline"] = "pass"
             if last_verify["status"] == "pass":
                 return last_verify
@@ -5052,7 +5095,8 @@ def _bisect_integration(root, wt_path, branch, base_sha, applied_commits,
 
 
 def isolate_integrate(root, tasks, onto=None, into="integrate", on_conflict="keep",
-                       verify=None, verify_timeout=3600, bisect=False, bisect_max=3):
+                       verify=None, verify_timeout=3600, bisect=False, bisect_max=3,
+                       progress=None):
     """Replay each task worktree's diff, in order, onto one integration worktree.
 
     The user's tree is never touched: every apply and commit happens inside the
@@ -5071,6 +5115,10 @@ def isolate_integrate(root, tasks, onto=None, into="integrate", on_conflict="kee
     been processed; `bisect` (requires `verify`) turns a verify failure into a
     binary search for the first applied task's commit that caused it, and
     reverts that commit.
+
+    `progress`, when callable, receives one `{"event", "pkg", "detail"}` dict
+    per stage (integrate-start/-task/-end, verify-start/-end, bisect-probe,
+    revert); it never affects the returned result.
     """
     resolved_root = repo_root(root)
     into_task = sanitize_task_id(into)
@@ -5130,6 +5178,7 @@ def isolate_integrate(root, tasks, onto=None, into="integrate", on_conflict="kee
             digest = _collected_digest(files, patch, _ignored_entries(src_path))
             _write_collected(src_path, digest)
 
+    _emit_progress(progress, "integrate-start", None, {"tasks": list(task_ids)})
     results = []
     applied_commits = []  # [(task, sha)], this invocation's applies, in order
     stop_remaining = False
@@ -5139,12 +5188,14 @@ def isolate_integrate(root, tasks, onto=None, into="integrate", on_conflict="kee
             results.append({
                 "task": task, "status": "skipped", "files_changed": 0, "conflicts": [],
             })
+            _emit_progress(progress, "integrate-task", task, {"status": "skipped"})
             continue
         if change["state"] in ("missing", "empty"):
             results.append({
                 "task": task, "status": change["state"],
                 "files_changed": 0, "conflicts": [],
             })
+            _emit_progress(progress, "integrate-task", task, {"status": change["state"]})
             if change["state"] == "empty":
                 _mark_source_collected(task, change["files"], change["patch"])
             continue
@@ -5178,6 +5229,7 @@ def isolate_integrate(root, tasks, onto=None, into="integrate", on_conflict="kee
             if on_conflict == "stop":
                 stop_remaining = True
         results.append(entry)
+        _emit_progress(progress, "integrate-task", task, {"status": status})
 
     conflicted = any(entry["status"] == "conflicted" for entry in results)
 
@@ -5187,19 +5239,29 @@ def isolate_integrate(root, tasks, onto=None, into="integrate", on_conflict="kee
             verify_result = {
                 "status": "skipped", "exit": None, "seconds": 0.0, "timed_out": False,
                 "excerpt": "", "baseline": None, "reason": "conflict markers committed",
+                "dirtied": 0,
             }
         elif not applied_commits:
             verify_result = {
                 "status": "skipped", "exit": None, "seconds": 0.0, "timed_out": False,
-                "excerpt": "", "baseline": None, "reason": "nothing applied",
+                "excerpt": "", "baseline": None, "reason": "nothing applied", "dirtied": 0,
             }
         else:
+            rc, tip_out = _git(wt_path, "rev-parse", "HEAD")
+            _emit_progress(progress, "verify-start", None, {
+                "at_commit": tip_out.strip() if rc == 0 else "",
+            })
             verify_result = _run_verify_cmd(wt_path, verify, verify_timeout)
+            first_verify_dirtied = verify_result.get("dirtied", 0)
+            _emit_progress(progress, "verify-end", None, {
+                "status": verify_result["status"], "seconds": verify_result["seconds"],
+            })
             if verify_result["status"] == "fail" and bisect:
                 results_by_task = {entry["task"]: entry for entry in results}
                 verify_result = _bisect_integration(
                     resolved_root, wt_path, branch, invocation_base_sha,
                     applied_commits, results_by_task, verify, verify_timeout, bisect_max,
+                    progress=progress, dirtied_initial=first_verify_dirtied,
                 )
 
     reverted = any(entry.get("status") == "reverted" for entry in results)
@@ -5221,6 +5283,7 @@ def isolate_integrate(root, tasks, onto=None, into="integrate", on_conflict="kee
     }
     if verify_result is not None:
         result["verify"] = verify_result
+    _emit_progress(progress, "integrate-end", None, {"status": top_status})
     return result
 
 
@@ -5275,12 +5338,14 @@ def _parse_integrate_args(args):
         "tasks": None, "repo": os.getcwd(), "onto": None, "into": "integrate",
         "json": False, "text": False, "on_conflict": "keep", "verify": None,
         "verify_timeout": 3600, "bisect": False, "bisect_max": 3,
+        "progress_jsonl": None,
     }
     seen = set()
     value_flags = {
         "--tasks": "tasks", "--repo": "repo", "--onto": "onto", "--into": "into",
         "--on-conflict": "on_conflict", "--verify": "verify",
         "--verify-timeout": "verify_timeout", "--bisect-max": "bisect_max",
+        "--progress-jsonl": "progress_jsonl",
     }
     i = 0
     while i < len(args):
@@ -5332,12 +5397,22 @@ def cmd_isolate_integrate(args):
     if error is not None:
         sys.stderr.write("agent-exec: isolate integrate: %s\n" % error)
         return 2
+    progress = None
+    if opts["progress_jsonl"]:
+        progress_path = opts["progress_jsonl"]
+
+        def progress(record):
+            line = json.dumps(dict(record, at=time.time()), ensure_ascii=False)
+            parent = os.path.dirname(os.path.abspath(progress_path))
+            os.makedirs(parent, exist_ok=True)
+            with open(progress_path, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
     try:
         result = isolate_integrate(
             opts["repo"], opts["tasks"], onto=opts["onto"], into=opts["into"],
             on_conflict=opts["on_conflict"], verify=opts["verify"],
             verify_timeout=opts["verify_timeout"], bisect=opts["bisect"],
-            bisect_max=opts["bisect_max"],
+            bisect_max=opts["bisect_max"], progress=progress,
         )
     except ValueError as exc:
         sys.stderr.write("agent-exec: isolate integrate: %s\n" % exc)
@@ -8773,6 +8848,10 @@ def main(argv):
 
     if tok == "wave":
         return agent_exec_wave.cmd_wave(argv[1:])
+
+    if tok == "ui":
+        import agent_exec_ui
+        return agent_exec_ui.cmd_ui(argv[1:])
 
     return cmd_dispatch(tok, argv[1:])
 

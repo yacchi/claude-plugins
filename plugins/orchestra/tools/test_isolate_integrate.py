@@ -567,6 +567,20 @@ class VerifyTests(_IntegrateRepo):
         self.assertEqual(result["verify"]["exit"], 0)
         self.assertEqual(result["verify"]["excerpt"], "")
 
+    def test_verify_restores_tracked_and_untracked_but_keeps_ignored(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        result = agent_exec.isolate_integrate(
+            self.repo, ["alpha"],
+            verify=("echo changed > shared.txt; echo extra > verify.txt; "
+                    "mkdir -p node_modules; echo ignored > node_modules/keep.txt"),
+        )
+        path = result["integration"]["path"]
+        self.assertEqual(result["verify"]["status"], "pass")
+        self.assertEqual(result["verify"]["dirtied"], 2)
+        self.assertEqual(_git(path, "status", "--porcelain").stdout, "")
+        with open(os.path.join(path, "node_modules", "keep.txt")) as fh:
+            self.assertEqual(fh.read(), "ignored\n")
+
     def test_verify_fail_without_bisect_exits_four_with_excerpt(self):
         self._make_task("alpha", new_files={"bad.txt": "oops\n"})
         rc, out = self._cli(
@@ -660,6 +674,21 @@ class BisectTests(_IntegrateRepo):
         self.assertEqual(rc, 0)
         self.assertEqual(ref, self._branch_of(result))
 
+    def test_dirty_bisect_probes_leave_attached_clean_tree(self):
+        self._make_task("good", {2: "GOOD\n"})
+        self._make_task("bad", new_files={"bad.txt": "oops\n"})
+        result = agent_exec.isolate_integrate(
+            self.repo, ["good", "bad"],
+            verify="touch probe.txt; test ! -f bad.txt", bisect=True,
+        )
+        path = result["integration"]["path"]
+        self.assertEqual(result["verify"]["status"], "pass")
+        self.assertGreaterEqual(result["verify"]["dirtied"], 3)
+        self.assertEqual(_git(path, "status", "--porcelain").stdout, "")
+        rc, ref = self._head_ref(result)
+        self.assertEqual(rc, 0)
+        self.assertEqual(ref, self._branch_of(result))
+
     def test_baseline_already_red_means_no_revert(self):
         self._make_task("preexisting_bad", new_files={"bad.txt": "oops\n"})
         first = agent_exec.isolate_integrate(self.repo, ["preexisting_bad"])
@@ -716,6 +745,169 @@ class BisectTests(_IntegrateRepo):
         rc, ref = self._head_ref(result)
         self.assertEqual(rc, 0)
         self.assertEqual(ref, self._branch_of(result))
+
+
+class ProgressTests(_IntegrateRepo):
+    """`progress` receives one dict per stage and can never break integrate."""
+
+    def _collect(self, *args, **kwargs):
+        events = []
+        result = agent_exec.isolate_integrate(*args, progress=events.append, **kwargs)
+        return result, events
+
+    def _names(self, events):
+        return [e["event"] for e in events]
+
+    def test_clean_integrate_events(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        self._make_task("beta", {19: "BETA\n"})
+        result, events = self._collect(self.repo, ["alpha", "beta"])
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(self._names(events), [
+            "integrate-start", "integrate-task", "integrate-task", "integrate-end"])
+        self.assertEqual(events[0], {
+            "event": "integrate-start", "pkg": None, "detail": {"tasks": ["alpha", "beta"]}})
+        self.assertEqual([(e["pkg"], e["detail"]["status"]) for e in events[1:3]],
+                         [("alpha", "applied"), ("beta", "applied")])
+        self.assertEqual(events[3], {
+            "event": "integrate-end", "pkg": None, "detail": {"status": "ok"}})
+
+    def test_progress_does_not_change_the_result(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        with_progress, _ = self._collect(self.repo, ["alpha"], into="i1")
+        plain = agent_exec.isolate_integrate(self.repo, ["alpha"], into="i2")
+        for res in (with_progress, plain):
+            self.assertEqual(sorted(res), ["integration", "note", "onto", "status", "tasks"])
+        self.assertEqual(with_progress["tasks"], plain["tasks"])
+
+    def test_skip_conflict_events(self):
+        self._make_task("alpha", {10: "ALPHA WINS\n"})
+        self._make_task("beta", {10: "BETA WINS\n"})
+        result, events = self._collect(
+            self.repo, ["alpha", "beta", "nothere"], on_conflict="stop")
+        statuses = [(e["pkg"], e["detail"]["status"])
+                    for e in events if e["event"] == "integrate-task"]
+        self.assertEqual(statuses, [
+            ("alpha", "applied"), ("beta", "conflicted"), ("nothere", "skipped")])
+        self.assertEqual(events[-1]["detail"], {"status": "conflicted"})
+
+    def test_missing_and_empty_events(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        result, events = self._collect(self.repo, ["ghost", "alpha"])
+        statuses = [(e["pkg"], e["detail"]["status"])
+                    for e in events if e["event"] == "integrate-task"]
+        self.assertEqual(statuses, [("ghost", "missing"), ("alpha", "applied")])
+
+    def test_verify_pass_events(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        result, events = self._collect(self.repo, ["alpha"], verify="true")
+        self.assertEqual(self._names(events), [
+            "integrate-start", "integrate-task", "verify-start", "verify-end",
+            "integrate-end"])
+        start = events[2]["detail"]["at_commit"]
+        tip = _git(result["integration"]["path"], "rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(start, tip)
+        self.assertEqual(events[3]["detail"]["status"], "pass")
+        self.assertIsInstance(events[3]["detail"]["seconds"], float)
+
+    def test_verify_skipped_emits_no_verify_events(self):
+        result, events = self._collect(self.repo, ["ghost"], verify="true")
+        self.assertNotIn("verify-start", self._names(events))
+        self.assertNotIn("verify-end", self._names(events))
+
+    def test_bisect_events_name_the_culprit(self):
+        self._make_task("good", {2: "GOOD\n"})
+        self._make_task("bad", new_files={"bad.txt": "oops\n"})
+        result, events = self._collect(
+            self.repo, ["good", "bad"], verify="test ! -f bad.txt", bisect=True)
+        self.assertEqual(result["status"], "reverted")
+        verify_end = [e for e in events if e["event"] == "verify-end"]
+        self.assertEqual(verify_end[0]["detail"]["status"], "fail")
+        probes = [e for e in events if e["event"] == "bisect-probe"]
+        self.assertTrue(probes)
+        for probe in probes:
+            self.assertIn(probe["pkg"], ("good", "bad"))
+            self.assertRegex(probe["detail"]["commit"], r"^[0-9a-f]{40}$")
+            self.assertIn(probe["detail"]["result"], ("pass", "fail"))
+        self.assertIn(("bad", "fail"), [(p["pkg"], p["detail"]["result"]) for p in probes])
+        reverts = [e for e in events if e["event"] == "revert"]
+        self.assertEqual(reverts, [{
+            "event": "revert", "pkg": "bad", "detail": {"result": "reverted"}}])
+        self.assertEqual(events[-1], {
+            "event": "integrate-end", "pkg": None, "detail": {"status": "reverted"}})
+
+    def test_revert_conflict_event(self):
+        self._make_task("bad", new_files={"bad.txt": "oops\n"})
+        real_git = agent_exec._git
+
+        def _fake_git(cwd, *args, **kwargs):
+            if len(args) >= 2 and args[0] == "revert" and args[1] == "--no-commit":
+                return 1, ""
+            return real_git(cwd, *args, **kwargs)
+
+        events = []
+        with mock.patch.object(agent_exec, "_git", side_effect=_fake_git):
+            agent_exec.isolate_integrate(
+                self.repo, ["bad"], verify="test ! -f bad.txt", bisect=True,
+                progress=events.append)
+        reverts = [e for e in events if e["event"] == "revert"]
+        self.assertEqual(reverts[0]["detail"], {"result": "conflicted"})
+        self.assertEqual(reverts[0]["pkg"], "bad")
+
+    def test_raising_progress_never_breaks_integrate(self):
+        self._make_task("good", {2: "GOOD\n"})
+        self._make_task("bad", new_files={"bad.txt": "oops\n"})
+
+        def boom(record):
+            raise RuntimeError("observer down")
+
+        result = agent_exec.isolate_integrate(
+            self.repo, ["good", "bad"], verify="test ! -f bad.txt", bisect=True,
+            progress=boom)
+        self.assertEqual(result["status"], "reverted")
+        self.assertEqual(self._by_task(result)["bad"]["status"], "reverted")
+
+
+class ProgressJsonlCliTests(_IntegrateRepo):
+    def test_progress_jsonl_writes_valid_lines(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        target = os.path.join(self.tmp, "deep", "er", "progress.jsonl")
+        rc, out = self._cli("integrate", "--tasks", "alpha", "--repo", self.repo,
+                            "--verify", "true", "--progress-jsonl", target)
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "ok")
+        with open(target) as fh:
+            lines = [json.loads(line) for line in fh.read().splitlines()]
+        self.assertEqual([r["event"] for r in lines], [
+            "integrate-start", "integrate-task", "verify-start", "verify-end",
+            "integrate-end"])
+        for record in lines:
+            self.assertIsInstance(record["at"], float)
+            self.assertIn("pkg", record)
+            self.assertIn("detail", record)
+
+    def test_progress_jsonl_appends(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        target = os.path.join(self.tmp, "p.jsonl")
+        with open(target, "w") as fh:
+            fh.write('{"event": "old"}\n')
+        self._cli("integrate", "--tasks", "alpha", "--repo", self.repo,
+                  "--progress-jsonl", target)
+        with open(target) as fh:
+            lines = fh.read().splitlines()
+        self.assertEqual(json.loads(lines[0]), {"event": "old"})
+        self.assertGreater(len(lines), 1)
+
+    def test_duplicate_progress_jsonl_is_usage_error(self):
+        rc, out = self._cli("integrate", "--tasks", "a", "--progress-jsonl", "x",
+                            "--progress-jsonl", "y")
+        self.assertEqual(rc, 2)
+        self.assertEqual(out, "")
+
+    def test_missing_progress_jsonl_value_is_usage_error(self):
+        rc, out = self._cli("integrate", "--tasks", "a", "--progress-jsonl")
+        self.assertEqual(rc, 2)
+        self.assertEqual(out, "")
 
 
 if __name__ == "__main__":

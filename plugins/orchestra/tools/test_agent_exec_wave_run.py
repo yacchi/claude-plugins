@@ -34,6 +34,10 @@ _ALIVE_TMP = tempfile.mkdtemp(prefix="orch-alive-")
 os.environ["ORCHESTRA_ALIVE_DIR"] = _ALIVE_TMP
 agent_exec._heartbeat_dir_cache = _ALIVE_TMP
 
+# `wave run` appends to the machine-shared wave registry; keep it out of $HOME.
+_REGISTRY_TMP = tempfile.mkdtemp(prefix="orch-wave-registry-")
+os.environ["ORCHESTRA_WAVE_REGISTRY"] = os.path.join(_REGISTRY_TMP, "waves.jsonl")
+
 _GIT_ENV = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
 
 _BASE_LINES = ["line %02d\n" % n for n in range(1, 21)]
@@ -224,6 +228,32 @@ class _WaveRepo(unittest.TestCase):
 
 
 class HappyPathTests(_WaveRepo):
+    def test_full_cleanup_keeps_next_wave_package_baseline_at_integration_head(self):
+        self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}])
+        ex = FakeExecutor({
+            "A": [edit({"a.txt": "a\n"})],
+            "B": [edit({"b.txt": "b\n"})],
+        })
+        report, rc = self.run_wave(
+            ex, full="echo rewritten > a.txt", full_every=1,
+        )
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(ex.pkgs_dispatched(), ["A", "B"])
+        b_call = next(call for call in ex.calls if call["pkg"] == "B")
+        b_spec = ex.tokens[b_call["token"]]
+        self.assertEqual(b_spec["workdir"], self.int_path())
+        b_tree = self.state()["packages"]["B"]["tree"]
+        baseline = agent_exec._read_baseline(b_tree)
+        self.assertEqual(
+            _git(b_tree, "rev-parse", "%s^" % baseline).stdout.strip(),
+            b_call["workdir_head"],
+        )
+        self.assertEqual(
+            _git(b_tree, "diff", "--quiet", "%s^" % baseline, baseline).returncode,
+            0,
+        )
+        self.assertEqual(self.int_file("a.txt"), "a\n")
+
     def test_two_independent_packages_one_wave(self):
         self.plan([{"id": "A"}, {"id": "B"}])
         ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
@@ -355,12 +385,32 @@ class NeedsTests(_WaveRepo):
                 ["mark", "--state", self.state_path, "--pkg", "A", "--status", "ready"])
         self.assertEqual(mark_rc, 0)
         self.assertEqual(self.state()["needs"], [])
-        self.assertEqual(self.status("A"), "ready")
+        self.assertEqual(self.status("A"), "verifying")
 
         report, rc = self.run_wave(NoDispatch())
         self.assertEqual(rc, 0, report)
         self.assertEqual(report["integrated"], ["A"])
         self.assertEqual(self.int_file("a.txt"), "by instructor\n")
+
+    def test_mark_ready_runs_self_verify_before_integration(self):
+        self.checks(_NO_BAD_CHECK)
+        self.plan([{"id": "A"}])
+        delegate = {"status": "delegate", "executor": "claude", "model": "sonnet",
+                    "effort": "high", "agent_type": "general-purpose"}
+        first = FakeExecutor({"A": [result(delegate, files={"a.txt": "BAD\n"})]})
+        report, rc = self.run_wave(first)
+        self.assertEqual(rc, 1, report)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(agent_exec_wave.cmd_wave([
+                "mark", "--state", self.state_path, "--pkg", "A", "--status", "ready",
+            ]), 0)
+        second = FakeExecutor({"A": [edit({"a.txt": "BAD again\n"})]})
+        report, rc = self.run_wave(second)
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(report["needs"], [{"id": "A", "kind": "self-verify"}])
+        events = agent_exec_wave.read_events(self.state_path, None)
+        self.assertTrue(any(e["event"] == "check-start" and e["pkg"] == "A"
+                            for e in events))
 
     def test_mark_rejects_unknown_status(self):
         self.plan([{"id": "A"}])
@@ -405,7 +455,9 @@ class IntegrationTests(_WaveRepo):
         self.assertEqual(rc, 1, report)
         self.assertEqual(report["integrated"], ["A"])
         self.assertEqual(self.need_kinds(), [("B", "conflict")])
-        self.assertIn("shared.txt", self.state()["needs"][0]["detail"])
+        detail = json.loads(self.state()["needs"][0]["detail"])
+        self.assertEqual(detail["stage"], "integrate")
+        self.assertIn("shared.txt", detail["files"])
         self.assertIn("A's line", self.int_file("shared.txt"))
         self.assertNotIn("<<<<<<<", self.int_file("shared.txt"))
 
@@ -455,6 +507,126 @@ class IntegrationTests(_WaveRepo):
         self.assertEqual(_read(marker), "x\n")
         events = agent_exec_wave.read_events(self.state_path, None)
         self.assertIn("after-green", [e["event"] for e in events])
+
+
+class StageEventTests(_WaveRepo):
+    def events(self):
+        return agent_exec_wave.read_events(self.state_path, None)
+
+    def details(self, name, pkg="__any__"):
+        return [json.loads(e["detail"]) for e in self.events()
+                if e["event"] == name and (pkg == "__any__" or e["pkg"] == pkg)]
+
+    def test_happy_path_emits_stage_events(self):
+        self.plan([{"id": "A"}, {"id": "B"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
+        report, rc = self.run_wave(ex, gate="true")
+        self.assertEqual(rc, 0, report)
+        names = [e["event"] for e in self.events()]
+        for pid in ("A", "B"):
+            self.assertEqual(self.details("dispatch-start", pid), [
+                {"attempt": 1, "cls": "light", "kind": "implement"}])
+            end = self.details("dispatch-end", pid)
+            self.assertEqual(len(end), 1)
+            self.assertEqual(end[0]["status"], "ok")
+            self.assertEqual(end[0]["executor"], "copilot")
+            self.assertIsInstance(end[0]["seconds"], float)
+            self.assertEqual(len(self.details("check-start", pid)), 1)
+            check_end = self.details("check-end", pid)
+            self.assertEqual(len(check_end), 1)
+            self.assertIn(check_end[0]["status"], ("pass", "no-checks"))
+        self.assertLess(names.index("dispatch-start"), names.index("check-start"))
+        self.assertEqual(self.details("integrate-start"), [{"tasks": ["A", "B"]}])
+        self.assertEqual(sorted((e["pkg"], json.loads(e["detail"])["status"])
+                                for e in self.events() if e["event"] == "integrate-task"),
+                         [("A", "applied"), ("B", "applied")])
+        self.assertEqual(self.details("integrate-end"), [{"status": "ok"}])
+        self.assertEqual(len(self.details("verify-start")), 1)
+        self.assertEqual(self.details("verify-end")[0]["status"], "pass")
+        # Every mechanical event's detail is a sorted-key JSON string.
+        for e in self.events():
+            if e["event"] in ("dispatch-start", "integrate-end"):
+                self.assertEqual(e["detail"], json.dumps(
+                    json.loads(e["detail"]), ensure_ascii=False, sort_keys=True))
+
+    def test_correction_dispatch_is_labelled(self):
+        self.checks(_NO_BAD_CHECK)
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [
+            edit({"a.txt": "BAD\n"}), edit({"a.txt": "good\n"})]})
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 0, report)
+        starts = self.details("dispatch-start", "A")
+        self.assertEqual([(d["kind"], d["attempt"]) for d in starts], [
+            ("implement", 1), ("correction", 2)])
+        self.assertEqual([d["status"] for d in self.details("check-end", "A")],
+                         ["fail", "pass"])
+
+    def test_post_integration_failure_emits_bisect_and_revert_with_package_id(self):
+        self.checks(
+            "checks:\n"
+            "  items:\n"
+            "    - name: notboth\n"
+            "      run: \"! ( test -f a.txt && test -f b.txt )\"\n"
+        )
+        self.plan([{"id": "A"}, {"id": "B"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        events = self.events()
+        probes = [e for e in events if e["event"] == "bisect-probe"]
+        self.assertTrue(probes)
+        self.assertTrue(all(e["pkg"] in ("A", "B") for e in probes))
+        reverts = [e for e in events if e["event"] == "revert"]
+        self.assertEqual([(e["pkg"], json.loads(e["detail"])) for e in reverts],
+                         [("B", {"result": "reverted"})])
+        self.assertFalse(any((e["pkg"] or "").startswith("pkg-") for e in events))
+        self.assertEqual(self.details("integrate-start"), [{"tasks": ["A", "B"]}])
+        self.assertEqual(self.details("integrate-end"), [{"status": "reverted"}])
+
+    def test_full_and_after_green_events(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        self.run_wave(ex, full="test -f a.txt", after_green="true")
+        self.assertEqual(self.details("full-start"), [{}])
+        full_end = self.details("full-end")
+        self.assertEqual(full_end[0]["status"], "pass")
+        self.assertIsInstance(full_end[0]["seconds"], float)
+        self.assertEqual(self.details("after-green"), [{"exit": 0}])
+
+    def test_dirty_full_and_pre_dispatch_emit_integration_dirty(self):
+        self.plan([{"id": "A"}])
+        created = agent_exec.isolate_create(self.repo, "wave-int", backend="git")
+        _write(os.path.join(created["path"], "pre-dispatch.txt"), "dirty\n")
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        self.run_wave(ex, full="echo changed > a.txt; echo extra > full.txt")
+        events = self.details("integration-dirty")
+        self.assertTrue(any(e["after"] == "pre-dispatch" for e in events))
+        self.assertTrue(any(e["after"] == "full" for e in events))
+
+    def test_refresh_event(self):
+        self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
+        # Pre-create B's tree on the old base so wave 2 must refresh it.
+        agent_exec.isolate_create(self.repo, "pkg-B", backend="git")
+        self.run_wave(ex)
+        refreshes = self.details("refresh", "B")
+        self.assertTrue(refreshes)
+        self.assertEqual(sorted(refreshes[0]), ["files", "status"])
+        self.assertIsInstance(refreshes[0]["files"], int)
+
+    def test_registry_entry_written(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        registry = agent_exec_wave.registry_path()
+        self.assertTrue(registry.startswith(_REGISTRY_TMP))
+        self.run_wave(ex)
+        mine = [w for w in agent_exec_wave.list_waves() if w["state"] == self.state_path]
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(mine[0]["plan"], self.plan_path)
+        self.assertEqual(mine[0]["repo"], self.repo)
+        self.assertEqual(mine[0]["into"], "wave-int")
+        self.assertIsInstance(mine[0]["registered_at"], float)
 
 
 class StopAndResumeTests(_WaveRepo):

@@ -306,5 +306,48 @@ class SlotsTest(_CheckRunnerTest):
         self.assertEqual(ends[0], starts[1] - 1)
 
 
+class OnEventTest(_CheckRunnerTest):
+    def test_start_end_pairs_in_order(self):
+        events = []
+        items = [{"name": "a", "run": "true"}, {"name": "b", "run": "false"}]
+        agent_exec_checks.run_checks(items, self.tree, [], self.slots,
+                                     on_event=events.append)
+        self.assertEqual([(e["event"], e["detail"]["name"]) for e in events], [
+            ("check-start", "a"), ("check-end", "a"),
+            ("check-start", "b"), ("check-end", "b")])
+        self.assertEqual(events[0]["detail"]["tree"], self.tree)
+        self.assertEqual(events[1]["detail"]["status"], "pass")
+        self.assertEqual(events[3]["detail"]["status"], "fail")
+        self.assertIsInstance(events[1]["detail"]["seconds"], float)
+
+    def test_no_events_for_skipped(self):
+        events = []
+        items = [
+            {"name": "nomatch", "run": "true", "paths": ["*.py"]},
+            {"name": "a", "run": "false"},
+            {"name": "after", "run": "true"},
+        ]
+        results = agent_exec_checks.run_checks(items, self.tree, ["x.txt"], self.slots,
+                                               on_event=events.append)
+        self.assertEqual([r["status"] for r in results], ["skipped", "fail", "skipped"])
+        self.assertEqual({e["detail"]["name"] for e in events}, {"a"})
+        self.assertEqual(len(events), 2)
+
+    def test_raising_callback_is_ignored(self):
+        def boom(event):
+            raise RuntimeError("nope")
+
+        results = agent_exec_checks.run_checks(
+            [{"name": "a", "run": "true"}], self.tree, [], self.slots, on_event=boom)
+        self.assertEqual(results[0]["status"], "pass")
+
+    def test_run_check_accepts_on_event(self):
+        events = []
+        result = agent_exec_checks.run_check(
+            {"name": "a", "run": "true"}, self.tree, [], self.slots, on_event=events.append)
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual([e["event"] for e in events], ["check-start", "check-end"])
+
+
 if __name__ == "__main__":
     unittest.main()

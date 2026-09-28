@@ -280,12 +280,25 @@ def _empty_result(name, status, reason=""):
     }
 
 
-def run_check(item, tree, files, slot_dir, max_parallel=2):
+def _notify(on_event, event, detail):
+    """Call `on_event` with one check event; a raising callback is ignored."""
+    if on_event is None:
+        return
+    try:
+        on_event({"event": event, "detail": detail})
+    except Exception:
+        pass
+
+
+def run_check(item, tree, files, slot_dir, max_parallel=2, on_event=None):
     """Run one `checks.items` entry against `files` changed in `tree`.
 
     Returns a result dict: name/status(pass|fail|skipped)/exit/seconds/
     timed_out/excerpt/reason. Never raises: a malformed item is the caller's
     problem (config validation happens before this is called).
+
+    `on_event`, when callable, gets `check-start` / `check-end` dicts around a
+    check that actually runs (never for `skipped`); its exceptions are ignored.
     """
     name = item["name"]
     patterns = item.get("paths")
@@ -304,6 +317,7 @@ def run_check(item, tree, files, slot_dir, max_parallel=2):
     if uses_files and not quoted:
         return _empty_result(name, "skipped", "no matching files")
 
+    _notify(on_event, "check-start", {"name": name, "tree": tree})
     junit_rel = item.get("junit")
     junit_path = os.path.normpath(os.path.join(cwd_dir, junit_rel)) if junit_rel else None
     if junit_path and os.path.isfile(junit_path):
@@ -323,13 +337,17 @@ def run_check(item, tree, files, slot_dir, max_parallel=2):
     )
     passed = exit_code == 0 and not timed_out
     excerpt = "" if passed else _build_excerpt(junit_path, stdout + stderr)
+    _notify(on_event, "check-end", {
+        "name": name, "status": "pass" if passed else "fail", "seconds": seconds,
+    })
     return {
         "name": name, "status": "pass" if passed else "fail", "exit": exit_code,
         "seconds": seconds, "timed_out": timed_out, "excerpt": excerpt, "reason": "",
     }
 
 
-def run_checks(items, tree, files, slot_dir, max_parallel=2, run_all=False):
+def run_checks(items, tree, files, slot_dir, max_parallel=2, run_all=False,
+               on_event=None):
     """Run `items` in config order, stopping at the first failure unless
     `run_all`. Unreached items are reported `skipped`."""
     results = []
@@ -340,7 +358,8 @@ def run_checks(items, tree, files, slot_dir, max_parallel=2, run_all=False):
                 item["name"], "skipped", "not run after earlier failure"
             ))
             continue
-        result = run_check(item, tree, files, slot_dir, max_parallel=max_parallel)
+        result = run_check(item, tree, files, slot_dir, max_parallel=max_parallel,
+                           on_event=on_event)
         results.append(result)
         if result["status"] == "fail" and not run_all:
             stop = True

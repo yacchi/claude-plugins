@@ -210,6 +210,23 @@ class _Runner(object):
         rc, out = agent_exec._git(self.int_path, "rev-parse", "HEAD")
         return out.strip() if rc == 0 else None
 
+    def _clean_integration(self, after):
+        rc, out = agent_exec._git(self.int_path, "status", "--porcelain")
+        files = len(out.splitlines()) if rc == 0 else 0
+        if files:
+            agent_exec._git(self.int_path, "reset", "-q", "--hard", "HEAD")
+            agent_exec._git(self.int_path, "clean", "-fdq")
+            self._emit("integration-dirty", None, {"files": files, "after": after})
+        return files
+
+    def _emit(self, name, pkg, obj):
+        """One mechanical-stage event; detail is a JSON object string."""
+        try:
+            self.store.event(name, pkg=pkg, detail=json.dumps(
+                obj, ensure_ascii=False, sort_keys=True))
+        except Exception:
+            pass  # observability must never take the loop down
+
     def _notify(self, kind, payload):
         cmd = self.opts.get("notify_cmd")
         if not cmd:
@@ -266,6 +283,11 @@ class _Runner(object):
         self.into = agent_exec.sanitize_task_id(self.opts["into"])
         self.store.init(os.path.abspath(self.opts["plan"]),
                         [p["id"] for p in self.plan["packages"]], self.into)
+        try:
+            agent_exec_wave.register_wave(
+                self.state_path, self.opts["plan"], self.root, self.into, clock=self.clock)
+        except OSError:
+            pass  # an unwritable registry only costs discoverability
 
         # Integration worktree: same create-then-tag path isolate_integrate
         # takes, so a later `isolate integrate --into` reuses it as-is.
@@ -334,10 +356,12 @@ class _Runner(object):
             return True, ""  # the tree already sits on top of the integration HEAD
         refreshed = agent_exec.isolate_refresh(self.root, self._task(pid), onto=head)
         status = refreshed.get("status")
-        self.store.event("refresh", pkg=pid, detail="%s: %s" % (status, refreshed.get("note")))
+        self._emit("refresh", pid, {"status": status,
+                                    "files": len(refreshed.get("files") or [])})
         if status == "conflicted":
-            files = ", ".join(c.get("file") for c in refreshed.get("conflicts") or [])
-            self._need(pid, "conflict", files or refreshed.get("note") or "")
+            files = [c.get("file") for c in refreshed.get("conflicts") or [] if c.get("file")]
+            self._need(pid, "conflict", json.dumps(
+                {"files": files, "stage": "refresh"}, ensure_ascii=False, sort_keys=True))
             return False, ""
         if status == "error":
             self._need(pid, "dispatch-error", refreshed.get("note") or "refresh failed")
@@ -403,13 +427,27 @@ class _Runner(object):
         return (list(self.plan["preamble"]) + [self._context_path(pid)]
                 + [self.pkgs[pid]["spec"]])
 
-    def _dispatch(self, pid, prompt_files, no_resume):
+    def _dispatch(self, pid, prompt_files, no_resume, kind="implement", attempt=1):
+        """Prepare + dispatch, bracketed by dispatch-start / dispatch-end events."""
+        self._emit("dispatch-start", pid, {
+            "attempt": attempt, "cls": self.pkgs[pid]["cls"], "kind": kind})
+        started = time.time()
+        end = {"status": "error", "executor": None}
+        try:
+            token, result = self._dispatch_once(pid, prompt_files, no_resume)
+            end = {"status": result.get("status"), "executor": result.get("executor")}
+            return token, result
+        finally:
+            self._emit("dispatch-end", pid, dict(end, seconds=round(time.time() - started, 3)))
+
+    def _dispatch_once(self, pid, prompt_files, no_resume):
         """Prepare + dispatch with the one unavailable retry.
 
         Returns (token, result); result status "_stop" means the executor
         pool is exhausted and the reason is in result["reason"].
         """
         pkg = self.pkgs[pid]
+        self._clean_integration("pre-dispatch")
         token = self.executor.prepare(prompt_files, pkg["cls"], self.int_path,
                                       self._task(pid), self.opts.get("run_id"))
         for attempt in (0, 1):
@@ -475,6 +513,9 @@ class _Runner(object):
         if session:
             args.extend(["--session", session])
         buf = _Buffer()
+        tree = self.store.load()["packages"].get(pid, {}).get("tree") or ""
+        self._emit("check-start", pid, {"name": "self-verify", "tree": tree})
+        started = time.time()
         self.stdout.capture(buf)
         try:
             rc = agent_exec.cmd_check(args)
@@ -485,6 +526,8 @@ class _Runner(object):
         except (ValueError, IndexError):
             parsed = {"status": "error", "checks": []}
         parsed["exit"] = rc
+        self._emit("check-end", pid, {"name": "self-verify", "status": parsed.get("status"),
+                                      "seconds": round(time.time() - started, 3)})
         return parsed
 
     def _failure_text(self, check):
@@ -517,11 +560,14 @@ class _Runner(object):
             entry = self.store.load()["packages"].get(pid, {})
             self.store.set_status(pid, "fixing", detail="self-verify failed",
                                   attempts=(entry.get("attempts") or 0) + 1)
+            attempt = (entry.get("attempts") or 0) + 2
             if entry.get("session"):
-                token, result = self._dispatch(pid, [correction], no_resume=False)
+                token, result = self._dispatch(
+                    pid, [correction], no_resume=False, kind="correction", attempt=attempt)
             else:
                 token, result = self._dispatch(
-                    pid, self._full_files(pid) + [correction], no_resume=True)
+                    pid, self._full_files(pid) + [correction], no_resume=True,
+                    kind="correction", attempt=attempt)
             if not self._handle(pid, token, result):
                 return
 
@@ -565,9 +611,19 @@ class _Runner(object):
         since = self._int_head()
         gate = self.opts.get("gate") or self._default_gate(since)
         tasks = [self._task(pid) for pid in ready]
+        by_sanitized = dict((agent_exec.sanitize_task_id(t), pid)
+                            for t, pid in zip(tasks, ready))
+
+        def progress(record):
+            detail = dict(record.get("detail") or {})
+            if isinstance(detail.get("tasks"), list):
+                detail["tasks"] = [by_sanitized.get(t, t) for t in detail["tasks"]]
+            pkg = record.get("pkg")
+            self._emit(record["event"], by_sanitized.get(pkg, pkg) if pkg else None, detail)
+
         result = agent_exec.isolate_integrate(
             self.root, tasks, onto=self.base, into=self.into, on_conflict="skip",
-            verify=gate, bisect=True,
+            verify=gate, bisect=True, progress=progress,
         )
         self.store.event("integrate", detail="%s: %s" % (result.get("status"), result.get("note")))
         if result.get("status") == "error":
@@ -586,13 +642,18 @@ class _Runner(object):
             elif status == "empty":
                 self.store.set_status(pid, "integrated", detail="changed nothing")
             elif status == "conflicted":
-                files = ", ".join(c.get("file") for c in entry.get("conflicts") or [])
-                self._need(pid, "conflict", files or "conflicted")
+                files = [c.get("file") for c in entry.get("conflicts") or [] if c.get("file")]
+                self._need(pid, "conflict", json.dumps(
+                    {"files": files, "stage": "integrate"},
+                    ensure_ascii=False, sort_keys=True))
             elif status == "reverted":
                 self._need(pid, "post-integration", entry.get("verify_excerpt") or "")
             else:
                 self._need(pid, "dispatch-error", "integrate reported %s" % status)
         verify = result.get("verify") or {}
+        if verify.get("dirtied"):
+            self._emit("integration-dirty", None, {
+                "files": verify["dirtied"], "after": "gate"})
         if verify.get("status") == "fail":
             if verify.get("baseline") == "fail":
                 self._stop("integration tree red before this wave")
@@ -606,7 +667,12 @@ class _Runner(object):
 
     def _full(self):
         self.integrated_since_full = 0
+        self._emit("full-start", None, {})
         res = self._run_cmd(self.opts["full"], self.opts.get("full_timeout"))
+        if res.get("dirtied"):
+            self._emit("integration-dirty", None, {
+                "files": res["dirtied"], "after": "full"})
+        self._emit("full-end", None, {"status": res["status"], "seconds": res["seconds"]})
         self.store.event("full", detail="%s exit=%s\n%s" % (
             res["status"], res["exit"], res["excerpt"]))
         if res["status"] != "pass":
@@ -614,8 +680,11 @@ class _Runner(object):
             return
         if self.opts.get("after_green"):
             ag = self._run_cmd(self.opts["after_green"], None)
+            if ag.get("dirtied"):
+                self._emit("integration-dirty", None, {
+                    "files": ag["dirtied"], "after": "after-green"})
             # _run_verify_cmd only excerpts failures; that is what matters here.
-            self.store.event("after-green", detail="exit=%s\n%s" % (ag["exit"], ag["excerpt"]))
+            self._emit("after-green", None, {"exit": ag["exit"]})
 
     # -- the loop -------------------------------------------------------------
 
@@ -764,6 +833,7 @@ _RUN_USAGE = (
 
 _MARK_USAGE = (
     "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n"
+    "                  (ready enters self-verifying; pending|failed are terminal handoffs)\n"
     "                  [--detail TEXT]\n"
 )
 
@@ -868,7 +938,8 @@ def cmd_wave_mark(args):
     if pkg not in store.load().get("packages", {}):
         sys.stderr.write("agent-exec: wave mark: unknown package: %s\n" % pkg)
         return 3
-    store.set_status(pkg, status, detail=detail or "marked by the instructor")
+    stored_status = "verifying" if status == "ready" else status
+    store.set_status(pkg, stored_status, detail=detail or "marked by the instructor")
     store.clear_need(pkg)
-    print(json.dumps({"pkg": pkg, "status": status}, ensure_ascii=False))
+    print(json.dumps({"pkg": pkg, "status": stored_status}, ensure_ascii=False))
     return 0

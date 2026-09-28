@@ -412,5 +412,68 @@ class AgentExecReachabilityTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class RegistryTests(_StateDirCase):
+    def setUp(self):
+        _StateDirCase.setUp(self)
+        self.registry = os.path.join(self.tmp, "reg", "waves.jsonl")
+        self._orig = os.environ.get("ORCHESTRA_WAVE_REGISTRY")
+        os.environ["ORCHESTRA_WAVE_REGISTRY"] = self.registry
+
+    def tearDown(self):
+        if self._orig is None:
+            os.environ.pop("ORCHESTRA_WAVE_REGISTRY", None)
+        else:
+            os.environ["ORCHESTRA_WAVE_REGISTRY"] = self._orig
+        _StateDirCase.tearDown(self)
+
+    def _state(self, name):
+        path = os.path.join(self.tmp, name, "state.json")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w") as fh:
+            fh.write("{}")
+        return path
+
+    def test_registry_path_env_override_and_default(self):
+        self.assertEqual(wave.registry_path(), self.registry)
+        del os.environ["ORCHESTRA_WAVE_REGISTRY"]
+        self.assertEqual(wave.registry_path(), os.path.join(
+            os.path.expanduser("~"), ".claude", "orchestra", "waves.jsonl"))
+
+    def test_register_writes_absolute_record(self):
+        state = self._state("a")
+        record = wave.register_wave(state, "plan.json", "repo", "wave-int",
+                                    clock=self._clock(42.0))
+        self.assertEqual(record, {
+            "state": state, "plan": os.path.abspath("plan.json"),
+            "repo": os.path.abspath("repo"), "into": "wave-int", "registered_at": 42.0})
+        with open(self.registry) as fh:
+            self.assertEqual(json.loads(fh.read()), record)
+
+    def test_list_dedupes_last_wins_most_recent_first(self):
+        a, b = self._state("a"), self._state("b")
+        wave.register_wave(a, "/p1", "/r", "i1", clock=self._clock(1.0))
+        wave.register_wave(b, "/p2", "/r", "i2", clock=self._clock(2.0))
+        wave.register_wave(a, "/p3", "/r", "i3", clock=self._clock(3.0))
+        listed = wave.list_waves()
+        self.assertEqual([r["state"] for r in listed], [a, b])
+        self.assertEqual(listed[0]["plan"], "/p3")
+
+    def test_missing_state_file_skipped(self):
+        a = self._state("a")
+        wave.register_wave(a, "/p", "/r", "i")
+        wave.register_wave(os.path.join(self.tmp, "gone", "state.json"), "/p", "/r", "i")
+        self.assertEqual([r["state"] for r in wave.list_waves()], [a])
+
+    def test_truncated_last_line_tolerated(self):
+        a = self._state("a")
+        wave.register_wave(a, "/p", "/r", "i")
+        with open(self.registry, "a") as fh:
+            fh.write('{"state": "/tru')
+        self.assertEqual([r["state"] for r in wave.list_waves()], [a])
+
+    def test_no_registry_file_lists_nothing(self):
+        self.assertEqual(wave.list_waves(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

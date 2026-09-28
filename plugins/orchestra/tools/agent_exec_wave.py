@@ -319,6 +319,59 @@ def read_events(state_path, limit):
     return records
 
 
+# --- wave registry -------------------------------------------------------
+
+
+def registry_path():
+    """`$ORCHESTRA_WAVE_REGISTRY`, else `~/.claude/orchestra/waves.jsonl`."""
+    override = os.environ.get("ORCHESTRA_WAVE_REGISTRY")
+    if override:
+        return override
+    return os.path.join(os.path.expanduser("~"), ".claude", "orchestra", "waves.jsonl")
+
+
+def register_wave(state, plan, repo, into, clock=time.time):
+    """Append one registry line for a starting `wave run`; returns the record."""
+    record = {
+        "state": os.path.abspath(state), "plan": os.path.abspath(plan),
+        "repo": os.path.abspath(repo), "into": into, "registered_at": clock(),
+    }
+    path = registry_path()
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    return record
+
+
+def list_waves():
+    """Registered waves, most recent registration first.
+
+    Deduped by `state` (last line wins), entries whose state file is gone are
+    dropped, and a truncated or malformed line is skipped.
+    """
+    path = registry_path()
+    if not os.path.isfile(path):
+        return []
+    with open(path, "r", encoding="utf-8") as fh:
+        lines = fh.readlines()
+    latest = {}
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, dict) or not record.get("state"):
+            continue
+        latest.pop(record["state"], None)
+        latest[record["state"]] = record
+    records = [r for r in latest.values() if os.path.isfile(r["state"])]
+    records.reverse()
+    return records
+
+
 # --- rendering --------------------------------------------------------------
 
 
