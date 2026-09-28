@@ -312,3 +312,40 @@ The ledger CLI is **`agent-exec ledger show [--session <id>] [--run <id>] [--jso
 After a successful append, at most once per process, old `*.jsonl` files directly in the ledger directory and directly inside session directories are deleted. Cleanup is best-effort, never removes a session directory, and failures never affect dispatch.
 
 No workflow run id is inferred from the environment, a transcript path, or directory mtimes. A run id reaches agent-exec only through `--run-id`, because inference makes a cost number untrustworthy.
+
+## 4. Config-driven checks (`agent-exec check`)
+
+`checks` participates in the same four-layer deep merge as everything else, with one exception: `checks.items` is a **list**, so a higher layer replaces it wholesale rather than merging entry-by-entry — a project's own check list does not silently inherit a user-level one it never asked for, and there is no sane per-name merge for a list of shell commands anyway. Defaults: `checks.max_parallel: 2`, `checks.items: []`.
+
+Each entry in `items` is:
+
+```yaml
+checks:
+  max_parallel: 2          # concurrent check commands machine-wide, across every
+                            # agent-exec process; 0 = unlimited
+  items:
+    - name: lint
+      paths: ["**/*.ts", "**/*.tsx"]   # optional glob list; omitted = always runs
+      run: "pnpm exec biome check {files}"
+      fix: "pnpm exec biome check --write {files}"   # optional; runs first,
+      # its exit code and output are ignored — a fixer is not a gate
+      cwd: "web"             # optional, relative to the tree root, default "."
+      timeout: 900           # optional seconds, default 1800
+      junit: "reports/junit.xml"   # optional, relative to `cwd`
+```
+
+`paths` globs are matched against changed paths, POSIX-relative to the tree root: `**` stands for zero or more whole directories (`**/*.ts` matches both `a.ts` and `x/y/a.ts`), while `*`/`?` stay within one path segment (`src/*.ts` does not match `src/x/a.ts`). A check with no `paths` always runs, independent of what changed.
+
+`{files}` in `run`/`fix` expands to the matched, still-existing files, re-expressed relative to `cwd` (a file outside `cwd` is dropped), each shell-quoted and space-joined. If `run` contains `{files}` and none remain after that filtering, the check is reported `skipped` with reason `no matching files` — it is never run with an empty argument list.
+
+Checks run in config order and stop at the first failure unless `--all` is given; unreached checks are reported `skipped` with reason `not run after earlier failure`. `fix` (when present) always runs immediately before `run`, in the same `cwd`, with the same `{files}` substitution.
+
+Both `fix` and `run` execute via `/bin/sh -c` in their own process group; on `timeout` the whole group is killed, not just the shell, so a backgrounded child cannot outlive the check. Before each `fix`/`run` command, agent-exec acquires one of `max_parallel` concurrency slots (lock files under the same state directory as the token/cooldown stores, polled every 0.5s); `max_parallel: 0` means unlimited, no slot is acquired at all. This bounds how many check subprocesses run at once *across every `agent-exec check` invocation on the machine*, not just within one call.
+
+On failure, if `junit` is set, that file is deleted before the command runs (so a stale report from a previous round is never misread); afterward, if it exists and parses as JUnit XML, the excerpt leads with one line per failing/erroring `<testcase>` (`classname > name: <first line of the failure/error message>`), then fills the remaining budget with the same `failure_excerpt()` used elsewhere in agent-exec, capped at 4000 characters total. Without a usable `junit` file, the excerpt is `failure_excerpt(stdout+stderr, 4000)` directly. A passing check has excerpt `""`.
+
+CLI: **`agent-exec check (--task <id> | --path <dir>) [--since <ref>] [--files a,b,...] [--all] [--baseline] [--repo <path>] [--session <id>] [--json|--text]`** — exactly one of `--task`/`--path`. `--task` resolves the task's worktree the same way `isolate diff` does, and its changed files come from that diff (`isolate diff --task <id>`, files only, no patch). `--path` runs against an arbitrary directory; its changed files are `git diff --name-only <since>` (default `HEAD`) unioned with untracked files. `--files a,b,...` overrides the changed-file list outright, in either mode.
+
+`--baseline` re-runs each **failed** check, over the same file list (filtered to files that still exist there), inside a temporary detached worktree checked out at the task's recorded baseline commit (or `--since`/`HEAD` for `--path` mode) — carrying in the same gitignored dependency directories (`node_modules`, `.venv`, ...) an ordinary orchestra task worktree gets, so a check that shells out to a real toolchain still has one. If the check fails there too, its status becomes `preexisting` instead of `fail`: the breakage predates the change under test, so the worker should not be blamed for it. The temporary worktree is always removed afterward, success or failure.
+
+Result JSON: `{"status": "pass"|"fail"|"preexisting"|"no-checks"|"error", "tree": <path>, "files": <int>, "checks": [{"name", "status": "pass"|"fail"|"preexisting"|"skipped", "exit": <int|null>, "seconds": <float>, "timed_out": <bool>, "excerpt": <str>, "reason": <str>}, ...]}`. Overall `status` is `fail` if any check failed, else `preexisting` if any check is `preexisting`, else `no-checks` if there were no items or every one was skipped, else `pass`. Exit code mirrors `status`: 0 for `pass`/`no-checks`, 1 for `fail`, 2 for a usage error, 3 for an environment error (not a git repository, unknown task, bad `--path`), 4 for `preexisting`. `--text` prints one line per check (`name status seconds`) followed by the excerpt of any failures, and nothing else — `--json` is the default.

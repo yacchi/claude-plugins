@@ -125,10 +125,26 @@ The base rule elsewhere in the skill (`authoring.md` §1) is *partition file own
 **Parallel-with-integration is the default.** Run independent tasks concurrently. If their paths overlap, keep them parallel in isolated worktrees and have the supervisor integrate them after completion:
 
 ```text
-agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>] [--json|--text]
+agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>]
+                [--on-conflict keep|skip|stop] [--verify <cmd>] [--verify-timeout <sec>]
+                [--bisect] [--bisect-max <n>] [--json|--text]
 ```
 
 `--tasks` is required and takes comma-separated orchestra task IDs, applied in that order. `--repo` defaults to cwd; `--onto` defaults to the first task's baseline sha (falling back to HEAD); `--into` names the integration worktree's own task id (default `"integrate"`) and is an ordinary orchestra worktree — `agent-exec isolate list` shows it, `agent-exec isolate remove --task <id>` cleans it up. `--json` (default) or `--text`; passing both is a usage error. Same-file edits are not a reason to serialize. The only legitimate reason to serialize is a real dependency in which a later task must consume an earlier task's output or state.
+
+**`--on-conflict`** controls what a conflicting task's apply leaves behind (default `keep`, unchanged from the base behaviour above): `keep` commits the conflict markers and moves on (nothing here changes the JSON shape). `skip` instead rolls the integration tree back to the commit just before that task's apply (a hard reset plus a clean, never a stash) and continues with the next task — the conflicting task's `status` stays `"conflicted"` but gains `"rolled_back": true`, and its source worktree is *not* marked collected, since its work never actually landed. `stop` does the same rollback and then marks every task after it `"status": "skipped"` without attempting them.
+
+**`--verify <cmd>`**, once every task has been processed, runs `cmd` (via `/bin/sh -c`, cwd the integration worktree) and folds a `"verify"` object into the result — absent unless `--verify` was passed:
+
+```text
+"verify": {"status": "pass" | "fail" | "skipped", "exit": <int|null>, "seconds": <float>,
+           "timed_out": <bool>, "excerpt": "<failure excerpt or \"\">",
+           "baseline": "pass" | "fail" | null, "reason": "<why skipped, else \"\">"}
+```
+
+`--verify-timeout` (default `3600`) bounds it; a timeout kills the command's whole process group and counts as `fail`. Verify is `skipped` (never run) in two cases: any task conflicted under `--on-conflict keep` (`reason: "conflict markers committed"` — the tree isn't safe to verify), or no task in this invocation actually applied (`reason: "nothing applied"`).
+
+**`--bisect`** (requires `--verify`; passing it without `--verify` is a usage error, exit `2`) turns a verify failure into an automatic culprit hunt, up to `--bisect-max` rounds (default `3`): it first checks `verify` against the integration branch's tip *before this invocation applied anything* (`verify.baseline`) — if that was already red, nothing gets reverted. Otherwise it binary-searches this invocation's applied task commits for the first one verify fails at, reverts it (`git revert`, orchestra identity, message `orchestra revert <task>`), and re-checks the tip; a reverted task's `status` becomes `"reverted"` with a `"verify_excerpt"`, and its source worktree's collected marker is cleared so `isolate sweep` keeps it. If the revert itself conflicts, it's aborted, the task gains `"revert": "conflicted"`, and bisection stops there. The integration worktree always ends back on its branch, attached, never mid-revert.
 
 Skip worktree isolation when the tree is clean and ownership partitions cleanly and cheaply; that is an isolation choice, not a reason to serialize independent tasks.
 
@@ -157,13 +173,23 @@ This note exists so the current choice is not mistaken for a settled one.
  "note": "<one short human-readable sentence>"}
 ```
 
-Per-task `status` is one of four strings: `applied` (clean), `conflicted` (left for inspection or a follow-up task, see below), `missing` (that task's worktree didn't exist — reported, not fatal, and the rest still run), `empty` (diff was empty, `files_changed` 0).
+Per-task `status` is one of `applied` (clean), `conflicted` (left for inspection or a follow-up task, see below), `missing` (that task's worktree didn't exist — reported, not fatal, and the rest still run), `empty` (diff was empty, `files_changed` 0), plus two that only appear under the flags above: `skipped` (`--on-conflict stop`, never attempted) and `reverted` (`--bisect` undid its commit).
 
-**Exit codes:** `0` — every task applied (`status: "ok"`). `1` — at least one task conflicted (`status: "conflicted"`); this is a normal, expected outcome, not a failure, and the exit code alone is enough to route the run without parsing JSON. `2` — usage error (missing/duplicate/unknown flags, `--tasks` absent, both `--json` and `--text`). `3` — environment error (not a git repository, integration worktree could not be created), `status: "error"`.
+**Top-level `status` priority** (highest wins): `verify-failed` (the `--verify` command failed, whether or not `--bisect` ran) `>` `conflicted` (any task conflicted, rolled back or not) `>` `reverted` (`--bisect` reverted a commit and verify now passes) `>` `ok`.
 
-**Hard guarantees:** never prints patch text, diff hunks, or file contents — only paths, counts, and the enum fields above; never modifies the user's working tree, index, HEAD, or current branch — all work happens inside the integration worktree; a task whose worktree is missing is reported and does not abort the run; a task whose diff is empty is reported `empty`; conflicts leave the integration worktree in place and never roll back tasks that already applied cleanly.
+**Exit codes:** `0` — `status: "ok"`. `1` — `status: "conflicted"`; a normal, expected outcome, not a failure. `2` — usage error (missing/duplicate/unknown flags, `--tasks` absent, both `--json` and `--text`, `--bisect` without `--verify`, or an invalid `--on-conflict`/`--verify-timeout`/`--bisect-max` value). `3` — environment error (not a git repository, integration worktree could not be created), `status: "error"`. `4` — `status: "verify-failed"`. `5` — `status: "reverted"`.
+
+**Hard guarantees:** never prints patch text, diff hunks, or file contents — only paths, counts, and the enum fields above; never modifies the user's working tree, index, HEAD, or current branch — all work happens inside the integration worktree; a task whose worktree is missing is reported and does not abort the run; a task whose diff is empty is reported `empty`; under the default `--on-conflict keep`, conflicts leave the integration worktree in place and never roll back tasks that already applied cleanly; the integration worktree always ends attached to its own branch, never detached and never mid-revert, even on a `--verify` timeout or an aborted `--bisect` revert.
 
 **After the workers finish, the supervisor integrates.** Run the command above with the task IDs in integration order, then re-run verification on the integrated result (§4) — a per-worktree PASS does not imply the integration passes, and verifying the integrated tree stays a separate, mandatory step. Any `conflicted` task's files are exactly what a follow-up resolution task needs named as its scope.
+
+**Refreshing a stale task worktree.** A task worktree created early in a long run can end up sitting on a base that keeps falling further behind (a checkpoint commit, another integration round). `isolate refresh` moves that task's own work onto a newer base without losing it:
+
+```text
+agent-exec isolate refresh --task <id> [--repo <path>] [--onto <ref>] [--session <id>] [--json|--text]
+```
+
+`--onto` defaults to `HEAD`. Internally it patch-izes the task's current diff, writes the patch to disk, recreates the worktree at the new base (same branch name, same carried gitignored dependency dirs), and re-applies the patch — left uncommitted, exactly like a worker's ordinary edits. Already on `--onto`? `status: "unchanged"`, nothing touched. A conflict is reported the same way `integrate` reports one (`status: "conflicted"`, `conflicts: [{"file", "hunks"}]`, exit 1) with the conflict markers left in the tree for inspection; the patch file survives on disk either way, so the work is recoverable even if something after the write goes wrong. Refuses to touch an integration worktree (`isolate integrate`'s target).
 
 ## 3. Competing implementations: conflict as signal
 

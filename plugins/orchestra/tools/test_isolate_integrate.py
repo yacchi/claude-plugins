@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock as mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -495,6 +496,226 @@ class SessionScopedIntegrateTests(_IntegrateRepo):
         entries = self._by_task(result)
         self.assertEqual(entries["alpha"]["status"], "applied")
         self.assertEqual(entries["beta"]["status"], "applied")
+
+
+class OnConflictKeepTests(_IntegrateRepo):
+    """`--on-conflict keep` is the default and must not change the JSON shape."""
+
+    def test_default_keep_json_has_no_new_fields(self):
+        self._make_task("alpha", {10: "ALPHA WINS\n"})
+        self._make_task("beta", {10: "BETA WINS\n"})
+        result = agent_exec.isolate_integrate(self.repo, ["alpha", "beta"])
+        self.assertEqual(result["status"], "conflicted")
+        self.assertEqual(
+            sorted(result), ["integration", "note", "onto", "status", "tasks"]
+        )
+        for entry in result["tasks"]:
+            self.assertNotIn("rolled_back", entry)
+            self.assertNotIn("revert", entry)
+
+
+class OnConflictSkipStopTests(_IntegrateRepo):
+    """`skip` rolls a conflicting task back and continues; `stop` also halts."""
+
+    def setUp(self):
+        super().setUp()
+        self._make_task("alpha", {10: "ALPHA WINS\n"})
+        self._make_task("beta", {10: "BETA WINS\n"})
+        self._make_task("gamma", {2: "GAMMA\n"})
+
+    def test_skip_rolls_back_conflict_and_continues(self):
+        result = agent_exec.isolate_integrate(
+            self.repo, ["alpha", "beta", "gamma"], on_conflict="skip",
+        )
+        entries = self._by_task(result)
+        self.assertEqual(entries["alpha"]["status"], "applied")
+        self.assertEqual(entries["beta"]["status"], "conflicted")
+        self.assertTrue(entries["beta"]["rolled_back"])
+        self.assertEqual(entries["gamma"]["status"], "applied")
+        merged = self._integrated(result)
+        self.assertIn("ALPHA WINS\n", merged)
+        self.assertIn("GAMMA\n", merged)
+        self.assertNotIn("BETA WINS\n", merged)
+        self.assertNotIn("<<<<<<<", merged)
+        # The rolled-back task's source is NOT marked collected.
+        out_beta = agent_exec.isolate_remove(self.repo, "beta")
+        self.assertEqual(out_beta["status"], "dirty")
+
+    def test_stop_marks_remaining_tasks_skipped(self):
+        result = agent_exec.isolate_integrate(
+            self.repo, ["alpha", "beta", "gamma"], on_conflict="stop",
+        )
+        entries = self._by_task(result)
+        self.assertEqual(entries["alpha"]["status"], "applied")
+        self.assertEqual(entries["beta"]["status"], "conflicted")
+        self.assertTrue(entries["beta"]["rolled_back"])
+        self.assertEqual(entries["gamma"]["status"], "skipped")
+        self.assertEqual(entries["gamma"]["files_changed"], 0)
+        self.assertEqual(entries["gamma"]["conflicts"], [])
+
+
+class VerifyTests(_IntegrateRepo):
+    """`--verify` runs a command in the integration worktree after all tasks."""
+
+    def test_verify_pass_exits_zero(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        result = agent_exec.isolate_integrate(
+            self.repo, ["alpha"], verify="test -f shared.txt",
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["verify"]["status"], "pass")
+        self.assertEqual(result["verify"]["exit"], 0)
+        self.assertEqual(result["verify"]["excerpt"], "")
+
+    def test_verify_fail_without_bisect_exits_four_with_excerpt(self):
+        self._make_task("alpha", new_files={"bad.txt": "oops\n"})
+        rc, out = self._cli(
+            "integrate", "--tasks", "alpha", "--repo", self.repo,
+            "--verify", "! test -f bad.txt || (echo FAIL missing bad.txt && exit 1)",
+        )
+        self.assertEqual(rc, 4)
+        result = json.loads(out)
+        self.assertEqual(result["status"], "verify-failed")
+        self.assertEqual(result["verify"]["status"], "fail")
+        self.assertNotEqual(result["verify"]["exit"], 0)
+        self.assertIn("FAIL", result["verify"]["excerpt"])
+
+    def test_verify_timeout_sets_timed_out(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        result = agent_exec.isolate_integrate(
+            self.repo, ["alpha"], verify="sleep 5", verify_timeout=1,
+        )
+        self.assertEqual(result["status"], "verify-failed")
+        self.assertEqual(result["verify"]["status"], "fail")
+        self.assertTrue(result["verify"]["timed_out"])
+
+    def test_verify_skipped_under_keep_plus_conflict(self):
+        self._make_task("alpha", {10: "ALPHA WINS\n"})
+        self._make_task("beta", {10: "BETA WINS\n"})
+        result = agent_exec.isolate_integrate(
+            self.repo, ["alpha", "beta"], verify="true",
+        )
+        self.assertEqual(result["status"], "conflicted")
+        self.assertEqual(result["verify"]["status"], "skipped")
+        self.assertEqual(result["verify"]["reason"], "conflict markers committed")
+
+    def test_verify_skipped_when_nothing_applied(self):
+        result = agent_exec.isolate_integrate(self.repo, ["ghost"], verify="true")
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["verify"]["status"], "skipped")
+        self.assertEqual(result["verify"]["reason"], "nothing applied")
+
+    def test_skip_plus_verify_runs_on_the_surviving_tasks(self):
+        self._make_task("alpha", {10: "ALPHA WINS\n"})
+        self._make_task("beta", {10: "BETA WINS\n"})
+        self._make_task("gamma", {2: "GAMMA\n"})
+        result = agent_exec.isolate_integrate(
+            self.repo, ["alpha", "beta", "gamma"],
+            on_conflict="skip", verify="true",
+        )
+        entries = self._by_task(result)
+        self.assertEqual(entries["beta"]["status"], "conflicted")
+        self.assertTrue(entries["beta"]["rolled_back"])
+        self.assertEqual(result["verify"]["status"], "pass")
+        self.assertNotEqual(result["verify"]["reason"], "conflict markers committed")
+        # A rolled-back conflict still makes the overall run "conflicted".
+        self.assertEqual(result["status"], "conflicted")
+
+
+class BisectTests(_IntegrateRepo):
+    """`--bisect` binary-searches a verify failure to the culprit commit."""
+
+    def _branch_of(self, result):
+        return result["integration"]["branch"]
+
+    def _head_ref(self, result):
+        proc = subprocess.run(
+            ["git", "symbolic-ref", "-q", "--short", "HEAD"],
+            cwd=result["integration"]["path"], capture_output=True, text=True,
+        )
+        return proc.returncode, proc.stdout.strip()
+
+    def test_bisect_without_verify_is_a_usage_error(self):
+        rc, out = self._cli("integrate", "--tasks", "a", "--repo", self.repo, "--bisect")
+        self.assertEqual(rc, 2)
+        self.assertEqual(out, "")
+
+    def test_single_culprit_is_found_reverted_and_tip_passes(self):
+        self._make_task("good", {2: "GOOD\n"})
+        bad_path = self._make_task("bad", new_files={"bad.txt": "oops\n"})
+        result = agent_exec.isolate_integrate(
+            self.repo, ["good", "bad"],
+            verify="test ! -f bad.txt", bisect=True,
+        )
+        self.assertEqual(result["status"], "reverted")
+        entries = self._by_task(result)
+        self.assertEqual(entries["good"]["status"], "applied")
+        self.assertEqual(entries["bad"]["status"], "reverted")
+        self.assertIn("verify_excerpt", entries["bad"])
+        self.assertEqual(result["verify"]["status"], "pass")
+        self.assertFalse(os.path.exists(os.path.join(result["integration"]["path"], "bad.txt")))
+        # The reverted task's source worktree is no longer marked collected.
+        self.assertIsNone(agent_exec._read_collected(bad_path))
+        rc, ref = self._head_ref(result)
+        self.assertEqual(rc, 0)
+        self.assertEqual(ref, self._branch_of(result))
+
+    def test_baseline_already_red_means_no_revert(self):
+        self._make_task("preexisting_bad", new_files={"bad.txt": "oops\n"})
+        first = agent_exec.isolate_integrate(self.repo, ["preexisting_bad"])
+        self.assertEqual(first["status"], "ok")
+        self._make_task("good", {2: "GOOD\n"})
+        result = agent_exec.isolate_integrate(
+            self.repo, ["good"], into="integrate",
+            verify="test ! -f bad.txt", bisect=True,
+        )
+        self.assertEqual(result["status"], "verify-failed")
+        self.assertEqual(result["verify"]["baseline"], "fail")
+        entries = self._by_task(result)
+        self.assertEqual(entries["good"]["status"], "applied")
+        rc, ref = self._head_ref(result)
+        self.assertEqual(rc, 0)
+        self.assertEqual(ref, self._branch_of(result))
+
+    def test_two_culprits_found_within_bisect_max(self):
+        self._make_task("bad1", new_files={"bad1.txt": "oops1\n"})
+        self._make_task("bad2", new_files={"bad2.txt": "oops2\n"})
+        result = agent_exec.isolate_integrate(
+            self.repo, ["bad1", "bad2"],
+            verify="test ! -f bad1.txt && test ! -f bad2.txt",
+            bisect=True, bisect_max=3,
+        )
+        self.assertEqual(result["status"], "reverted")
+        entries = self._by_task(result)
+        self.assertEqual(entries["bad1"]["status"], "reverted")
+        self.assertEqual(entries["bad2"]["status"], "reverted")
+        self.assertEqual(result["verify"]["status"], "pass")
+
+    def test_revert_conflict_is_aborted_and_tree_stays_clean_on_branch(self):
+        self._make_task("good", {2: "GOOD\n"})
+        self._make_task("bad", new_files={"bad.txt": "oops\n"})
+
+        real_git = agent_exec._git
+
+        def _fake_git(cwd, *args, **kwargs):
+            if len(args) >= 2 and args[0] == "revert" and args[1] == "--no-commit":
+                return 1, ""
+            return real_git(cwd, *args, **kwargs)
+
+        with mock.patch.object(agent_exec, "_git", side_effect=_fake_git):
+            result = agent_exec.isolate_integrate(
+                self.repo, ["good", "bad"],
+                verify="test ! -f bad.txt", bisect=True,
+            )
+        self.assertEqual(result["status"], "verify-failed")
+        entries = self._by_task(result)
+        self.assertEqual(entries["bad"]["revert"], "conflicted")
+        # Never left mid-revert or detached.
+        status_out = _git(result["integration"]["path"], "status", "--porcelain").stdout
+        self.assertEqual(status_out.strip(), "")
+        rc, ref = self._head_ref(result)
+        self.assertEqual(rc, 0)
+        self.assertEqual(ref, self._branch_of(result))
 
 
 if __name__ == "__main__":

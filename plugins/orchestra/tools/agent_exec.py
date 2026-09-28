@@ -42,6 +42,9 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import agent_exec_checks  # noqa: E402
+
 PROFILES = {
     "copilot": {
         "exec": "copilot",
@@ -237,6 +240,28 @@ DEFAULTS = {
     "isolation": {
         "carry_extra": [],
     },
+    # `agent-exec check` runs these config-declared lint/test commands over a
+    # tree's changed files (see `_parse_check_args`/`cmd_check` and
+    # `agent_exec_checks.run_checks` for the full semantics). `items` is a
+    # list, so a higher config layer replaces it whole rather than merging
+    # entry-by-entry -- there is no sane way to "merge" a check by name across
+    # layers, and a project's own check list should not silently inherit a
+    # user-level one it never asked for.
+    #
+    # checks:
+    #   max_parallel: 2          # concurrent check commands machine-wide; 0 = unlimited
+    #   items:
+    #     - name: lint
+    #       paths: ["**/*.ts", "**/*.tsx"]   # optional; omitted = always runs
+    #       run: "pnpm exec biome check {files}"
+    #       fix: "pnpm exec biome check --write {files}"   # optional, run first, ignored result
+    #       cwd: "web"             # optional, relative to tree root, default "."
+    #       timeout: 900           # optional seconds, default 1800
+    #       junit: "reports/junit.xml"   # optional, relative to cwd
+    "checks": {
+        "max_parallel": 2,
+        "items": [],
+    },
 }
 
 USAGE = """\
@@ -381,16 +406,47 @@ Usage:
                                   list, measured from the worktree's baseline
                                   so the user's own work never shows up.
   agent-exec isolate integrate --tasks a,b,c [--repo P] [--onto REF]
-                  [--into ID] [--json|--text]
+                  [--into ID] [--on-conflict keep|skip|stop]
+                  [--verify CMD] [--verify-timeout SEC]
+                  [--bisect] [--bisect-max N] [--json|--text]
                                   replay each task's diff, in that order, onto
                                   one integration worktree (default task id
                                   `integrate`, started from the first task's
                                   baseline). Reports per task applied /
-                                  conflicted / missing / empty with file and
-                                  hunk counts and never prints patch text; the
-                                  user's tree is untouched. Exit 0 all applied,
-                                  1 some conflicted (expected, not an error),
-                                  2 usage, 3 environment.
+                                  conflicted / missing / empty / skipped /
+                                  reverted with file and hunk counts and never
+                                  prints patch text; the user's tree is
+                                  untouched. `--on-conflict` (default `keep`)
+                                  controls what happens to a conflicting
+                                  task's apply: `keep` leaves the conflict
+                                  markers committed (current default
+                                  behaviour), `skip` rolls the integration
+                                  tree back to before that task and continues,
+                                  `stop` does the same rollback and marks
+                                  every remaining task `skipped`. `--verify
+                                  CMD` runs CMD (via /bin/sh -c, cwd the
+                                  integration worktree) after all tasks are
+                                  processed; `--verify-timeout` (default 3600)
+                                  bounds it. `--bisect` (requires `--verify`)
+                                  binary-searches a verify failure to the
+                                  first applied task's commit and reverts it,
+                                  up to `--bisect-max` rounds (default 3).
+                                  Exit 0 all applied, 1 some conflicted
+                                  (expected, not an error), 2 usage,
+                                  3 environment, 4 verify failed,
+                                  5 a task's commit was reverted.
+  agent-exec isolate refresh --task ID [--repo P] [--onto REF] [--session ID]
+                  [--json|--text]
+                                  move a task worktree's own changes onto a
+                                  newer base: patch-ize its diff, recreate the
+                                  worktree at --onto (default HEAD), re-apply.
+                                  The patch is written to disk before the old
+                                  tree is touched, so the work is recoverable
+                                  even if recreation or the apply itself fails
+                                  afterwards. Refuses an integration worktree
+                                  untouched. Exit 0 ok/unchanged, 1 conflicted
+                                  (expected, not an error), 2 usage, 3
+                                  absent/environment.
   agent-exec isolate remove --task ID [--repo P] [--force]
                                   delete the worktree and branch; refuses while
                                   uncollected changes remain unless --force.
@@ -429,6 +485,26 @@ Usage:
                                   tree. Refuses the main working tree unless
                                   --allow-main-tree. pop keeps the entry on a
                                   conflict (exit 1).
+  agent-exec check (--task ID | --path DIR) [--since REF] [--files a,b,...]
+                  [--all] [--baseline] [--repo P] [--session ID] [--json|--text]
+                                  run the config-driven `checks.items` (lint/
+                                  test commands) over the tree's changed
+                                  files: --task resolves the task's worktree
+                                  (changed files from `isolate diff`), --path
+                                  runs against an arbitrary directory (changed
+                                  files from `git diff --since` plus
+                                  untracked, default --since HEAD). --files
+                                  overrides the changed-file list outright.
+                                  Runs in config order, stopping at the first
+                                  failure unless --all. --baseline re-runs
+                                  each FAILED check in a temporary worktree at
+                                  the task's recorded baseline (or --since/
+                                  HEAD for --path) and reports it
+                                  `preexisting` when it fails there too, so a
+                                  worker is never blamed for breakage that
+                                  predates it. --json is the default. Exit: 0
+                                  pass/no-checks, 1 fail, 2 usage, 3 error, 4
+                                  preexisting.
   agent-exec usage [--since W|--run ID[,ID...]|--session ID[,ID...]]
                    [--list-runs] [--json|--text] [--source a,b] [--all-projects]
                                   aggregate token usage across all three
@@ -4059,7 +4135,8 @@ def _worktree_entries(root):
     return entries
 
 
-def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id=None, carry_extra=()):
+def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id=None,
+                   carry_extra=(), carry_deps=None):
     """Create (or return) the worktree for `task`. Idempotent per task.
 
     `onto` names the commit the worktree starts from. Left at None it means
@@ -4068,6 +4145,15 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
     uncommitted work is carried in and no baseline commit is layered on top, so
     the recorded baseline *is* `onto` and every later diff reads as "what was
     integrated on top of it".
+
+    `carry_deps` controls copying gitignored dependency directories
+    (node_modules, .venv, ...) into the new worktree, independently of `carry`
+    (which otherwise also gates that same copy). Left at its default `None` it
+    just mirrors `carry`, preserving today's behaviour for every existing
+    caller, including `isolate_integrate`. `isolate refresh` is the one caller
+    that needs to pass `carry=False` (no uncommitted-work carry makes sense
+    once `onto` picks the exact starting commit) while still wanting the
+    dependency dirs copied in, so it passes `carry_deps=True` explicitly.
     """
     root = repo_root(root)
     if root is None:
@@ -4118,7 +4204,7 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
 
     carried = []
     carry_method = "none"
-    if carry:
+    if carry if carry_deps is None else carry_deps:
         for rel in detect_carry_dirs(root, extra_names=carry_extra):
             method = copy_tree_fast_method(os.path.join(root, rel), os.path.join(path, rel))
             if method != "failed":
@@ -4764,6 +4850,10 @@ def _integrate_note(results, into_task, wt_path):
         tail.append("%d had no worktree" % counts["missing"])
     if counts["empty"]:
         tail.append("%d changed nothing" % counts["empty"])
+    if counts.get("skipped"):
+        tail.append("%d skipped" % counts["skipped"])
+    if counts.get("reverted"):
+        tail.append("%d reverted" % counts["reverted"])
     suffix = (" (" + ", ".join(tail) + ")") if tail else ""
     if counts["conflicted"]:
         return (
@@ -4776,16 +4866,183 @@ def _integrate_note(results, into_task, wt_path):
     )
 
 
-def isolate_integrate(root, tasks, onto=None, into="integrate"):
+def _clear_source_collected(root, task):
+    """Undo `_write_collected` on a task's SOURCE worktree.
+
+    Used when a bisect revert undoes that task's contribution to the
+    integration: its changes no longer count as folded in, so `isolate sweep`
+    must keep its worktree instead of treating it as safely collected. There
+    is no existing "clear" entry point, so this reuses the exact gitdir
+    resolution `_write_collected`/`_read_collected` use and removes the
+    marker file directly -- never touching those functions themselves.
+    """
+    _, src_entry = _resolve_worktree(root, task, _current_session())
+    src_path = src_entry.get("path") if src_entry else None
+    if not src_path:
+        return
+    gitdir = _worktree_gitdir(src_path)
+    if not gitdir:
+        return
+    try:
+        os.remove(os.path.join(gitdir, _COLLECTED_FILE))
+    except OSError:
+        pass
+
+
+def _run_verify_cmd(wt_path, cmd, timeout):
+    """Run `cmd` via `/bin/sh -c`, cwd `wt_path`. Never raises.
+
+    A timeout kills the whole process group -- the command may itself fork
+    (a test runner spawning workers) -- and counts as a fail, same as a
+    nonzero exit. `baseline`/`reason` are always present in the returned dict
+    but are only ever filled in by callers doing bisection or skip-policy;
+    this helper's only job is running the command once and grading the
+    result.
+    """
+    start = time.time()
+    timed_out = False
+    exit_code = None
+    output = ""
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            ["/bin/sh", "-c", cmd], cwd=wt_path,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            start_new_session=True,
+        )
+    except (OSError, ValueError):
+        proc = None
+    if proc is not None:
+        try:
+            output, _ = proc.communicate(timeout=timeout)
+            exit_code = proc.returncode
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            try:
+                os.killpg(os.getpgid(proc.pid), 9)
+            except OSError:
+                pass
+            try:
+                output, _ = proc.communicate(timeout=5)
+            except (subprocess.TimeoutExpired, ValueError):
+                pass
+    seconds = time.time() - start
+    passed = exit_code == 0 and not timed_out
+    return {
+        "status": "pass" if passed else "fail",
+        "exit": exit_code,
+        "seconds": seconds,
+        "timed_out": timed_out,
+        "excerpt": "" if passed else agent_exec_checks.failure_excerpt(output or ""),
+        "baseline": None,
+        "reason": "",
+    }
+
+
+def _bisect_integration(root, wt_path, branch, base_sha, applied_commits,
+                         results_by_task, verify_cmd, verify_timeout, bisect_max):
+    """Binary-search a verify failure to the applied commit that caused it,
+    revert it, and repeat (up to `bisect_max` rounds) until verify passes at
+    the tip or the round budget runs out. Returns the final verify dict.
+
+    Mutates the per-task dicts in `results_by_task` in place: a found culprit
+    becomes `status: "reverted"` with a `verify_excerpt`, or -- if reverting it
+    conflicts -- keeps its `status` and gains `revert: "conflicted"` instead.
+
+    `applied_commits` is this invocation's applied tasks in order, as
+    `(task, sha)`; monotonicity is assumed (once a commit in that order makes
+    verify fail, every later one does too), which is what makes plain binary
+    search correct here. The worktree ends attached to `branch` no matter how
+    this function exits -- the `finally` is the guarantee, not the happy path.
+    """
+    def _detach(ref):
+        _git(wt_path, "checkout", "-q", "--detach", ref)
+
+    def _reattach():
+        _git(wt_path, "checkout", "-q", branch)
+
+    try:
+        _detach(base_sha)
+        last_verify = _run_verify_cmd(wt_path, verify_cmd, verify_timeout)
+        if last_verify["status"] == "fail":
+            last_verify["baseline"] = "fail"
+            return last_verify
+        last_verify["baseline"] = "pass"
+
+        reverted_shas = []
+        lo_bound = 0
+        for _round in range(bisect_max):
+            lo, hi = lo_bound, len(applied_commits) - 1
+            first_bad = None
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                _, sha_mid = applied_commits[mid]
+                _detach(sha_mid)
+                for culprit in reverted_shas:
+                    _git(wt_path, "revert", "--no-commit", culprit)
+                probe = _run_verify_cmd(wt_path, verify_cmd, verify_timeout)
+                _git(wt_path, "reset", "--hard", sha_mid)
+                _git(wt_path, "clean", "-fdq")
+                if probe["status"] == "fail":
+                    first_bad = (mid, sha_mid, probe)
+                    hi = mid - 1
+                else:
+                    lo = mid + 1
+            if first_bad is None:
+                # Cannot happen under the monotonicity guarantee -- the tip
+                # failed, so something in range must have. If it somehow
+                # does, report the real tip state rather than loop forever.
+                _reattach()
+                last_verify = _run_verify_cmd(wt_path, verify_cmd, verify_timeout)
+                last_verify["baseline"] = "pass"
+                break
+            mid, sha_mid, probe = first_bad
+            task_mid = applied_commits[mid][0]
+            _reattach()
+            rc, _ = _git(wt_path, "revert", "--no-commit", sha_mid)
+            if rc != 0:
+                _git(wt_path, "revert", "--abort")
+                results_by_task[task_mid]["revert"] = "conflicted"
+                last_verify = probe
+                last_verify["baseline"] = "pass"
+                return last_verify
+            _git(wt_path, "add", "-A")
+            _git(wt_path, *(_INTEGRATE_IDENTITY + (
+                "commit", "-q", "--allow-empty", "-m", "orchestra revert %s" % task_mid)))
+            results_by_task[task_mid]["status"] = "reverted"
+            results_by_task[task_mid]["verify_excerpt"] = probe["excerpt"]
+            _clear_source_collected(root, task_mid)
+            reverted_shas.append(sha_mid)
+            last_verify = _run_verify_cmd(wt_path, verify_cmd, verify_timeout)
+            last_verify["baseline"] = "pass"
+            if last_verify["status"] == "pass":
+                return last_verify
+            lo_bound = mid + 1
+        return last_verify
+    finally:
+        _reattach()
+
+
+def isolate_integrate(root, tasks, onto=None, into="integrate", on_conflict="keep",
+                       verify=None, verify_timeout=3600, bisect=False, bisect_max=3):
     """Replay each task worktree's diff, in order, onto one integration worktree.
 
     The user's tree is never touched: every apply and commit happens inside the
     integration worktree, which is an ordinary orchestra worktree (so `isolate
     list` shows it and `isolate remove` cleans it up). Each applied task is
     committed there, giving the next 3-way apply a real merge base. A conflict
-    is a normal outcome, not an error: it is recorded, the conflicted state is
-    left in the tree for a follow-up resolution task to inspect, and tasks that
-    already applied cleanly are never rolled back.
+    is a normal outcome, not an error: by default (`on_conflict="keep"`) it is
+    recorded and the conflicted state is left in the tree for a follow-up
+    resolution task to inspect, and tasks that already applied cleanly are
+    never rolled back -- this default keeps the JSON shape callers have always
+    gotten. `on_conflict="skip"`/`"stop"` instead roll the integration tree
+    back to just before the conflicting apply so later tasks (or `--verify`)
+    see a tree with no conflict markers in it.
+
+    `verify`, when given, is a shell command run once after every task has
+    been processed; `bisect` (requires `verify`) turns a verify failure into a
+    binary search for the first applied task's commit that caused it, and
+    reverts that commit.
     """
     resolved_root = repo_root(root)
     into_task = sanitize_task_id(into)
@@ -4827,6 +5084,12 @@ def isolate_integrate(root, tasks, onto=None, into="integrate"):
         onto_sha = _read_baseline(wt_path) or onto_sha
     _write_role(wt_path, "integration")
 
+    # The integration branch's tip before THIS invocation applied anything --
+    # bisection's search space starts here, never at `onto_sha`, because a
+    # reused integration worktree may already carry earlier rounds' commits.
+    rc, out = _git(wt_path, "rev-parse", "HEAD")
+    invocation_base_sha = out.strip() if rc == 0 else onto_sha
+
     def _mark_source_collected(task, files, patch):
         # Same digest helper the CLI's `isolate diff`/`isolate collect` paths
         # use, over the exact files/patch this run already computed for the
@@ -4840,8 +5103,15 @@ def isolate_integrate(root, tasks, onto=None, into="integrate"):
             _write_collected(src_path, digest)
 
     results = []
+    applied_commits = []  # [(task, sha)], this invocation's applies, in order
+    stop_remaining = False
     for change in changes:
         task = change["task"]
+        if stop_remaining:
+            results.append({
+                "task": task, "status": "skipped", "files_changed": 0, "conflicts": [],
+            })
+            continue
         if change["state"] in ("missing", "empty"):
             results.append({
                 "task": task, "status": change["state"],
@@ -4850,6 +5120,8 @@ def isolate_integrate(root, tasks, onto=None, into="integrate"):
             if change["state"] == "empty":
                 _mark_source_collected(task, change["files"], change["patch"])
             continue
+        rc, pre_out = _git(wt_path, "rev-parse", "HEAD")
+        pre_sha = pre_out.strip() if rc == 0 else invocation_base_sha
         rc = _apply_patch_3way(wt_path, change["patch"])
         conflicts = _unmerged_conflicts(wt_path) if rc != 0 else []
         # Commit whatever resulted -- conflict markers included. Staging them
@@ -4859,23 +5131,69 @@ def isolate_integrate(root, tasks, onto=None, into="integrate"):
         _git(wt_path, *(_INTEGRATE_IDENTITY + (
             "commit", "-q", "--allow-empty", "-m", "orchestra integrate %s" % task)))
         status = "applied" if rc == 0 else "conflicted"
+        entry = {
+            "task": task, "status": status,
+            "files_changed": len(change["files"]), "conflicts": conflicts,
+        }
         if status == "applied":
             _mark_source_collected(task, change["files"], change["patch"])
-        results.append({
-            "task": task,
-            "status": status,
-            "files_changed": len(change["files"]),
-            "conflicts": conflicts,
-        })
+            rc, head_out = _git(wt_path, "rev-parse", "HEAD")
+            applied_commits.append((task, head_out.strip() if rc == 0 else ""))
+        elif on_conflict in ("skip", "stop"):
+            # Undo this task's apply-and-commit entirely: the next task (or
+            # verify) must see a tree with no conflict markers in it, and the
+            # source worktree must NOT be marked collected -- it still holds
+            # work nobody has folded in.
+            _git(wt_path, "reset", "--hard", pre_sha)
+            _git(wt_path, "clean", "-fdq")
+            entry["rolled_back"] = True
+            if on_conflict == "stop":
+                stop_remaining = True
+        results.append(entry)
 
     conflicted = any(entry["status"] == "conflicted" for entry in results)
-    return {
-        "status": "conflicted" if conflicted else "ok",
+
+    verify_result = None
+    if verify:
+        if on_conflict == "keep" and conflicted:
+            verify_result = {
+                "status": "skipped", "exit": None, "seconds": 0.0, "timed_out": False,
+                "excerpt": "", "baseline": None, "reason": "conflict markers committed",
+            }
+        elif not applied_commits:
+            verify_result = {
+                "status": "skipped", "exit": None, "seconds": 0.0, "timed_out": False,
+                "excerpt": "", "baseline": None, "reason": "nothing applied",
+            }
+        else:
+            verify_result = _run_verify_cmd(wt_path, verify, verify_timeout)
+            if verify_result["status"] == "fail" and bisect:
+                results_by_task = {entry["task"]: entry for entry in results}
+                verify_result = _bisect_integration(
+                    resolved_root, wt_path, branch, invocation_base_sha,
+                    applied_commits, results_by_task, verify, verify_timeout, bisect_max,
+                )
+
+    reverted = any(entry.get("status") == "reverted" for entry in results)
+    if verify_result is not None and verify_result["status"] == "fail":
+        top_status = "verify-failed"
+    elif conflicted:
+        top_status = "conflicted"
+    elif reverted:
+        top_status = "reverted"
+    else:
+        top_status = "ok"
+
+    result = {
+        "status": top_status,
         "integration": {"task": into_task, "branch": branch, "path": wt_path},
         "onto": onto_sha,
         "tasks": results,
         "note": _integrate_note(results, into_task, wt_path),
     }
+    if verify_result is not None:
+        result["verify"] = verify_result
+    return result
 
 
 def format_integrate_text(result):
@@ -4892,11 +5210,27 @@ def format_integrate_text(result):
         line = "  %-16s %-10s %d file(s)" % (
             entry.get("task"), entry.get("status"), entry.get("files_changed", 0),
         )
+        if entry.get("rolled_back"):
+            line += "  rolled-back"
+        if entry.get("revert"):
+            line += "  revert:%s" % entry.get("revert")
         conflicts = entry.get("conflicts") or []
         if conflicts:
             line += "  " + ", ".join(
                 "%s (%d hunk(s))" % (c.get("file"), c.get("hunks", 0)) for c in conflicts
             )
+        lines.append(line)
+    verify = result.get("verify")
+    if verify:
+        line = "verify %s  exit=%s  %.1fs" % (
+            verify.get("status"), verify.get("exit"), verify.get("seconds") or 0.0,
+        )
+        if verify.get("timed_out"):
+            line += "  timed-out"
+        if verify.get("baseline"):
+            line += "  baseline=%s" % verify.get("baseline")
+        if verify.get("reason"):
+            line += "  (%s)" % verify.get("reason")
         lines.append(line)
     lines.append("note: %s" % result.get("note", ""))
     return "\n".join(lines)
@@ -4909,10 +5243,17 @@ def _parse_integrate_args(args):
     own flag set and rejects duplicates: a repeated `--tasks` would silently
     discard a whole batch of work.
     """
-    opts = {"tasks": None, "repo": os.getcwd(), "onto": None, "into": "integrate",
-            "json": False, "text": False}
+    opts = {
+        "tasks": None, "repo": os.getcwd(), "onto": None, "into": "integrate",
+        "json": False, "text": False, "on_conflict": "keep", "verify": None,
+        "verify_timeout": 3600, "bisect": False, "bisect_max": 3,
+    }
     seen = set()
-    value_flags = {"--tasks": "tasks", "--repo": "repo", "--onto": "onto", "--into": "into"}
+    value_flags = {
+        "--tasks": "tasks", "--repo": "repo", "--onto": "onto", "--into": "into",
+        "--on-conflict": "on_conflict", "--verify": "verify",
+        "--verify-timeout": "verify_timeout", "--bisect-max": "bisect_max",
+    }
     i = 0
     while i < len(args):
         tok = args[i]
@@ -4925,9 +5266,9 @@ def _parse_integrate_args(args):
             opts[value_flags[tok]] = args[i + 1]
             i += 2
             continue
-        if tok in ("--json", "--text"):
+        if tok in ("--json", "--text", "--bisect"):
             seen.add(tok)
-            opts[tok[2:]] = True
+            opts[tok[2:].replace("-", "_")] = True
             i += 1
             continue
         return None, "unknown option: %s" % tok
@@ -4939,6 +5280,22 @@ def _parse_integrate_args(args):
     if not parsed:
         return None, "--tasks is empty"
     opts["tasks"] = parsed
+    if opts["on_conflict"] not in ("keep", "skip", "stop"):
+        return None, "invalid --on-conflict value: %s" % opts["on_conflict"]
+    try:
+        opts["verify_timeout"] = int(opts["verify_timeout"])
+        if opts["verify_timeout"] <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return None, "invalid --verify-timeout value: %s" % opts["verify_timeout"]
+    try:
+        opts["bisect_max"] = int(opts["bisect_max"])
+        if opts["bisect_max"] <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return None, "invalid --bisect-max value: %s" % opts["bisect_max"]
+    if opts["bisect"] and opts["verify"] is None:
+        return None, "--bisect requires --verify"
     return opts, None
 
 
@@ -4950,6 +5307,9 @@ def cmd_isolate_integrate(args):
     try:
         result = isolate_integrate(
             opts["repo"], opts["tasks"], onto=opts["onto"], into=opts["into"],
+            on_conflict=opts["on_conflict"], verify=opts["verify"],
+            verify_timeout=opts["verify_timeout"], bisect=opts["bisect"],
+            bisect_max=opts["bisect_max"],
         )
     except ValueError as exc:
         sys.stderr.write("agent-exec: isolate integrate: %s\n" % exc)
@@ -4963,6 +5323,10 @@ def cmd_isolate_integrate(args):
         return 0
     if status == "conflicted":
         return 1
+    if status == "verify-failed":
+        return 4
+    if status == "reverted":
+        return 5
     return 3
 
 
@@ -5155,16 +5519,260 @@ def cmd_isolate_sweep(args):
     return 1 if (result.get("summary") or {}).get("errors") else 0
 
 
+# --- isolate refresh ----------------------------------------------------------
+#
+# WHY THIS EXISTS. A task worktree created early in a long run sits on a base
+# that keeps getting further behind as the supervisor's own tree advances (a
+# checkpoint commit, another integration round). `refresh` moves the task's
+# own work onto a newer base without losing it: patch-ize the task's diff,
+# recreate the worktree at the new base, re-apply the patch. Conflicts are a
+# normal, reportable outcome (same shape as `integrate`'s), never a reason to
+# lose the patch -- it is always written to disk before the old tree is
+# touched, and its path is always in the result so the work is recoverable
+# even if recreation or the apply itself goes wrong afterwards.
+
+_REFRESH_PATCHES_DIRNAME = ".patches"
+
+
+def _refresh_result(status, task, path=None, branch=None, old_baseline=None,
+                    baseline=None, files=None, conflicts=None, patch_file=None,
+                    note=""):
+    """The one result shape every `isolate_refresh` return uses."""
+    return {
+        "status": status, "task": task, "path": path, "branch": branch,
+        "old_baseline": old_baseline, "baseline": baseline,
+        "files": files or [], "conflicts": conflicts or [],
+        "patch_file": patch_file, "note": note,
+    }
+
+
+def isolate_refresh(root, task, onto=None, session_id=None):
+    """Move a task worktree's own changes onto a newer base.
+
+    Never touches the tree until the task's current diff is safely on disk as
+    a patch file: recreation (remove the old worktree/branch, create fresh at
+    the new base) only happens after that write lands, and the patch file's
+    path is always returned so the work is recoverable even if something
+    after that point fails.
+    """
+    resolved_root = repo_root(root)
+    task = sanitize_task_id(task)
+    if resolved_root is None:
+        return _refresh_result("error", task, note="not a git repository")
+
+    resolve_session = session_id if session_id is not None else _current_session()
+    branch, entry = _resolve_worktree(resolved_root, task, resolve_session)
+    if not entry:
+        return _refresh_result("absent", task, note="no worktree for %s" % task)
+    path = entry.get("path")
+
+    if _read_role(path) == "integration":
+        return _refresh_result(
+            "error", task, path=path, branch=branch,
+            note="refusing to refresh an integration worktree",
+        )
+
+    ref = onto or "HEAD"
+    rc, out = _git(resolved_root, "rev-parse", "--verify", "%s^{commit}" % ref)
+    onto_sha = out.strip() if rc == 0 else ""
+    if not onto_sha:
+        return _refresh_result(
+            "error", task, path=path, branch=branch,
+            note="could not resolve --onto ref %r to a commit" % (ref,),
+        )
+
+    old_baseline = _read_baseline(path)
+    if old_baseline == onto_sha:
+        return _refresh_result(
+            "unchanged", task, path=path, branch=branch,
+            old_baseline=old_baseline, baseline=old_baseline,
+            note="already on onto %s" % onto_sha[:12],
+        )
+
+    diff = isolate_diff(resolved_root, task, session_id=resolve_session, with_patch=True)
+    if diff.get("status") != "ok":
+        return _refresh_result(
+            "error", task, path=path, branch=branch, old_baseline=old_baseline,
+            note=diff.get("reason") or "could not compute diff for %s" % task,
+        )
+    patch = diff.get("patch") or ""
+    files = diff.get("files") or []
+
+    patch_file = None
+    if patch.strip():
+        patches_dir = os.path.join(isolate_home(resolved_root), _REFRESH_PATCHES_DIRNAME)
+        try:
+            os.makedirs(patches_dir, exist_ok=True)
+            patch_file = os.path.join(
+                patches_dir,
+                "%s-%s-%s.patch" % (task, (old_baseline or "none")[:12], onto_sha[:12]),
+            )
+            with open(patch_file, "w") as fh:
+                fh.write(patch)
+                fh.flush()
+                os.fsync(fh.fileno())
+        except OSError:
+            return _refresh_result(
+                "error", task, path=path, branch=branch, old_baseline=old_baseline,
+                note="could not write the patch file for %s; nothing touched" % task,
+            )
+
+    # The patch is the safety net now: bypass the collected gate and remove
+    # the old worktree and branch outright.
+    rc, _ = _git(resolved_root, "worktree", "remove", path, "--force")
+    if rc != 0:
+        return _refresh_result(
+            "error", task, path=path, branch=branch, old_baseline=old_baseline,
+            patch_file=patch_file,
+            note="could not remove the old worktree for %s" % task,
+        )
+    _git(resolved_root, "branch", "-D", branch)
+
+    # Reconstruct the identical branch name: an empty string still counts as
+    # "not None" to `isolate_create`, so a legacy no-session branch is
+    # recreated without a session segment instead of picking up the current
+    # session's.
+    old_session = _branch_session(branch) or ""
+    try:
+        created = isolate_create(
+            resolved_root, task, backend="git", carry=False, carry_deps=True,
+            onto=onto_sha, session_id=old_session,
+        )
+    except Exception as exc:
+        return _refresh_result(
+            "error", task, old_baseline=old_baseline, patch_file=patch_file,
+            note="isolate_create raised recreating %s: %s; recover from patch_file" % (task, exc),
+        )
+    new_path = created.get("path")
+    if created.get("status") == "error" or not new_path or not os.path.isdir(new_path):
+        return _refresh_result(
+            "error", task, old_baseline=old_baseline, patch_file=patch_file,
+            note="could not recreate the worktree for %s; recover from patch_file" % task,
+        )
+
+    if not patch.strip():
+        return _refresh_result(
+            "ok", task, path=new_path, branch=branch, old_baseline=old_baseline,
+            baseline=onto_sha, note="no work to carry for %s" % task,
+        )
+
+    try:
+        apply_rc = _apply_patch_3way(new_path, patch)
+    except Exception as exc:
+        return _refresh_result(
+            "error", task, path=new_path, branch=branch, old_baseline=old_baseline,
+            patch_file=patch_file,
+            note="_apply_patch_3way raised for %s: %s; recover from patch_file" % (task, exc),
+        )
+    if apply_rc != 0:
+        conflicts = _unmerged_conflicts(new_path)
+        return _refresh_result(
+            "conflicted", task, path=new_path, branch=branch, old_baseline=old_baseline,
+            baseline=onto_sha, files=files, conflicts=conflicts, patch_file=patch_file,
+            note="%d file(s) conflicted; resolve in worktree at %s" % (len(conflicts), new_path),
+        )
+    return _refresh_result(
+        "ok", task, path=new_path, branch=branch, old_baseline=old_baseline,
+        baseline=onto_sha, files=files, patch_file=patch_file,
+        note="moved %d file(s) onto %s" % (len(files), onto_sha[:12]),
+    )
+
+
+def format_refresh_text(result):
+    """Compact human rendering of an `isolate refresh` result. No patch text."""
+    lines = [
+        "refresh %-10s task %-16s onto %s  worktree %s" % (
+            result.get("status"), result.get("task"),
+            (result.get("baseline") or result.get("old_baseline") or "-")[:12],
+            result.get("path") or "-",
+        )
+    ]
+    for f in result.get("files") or []:
+        lines.append("  %s" % f)
+    conflicts = result.get("conflicts") or []
+    if conflicts:
+        lines.append("  conflicts: " + ", ".join(
+            "%s (%d hunk(s))" % (c.get("file"), c.get("hunks", 0)) for c in conflicts
+        ))
+    if result.get("patch_file"):
+        lines.append("  patch: %s" % result["patch_file"])
+    lines.append("note: %s" % result.get("note", ""))
+    return "\n".join(lines)
+
+
+def _parse_refresh_args(args):
+    """Parse `isolate refresh` flags. Returns (options, error_message).
+
+    Same conventions as `_parse_integrate_args`: duplicates/unknown options are
+    a usage error, `--json`/`--text` are mutually exclusive, default JSON.
+    """
+    opts = {"task": None, "onto": None, "repo": os.getcwd(), "session": None,
+            "json": False, "text": False}
+    seen = set()
+    value_flags = {
+        "--task": "task", "--onto": "onto", "--repo": "repo", "--session": "session",
+    }
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok in seen:
+            return None, "duplicate option: %s" % tok
+        if tok in value_flags:
+            if i + 1 >= len(args):
+                return None, "missing value for %s" % tok
+            seen.add(tok)
+            opts[value_flags[tok]] = args[i + 1]
+            i += 2
+            continue
+        if tok in ("--json", "--text"):
+            seen.add(tok)
+            opts[tok[2:]] = True
+            i += 1
+            continue
+        return None, "unknown option: %s" % tok
+    if opts["json"] and opts["text"]:
+        return None, "--json and --text are mutually exclusive"
+    if opts["task"] is None:
+        return None, "missing required option: --task"
+    return opts, None
+
+
+def cmd_isolate_refresh(args):
+    opts, error = _parse_refresh_args(args)
+    if error is not None:
+        sys.stderr.write("agent-exec: isolate refresh: %s\n" % error)
+        return 2
+    try:
+        result = isolate_refresh(
+            opts["repo"], opts["task"], onto=opts["onto"], session_id=opts["session"],
+        )
+    except ValueError as exc:
+        sys.stderr.write("agent-exec: isolate refresh: %s\n" % exc)
+        return 2
+    if opts["text"]:
+        print(format_refresh_text(result))
+    else:
+        print(json.dumps(result, ensure_ascii=False))
+    status = result.get("status")
+    if status in ("ok", "unchanged"):
+        return 0
+    if status == "conflicted":
+        return 1
+    return 3
+
+
 def _isolate_usage(stream=sys.stderr):
     stream.write(
         "usage: agent-exec isolate\n"
-        "         {create|list|diff|collect|integrate|remove|sweep|should} [options]\n"
+        "         {create|list|diff|collect|integrate|refresh|remove|sweep|should} [options]\n"
         "  create    --task <id> [--repo <path>] [--backend auto|gtr|git] [--no-carry]\n"
         "  list      [--repo <path>] [--session <id>]\n"
         "  diff      --task <id> [--repo <path>] [--names-only]\n"
         "  collect   --task <id> [--repo <path>] [--json|--text]\n"
         "  collect   --session <id> [--repo <path>] [--json|--text]\n"
         "  integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>]\n"
+        "            [--json|--text]\n"
+        "  refresh   --task <id> [--repo <path>] [--onto <ref>] [--session <id>]\n"
         "            [--json|--text]\n"
         "  remove    --task <id> [--repo <path>] [--force]\n"
         "  remove    --session <id> [--repo <path>] [--force]\n"
@@ -5183,19 +5791,22 @@ def cmd_isolate(args):
     if sub in ("-h", "--help"):
         _isolate_usage()
         return 0
-    if sub not in ("create", "list", "diff", "collect", "integrate", "remove", "sweep", "should"):
+    if sub not in ("create", "list", "diff", "collect", "integrate", "refresh",
+                   "remove", "sweep", "should"):
         sys.stderr.write("agent-exec: isolate: unknown subcommand: %s\n" % sub)
         _isolate_usage()
         return 2
 
-    # `integrate` and `collect` have their own flag sets (and, for integrate,
-    # its own exit-code contract: 0 clean / 1 conflicted / 2 usage /
-    # 3 environment), so they parse and return on their own rather than
-    # sharing the single-task plumbing below.
+    # `integrate`, `collect`, `refresh` and `sweep` have their own flag sets
+    # (and, for integrate/refresh, their own exit-code contract: 0 clean /
+    # 1 conflicted / 2 usage / 3 environment), so they parse and return on
+    # their own rather than sharing the single-task plumbing below.
     if sub == "integrate":
         return cmd_isolate_integrate(args[1:])
     if sub == "collect":
         return cmd_isolate_collect(args[1:])
+    if sub == "refresh":
+        return cmd_isolate_refresh(args[1:])
     if sub == "sweep":
         return cmd_isolate_sweep(args[1:])
 
@@ -7554,6 +8165,170 @@ def _print_usage_text(report):
     print("total    %-13s %s" % ("", _usage_tokens_line(report.get("totals"))))
 
 
+def _parse_check_args(args):
+    """Parse `check` flags. Returns (options, error_message).
+
+    Same hand-rolled conventions as `_parse_integrate_args`: no duplicate
+    flags, and exactly one of --task/--path (mirroring integrate's
+    exactly-one-of --tasks contract, but over a tree instead of a task list).
+    """
+    opts = {
+        "task": None, "path": None, "since": None, "files": None,
+        "all": False, "baseline": False, "repo": os.getcwd(), "session": None,
+        "json": False, "text": False,
+    }
+    seen = set()
+    value_flags = {
+        "--task": "task", "--path": "path", "--since": "since",
+        "--files": "files", "--repo": "repo", "--session": "session",
+    }
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok in seen:
+            return None, "duplicate option: %s" % tok
+        if tok in value_flags:
+            if i + 1 >= len(args):
+                return None, "missing value for %s" % tok
+            seen.add(tok)
+            opts[value_flags[tok]] = args[i + 1]
+            i += 2
+            continue
+        if tok in ("--all", "--baseline", "--json", "--text"):
+            seen.add(tok)
+            opts[tok[2:]] = True
+            i += 1
+            continue
+        return None, "unknown option: %s" % tok
+    if opts["json"] and opts["text"]:
+        return None, "--json and --text are mutually exclusive"
+    if (opts["task"] is None) == (opts["path"] is None):
+        return None, "provide exactly one of --task or --path"
+    return opts, None
+
+
+def cmd_check(args):
+    """`agent-exec check`: run config-driven `checks.items` over a tree's
+    changed files. Resolves the tree/files/baseline here with agent_exec's own
+    git helpers, then hands plain paths and strings to `agent_exec_checks`,
+    which knows nothing about git."""
+    opts, error = _parse_check_args(args)
+    if error is not None:
+        sys.stderr.write("agent-exec: check: %s\n" % error)
+        return 2
+
+    def emit(result):
+        if opts["text"]:
+            lines = [
+                "%s %s %.1fs" % (c.get("name"), c.get("status"), c.get("seconds") or 0.0)
+                for c in result.get("checks") or []
+            ]
+            lines.extend(
+                excerpt for c in (result.get("checks") or [])
+                for excerpt in ([c["excerpt"]] if c.get("excerpt") else [])
+            )
+            if lines:
+                print("\n".join(lines))
+        else:
+            print(json.dumps(result, ensure_ascii=False))
+
+    root = repo_root(opts["repo"])
+    if root is None:
+        result = {"status": "error", "tree": None, "files": 0, "checks": []}
+        emit(result)
+        return 3
+
+    if opts["task"] is not None:
+        _, entry = _resolve_worktree(root, opts["task"], opts["session"])
+        if not entry:
+            emit({"status": "error", "tree": None, "files": 0, "checks": []})
+            return 3
+        tree = entry.get("path")
+    else:
+        tree = opts["path"]
+        if not tree or not os.path.isdir(tree):
+            emit({"status": "error", "tree": tree, "files": 0, "checks": []})
+            return 3
+
+    if opts["files"] is not None:
+        files = [f.strip() for f in opts["files"].split(",") if f.strip()]
+    elif opts["task"] is not None:
+        diff = isolate_diff(root, opts["task"], session_id=opts["session"], with_patch=False)
+        if diff.get("status") == "error":
+            emit({"status": "error", "tree": tree, "files": 0, "checks": []})
+            return 3
+        files = diff.get("files") or []
+    else:
+        since = opts["since"] or "HEAD"
+        rc, out = _git(tree, "diff", "--name-only", since)
+        changed = set(f for f in out.splitlines() if f.strip()) if rc == 0 else set()
+        rc2, out2 = _git(tree, "ls-files", "--others", "--exclude-standard")
+        untracked = set(f for f in out2.splitlines() if f.strip()) if rc2 == 0 else set()
+        files = sorted(changed | untracked)
+
+    resolved, cfg_err = resolve_config()
+    if cfg_err is not None:
+        sys.stderr.write(cfg_err + "\n")
+        return 3
+    checks_cfg = resolved.get("checks") or {}
+    items = checks_cfg.get("items") or []
+    max_parallel = checks_cfg.get("max_parallel", 2)
+    # Sibling of the token/cooldown state dir, same as `_token_dir_from_cfg`.
+    slot_dir = os.path.join(
+        os.path.dirname(os.path.abspath(_ledger_dir_from_cfg(resolved))), "check-slots"
+    )
+
+    if not items:
+        emit({"status": "no-checks", "tree": tree, "files": len(files), "checks": []})
+        return 0
+
+    check_results = agent_exec_checks.run_checks(
+        items, tree, files, slot_dir, max_parallel=max_parallel, run_all=opts["all"]
+    )
+
+    if opts["baseline"]:
+        baseline_ref = (
+            _read_baseline(tree) if opts["task"] is not None else (opts["since"] or "HEAD")
+        )
+        failed = [(i, items[i]) for i, r in enumerate(check_results) if r["status"] == "fail"]
+        if baseline_ref and failed:
+            tmp_root = tempfile.mkdtemp(prefix="orchestra-check-baseline-")
+            base_tree = os.path.join(tmp_root, "wt")
+            try:
+                rc, _ = _git(root, "worktree", "add", "--detach", "-q", base_tree, baseline_ref)
+                if rc == 0:
+                    carry_extra = (resolved.get("isolation") or {}).get("carry_extra") or ()
+                    for rel in detect_carry_dirs(root, extra_names=carry_extra):
+                        copy_tree_fast_method(
+                            os.path.join(root, rel), os.path.join(base_tree, rel)
+                        )
+                    base_results = agent_exec_checks.run_checks(
+                        [item for _, item in failed], base_tree, files, slot_dir,
+                        max_parallel=max_parallel, run_all=True,
+                    )
+                    for (i, _), base_result in zip(failed, base_results):
+                        if base_result["status"] == "fail":
+                            check_results[i]["status"] = "preexisting"
+            finally:
+                _git(root, "worktree", "remove", "--force", base_tree)
+                _git(root, "worktree", "prune")
+                shutil.rmtree(tmp_root, ignore_errors=True)
+
+    statuses = {r["status"] for r in check_results}
+    if "fail" in statuses:
+        status = "fail"
+    elif "preexisting" in statuses:
+        status = "preexisting"
+    elif not statuses or statuses <= {"skipped"}:
+        status = "no-checks"
+    else:
+        status = "pass"
+
+    result = {"status": status, "tree": tree, "files": len(files), "checks": check_results}
+    emit(result)
+    return {"pass": 0, "no-checks": 0, "fail": 1, "error": 3, "preexisting": 4}[status]
+
+
 def cmd_usage(args):
     since_raw = "24h"
     fmt = None
@@ -7964,6 +8739,9 @@ def main(argv):
 
     if tok == "usage":
         return cmd_usage(argv[1:])
+
+    if tok == "check":
+        return cmd_check(argv[1:])
 
     return cmd_dispatch(tok, argv[1:])
 

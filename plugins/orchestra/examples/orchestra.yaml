@@ -210,6 +210,28 @@ isolation:
   carry_extra: []
   # carry_extra: [pkg]   # e.g. packages/core-wasm/pkg, a generated wasm package
 
+# `agent-exec check` runs these config-declared lint/test commands over a
+# tree's changed files (see `references/config.md` §4 for full semantics).
+# `items` is a LIST: a higher config layer replaces it whole, it is never
+# merged entry-by-entry, so a project's own check list never silently
+# inherits a user-level one it never asked for.
+checks:
+  max_parallel: 2   # concurrent check commands machine-wide; 0 = unlimited
+  items: []
+  # items:
+  #   - name: lint
+  #     paths: ["**/*.ts", "**/*.tsx"]   # optional; omitted = always runs
+  #     run: "pnpm exec biome check {files}"
+  #     fix: "pnpm exec biome check --write {files}"   # optional, runs first,
+  #     # exit code and output ignored -- a fixer is not a gate
+  #     cwd: "web"             # optional, relative to the tree root, default "."
+  #     timeout: 900           # optional seconds, default 1800
+  #     junit: "reports/junit.xml"   # optional, relative to `cwd`
+  #   - name: typecheck
+  #     paths: ["**/*.ts", "**/*.tsx"]
+  #     run: "pnpm exec tsc --noEmit"
+  #     cwd: "web"
+
 priority:
   light:
     # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated executor
