@@ -44,6 +44,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agent_exec_checks  # noqa: E402
+import agent_exec_wave  # noqa: E402
 
 PROFILES = {
     "copilot": {
@@ -544,6 +545,33 @@ Usage:
   agent-exec ledger show [--session ID|--run ID] [--json|--text]
   agent-exec ledger archive [--json|--text]
   agent-exec ledger clear [--yes] [--json|--text]
+  agent-exec wave status --state PATH [--json|--line|--text]
+                  [--watch SEC] [--events N]
+                                  render a wave's state.json (see
+                                  agent_exec_wave.py); --watch redraws every
+                                  N seconds until Ctrl-C
+  agent-exec wave stop --state PATH [--reason TEXT]
+                                  drop a STOP file next to a wave's
+                                  state.json for its runner to notice
+  agent-exec wave run --plan PLAN --state PATH --into ID [--repo P]
+                  [--max-in-flight N] [--gate CMD] [--full CMD]
+                  [--full-every N] [--full-timeout SEC] [--after-green CMD]
+                  [--notify-cmd CMD] [--stop-at EPOCH] [--max-waves N]
+                  [--max-packages N] [--run-id ID] [--json|--text]
+                                  the deterministic outer loop: per wave,
+                                  dispatch the packages the plan allows,
+                                  self-verify each with `check` (one
+                                  correction round), then integrate every
+                                  ready one into worktree ID in one
+                                  `isolate integrate` (skip on conflict, gate
+                                  + bisect). Anything only the instructor can
+                                  settle lands on the state's needs list.
+                                  Exit 0 done, 1 done with needs, 2 usage,
+                                  3 environment, 5 stopped.
+  agent-exec wave mark --state PATH --pkg ID --status ready|pending|failed
+                  [--detail TEXT]
+                                  hand a package back to the runner and
+                                  clear its needs entries
   agent-exec <profile> [args...] dispatch: inject profile env, exec the
                                   target CLI with args passed through verbatim
   agent-exec -h | --help          show this help
@@ -8742,6 +8770,9 @@ def main(argv):
 
     if tok == "check":
         return cmd_check(argv[1:])
+
+    if tok == "wave":
+        return agent_exec_wave.cmd_wave(argv[1:])
 
     return cmd_dispatch(tok, argv[1:])
 
