@@ -449,9 +449,21 @@ Usage:
                                   untouched. Exit 0 ok/unchanged, 1 conflicted
                                   (expected, not an error), 2 usage, 3
                                   absent/environment.
+  agent-exec isolate adopt --task ID --path P [--baseline REF] [--repo P]
+                  [--session ID] [--json|--text]
+                                  register a worktree created outside orchestra
+                                  (e.g. by Orca) as the task's worktree, so
+                                  check/integrate/collect/refresh reach it by
+                                  task id. Refresh then works in place, and
+                                  remove/sweep never delete it. Exit 0
+                                  adopted/exists, 2 usage, 3 error.
+  agent-exec isolate unadopt --task ID [--repo P] [--session ID]
+                                  drop an adoption (markers only; the worktree
+                                  and its files are untouched). Exit 0.
   agent-exec isolate remove --task ID [--repo P] [--force]
                                   delete the worktree and branch; refuses while
                                   uncollected changes remain unless --force.
+                                  An adopted tree is only unadopted.
   agent-exec isolate list [--repo P]
                                   orchestra-created worktrees in this repo.
   agent-exec isolate sweep [--repo P] [--older-than DAYS] [--include-current]
@@ -3627,6 +3639,13 @@ _CREATED_IGNORED_FILE = "orchestra-created-ignored"
 # ordinary task worktree.
 _ROLE_FILE = "orchestra-role"
 
+# Marker for a worktree orchestra did NOT create (e.g. one an external app
+# such as Orca made) but has been told to treat as a task via `isolate adopt`.
+# JSON: {"task", "session", "adopted_at"}. Its presence is what makes such a
+# tree resolvable by task id, and what makes remove/sweep/refresh leave the
+# tree and its branch alone.
+_ADOPTED_FILE = "orchestra-adopted"
+
 
 def git_config_env(pairs, base_env=None):
     """Return an env dict that adds `pairs` to git's config lookup.
@@ -4120,6 +4139,44 @@ def _worktree_for_branch(root, branch):
     return None
 
 
+def _adopted_task(worktree):
+    """The adoption record of `worktree`, or None for an ordinary tree
+    (covers both "no marker" and "corrupt marker")."""
+    gitdir = _worktree_gitdir(worktree)
+    if not gitdir:
+        return None
+    try:
+        with open(os.path.join(gitdir, _ADOPTED_FILE)) as fh:
+            record = json.load(fh)
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(record, dict) or not isinstance(record.get("task"), str):
+        return None
+    return record
+
+
+def _resolve_adopted(root, task, current):
+    """The adopted worktree entry for `task` as (branch, entry), or (None, None).
+
+    A marker whose session matches the caller's wins when several trees carry
+    the same task id; otherwise more than one is ambiguous.
+    """
+    matches = []
+    for entry in _worktree_entries(root):
+        record = _adopted_task(entry.get("path"))
+        if record is not None and record["task"] == task:
+            matches.append((entry.get("branch"), entry, _session_component(record.get("session"))))
+    for branch, entry, session in matches:
+        if current is not None and session == current:
+            return branch, entry
+    if len(matches) > 1:
+        raise ValueError(
+            "ambiguous adopted worktrees for task %s: %s"
+            % (task, ", ".join(sorted(entry.get("path") or "" for _, entry, _ in matches)))
+        )
+    return (matches[0][0], matches[0][1]) if matches else (None, None)
+
+
 def _resolve_worktree(root, task, session_id=None):
     task = sanitize_task_id(task)
     current = _session_component(session_id)
@@ -4139,10 +4196,15 @@ def _resolve_worktree(root, task, session_id=None):
             "ambiguous worktrees for task %s: %s"
             % (task, ", ".join(sorted(branch for branch, _ in matches)))
         )
-    return matches[0] if matches else (None, None)
+    if matches:
+        return matches[0]
+    return _resolve_adopted(root, task, current)
 
 
 def _branch_session(branch):
+    # An adopted tree's branch is external (any name, or None when detached).
+    if not branch or not branch.startswith(ISOLATE_BRANCH_PREFIX):
+        return None
     rest = branch[len(ISOLATE_BRANCH_PREFIX):]
     parts = rest.split("/", 1)
     return parts[0] if len(parts) == 2 and _session_component(parts[0]) == parts[0] else None
@@ -4459,6 +4521,12 @@ def isolate_remove(root, task=None, force=False, session_id=None):
         return {"status": "absent", "task": task}
     path = entry.get("path")
 
+    # An adopted tree belongs to whoever created it: drop the adoption and
+    # leave the tree and its branch alone, --force or not.
+    if _adopted_task(path) is not None:
+        _clear_adoption(path)
+        return {"status": "unadopted", "task": task, "path": path}
+
     git_force = force
     if not force:
         uncollected = _uncollected(root, path, task, session_id=session_id)
@@ -4728,6 +4796,21 @@ def isolate_sweep(root, older_than=None, include_current=False, branches=False,
             record["files"] = outcome["files"]
         worktrees.append(record)
 
+    # Adopted trees are not in `isolate_list` (their branches are external).
+    # They are reported, never removed, and never counted as dirty.
+    for entry in _worktree_entries(resolved):
+        record_ = _adopted_task(entry.get("path"))
+        if record_ is None:
+            continue
+        worktrees.append({
+            "task": record_["task"], "branch": entry.get("branch"),
+            "path": entry.get("path"), "session": _session_component(record_.get("session")),
+            "current": False,
+            "age_days": _branch_age_days(resolved, entry.get("branch"), now=now),
+            "status": "external",
+            "reason": "adopted external worktree; orchestra never removes it",
+        })
+
     branch_records = []
     for branch in _orphan_branches(resolved):
         age = _branch_age_days(resolved, branch, now=now)
@@ -4762,6 +4845,7 @@ def isolate_sweep(root, older_than=None, include_current=False, branches=False,
             "would_remove": _count(worktrees, "would-remove"),
             "dirty": _count(worktrees, "dirty"),
             "skipped": _count(worktrees, "skipped"),
+            "external": _count(worktrees, "external"),
             "absent": _count(worktrees, "absent"),
             "errors": _count(worktrees, "error") + _count(branch_records, "error"),
             "branches_orphan": _count(branch_records, "orphan"),
@@ -5584,10 +5668,10 @@ def format_sweep_text(result):
         ))
     s = result.get("summary") or {}
     lines.append(
-        "summary: removed %d, would-remove %d, dirty %d, skipped %d, errors %d, "
-        "branches %d orphan / %d deleted"
+        "summary: removed %d, would-remove %d, dirty %d, skipped %d, external %d, "
+        "errors %d, branches %d orphan / %d deleted"
         % (s.get("removed", 0), s.get("would_remove", 0), s.get("dirty", 0),
-           s.get("skipped", 0), s.get("errors", 0), s.get("branches_orphan", 0),
+           s.get("skipped", 0), s.get("external", 0), s.get("errors", 0), s.get("branches_orphan", 0),
            s.get("branches_deleted", 0))
     )
     if s.get("dirty"):
@@ -5639,14 +5723,21 @@ _REFRESH_PATCHES_DIRNAME = ".patches"
 
 def _refresh_result(status, task, path=None, branch=None, old_baseline=None,
                     baseline=None, files=None, conflicts=None, patch_file=None,
-                    note=""):
-    """The one result shape every `isolate_refresh` return uses."""
-    return {
+                    note="", in_place=False):
+    """The one result shape every `isolate_refresh` return uses.
+
+    `in_place` (an adopted tree refreshed without recreation) is only present
+    when true, so ordinary results keep their exact shape.
+    """
+    result = {
         "status": status, "task": task, "path": path, "branch": branch,
         "old_baseline": old_baseline, "baseline": baseline,
         "files": files or [], "conflicts": conflicts or [],
         "patch_file": patch_file, "note": note,
     }
+    if in_place:
+        result["in_place"] = True
+    return result
 
 
 def isolate_refresh(root, task, onto=None, session_id=None):
@@ -5720,6 +5811,11 @@ def isolate_refresh(root, task, onto=None, session_id=None):
                 note="could not write the patch file for %s; nothing touched" % task,
             )
 
+    if _adopted_task(path) is not None:
+        return _refresh_adopted_in_place(
+            path, task, branch, old_baseline, onto_sha, patch, files, patch_file,
+        )
+
     # The patch is the safety net now: bypass the collected gate and remove
     # the old worktree and branch outright.
     rc, _ = _git(resolved_root, "worktree", "remove", path, "--force")
@@ -5778,6 +5874,49 @@ def isolate_refresh(root, task, onto=None, session_id=None):
         "ok", task, path=new_path, branch=branch, old_baseline=old_baseline,
         baseline=onto_sha, files=files, patch_file=patch_file,
         note="moved %d file(s) onto %s" % (len(files), onto_sha[:12]),
+    )
+
+
+def _refresh_adopted_in_place(path, task, branch, old_baseline, onto_sha, patch, files,
+                              patch_file):
+    """Refresh an adopted tree without ever removing or recreating it.
+
+    A live external session is sitting in the tree, so the directory and its
+    branch must survive: reset to `onto`, clear untracked files (never
+    ignored ones), re-apply the saved patch, leave it uncommitted.
+    """
+    def result(status, **kw):
+        return _refresh_result(
+            status, task, path=path, branch=branch, old_baseline=old_baseline,
+            patch_file=patch_file, in_place=True, **kw
+        )
+
+    rc, _ = _git(path, "reset", "-q", "--hard", onto_sha)
+    if rc != 0:
+        return result(
+            "error",
+            note="git reset failed in %s; recover from patch_file" % path,
+        )
+    _git(path, "clean", "-fdq")
+    _write_baseline(path, onto_sha)
+    if not patch.strip():
+        return result("ok", baseline=onto_sha, note="no work to carry for %s" % task)
+    try:
+        apply_rc = _apply_patch_3way(path, patch)
+    except Exception as exc:
+        return result(
+            "error", baseline=onto_sha,
+            note="_apply_patch_3way raised for %s: %s; recover from patch_file" % (task, exc),
+        )
+    if apply_rc != 0:
+        conflicts = _unmerged_conflicts(path)
+        return result(
+            "conflicted", baseline=onto_sha, files=files, conflicts=conflicts,
+            note="%d file(s) conflicted; resolve in worktree at %s" % (len(conflicts), path),
+        )
+    return result(
+        "ok", baseline=onto_sha, files=files,
+        note="moved %d file(s) onto %s in place" % (len(files), onto_sha[:12]),
     )
 
 
@@ -5864,10 +6003,232 @@ def cmd_isolate_refresh(args):
     return 3
 
 
+# --- isolate adopt / unadopt --------------------------------------------------
+#
+# WHY THIS EXISTS. An external app (Orca) can create its own worktree of the
+# repo and run a session in it. Orchestra did not create that tree and must
+# never delete it, but still needs `check --task`, `integrate --tasks`,
+# `collect` and `refresh` to reach it by task id. `adopt` records that mapping
+# in a marker inside the worktree's git dir; `_resolve_worktree` then finds the
+# tree even though its branch is not an `orchestra/` one.
+
+def _adopt_result(status, task, path=None, branch=None, baseline=None, note=""):
+    return {
+        "status": status, "task": task, "path": path, "branch": branch,
+        "baseline": baseline, "note": note,
+    }
+
+
+def _clear_adoption(path):
+    """Remove the adoption, baseline and collected markers of `path`. Files and
+    the worktree itself are never touched."""
+    gitdir = _worktree_gitdir(path)
+    if not gitdir:
+        return
+    for name in (_ADOPTED_FILE, _BASELINE_FILE, _COLLECTED_FILE):
+        try:
+            os.remove(os.path.join(gitdir, name))
+        except OSError:
+            pass
+
+
+def isolate_adopt(root, task, path, baseline=None, session_id=None):
+    """Register an externally created worktree as the task's worktree.
+
+    `path` must be a linked worktree of `root` that orchestra did not create.
+    The baseline defaults to the tree's current HEAD. Re-adopting the same
+    path under the same task is `exists` and leaves the baseline alone unless
+    `baseline` is given.
+    """
+    resolved_root = repo_root(root)
+    task = sanitize_task_id(task)
+    if resolved_root is None:
+        return _adopt_result("error", task, note="not a git repository")
+    if not task:
+        return _adopt_result("error", task, note="empty task id")
+
+    target = os.path.realpath(path) if path else ""
+    entries = _worktree_entries(resolved_root)
+    entry = None
+    for index, candidate in enumerate(entries):
+        if os.path.realpath(candidate.get("path") or "") == target:
+            entry = candidate
+            is_main = index == 0
+            break
+    if entry is None:
+        return _adopt_result("error", task, path=path, note="%s is not a worktree of this repository" % path)
+    path = entry.get("path")
+    branch = entry.get("branch")
+    if is_main:
+        return _adopt_result("error", task, path=path, branch=branch,
+                             note="refusing to adopt the main worktree")
+    if (branch or "").startswith(ISOLATE_BRANCH_PREFIX):
+        return _adopt_result("error", task, path=path, branch=branch,
+                             note="%s is an orchestra-created worktree; it already has a task" % path)
+
+    existing = _adopted_task(path)
+    if existing is not None and existing["task"] != task:
+        return _adopt_result("error", task, path=path, branch=branch,
+                             note="%s is already adopted as task %s" % (path, existing["task"]))
+
+    # The task id must not already name some other tree.
+    for other in entries:
+        if os.path.realpath(other.get("path") or "") == target:
+            continue
+        record = _adopted_task(other.get("path"))
+        other_branch = other.get("branch") or ""
+        if (record is not None and record["task"] == task) or other_branch == isolate_branch(task) or (
+            other_branch.startswith(ISOLATE_BRANCH_PREFIX) and other_branch.endswith("/" + task)
+        ):
+            return _adopt_result("error", task, path=path, branch=branch,
+                                 note="task %s already resolves to %s" % (task, other.get("path")))
+
+    baseline_sha = None
+    if baseline is not None:
+        rc, out = _git(resolved_root, "rev-parse", "--verify", "%s^{commit}" % baseline)
+        baseline_sha = out.strip() if rc == 0 else ""
+        if not baseline_sha:
+            return _adopt_result("error", task, path=path, branch=branch,
+                                 note="could not resolve --baseline ref %r to a commit" % (baseline,))
+
+    if existing is not None:
+        if baseline_sha:
+            _write_baseline(path, baseline_sha)
+        return _adopt_result("exists", task, path=path, branch=branch,
+                             baseline=_read_baseline(path),
+                             note="already adopted as %s" % task)
+
+    if baseline_sha is None:
+        rc, out = _git(path, "rev-parse", "HEAD")
+        baseline_sha = out.strip() if rc == 0 else ""
+        if not baseline_sha:
+            return _adopt_result("error", task, path=path, branch=branch,
+                                 note="could not read HEAD of %s" % path)
+
+    gitdir = _worktree_gitdir(path)
+    if not gitdir:
+        return _adopt_result("error", task, path=path, branch=branch,
+                             note="could not locate the git dir of %s" % path)
+    session = _session_component(session_id if session_id is not None else _current_session())
+    try:
+        with open(os.path.join(gitdir, _ADOPTED_FILE), "w") as fh:
+            json.dump({"task": task, "session": session, "adopted_at": time.time()}, fh)
+            fh.write("\n")
+    except OSError:
+        return _adopt_result("error", task, path=path, branch=branch,
+                             note="could not write the adoption marker for %s" % path)
+    _write_baseline(path, baseline_sha)
+    return _adopt_result("adopted", task, path=path, branch=branch, baseline=baseline_sha,
+                         note="adopted %s as task %s" % (path, task))
+
+
+def isolate_unadopt(root, task, session_id=None):
+    """Drop the adoption of `task`. Never touches files or the worktree."""
+    resolved_root = repo_root(root)
+    task = sanitize_task_id(task)
+    if resolved_root is None:
+        return {"status": "absent", "task": task, "path": None}
+    _, entry = _resolve_adopted(
+        resolved_root, task,
+        _session_component(session_id if session_id is not None else _current_session()),
+    )
+    if not entry:
+        return {"status": "absent", "task": task, "path": None}
+    path = entry.get("path")
+    _clear_adoption(path)
+    return {"status": "unadopted", "task": task, "path": path}
+
+
+def format_adopt_text(result):
+    """Compact human rendering of an `isolate adopt`/`unadopt` result."""
+    lines = ["%s task %-16s worktree %s" % (
+        result.get("status"), result.get("task"), result.get("path") or "-",
+    )]
+    if result.get("baseline"):
+        lines.append("  baseline: %s" % result["baseline"][:12])
+    if result.get("note"):
+        lines.append("note: %s" % result["note"])
+    return "\n".join(lines)
+
+
+def _parse_adopt_args(args, value_flags, required):
+    """Shared flag parser for `isolate adopt`/`unadopt`. Returns (options, error)."""
+    opts = dict((dest, None) for dest in value_flags.values())
+    opts.update({"repo": os.getcwd(), "json": False, "text": False})
+    seen = set()
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok in seen:
+            return None, "duplicate option: %s" % tok
+        if tok in value_flags:
+            if i + 1 >= len(args):
+                return None, "missing value for %s" % tok
+            seen.add(tok)
+            opts[value_flags[tok]] = args[i + 1]
+            i += 2
+            continue
+        if tok in ("--json", "--text"):
+            seen.add(tok)
+            opts[tok[2:]] = True
+            i += 1
+            continue
+        return None, "unknown option: %s" % tok
+    if opts["json"] and opts["text"]:
+        return None, "--json and --text are mutually exclusive"
+    for flag, dest in value_flags.items():
+        if flag in required and opts[dest] is None:
+            return None, "missing required option: %s" % flag
+    return opts, None
+
+
+def cmd_isolate_adopt(args):
+    opts, error = _parse_adopt_args(
+        args,
+        {"--task": "task", "--path": "path", "--baseline": "baseline",
+         "--repo": "repo", "--session": "session"},
+        ("--task", "--path"),
+    )
+    if error is not None:
+        sys.stderr.write("agent-exec: isolate adopt: %s\n" % error)
+        return 2
+    result = isolate_adopt(
+        opts["repo"], opts["task"], os.path.abspath(opts["path"]),
+        baseline=opts["baseline"], session_id=opts["session"],
+    )
+    if opts["text"]:
+        print(format_adopt_text(result))
+    else:
+        print(json.dumps(result, ensure_ascii=False))
+    return 3 if result.get("status") == "error" else 0
+
+
+def cmd_isolate_unadopt(args):
+    opts, error = _parse_adopt_args(
+        args,
+        {"--task": "task", "--repo": "repo", "--session": "session"},
+        ("--task",),
+    )
+    if error is not None:
+        sys.stderr.write("agent-exec: isolate unadopt: %s\n" % error)
+        return 2
+    try:
+        result = isolate_unadopt(opts["repo"], opts["task"], session_id=opts["session"])
+    except ValueError as exc:
+        sys.stderr.write("agent-exec: isolate unadopt: %s\n" % exc)
+        return 2
+    if opts["text"]:
+        print(format_adopt_text(result))
+    else:
+        print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def _isolate_usage(stream=sys.stderr):
     stream.write(
         "usage: agent-exec isolate\n"
-        "         {create|list|diff|collect|integrate|refresh|remove|sweep|should} [options]\n"
+        "         {create|list|diff|collect|integrate|refresh|adopt|unadopt|remove|sweep|should}\n"
+        "         [options]\n"
         "  create    --task <id> [--repo <path>] [--backend auto|gtr|git] [--no-carry]\n"
         "  list      [--repo <path>] [--session <id>]\n"
         "  diff      --task <id> [--repo <path>] [--names-only]\n"
@@ -5877,6 +6238,9 @@ def _isolate_usage(stream=sys.stderr):
         "            [--json|--text]\n"
         "  refresh   --task <id> [--repo <path>] [--onto <ref>] [--session <id>]\n"
         "            [--json|--text]\n"
+        "  adopt     --task <id> --path <path> [--baseline <ref>] [--repo <path>]\n"
+        "            [--session <id>] [--json|--text]\n"
+        "  unadopt   --task <id> [--repo <path>] [--session <id>] [--json|--text]\n"
         "  remove    --task <id> [--repo <path>] [--force]\n"
         "  remove    --session <id> [--repo <path>] [--force]\n"
         "  sweep     [--repo <path>] [--older-than <days>] [--include-current]\n"
@@ -5895,7 +6259,7 @@ def cmd_isolate(args):
         _isolate_usage()
         return 0
     if sub not in ("create", "list", "diff", "collect", "integrate", "refresh",
-                   "remove", "sweep", "should"):
+                   "adopt", "unadopt", "remove", "sweep", "should"):
         sys.stderr.write("agent-exec: isolate: unknown subcommand: %s\n" % sub)
         _isolate_usage()
         return 2
@@ -5910,6 +6274,10 @@ def cmd_isolate(args):
         return cmd_isolate_collect(args[1:])
     if sub == "refresh":
         return cmd_isolate_refresh(args[1:])
+    if sub == "adopt":
+        return cmd_isolate_adopt(args[1:])
+    if sub == "unadopt":
+        return cmd_isolate_unadopt(args[1:])
     if sub == "sweep":
         return cmd_isolate_sweep(args[1:])
 

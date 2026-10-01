@@ -193,6 +193,15 @@ agent-exec isolate refresh --task <id> [--repo <path>] [--onto <ref>] [--session
 
 `--onto` defaults to `HEAD`. Internally it patch-izes the task's current diff, writes the patch to disk, recreates the worktree at the new base (same branch name, same carried gitignored dependency dirs), and re-applies the patch — left uncommitted, exactly like a worker's ordinary edits. Already on `--onto`? `status: "unchanged"`, nothing touched. A conflict is reported the same way `integrate` reports one (`status: "conflicted"`, `conflicts: [{"file", "hunks"}]`, exit 1) with the conflict markers left in the tree for inspection; the patch file survives on disk either way, so the work is recoverable even if something after the write goes wrong. Refuses to touch an integration worktree (`isolate integrate`'s target).
 
+**Adopted (external) worktrees.** A worktree created outside orchestra (for example by Orca, on its own branch name) can be registered as a task so `check --task`, `integrate --tasks`, `collect`, `diff` and `refresh` reach it by task id:
+
+```text
+agent-exec isolate adopt --task <id> --path <worktree> [--baseline <ref>] [--repo <path>] [--session <id>] [--json|--text]
+agent-exec isolate unadopt --task <id> [--repo <path>] [--session <id>]
+```
+
+`adopt` records a marker in the worktree's git dir and a baseline (default: the tree's current `HEAD`). It refuses the main worktree, an orchestra-created tree, a path that is not a worktree of the repo, and a task id that already resolves elsewhere (`exit 3`); re-adopting the same path is `exists`. The tree is never owned by orchestra: `isolate refresh` works **in place** (`git reset --hard <onto>`, `git clean -fd`, re-apply the saved patch, result carries `"in_place": true`; the directory and branch are never removed, since a live session is sitting in it), `isolate remove` (even `--force`) only unadopts and reports `unadopted`, and `isolate sweep` reports it as `external` and leaves it alone. `unadopt` removes the markers only; files and the worktree are untouched.
+
 ## 3. Competing implementations: conflict as signal
 
 When a task is high-risk, under-specified in an interesting way, or has more than one defensible approach, dispatch **N workers on the same contract in separate worktrees** and let the supervisor pick.
