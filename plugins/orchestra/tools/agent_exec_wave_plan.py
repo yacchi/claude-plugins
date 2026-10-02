@@ -12,6 +12,7 @@ the plan.json and state.json shapes this module works with.
 
 import json
 import os
+import re
 
 _VALID_CLS = ("light", "standard", "deep")
 
@@ -67,9 +68,19 @@ def load_plan(path):
     if not isinstance(raw, dict) or "packages" not in raw:
         raise PlanError("plan %s: missing required key 'packages'" % path)
 
+    rules = raw.get("rules", [])
+    if not isinstance(rules, list):
+        raise PlanError("plan rules must be a list")
+    for rule in rules:
+        if (not isinstance(rule, dict) or not isinstance(rule.get("if"), str)
+                or not isinstance(rule.get("require"), list)
+                or not all(isinstance(item, str) for item in rule["require"])):
+            raise PlanError("plan rules entries must be {'if': <glob>, 'require': [<glob>...]}")
+
     plan = {
         "preamble": [_resolve(p, base_dir) for p in raw.get("preamble", [])],
         "external_done": list(raw.get("external_done", [])),
+        "rules": [{"if": rule["if"], "require": list(rule["require"])} for rule in rules],
         "packages": [],
     }
 
@@ -181,6 +192,40 @@ def overlaps(files_a, files_b):
     stems_a = [stem(p) for p in files_a]
     stems_b = [stem(p) for p in files_b]
     return any(_stem_overlap(a, b) for a in stems_a for b in stems_b)
+
+
+_DELETION_WORDS = re.compile(r"削除|撤去|取り除|外す|remove|delete|drop|deprecat", re.IGNORECASE)
+
+
+def lint_plan(plan):
+    """Return non-blocking ownership warnings for a normalized plan."""
+    warnings = []
+    for pkg in plan.get("packages", []):
+        owned = pkg.get("files_owned", [])
+        try:
+            with open(pkg.get("spec", "")) as fh:
+                spec_text = fh.read()
+        except (OSError, TypeError, ValueError):
+            spec_text = None
+        if (spec_text is not None and _DELETION_WORDS.search(spec_text)
+                and not any(any(ch in path for ch in "*?[") for path in owned)):
+            warnings.append({
+                "pkg": pkg.get("id"),
+                "message": "deletes code but owns only literal paths; leftover references "
+                           "(tests, other features) will be out of reach — consider a glob",
+            })
+        for rule in plan.get("rules", []):
+            if not overlaps(owned, [rule["if"]]):
+                continue
+            missing = [required for required in rule["require"]
+                       if not overlaps(owned, [required])]
+            if missing:
+                warnings.append({
+                    "pkg": pkg.get("id"),
+                    "message": "files_owned matching %s are missing required ownership: %s"
+                               % (rule["if"], ", ".join(missing)),
+                })
+    return warnings
 
 
 def _status_of(pkg_id, pkg_states):

@@ -40,6 +40,7 @@ IN_FLIGHT = frozenset({"implementing", "verifying", "fixing", "ready"})
 
 NEED_KINDS = (
     "escalate", "conflict", "post-integration", "self-verify", "delegate", "dispatch-error",
+    "empty-after-refresh", "scope",
 )
 _NEED_KIND_SET = frozenset(NEED_KINDS)
 
@@ -619,6 +620,41 @@ def _cmd_stop(args):
     return 0
 
 
+def _cmd_lint(args):
+    import agent_exec_wave_plan
+    plan_path = None
+    fmt = "text"
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--plan":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: wave lint: missing value for --plan\n")
+                return 2
+            plan_path = args[i + 1]
+            i += 2
+        elif tok in ("--json", "--text"):
+            fmt = tok[2:]
+            i += 1
+        else:
+            sys.stderr.write("agent-exec: wave lint: unknown argument: %s\n" % tok)
+            return 2
+    if plan_path is None:
+        sys.stderr.write("agent-exec: wave lint: --plan is required\n")
+        return 2
+    try:
+        warnings = agent_exec_wave_plan.lint_plan(agent_exec_wave_plan.load_plan(plan_path))
+    except agent_exec_wave_plan.PlanError as exc:
+        sys.stderr.write("agent-exec: wave lint: %s\n" % exc)
+        return 3
+    if fmt == "json":
+        print(json.dumps(warnings, ensure_ascii=False))
+    else:
+        for warning in warnings:
+            print("plan-warning: %s: %s" % (warning.get("pkg"), warning["message"]))
+    return 1 if warnings else 0
+
+
 def _cmd_run(args):
     # Imported here, not at module top: agent_exec_wave_run imports agent_exec,
     # and `wave status`/`stop` must keep working without it.
@@ -635,6 +671,7 @@ def _cmd_mark(args):
 _SUBCOMMANDS = {
     "status": _cmd_status,
     "stop": _cmd_stop,
+    "lint": _cmd_lint,
     "run": _cmd_run,
     "mark": _cmd_mark,
 }
@@ -643,6 +680,7 @@ _USAGE = (
     "usage: agent-exec wave status --state PATH [--json|--line|--text] [--live]\n"
     "                        [--watch SEC] [--events N]\n"
     "       agent-exec wave stop --state PATH [--reason TEXT]\n"
+    "       agent-exec wave lint --plan PATH [--json|--text]\n"
 )
 
 

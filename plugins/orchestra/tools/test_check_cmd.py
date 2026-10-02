@@ -131,7 +131,16 @@ class DefaultConfigTests(_CheckRepo):
     def test_checks_default_present_in_resolved_config(self):
         resolved, err = agent_exec.resolve_config()
         self.assertIsNone(err)
-        self.assertEqual(resolved["checks"], {"max_parallel": 2, "items": []})
+        self.assertEqual(
+            resolved["checks"],
+            {
+                "max_parallel": 2,
+                "items": [],
+                "retry_failed_alone": True,
+                "flaky_threshold": 3,
+                "ensure": [],
+            },
+        )
 
     def test_no_checks_configured_is_no_checks_status_and_exit_zero(self):
         rc, out = self._cli("--path", self.repo)
@@ -139,6 +148,34 @@ class DefaultConfigTests(_CheckRepo):
         result = json.loads(out)
         self.assertEqual(result["status"], "no-checks")
         self.assertEqual(result["checks"], [])
+
+
+class NoRetryTests(_CheckRepo):
+    _SCRIPT = (
+        "if [ -e first-ran ]; then exit 0; fi; touch first-ran; "
+        "echo ' FAIL  a.test.ts'; exit 1"
+    )
+
+    def _config(self):
+        self._write_config(
+            "checks:\n  items:\n    - name: t\n"
+            "      run: \"%s\"\n"
+            "      retry_alone: \"true # {failed}\"\n" % self._SCRIPT
+        )
+
+    def test_retry_rescues_by_default(self):
+        self._config()
+        rc, out = self._cli("--path", self.repo, "--files", "x")
+        self.assertEqual(rc, 0)
+        check = json.loads(out)["checks"][0]
+        self.assertEqual(check["status"], "pass")
+        self.assertEqual(check["flaky"], ["a.test.ts"])
+
+    def test_no_retry_flag_disables_retry(self):
+        self._config()
+        rc, out = self._cli("--path", self.repo, "--files", "x", "--no-retry")
+        self.assertEqual(rc, 1)
+        self.assertEqual(json.loads(out)["checks"][0]["status"], "fail")
 
 
 class PathModeTests(_CheckRepo):

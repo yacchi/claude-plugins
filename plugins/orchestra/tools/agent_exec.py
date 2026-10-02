@@ -262,6 +262,9 @@ DEFAULTS = {
     "checks": {
         "max_parallel": 2,
         "items": [],
+        "retry_failed_alone": True,
+        "flaky_threshold": 3,
+        "ensure": [],
     },
     # `wave run` hands a package whose route resolves to a Claude tier to an
     # interactive Claude Code session hosted by Orca (agent_exec_orca.py)
@@ -308,6 +311,9 @@ Usage:
                                   self-logs an anonymized "dispatch" telemetry
                                   record (see `agent-exec telemetry`) if
                                   telemetry is enabled in config.
+  agent-exec check (--task <id> | --path <dir>) [--since <ref>]
+                  [--files a,b,...] [--all] [--baseline] [--no-retry]
+                  [--repo <path>] [--session <id>] [--json|--text]
   agent-exec doctor [--json|--text]
                                   emit a structured readiness report covering
                                   the shim, uv, config, executors, the
@@ -586,7 +592,7 @@ Usage:
                                   state.json for its runner to notice
   agent-exec wave run --plan PLAN --state PATH --into ID [--repo P]
                   [--max-in-flight N] [--gate CMD] [--full CMD]
-                  [--full-every N] [--full-timeout SEC] [--after-green CMD]
+                  [--full-every N] [--full-timeout SEC] [--on-green CMD]
                   [--notify-cmd CMD] [--stop-at EPOCH] [--max-waves N]
                   [--max-packages N] [--run-id ID] [--json|--text]
                                   the deterministic outer loop: per wave,
@@ -6615,6 +6621,15 @@ def cooldown_state_path(cfg):
     return os.path.abspath(os.path.expanduser(path))
 
 
+def active_cooldown_expiries(cfg, now):
+    """Return active executor cooldown expiry times, failing safe."""
+    try:
+        return dict((name, entry["until"]) for name, entry in active_cooldowns(
+            load_cooldown_state(cooldown_state_path(cfg)), now).items())
+    except (OSError, TypeError, ValueError):
+        return {}
+
+
 def load_cooldown_state(path):
     """Best-effort state load; a broken file must never block routing."""
     try:
@@ -8722,7 +8737,7 @@ def _parse_check_args(args):
     opts = {
         "task": None, "path": None, "since": None, "files": None,
         "all": False, "baseline": False, "repo": os.getcwd(), "session": None,
-        "json": False, "text": False,
+        "json": False, "text": False, "no-retry": False,
     }
     seen = set()
     value_flags = {
@@ -8741,7 +8756,7 @@ def _parse_check_args(args):
             opts[value_flags[tok]] = args[i + 1]
             i += 2
             continue
-        if tok in ("--all", "--baseline", "--json", "--text"):
+        if tok in ("--all", "--baseline", "--json", "--text", "--no-retry"):
             seen.add(tok)
             opts[tok[2:]] = True
             i += 1
@@ -8820,6 +8835,8 @@ def cmd_check(args):
     checks_cfg = resolved.get("checks") or {}
     items = checks_cfg.get("items") or []
     max_parallel = checks_cfg.get("max_parallel", 2)
+    retry_failed_alone = checks_cfg.get("retry_failed_alone", True) and not opts["no-retry"]
+    ensure = checks_cfg.get("ensure") or []
     # Sibling of the token/cooldown state dir, same as `_token_dir_from_cfg`.
     slot_dir = os.path.join(
         os.path.dirname(os.path.abspath(_ledger_dir_from_cfg(resolved))), "check-slots"
@@ -8830,14 +8847,24 @@ def cmd_check(args):
         return 0
 
     check_results = agent_exec_checks.run_checks(
-        items, tree, files, slot_dir, max_parallel=max_parallel, run_all=opts["all"]
+        items, tree, files, slot_dir, max_parallel=max_parallel, run_all=opts["all"],
+        ensure=ensure, retry_failed_alone=retry_failed_alone,
     )
 
     if opts["baseline"]:
         baseline_ref = (
             _read_baseline(tree) if opts["task"] is not None else (opts["since"] or "HEAD")
         )
-        failed = [(i, items[i]) for i, r in enumerate(check_results) if r["status"] == "fail"]
+        failed = []
+        unused_items = list(enumerate(items))
+        for result_index, result in enumerate(check_results):
+            if result["status"] != "fail":
+                continue
+            for pos, (i, item) in enumerate(unused_items):
+                if item.get("name") == result.get("name"):
+                    failed.append((result_index, item))
+                    unused_items.pop(pos)
+                    break
         if baseline_ref and failed:
             tmp_root = tempfile.mkdtemp(prefix="orchestra-check-baseline-")
             base_tree = os.path.join(tmp_root, "wt")

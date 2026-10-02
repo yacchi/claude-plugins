@@ -25,17 +25,20 @@ runs in an Orca-hosted Claude session instead when Orca is available
 import concurrent.futures
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
 import threading
 import time
+import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent_exec  # noqa: E402
 import agent_exec_checks  # noqa: E402
 import agent_exec_orca  # noqa: E402
+import agent_exec_ui  # noqa: E402
 import agent_exec_wave  # noqa: E402
 import agent_exec_wave_plan  # noqa: E402
 
@@ -60,6 +63,12 @@ def _agent_exec_argv():
 
 
 # --- executor interface ------------------------------------------------------
+
+
+# A repo-relative path: contains a "/", or is name.ext with a letters/digits
+# extension where name or ext has 2+ chars (so "naming." and "e.g." are not paths).
+_PATH_LIKE = re.compile(
+    r"^(?=.*(?:/|[\w-]{2,}\.[A-Za-z0-9]+$|[\w-]+\.[A-Za-z0-9]{2,}$))[\w@.+*?\[\]/-]+$")
 
 
 class CliExecutor(object):
@@ -174,7 +183,8 @@ def default_opts():
     return {
         "plan": None, "state": None, "into": None, "repo": os.getcwd(),
         "max_in_flight": 4, "gate": None, "full": None, "full_every": 1,
-        "full_timeout": None, "after_green": None, "notify_cmd": None,
+        "full_timeout": None, "on_green": None, "resume_on_reset": False,
+        "no_ui": False, "notify_cmd": None,
         "stop_at": None, "max_waves": None, "max_packages": None,
         "run_id": None, "text": False,
     }
@@ -188,13 +198,14 @@ def _first_line(text):
 
 
 class _Runner(object):
-    def __init__(self, opts, executor, clock, orca=None):
+    def __init__(self, opts, executor, clock, orca=None, sleep=time.sleep):
         self.opts = opts
         self.executor = executor
         # OrcaExecutor, or None: Claude-tier packages stay `delegate` needs.
         self.orca = orca
         self.notes = {}
         self.clock = clock
+        self.sleep = sleep
         self.state_path = os.path.abspath(opts["state"])
         self.state_dir = os.path.dirname(self.state_path)
         self.store = agent_exec_wave.StateStore(self.state_path, clock=clock)
@@ -206,6 +217,10 @@ class _Runner(object):
         self.notify_threads = []
         self.integrated_since_full = 0
         self.stdout = None
+        self.refresh_info = {}
+        self.answers = {}
+        self.unavailable = False
+        self.green_path = os.path.join(self.state_dir, "green-tree")
 
     # -- helpers ------------------------------------------------------------
 
@@ -282,6 +297,19 @@ class _Runner(object):
 
     def init(self):
         self.plan = agent_exec_wave_plan.load_plan(self.opts["plan"])
+        overrides_path = os.path.join(self.state_dir, "plan-overrides.json")
+        try:
+            with open(overrides_path, encoding="utf-8") as fh:
+                overrides = json.load(fh)
+        except (OSError, ValueError):
+            overrides = {}
+        for pkg in self.plan["packages"]:
+            extra = ((overrides.get(pkg["id"], {}) if isinstance(overrides, dict) else {})
+                     .get("files_owned_add") or [])
+            for glob in extra:
+                if glob not in pkg["files_owned"]:
+                    pkg["files_owned"].append(glob)
+        plan_warnings = agent_exec_wave_plan.lint_plan(self.plan)
         self.pkgs = dict((p["id"], p) for p in self.plan["packages"])
         self.root = agent_exec.repo_root(self.opts["repo"])
         if self.root is None:
@@ -289,6 +317,10 @@ class _Runner(object):
         self.into = agent_exec.sanitize_task_id(self.opts["into"])
         self.store.init(os.path.abspath(self.opts["plan"]),
                         [p["id"] for p in self.plan["packages"]], self.into)
+        for warning in plan_warnings:
+            self._emit("plan-warning", warning.get("pkg"), {"message": warning["message"]})
+            sys.stderr.write("plan-warning: %s: %s\n"
+                             % (warning.get("pkg"), warning["message"]))
         try:
             agent_exec_wave.register_wave(
                 self.state_path, self.opts["plan"], self.root, self.into, clock=self.clock)
@@ -375,9 +407,11 @@ class _Runner(object):
             self._need(pid, "dispatch-error", str(exc))
             return False, ""
         if not entry:
+            self.refresh_info[pid] = {"fresh": True, "carried": False, "patch_file": None}
             return True, ""
         baseline = agent_exec._read_baseline(entry.get("path"))
         if not baseline or baseline == head:
+            self.refresh_info[pid] = {"fresh": False, "carried": False, "patch_file": None}
             return True, ""
         rc, _ = agent_exec._git(self.int_path, "merge-base", "--is-ancestor", head, baseline)
         if rc == 0:
@@ -394,11 +428,16 @@ class _Runner(object):
         if status == "error":
             self._need(pid, "dispatch-error", refreshed.get("note") or "refresh failed")
             return False, ""
-        if status != "ok":
+        if status not in ("ok", "conflicted-resolved"):
             return True, ""
         old = refreshed.get("old_baseline")
         rc, out = agent_exec._git(self.int_path, "diff", "--name-only", "%s..%s" % (old, head))
         changed = [f for f in out.splitlines() if f.strip()] if rc == 0 else []
+        self.refresh_info[pid] = {
+            "fresh": True,
+            "carried": bool(refreshed.get("patch_file") and refreshed.get("files")),
+            "patch_file": refreshed.get("patch_file"),
+        }
         note = (
             "Your worktree was moved onto the current integration HEAD (%s); your "
             "earlier changes were re-applied on top. Files other packages changed "
@@ -571,14 +610,19 @@ class _Runner(object):
             return False
         if status == "_stop":
             self.store.set_status(pid, "pending", detail=result["reason"])
-            self._stop(result["reason"])
+            if (self.opts.get("resume_on_reset")
+                    and result["reason"].startswith("executor unavailable")):
+                self.unavailable = True
+            else:
+                self._stop(result["reason"])
             return False
         isolation = result.get("isolation") or {}
         tree = isolation.get("workdir") or isolation.get("path")
         if status == "ok":
             answer = result.get("answer") or ""
+            self.answers[pid] = answer
             if _first_line(answer).startswith("ESCALATE"):
-                self._need(pid, "escalate", answer)
+                self._escalate_need(pid, answer)
                 return False
             if not isolation.get("isolate") or not tree:
                 self._need(pid, "dispatch-error", "dispatch did not run isolated: %s"
@@ -603,6 +647,45 @@ class _Runner(object):
             ensure_ascii=False)
         self._need(pid, "dispatch-error", agent_exec_checks.failure_excerpt(str(detail)))
         return False
+
+    def _escalate_need(self, pid, answer):
+        detail = answer
+        carry_path = os.path.join(self.state_dir, "carry", pid + ".carry.md")
+        try:
+            with open(carry_path, encoding="utf-8") as fh:
+                carry = fh.read()
+        except OSError:
+            carry = ""
+        if carry:
+            detail += "\n--- carry ---\n" + carry
+        owned = self.pkgs[pid].get("files_owned") or []
+        paths = []
+        for line in detail.splitlines():
+            for token in line.replace(",", " ").split():
+                path = token.strip("`'\"()[]{}<>:;,!?").rstrip(".")
+                if not path or os.path.isabs(path) or path.startswith("-"):
+                    continue
+                if not _PATH_LIKE.match(path):
+                    continue
+                if not any(agent_exec_checks.glob_match(glob, path) for glob in owned):
+                    if path not in paths:
+                        paths.append(path)
+        if paths:
+            detail += "\n--- outside files_owned ---\n" + "\n".join(paths)
+            self._need(pid, "scope", detail)
+        else:
+            self._need(pid, "escalate", detail)
+
+    def _empty_after_refresh(self, pid, answer):
+        info = self.refresh_info.get(pid) or {}
+        if not info.get("fresh") or not info.get("carried"):
+            return False
+        if self._tree_files(pid) != []:
+            return False
+        patch_file = info.get("patch_file") or "(patch file unavailable)"
+        self._need(pid, "empty-after-refresh",
+                   "%s\n%s" % ("\n".join((answer or "").splitlines()[:10]), patch_file))
+        return True
 
     def _check(self, pid):
         args = ["--task", self._task(pid), "--baseline", "--json", "--repo", self.root]
@@ -637,8 +720,13 @@ class _Runner(object):
     def _verify(self, pid):
         for round_no in (0, 1):
             check = self._check(pid)
+            if check.get("flaky"):
+                self._emit("flaky", pid, {"check": "self-verify",
+                                          "files": check["flaky"]})
             status = check.get("status")
             if status in _PASSING_CHECK:
+                if self._empty_after_refresh(pid, self.answers.get(pid, "")):
+                    return
                 self.store.set_status(pid, "ready", files_changed=check.get("files"))
                 return
             if status != "fail":
@@ -646,6 +734,9 @@ class _Runner(object):
                 return
             failures = self._failure_text(check)
             if round_no == 1:
+                if _first_line(failures).startswith("ESCALATE"):
+                    self._escalate_need(pid, failures)
+                    return
                 self._need(pid, "self-verify", failures)
                 return
             correction = self._correction_path(pid)
@@ -674,7 +765,9 @@ class _Runner(object):
                 self.notes[pid] = refresh_note
                 self._write_context(pid, refresh_note)
                 self.store.set_status(pid, "implementing")
-                token, result = self._dispatch(pid, self._full_files(pid), no_resume=False)
+                token, result = self._dispatch(
+                    pid, self._full_files(pid),
+                    no_resume=bool((self.refresh_info.get(pid) or {}).get("fresh")))
                 if not self._handle(pid, token, result):
                     return
             self._verify(pid)
@@ -765,6 +858,78 @@ class _Runner(object):
     def _run_cmd(self, cmd, timeout):
         return agent_exec._run_verify_cmd(self.int_path, cmd, timeout)
 
+    def _green_tree(self, sha):
+        if not sha:
+            return False
+        if not os.path.isdir(self.green_path):
+            os.makedirs(os.path.dirname(self.green_path), exist_ok=True)
+            rc, _ = agent_exec._git(
+                self.root, "worktree", "add", "--detach", self.green_path, sha)
+            if rc != 0:
+                return False
+            for rel in agent_exec.detect_carry_dirs(self.root):
+                agent_exec.copy_tree_fast(
+                    os.path.join(self.root, rel), os.path.join(self.green_path, rel))
+        else:
+            rc, _ = agent_exec._git(
+                self.green_path, "checkout", "-q", "--detach", sha)
+            if rc != 0:
+                return False
+            agent_exec._git(self.green_path, "clean", "-fdq")
+        return True
+
+    def _on_green(self, sha):
+        command = self.opts.get("on_green")
+        if not command:
+            return
+        if not self._green_tree(sha):
+            self._emit("on-green", None, {"sha": sha, "exit": None, "seconds": 0.0})
+            return
+        started = time.time()
+        command = command.replace("{sha}", sha)
+        try:
+            proc = subprocess.run(
+                ["/bin/sh", "-c", command], cwd=self.green_path,
+                env=dict(os.environ, WAVE_GREEN_SHA=sha),
+                capture_output=True, text=True,
+                timeout=self.opts.get("full_timeout"))
+            exit_code = proc.returncode
+            output = (proc.stdout or "") + (proc.stderr or "")
+        except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+            exit_code, output = None, str(exc)
+        agent_exec._git(self.green_path, "reset", "-q", "--hard", "HEAD")
+        agent_exec._git(self.green_path, "clean", "-fdq")
+        self._emit("on-green", None, {
+            "sha": sha, "exit": exit_code, "seconds": time.time() - started,
+        })
+
+    def _wait_for_reset(self):
+        now = self.clock()
+        until = now + 300
+        try:
+            cfg, error = agent_exec.resolve_config()
+            if not error:
+                expiries = agent_exec.active_cooldown_expiries(cfg, now)
+                values = [expiries[name] for name in self.exhausted if name in expiries]
+                if values:
+                    until = min(values)
+        except (OSError, TypeError, ValueError):
+            pass
+        stop_at = self.opts.get("stop_at")
+        if stop_at is not None and stop_at <= until:
+            self._stop("stop-at reached")
+            return False
+        self._emit("resume-wait", None, {"until": until, "reason": "executor unavailable"})
+        while self.clock() < until:
+            reason = self._stop_check()
+            if reason is not None:
+                self._stop(reason)
+                return False
+            self.sleep(min(30, max(0, until - self.clock())))
+        self.exhausted.clear()
+        self.unavailable = False
+        return True
+
     def _full(self):
         self.integrated_since_full = 0
         self._emit("full-start", None, {})
@@ -778,13 +943,7 @@ class _Runner(object):
         if res["status"] != "pass":
             self._stop("full verification red")
             return
-        if self.opts.get("after_green"):
-            ag = self._run_cmd(self.opts["after_green"], None)
-            if ag.get("dirtied"):
-                self._emit("integration-dirty", None, {
-                    "files": ag["dirtied"], "after": "after-green"})
-            # _run_verify_cmd only excerpts failures; that is what matters here.
-            self._emit("after-green", None, {"exit": ag["exit"]})
+        self._on_green(self._int_head())
 
     # -- the loop -------------------------------------------------------------
 
@@ -827,6 +986,10 @@ class _Runner(object):
                     for future in futures:
                         future.result()
 
+            if self.unavailable:
+                if not self._wait_for_reset():
+                    break
+                continue
             self._integrate()
             full_every = self.opts.get("full_every") or 1
             if (self.opts.get("full") and self.integrated_since_full
@@ -847,6 +1010,23 @@ class _Runner(object):
         def with_status(status):
             return [pid for pid in order if pkg_states.get(pid, {}).get("status") == status]
 
+        threshold = 3
+        try:
+            resolved, _err = agent_exec.resolve_config()
+            threshold = int(((resolved or {}).get("checks") or {}).get(
+                "flaky_threshold", threshold))
+        except (ValueError, TypeError, AttributeError):
+            pass
+        flaky = {}
+        for event in agent_exec_wave.read_events(self.state_path, None):
+            if event.get("event") != "flaky":
+                continue
+            try:
+                files = json.loads(event.get("detail") or "{}").get("files") or []
+            except ValueError:
+                files = []
+            for path in files:
+                flaky[path] = flaky.get(path, 0) + 1
         return {
             "status": "stopped" if self.stop_reason is not None else "done",
             "reason": self.stop_reason,
@@ -856,6 +1036,10 @@ class _Runner(object):
                       for n in state.get("needs") or []],
             "pending": [pid for pid in with_status("pending") if pid not in blocked_ids],
             "blocked": [pid for pid in with_status("pending") if pid in blocked_ids],
+            "flaky_tests": [{"file": path, "count": count}
+                            for path, count in sorted(
+                                flaky.items(), key=lambda item: (-item[1], item[0]))
+                            if count >= threshold],
         }
 
     def join_notifications(self):
@@ -865,7 +1049,7 @@ class _Runner(object):
             thread.join(_NOTIFY_TIMEOUT + 5)
 
 
-def run_wave(opts, executor=None, clock=time.time, orca=None):
+def run_wave(opts, executor=None, clock=time.time, orca=None, sleep=time.sleep):
     """Drive the plan to done or stopped; returns the end report dict.
 
     A report with status "error" (plus "reason") means the loop never
@@ -879,7 +1063,7 @@ def run_wave(opts, executor=None, clock=time.time, orca=None):
     merged.update(opts)
     if orca is None and executor is None:
         orca = agent_exec_orca.OrcaExecutor.from_config()
-    runner = _Runner(merged, executor or CliExecutor(), clock, orca=orca)
+    runner = _Runner(merged, executor or CliExecutor(), clock, orca=orca, sleep=sleep)
     try:
         runner.init()
     except agent_exec_wave_plan.PlanError as exc:
@@ -890,6 +1074,13 @@ def run_wave(opts, executor=None, clock=time.time, orca=None):
     previous_stdout = sys.stdout
     runner.stdout = _ThreadStdout(previous_stdout)
     sys.stdout = runner.stdout
+    if not merged.get("no_ui") and os.environ.get("ORCHESTRA_WAVE_NO_UI") != "1":
+        try:
+            url = agent_exec_ui.start_or_reuse()["url"]
+            sys.stderr.write("ui: %s\n" % url)
+            runner._emit("ui", None, {"url": url})
+        except Exception as exc:
+            sys.stderr.write("warning: could not start ui: %s\n" % exc)
     try:
         runner.loop()
     finally:
@@ -898,6 +1089,8 @@ def run_wave(opts, executor=None, clock=time.time, orca=None):
     if report["status"] == "done":
         runner._notify("done", dict(report, event="done", at=clock()))
     runner.join_notifications()
+    if report["status"] == "done" and os.path.isdir(runner.green_path):
+        agent_exec._git(runner.root, "worktree", "remove", "--force", runner.green_path)
     return report
 
 
@@ -932,13 +1125,15 @@ def format_report_text(report):
 _RUN_USAGE = (
     "usage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n"
     "                  [--max-in-flight N] [--gate CMD] [--full CMD] [--full-every N]\n"
-    "                  [--full-timeout SEC] [--after-green CMD] [--notify-cmd CMD]\n"
+    "                  [--full-timeout SEC] [--on-green CMD] [--resume-on-reset]\n"
+    "                  [--no-ui] [--notify-cmd CMD]\n"
     "                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n"
     "                  [--run-id ID] [--json|--text]\n"
 )
 
 _MARK_USAGE = (
     "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n"
+    "                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n"
     "                  (ready enters self-verifying; pending|failed are terminal handoffs)\n"
     "                  [--detail TEXT]\n"
 )
@@ -953,7 +1148,7 @@ def parse_run_args(args):
         "--repo": ("repo", str), "--max-in-flight": ("max_in_flight", int),
         "--gate": ("gate", str), "--full": ("full", str),
         "--full-every": ("full_every", int), "--full-timeout": ("full_timeout", float),
-        "--after-green": ("after_green", str), "--notify-cmd": ("notify_cmd", str),
+        "--on-green": ("on_green", str), "--notify-cmd": ("notify_cmd", str),
         "--stop-at": ("stop_at", float), "--max-waves": ("max_waves", int),
         "--max-packages": ("max_packages", int), "--run-id": ("run_id", str),
     }
@@ -975,9 +1170,14 @@ def parse_run_args(args):
             seen.add(tok)
             i += 2
             continue
-        if tok in ("--json", "--text"):
+        if tok in ("--json", "--text", "--resume-on-reset", "--no-ui"):
             seen.add(tok)
-            opts["text"] = tok == "--text"
+            if tok == "--text":
+                opts["text"] = True
+            elif tok == "--resume-on-reset":
+                opts["resume_on_reset"] = True
+            elif tok == "--no-ui":
+                opts["no_ui"] = True
             i += 1
             continue
         return None, "unknown option: %s" % tok
@@ -1015,7 +1215,10 @@ def cmd_wave_mark(args):
     pkg = None
     status = None
     detail = ""
-    value_flags = {"--state": "state", "--pkg": "pkg", "--status": "status", "--detail": "detail"}
+    widen = None
+    recheck = None
+    value_flags = {"--state": "state", "--pkg": "pkg", "--status": "status", "--detail": "detail",
+                   "--widen": "widen", "--recheck": "recheck"}
     values = {}
     i = 0
     while i < len(args):
@@ -1032,19 +1235,66 @@ def cmd_wave_mark(args):
     pkg = values.get("pkg")
     status = values.get("status")
     detail = values.get("detail", "")
-    if not state_path or not pkg or not status:
+    widen = values.get("widen")
+    recheck = values.get("recheck")
+    if widen is not None:
+        widen = [item for item in widen.split(",") if item]
+    if recheck is not None:
+        recheck = [item for item in recheck.split(",") if item]
+    if not state_path or (not pkg and not recheck) or (not status and widen is None and recheck is None):
         sys.stderr.write(_MARK_USAGE)
         return 2
-    if status not in ("ready", "pending", "failed"):
+    if status is not None and status not in ("ready", "pending", "failed"):
         sys.stderr.write("agent-exec: wave mark: --status must be ready|pending|failed\n")
         return 2
     if not os.path.isfile(state_path):
         sys.stderr.write("agent-exec: wave mark: no state file at %s\n" % state_path)
         return 3
     store = agent_exec_wave.StateStore(state_path)
-    if pkg not in store.load().get("packages", {}):
+    state = store.load()
+    packages = state.get("packages", {})
+    if recheck is not None:
+        if any(item not in packages for item in recheck):
+            bad = next(item for item in recheck if item not in packages)
+            sys.stderr.write("agent-exec: wave mark: unknown package: %s\n" % bad)
+            return 2
+        if any(not packages[item].get("tree")
+               or not os.path.isdir(packages[item].get("tree"))
+               for item in recheck):
+            bad = next(item for item in recheck
+                       if not packages[item].get("tree")
+                       or not os.path.isdir(packages[item].get("tree")))
+            sys.stderr.write("agent-exec: wave mark: package has no tree: %s\n" % bad)
+            return 2
+        for item in recheck:
+            store.clear_need(item)
+            store.set_status(item, "verifying", detail=detail or "marked for recheck")
+        print(json.dumps({"pkg": recheck, "status": "verifying"}, ensure_ascii=False))
+        return 0
+    if not pkg or pkg not in packages:
         sys.stderr.write("agent-exec: wave mark: unknown package: %s\n" % pkg)
-        return 3
+        return 2
+    if widen is not None:
+        overrides_path = os.path.join(os.path.dirname(os.path.abspath(state_path)),
+                                      "plan-overrides.json")
+        try:
+            with open(overrides_path, encoding="utf-8") as fh:
+                overrides = json.load(fh)
+        except (OSError, ValueError):
+            overrides = {}
+        entry = overrides.setdefault(pkg, {})
+        owned = entry.setdefault("files_owned_add", [])
+        for glob in widen:
+            if glob not in owned:
+                owned.append(glob)
+        with open(overrides_path, "w", encoding="utf-8") as fh:
+            json.dump(overrides, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        store.clear_need(pkg)
+        store.set_status(pkg, "pending", detail=detail or "widened ownership")
+        print(json.dumps({"pkg": pkg, "status": "pending", "widen": widen},
+                         ensure_ascii=False))
+        return 0
     stored_status = "verifying" if status == "ready" else status
     store.set_status(pkg, stored_status, detail=detail or "marked by the instructor")
     store.clear_need(pkg)

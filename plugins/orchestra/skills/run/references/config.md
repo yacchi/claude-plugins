@@ -315,7 +315,7 @@ No workflow run id is inferred from the environment, a transcript path, or direc
 
 ## 4. Config-driven checks (`agent-exec check`)
 
-`checks` participates in the same four-layer deep merge as everything else, with one exception: `checks.items` is a **list**, so a higher layer replaces it wholesale rather than merging entry-by-entry — a project's own check list does not silently inherit a user-level one it never asked for, and there is no sane per-name merge for a list of shell commands anyway. Defaults: `checks.max_parallel: 2`, `checks.items: []`.
+`checks` participates in the same four-layer deep merge as everything else, with one exception: `checks.items` is a **list**, so a higher layer replaces it wholesale rather than merging entry-by-entry — a project's own check list does not silently inherit a user-level one it never asked for, and there is no sane per-name merge for a list of shell commands anyway. Defaults: `checks.max_parallel: 2`, `checks.items: []`, `checks.retry_failed_alone: true`, `checks.flaky_threshold: 3`, and `checks.ensure: []`.
 
 Each entry in `items` is:
 
@@ -323,8 +323,14 @@ Each entry in `items` is:
 checks:
   max_parallel: 2          # concurrent check commands machine-wide, across every
                             # agent-exec process; 0 = unlimited
+  retry_failed_alone: true # retry failed tests using only their reported files
+  flaky_threshold: 3       # wave-runner threshold for repeated flaky checks
+  ensure:
+    - exists: "web/node_modules"
+      run: "pnpm install --frozen-lockfile"
   items:
     - name: lint
+      phase: lint           # prepare, lint, type, test, or heavy; default test
       paths: ["**/*.ts", "**/*.tsx"]   # optional glob list; omitted = always runs
       run: "pnpm exec biome check {files}"
       fix: "pnpm exec biome check --write {files}"   # optional; runs first,
@@ -332,13 +338,14 @@ checks:
       cwd: "web"             # optional, relative to the tree root, default "."
       timeout: 900           # optional seconds, default 1800
       junit: "reports/junit.xml"   # optional, relative to `cwd`
+      retry_alone: "pnpm test -- {failed}"  # optional isolated retry template
 ```
 
 `paths` globs are matched against changed paths, POSIX-relative to the tree root: `**` stands for zero or more whole directories (`**/*.ts` matches both `a.ts` and `x/y/a.ts`), while `*`/`?` stay within one path segment (`src/*.ts` does not match `src/x/a.ts`). A check with no `paths` always runs, independent of what changed.
 
 `{files}` in `run`/`fix` expands to the matched, still-existing files, re-expressed relative to `cwd` (a file outside `cwd` is dropped), each shell-quoted and space-joined. If `run` contains `{files}` and none remain after that filtering, the check is reported `skipped` with reason `no matching files` — it is never run with an empty argument list.
 
-Checks run in config order and stop at the first failure unless `--all` is given; unreached checks are reported `skipped` with reason `not run after earlier failure`. `fix` (when present) always runs immediately before `run`, in the same `cwd`, with the same `{files}` substitution.
+Checks run by phase (`prepare`, `lint`, `type`, `test`, `heavy`) and then config order, stopping at the first failure unless `--all` is given; unreached checks are reported `skipped` with reason `not run after earlier failure`. `fix` (when present) always runs immediately before `run`, in the same `cwd`, with the same `{files}` substitution. An `ensure` command runs only when its `exists` path is missing, before items; a failed ensure is named `ensure:<exists>`. Failed checks can be retried alone: `retry_alone` uses `{failed}`, or a `{files}` check run is adapted automatically. A successful retry reports `flaky`; `--no-retry` disables this behavior.
 
 Both `fix` and `run` execute via `/bin/sh -c` in their own process group; on `timeout` the whole group is killed, not just the shell, so a backgrounded child cannot outlive the check. Before each `fix`/`run` command, agent-exec acquires one of `max_parallel` concurrency slots (lock files under the same state directory as the token/cooldown stores, polled every 0.5s); `max_parallel: 0` means unlimited, no slot is acquired at all. This bounds how many check subprocesses run at once *across every `agent-exec check` invocation on the machine*, not just within one call.
 
@@ -369,4 +376,3 @@ orca:
 ```
 
 `enabled` accepts YAML booleans or the strings `auto`/`true`/`false`; anything else means `auto`. `{model}` in `command` is replaced by the route's model, else `models.<cls>`. Without Orca, or with `enabled: false`, `wave run` behaves exactly as before: the package lands on the needs list as `delegate`. The run-time behaviour is described in `programme.md` §6 ("Orca sessions").
-

@@ -719,6 +719,23 @@ def _live_info():
     return None
 
 
+def start_or_reuse(idle_minutes=IDLE_MINUTES_DEFAULT):
+    """Start the dashboard if needed and return its live connection info."""
+    info = _live_info()
+    reused = info is not None
+    if info is None:
+        _spawn_server(idle_minutes)
+        deadline = time.time() + START_WAIT_SECONDS
+        while time.time() < deadline:
+            info = _live_info()
+            if info:
+                break
+            time.sleep(0.1)
+    if info is None:
+        raise RuntimeError("server did not start (see %s)" % log_path())
+    return {"url": _url(info), "pid": info["pid"], "reused": reused}
+
+
 def _spawn_server(idle_minutes):
     path = log_path()
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -803,24 +820,16 @@ def cmd_ui(args):
             print("stopped" if stopped else "not running")
         return 0
 
-    info = _live_info()
-    reused = info is not None
-    if info is None:
-        _spawn_server(opts["idle"])
-        deadline = time.time() + START_WAIT_SECONDS
-        while time.time() < deadline:
-            info = _live_info()
-            if info:
-                break
-            time.sleep(0.1)
-        if info is None:
-            sys.stderr.write("agent-exec ui: server did not start (see %s)\n" % log_path())
-            return 1
-    url = _url(info)
+    try:
+        info = start_or_reuse(opts["idle"])
+    except RuntimeError as exc:
+        sys.stderr.write("agent-exec ui: %s\n" % exc)
+        return 1
+    url = info["url"]
     if opts["open"]:
         _open_url(url)
     if opts["json"]:
-        print(json.dumps({"url": url, "pid": info["pid"], "reused": reused}))
+        print(json.dumps(info))
     else:
         print(url)
     return 0
@@ -930,7 +939,7 @@ var EVENT_STYLE = [
   [/^dispatch-/, "▶", "e-run"], [/^check-/, "☑", "e-run"],
   [/^integrate-/, "⇄", "e-run"], [/^verify-/, "✔", "e-run"],
   [/^bisect-probe$/, "⌕", "e-warn"], [/^revert$/, "↺", "e-warn"],
-  [/^full-/, "▣", "e-run"], [/^after-green$/, "✨", "e-ok"]
+  [/^full-/, "▣", "e-run"], [/^on-green$/, "✨", "e-ok"]
 ];
 function eventLine(ev) {
   var style = null;

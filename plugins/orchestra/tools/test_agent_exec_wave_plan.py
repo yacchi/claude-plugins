@@ -173,6 +173,27 @@ class LoadPlanValidationTests(unittest.TestCase):
         self.assertTrue(os.path.isabs(plan["preamble"][0]))
         self.assertTrue(os.path.isfile(plan["preamble"][0]))
 
+    def test_rules_are_loaded(self):
+        pkg = self.fx.pkg("CORE-1", files_owned=["src/**"])
+        path = self.fx.write_plan([pkg])
+        with open(path) as f:
+            raw = json.load(f)
+        raw["rules"] = [{"if": "src/**", "require": ["tests/**"]}]
+        with open(path, "w") as f:
+            json.dump(raw, f)
+        self.assertEqual(wp.load_plan(path)["rules"], raw["rules"])
+
+    def test_invalid_rules_shape(self):
+        pkg = self.fx.pkg("CORE-1")
+        path = self.fx.write_plan([pkg])
+        with open(path) as f:
+            raw = json.load(f)
+        raw["rules"] = [{"if": "src/**", "require": "tests/**"}]
+        with open(path, "w") as f:
+            json.dump(raw, f)
+        with self.assertRaises(wp.PlanError):
+            wp.load_plan(path)
+
 
 class StemOverlapTests(unittest.TestCase):
     def test_stem_glob_star(self):
@@ -207,6 +228,62 @@ class StemOverlapTests(unittest.TestCase):
 
     def test_overlap_equal_stem(self):
         self.assertTrue(wp.overlaps(["src/a.ts"], ["src/a.ts"]))
+
+
+class PlanLintTests(unittest.TestCase):
+    def test_deletion_literal_and_glob_ownership(self):
+        plan = {
+            "packages": [
+                {"id": "DEL", "spec": self._spec("remove this\n"), "files_owned": ["src/a.py"]},
+                {"id": "GLOB", "spec": self._spec("delete this\n"), "files_owned": ["src/**"]},
+            ],
+            "rules": [],
+        }
+        warnings = wp.lint_plan(plan)
+        self.assertEqual([w["pkg"] for w in warnings], ["DEL"])
+        self.assertIn("owns only literal paths", warnings[0]["message"])
+
+    def test_deletion_english_and_japanese_positive_negative(self):
+        plan = {
+            "packages": [
+                {"id": "JP", "spec": self._spec("機能を削除する\n"), "files_owned": ["a"]},
+                {"id": "EN", "spec": self._spec("deprecate this\n"), "files_owned": ["b", "c"]},
+                {"id": "OK", "spec": self._spec("remove this\n"), "files_owned": ["d/*"]},
+            ],
+            "rules": [],
+        }
+        self.assertEqual([w["pkg"] for w in wp.lint_plan(plan)], ["JP", "EN"])
+
+    def test_unreadable_spec_is_ignored(self):
+        plan = {"packages": [{"id": "X", "spec": "/no/such/spec", "files_owned": ["a"]}], "rules": []}
+        self.assertEqual(wp.lint_plan(plan), [])
+
+    def test_non_utf8_spec_is_ignored(self):
+        fd, path = tempfile.mkstemp()
+        with os.fdopen(fd, "wb") as f:
+            f.write(b"\xff\xfe delete")
+        self.addCleanup(os.remove, path)
+        plan = {"packages": [{"id": "X", "spec": path, "files_owned": ["a"]}], "rules": []}
+        self.assertEqual(wp.lint_plan(plan), [])
+
+    def test_project_rule_missing_and_satisfied(self):
+        plan = {
+            "packages": [
+                {"id": "BAD", "spec": self._spec("ok\n"), "files_owned": ["src/a.py"]},
+                {"id": "OK", "spec": self._spec("ok\n"), "files_owned": ["src/b.py", "tests/**"]},
+            ],
+            "rules": [{"if": "src/**", "require": ["tests/**"]}],
+        }
+        warnings = wp.lint_plan(plan)
+        self.assertEqual([w["pkg"] for w in warnings], ["BAD"])
+        self.assertIn("tests/**", warnings[0]["message"])
+
+    def _spec(self, text):
+        import tempfile
+        fd, path = tempfile.mkstemp()
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        return path
 
 
 def _pkgs(*specs):

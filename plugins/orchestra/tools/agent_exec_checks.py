@@ -31,6 +31,7 @@ _MARKUP_RE = re.compile(r"^\s*(?:</?[A-Za-z][\w:-]*(?:\s|/?>|$)|/?>$|[\w:-]+=\"[
 _MARKUP_RUN = 4
 _CONTEXT_AFTER = 3
 _TAIL_LINES = 30
+_PHASE_ORDER = {"prepare": 0, "lint": 1, "type": 2, "test": 3, "heavy": 4}
 
 
 def _collapse_markup(lines):
@@ -93,6 +94,30 @@ def failure_excerpt(text, limit=4000):
     else:
         body = "\n".join(lines[-(_TAIL_LINES * 2):])
     return _clip(body, limit)
+
+
+def parse_failed_files(output):
+    """Return ordered, unique test files named by common test runners."""
+    found = []
+    seen = set()
+    clean = _ANSI_RE.sub("", output or "")
+    patterns = (
+        re.compile(r"^\s*FAIL\s+(.+?)(?:\s+>\s+|\s+|$)"),
+        re.compile(r"^\s*FAILED\s+(\S+?)(?:::[^\s]+)(?:\s|$)"),
+    )
+    for line in clean.splitlines():
+        match = None
+        for pattern in patterns:
+            match = pattern.match(line)
+            if match:
+                break
+        if not match:
+            continue
+        path = match.group(1).strip()
+        if path not in seen:
+            seen.add(path)
+            found.append(path)
+    return found
 
 
 # --- config-driven check runner ----------------------------------------------
@@ -236,6 +261,46 @@ def _run_shell(command, cwd, timeout, slot_dir, max_parallel):
         _release_slot(handle)
 
 
+def rerun_failed_alone(output, template, cwd, slot_dir, max_parallel, timeout):
+    """Re-run parsed failing files while reserving every available slot."""
+    failed = parse_failed_files(output)
+    if not failed:
+        return {"status": "skipped", "failed": [], "excerpt": ""}
+    command = template.replace("{failed}", _quote_files(failed))
+    handles = []
+    try:
+        if max_parallel:
+            while True:
+                candidate = []
+                os.makedirs(slot_dir, exist_ok=True)
+                for n in range(max_parallel):
+                    handle = open(os.path.join(slot_dir, "slot-%d.lock" % n), "a+")
+                    try:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        candidate.append(handle)
+                    except OSError:
+                        handle.close()
+                        break
+                if len(candidate) == max_parallel:
+                    handles = candidate
+                    break
+                for handle in candidate:
+                    _release_slot(handle)
+                time.sleep(0.5)
+        exit_code, stdout, stderr, timed_out, _ = _run_shell(
+            command, cwd, timeout, slot_dir, 0
+        )
+        passed = exit_code == 0 and not timed_out
+        return {
+            "status": "pass" if passed else "fail",
+            "failed": failed,
+            "excerpt": "" if passed else failure_excerpt(stdout + stderr),
+        }
+    finally:
+        for handle in reversed(handles):
+            _release_slot(handle)
+
+
 def _junit_failure_lines(path):
     """`classname > name: <first line of message>` per failing/erroring
     testcase, or None if `path` does not exist or does not parse as JUnit XML.
@@ -300,6 +365,11 @@ def run_check(item, tree, files, slot_dir, max_parallel=2, on_event=None):
     `on_event`, when callable, gets `check-start` / `check-end` dicts around a
     check that actually runs (never for `skipped`); its exceptions are ignored.
     """
+    return _run_check_raw(item, tree, files, slot_dir, max_parallel, on_event)[0]
+
+
+def _run_check_raw(item, tree, files, slot_dir, max_parallel=2, on_event=None):
+    """`run_check` plus the unclipped combined output, for retry parsing."""
     name = item["name"]
     patterns = item.get("paths")
     cwd_rel = item.get("cwd") or "."
@@ -309,13 +379,13 @@ def run_check(item, tree, files, slot_dir, max_parallel=2, on_event=None):
     matched = match_files(patterns, files)
     applies = True if not patterns else bool(matched)
     if not applies:
-        return _empty_result(name, "skipped", "no matching files")
+        return _empty_result(name, "skipped", "no matching files"), ""
 
     run_template = item["run"]
     uses_files = "{files}" in run_template
     quoted = _quote_files(_files_for_command(tree, cwd_dir, matched))
     if uses_files and not quoted:
-        return _empty_result(name, "skipped", "no matching files")
+        return _empty_result(name, "skipped", "no matching files"), ""
 
     _notify(on_event, "check-start", {"name": name, "tree": tree})
     junit_rel = item.get("junit")
@@ -343,23 +413,74 @@ def run_check(item, tree, files, slot_dir, max_parallel=2, on_event=None):
     return {
         "name": name, "status": "pass" if passed else "fail", "exit": exit_code,
         "seconds": seconds, "timed_out": timed_out, "excerpt": excerpt, "reason": "",
-    }
+    }, stdout + stderr
 
 
 def run_checks(items, tree, files, slot_dir, max_parallel=2, run_all=False,
-               on_event=None):
-    """Run `items` in config order, stopping at the first failure unless
-    `run_all`. Unreached items are reported `skipped`."""
+               on_event=None, ensure=None, retry_failed_alone=True):
+    """Run checks by phase, stopping at the first failure unless `run_all`."""
+    invalid = [item for item in items
+               if item.get("phase", "test") not in _PHASE_ORDER]
+    if invalid:
+        return [_empty_result(
+            "config", "fail",
+            "invalid phase: %s" % invalid[0].get("phase"),
+        )]
+    ordered = sorted(
+        enumerate(items),
+        key=lambda pair: (_PHASE_ORDER[pair[1].get("phase", "test")], pair[0]),
+    )
     results = []
     stop = False
-    for item in items:
+    ensure = ensure or []
+    for entry in ensure:
+        exists = entry.get("exists", "")
+        if os.path.exists(os.path.join(tree, exists)):
+            continue
+        ensure_item = {
+            "name": "ensure:%s" % exists,
+            "run": entry.get("run", ""),
+            "cwd": entry.get("cwd"),
+            "timeout": entry.get("timeout"),
+        }
+        result = run_check(
+            ensure_item, tree, [], slot_dir, max_parallel=max_parallel,
+            on_event=on_event,
+        )
+        if result["status"] == "fail":
+            results.append(result)
+            if not run_all:
+                stop = True
+                break
+    if stop:
+        for _, item in ordered:
+            results.append(_empty_result(
+                item["name"], "skipped", "not run after earlier failure"
+            ))
+        return results
+    for _, item in ordered:
         if stop:
             results.append(_empty_result(
                 item["name"], "skipped", "not run after earlier failure"
             ))
             continue
-        result = run_check(item, tree, files, slot_dir, max_parallel=max_parallel,
-                           on_event=on_event)
+        result, raw_output = _run_check_raw(
+            item, tree, files, slot_dir, max_parallel=max_parallel,
+            on_event=on_event,
+        )
+        if result["status"] == "fail" and retry_failed_alone:
+            template = item.get("retry_alone")
+            if not template and "{files}" in item.get("run", ""):
+                template = item["run"].replace("{files}", "{failed}")
+            if template:
+                retry = rerun_failed_alone(
+                    raw_output, template, tree, slot_dir,
+                    max_parallel, item.get("timeout") or DEFAULT_TIMEOUT,
+                )
+                if retry["status"] == "pass":
+                    result["status"] = "pass"
+                    result["excerpt"] = ""
+                    result["flaky"] = retry["failed"]
         results.append(result)
         if result["status"] == "fail" and not run_all:
             stop = True

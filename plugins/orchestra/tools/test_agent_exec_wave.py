@@ -8,6 +8,8 @@ Run with: uv run test_agent_exec_wave.py
 """
 
 import json
+import contextlib
+import io
 import multiprocessing
 import os
 import shutil
@@ -31,6 +33,34 @@ class _StateDirCase(unittest.TestCase):
 
     def _clock(self, value):
         return lambda: value
+
+
+class LintCommandTests(_StateDirCase):
+    def test_lint_text_and_json_exit_codes(self):
+        import agent_exec_wave_plan as plan_mod
+        spec = os.path.join(self.tmp, "spec.md")
+        with open(spec, "w") as f:
+            f.write("remove old code\n")
+        plan = os.path.join(self.tmp, "plan.json")
+        with open(plan, "w") as f:
+            json.dump({"packages": [{"id": "X", "spec": spec, "cls": "light",
+                                     "files_owned": ["src/a.py"]}]}, f)
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = wave.cmd_wave(["lint", "--plan", plan, "--text"])
+        self.assertEqual(rc, 1)
+        self.assertIn("plan-warning: X:", out.getvalue())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = wave.cmd_wave(["lint", "--plan", plan, "--json"])
+        self.assertEqual(rc, 1)
+        self.assertEqual(json.loads(out.getvalue())[0]["pkg"], "X")
+        with open(spec, "w") as f:
+            f.write("nothing\n")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = wave.cmd_wave(["lint", "--plan", plan])
+        self.assertEqual(rc, 0)
 
 
 class InitTests(_StateDirCase):

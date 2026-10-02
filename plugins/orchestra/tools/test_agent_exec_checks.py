@@ -349,5 +349,191 @@ class OnEventTest(_CheckRunnerTest):
         self.assertEqual([e["event"] for e in events], ["check-start", "check-end"])
 
 
+class ParseFailedFilesTest(unittest.TestCase):
+    def test_vitest_lines(self):
+        out = " FAIL  src/a.test.ts > suite > case\n FAIL  src/b.test.ts\n"
+        self.assertEqual(
+            agent_exec_checks.parse_failed_files(out),
+            ["src/a.test.ts", "src/b.test.ts"],
+        )
+
+    def test_jest_lines_deduplicated(self):
+        out = "FAIL src/a.test.js\nFAIL src/a.test.js\nPASS src/c.test.js\n"
+        self.assertEqual(
+            agent_exec_checks.parse_failed_files(out), ["src/a.test.js"])
+
+    def test_pytest_lines(self):
+        out = (
+            "FAILED tests/test_a.py::test_x - assert 1 == 2\n"
+            "FAILED tests/test_a.py::test_y\n"
+            "FAILED tests/test_b.py::T::test_z\n"
+        )
+        self.assertEqual(
+            agent_exec_checks.parse_failed_files(out),
+            ["tests/test_a.py", "tests/test_b.py"],
+        )
+
+    def test_mixed_output_keeps_order(self):
+        out = "FAILED tests/test_a.py::t\n FAIL  web/x.test.ts > a\n"
+        self.assertEqual(
+            agent_exec_checks.parse_failed_files(out),
+            ["tests/test_a.py", "web/x.test.ts"],
+        )
+
+    def test_ansi_coloured_output(self):
+        out = "\x1b[31m FAIL \x1b[39m  src/a.test.ts > x\n\x1b[1mFAILED\x1b[0m t/test_b.py::t\n"
+        self.assertEqual(
+            agent_exec_checks.parse_failed_files(out),
+            ["src/a.test.ts", "t/test_b.py"],
+        )
+
+    def test_no_parsable_failures(self):
+        self.assertEqual(agent_exec_checks.parse_failed_files("boom\n"), [])
+        self.assertEqual(agent_exec_checks.parse_failed_files(None), [])
+
+
+class PhaseTest(_CheckRunnerTest):
+    def test_phase_order_then_config_order_is_stable(self):
+        items = [
+            {"name": "t1", "run": "true"},
+            {"name": "h", "phase": "heavy", "run": "true"},
+            {"name": "l1", "phase": "lint", "run": "true"},
+            {"name": "p", "phase": "prepare", "run": "true"},
+            {"name": "ty", "phase": "type", "run": "true"},
+            {"name": "l2", "phase": "lint", "run": "true"},
+            {"name": "t2", "phase": "test", "run": "true"},
+        ]
+        results = agent_exec_checks.run_checks(items, self.tree, [], self.slots)
+        self.assertEqual(
+            [r["name"] for r in results],
+            ["p", "l1", "l2", "ty", "t1", "t2", "h"],
+        )
+
+    def test_invalid_phase_is_a_config_failure(self):
+        results = agent_exec_checks.run_checks(
+            [{"name": "a", "phase": "bogus", "run": "true"}],
+            self.tree, [], self.slots)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["name"], "config")
+        self.assertEqual(results[0]["status"], "fail")
+        self.assertIn("bogus", results[0]["reason"])
+
+
+class EnsureTest(_CheckRunnerTest):
+    def test_runs_only_when_path_is_missing(self):
+        self._write("built/marker")
+        marker = os.path.join(self.tree, "ran.txt")
+        ensure = [
+            {"exists": "built/marker", "run": "echo present >> %s" % marker},
+            {"exists": "missing/out", "run": "echo missing >> %s" % marker},
+        ]
+        results = agent_exec_checks.run_checks(
+            [{"name": "a", "run": "true"}], self.tree, [], self.slots,
+            ensure=ensure)
+        with open(marker) as fh:
+            self.assertEqual(fh.read().split(), ["missing"])
+        self.assertEqual([r["status"] for r in results], ["pass"])
+
+    def test_failure_stops_the_run(self):
+        results = agent_exec_checks.run_checks(
+            [{"name": "a", "run": "true"}], self.tree, [], self.slots,
+            ensure=[{"exists": "nope", "run": "echo bad; exit 1"}])
+        self.assertEqual(results[0]["name"], "ensure:nope")
+        self.assertEqual(results[0]["status"], "fail")
+        self.assertEqual(results[1]["name"], "a")
+        self.assertEqual(results[1]["status"], "skipped")
+
+
+_FLAKY_SCRIPT = (
+    "if [ -e first-ran ]; then exit 0; fi; touch first-ran; "
+    "echo ' FAIL  a.test.ts > case'; exit 1"
+)
+
+
+class RetryTest(_CheckRunnerTest):
+    def test_retry_rescues_flaky_test(self):
+        item = {"name": "t", "run": _FLAKY_SCRIPT, "retry_alone": _FLAKY_SCRIPT + " # {failed}"}
+        results = agent_exec_checks.run_checks([item], self.tree, [], self.slots)
+        self.assertEqual(results[0]["status"], "pass")
+        self.assertEqual(results[0]["flaky"], ["a.test.ts"])
+        self.assertEqual(results[0]["excerpt"], "")
+
+    def test_retry_uses_run_when_it_has_files_placeholder(self):
+        self._write("a.test.ts")
+        run = "if [ -e first-ran ]; then exit 0; fi; touch first-ran; echo ' FAIL  a.test.ts'; exit 1 # {files}"
+        results = agent_exec_checks.run_checks(
+            [{"name": "t", "run": run}], self.tree, ["a.test.ts"], self.slots)
+        self.assertEqual(results[0]["status"], "pass")
+        self.assertEqual(results[0]["flaky"], ["a.test.ts"])
+
+    def test_retry_failing_again_keeps_original_excerpt(self):
+        run = "echo ' FAIL  a.test.ts > original'; exit 1"
+        item = {"name": "t", "run": run,
+                "retry_alone": "echo 'retry noise'; exit 1 # {failed}"}
+        results = agent_exec_checks.run_checks([item], self.tree, [], self.slots)
+        self.assertEqual(results[0]["status"], "fail")
+        self.assertIn("original", results[0]["excerpt"])
+        self.assertNotIn("retry noise", results[0]["excerpt"])
+        self.assertNotIn("flaky", results[0])
+
+    def test_no_retry_without_parsable_failures(self):
+        marker = os.path.join(self.tree, "retried.txt")
+        item = {"name": "t", "run": "echo boom; exit 1",
+                "retry_alone": "touch %s # {failed}" % marker}
+        results = agent_exec_checks.run_checks([item], self.tree, [], self.slots)
+        self.assertEqual(results[0]["status"], "fail")
+        self.assertFalse(os.path.exists(marker))
+
+    def test_retry_disabled(self):
+        item = {"name": "t", "run": _FLAKY_SCRIPT, "retry_alone": "true # {failed}"}
+        results = agent_exec_checks.run_checks(
+            [item], self.tree, [], self.slots, retry_failed_alone=False)
+        self.assertEqual(results[0]["status"], "fail")
+
+    def test_retry_parses_raw_output_not_the_clipped_excerpt(self):
+        lines = "".join(" FAIL  f%03d.test.ts\n" % i for i in range(400))
+        self._write("out.txt", lines)
+        item = {
+            "name": "t",
+            "run": "cat out.txt; exit 1",
+            "retry_alone": "printf '%s\\n' {failed} > args.txt # x",
+        }
+        results = agent_exec_checks.run_checks([item], self.tree, [], self.slots)
+        self.assertEqual(results[0]["status"], "pass")
+        self.assertEqual(len(results[0]["flaky"]), 400)
+        self.assertIn("f399.test.ts", results[0]["flaky"])
+
+    def test_rerun_holds_all_slots(self):
+        import fcntl
+        import threading
+
+        os.makedirs(self.slots, exist_ok=True)
+        handle = open(os.path.join(self.slots, "slot-0.lock"), "a+")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        done = threading.Event()
+        out = {}
+
+        def worker():
+            out["r"] = agent_exec_checks.rerun_failed_alone(
+                " FAIL  a.test.ts\n", "true # {failed}", self.tree,
+                self.slots, 2, 10)
+            done.set()
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        try:
+            self.assertFalse(done.wait(0.8))
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
+        thread.join(timeout=10)
+        self.assertEqual(out["r"]["status"], "pass")
+
+    def test_rerun_skipped_without_failures(self):
+        r = agent_exec_checks.rerun_failed_alone(
+            "nothing", "true # {failed}", self.tree, self.slots, 2, 10)
+        self.assertEqual(r["status"], "skipped")
+
+
 if __name__ == "__main__":
     unittest.main()

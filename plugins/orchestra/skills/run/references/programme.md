@@ -257,7 +257,9 @@ The integration branch holds every merged package as `orchestra integrate <id>` 
 
 ## 6. Deterministic runner (`agent-exec wave run`)
 
-`agent-exec wave run` is §3's scheduler as a plain loop with no agent in it: no Workflow script, no integrator session, no model deciding what to start next. Use it instead of the Workflow scheduler when the plan is settled (§2's packages written as `plan.json`: `packages[]` with `id`, `spec` (path to the spec file), `cls`, `depends_on`, `files_owned`, optional `prio`, plus optional top-level `preamble` files and `external_done` ids), the packages are implementable by the cheap tier from their spec alone, and conflicts should come back to you instead of being resolved by an agent. Keep the Workflow scheduler when integration needs judgement (an integrator that resolves conflicts from both specs) or packages need a review gate beyond `agent-exec check`.
+`agent-exec wave run` is §3's scheduler as a plain loop with no agent in it: no Workflow script, no integrator session, no model deciding what to start next. Use it instead of the Workflow scheduler when the plan is settled (§2's packages written as `plan.json`: `packages[]` with `id`, `spec` (path to the spec file), `cls`, `depends_on`, `files_owned`, optional `prio`, plus optional top-level `preamble`, `external_done` ids, and `rules` entries of `{"if": "<glob>", "require": ["<glob>", ...]}`), the packages are implementable by the cheap tier from their spec alone, and conflicts should come back to you instead of being resolved by an agent. Keep the Workflow scheduler when integration needs judgement (an integrator that resolves conflicts from both specs) or packages need a review gate beyond `agent-exec check`.
+
+Run `agent-exec wave lint --plan plan.json` before scheduling to report non-blocking ownership warnings. It flags deletion specs that own only literal paths and project rules whose required globs are not owned; `--json` emits structured warnings for automation.
 
 ```text
 agent-exec wave run --plan plan.json --state wave/state.json --into prog-<label> \
@@ -267,7 +269,18 @@ agent-exec wave status --state wave/state.json --watch 30     # from another she
 
 Per wave it picks what may start (dependencies integrated, no overlapping `files_owned` in flight), refreshes a package's leftover worktree onto the integration HEAD, dispatches each package with preamble + a generated context file (`<state dir>/context/<id>.md`: WORKING TREE, `files_owned`, carry file, shelf-not-stash, ESCALATE, do-not-commit) + spec, runs `agent-exec check --task pkg-<id> --baseline` on the result with one correction round (only the correction file when the executor has a resumable session), then integrates every `ready` package in one `isolate integrate --on-conflict skip --verify <gate> --bisect`.
 
-Flags: `--gate` replaces the default integration gate (`agent-exec check --path . --since <pre-wave HEAD> --baseline`; preexisting failures count as green). `--full` runs in the integration tree every `--full-every` waves and once at the end (no timeout unless `--full-timeout`); red stops the run. `--after-green` runs only after a green `--full` and never stops the loop. `--stop-at <epoch>`, `--max-waves` and `--max-packages` bound the chunk; `agent-exec wave stop --state ...` drops a `STOP` file. Every stop finishes the wave in flight and integrates what is ready; nothing new starts. An executor pool with no candidate left also stops the run, with the package back at `pending`. `--notify-cmd` runs on each new need, on stop and on done, with `WAVE_EVENT=need|stopped|done`, `WAVE_STATE`, and the event JSON on stdin: the hook for agmsg or anything else.
+The first implementation dispatch after a refreshed or newly created tree is
+always a fresh session; later corrections in that tree use the normal resume
+rule. If a refresh carried a patch but the fresh implementation leaves no
+diff, the package is recorded as `empty-after-refresh` with the worker's answer
+and recovery patch path. ESCALATE details include the package carry file, and
+paths outside `files_owned` are reported as `scope`; `wave mark --widen` stores
+additional ownership globs for the next dispatch. `wave mark --recheck` batches
+existing trees for verification without dispatching them. Checks that pass
+only after an isolated failed-test rerun are emitted as `flaky`; recurring
+files appear in the end report after the configured threshold.
+
+Flags: `--gate` replaces the default integration gate (`agent-exec check --path . --since <pre-wave HEAD> --baseline`; preexisting failures count as green). `--full` runs in the integration tree every `--full-every` waves and once at the end (no timeout unless `--full-timeout`); red stops the run. `--on-green <cmd>` runs only after a green `--full` in the fixed `<state>/green-tree` worktree, with `{sha}` and `WAVE_GREEN_SHA` set to the integrated SHA; it never stops the loop. Never point it at production. `--resume-on-reset` waits through executor cooldowns in 30-second chunks and retries; `--stop-at <epoch>`, `--max-waves` and `--max-packages` bound the chunk; `agent-exec wave stop --state ...` drops a `STOP` file. Every stop finishes the wave in flight and integrates what is ready; nothing new starts. An executor pool with no candidate left normally stops the run, with the package back at `pending`. `--notify-cmd` runs on each new need, on stop and on done, with `WAVE_EVENT=need|stopped|done`, `WAVE_STATE`, and the event JSON on stdin: the hook for agmsg or anything else.
 
 Every command run in the integration tree is followed by a hard reset and `git clean -fdq`; if this restores tracked or untracked files, the runner records an `integration-dirty` event. Before dispatching a package it also restores a dirty integration tree, preventing generated files from entering a package baseline.
 

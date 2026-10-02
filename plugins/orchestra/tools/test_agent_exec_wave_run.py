@@ -20,12 +20,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent_exec  # noqa: E402
 import agent_exec_wave  # noqa: E402
 import agent_exec_wave_run  # noqa: E402
+import agent_exec_ui  # noqa: E402
 
 # Heartbeats are machine-shared (`~/.claude/orchestra/alive`); redirect this
 # whole suite -- including every CLI subprocess it spawns -- into a throwaway
@@ -163,6 +165,9 @@ class _WaveRepo(unittest.TestCase):
         os.environ["HOME"] = self.home
         self._orig_cwd = os.getcwd()
         os.chdir(self.repo)
+        self.ui_patch = mock.patch.object(
+            agent_exec_ui, "start_or_reuse", return_value={"url": "http://127.0.0.1:1/"})
+        self.ui_mock = self.ui_patch.start()
 
         self.wave_dir = os.path.join(self.tmp, "wave")
         os.makedirs(os.path.join(self.wave_dir, "specs"))
@@ -171,6 +176,7 @@ class _WaveRepo(unittest.TestCase):
         _write(os.path.join(self.wave_dir, "preamble.md"), "preamble\n")
 
     def tearDown(self):
+        self.ui_patch.stop()
         os.chdir(self._orig_cwd)
         if self._orig_home is None:
             os.environ.pop("HOME", None)
@@ -228,6 +234,21 @@ class _WaveRepo(unittest.TestCase):
 
 
 class HappyPathTests(_WaveRepo):
+    def test_plan_warnings_are_emitted_and_run_continues(self):
+        self.plan([{"id": "A", "files_owned": ["a.txt"]}])
+        _write(os.path.join(self.wave_dir, "specs", "A.md"), "削除 old implementation\n")
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 0, report)
+        self.assertIn("plan-warning: A:", stderr.getvalue())
+        events = agent_exec_wave.read_events(self.state_path, 100)
+        warnings = [event for event in events if event["event"] == "plan-warning"]
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["pkg"], "A")
+        self.assertIn("owns only literal paths", warnings[0]["detail"])
+
     def test_full_cleanup_keeps_next_wave_package_baseline_at_integration_head(self):
         self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}])
         ex = FakeExecutor({
@@ -488,25 +509,25 @@ class IntegrationTests(_WaveRepo):
         self.assertEqual(report["integrated"], ["A"])
         self.assertEqual(self.need_kinds(), [("B", "post-integration")])
 
-    def test_full_red_stops_and_after_green_skipped(self):
-        marker = os.path.join(self.tmp, "after-green")
+    def test_full_red_stops_and_on_green_skipped(self):
+        marker = os.path.join(self.tmp, "on-green")
         self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}])
         ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
-        report, rc = self.run_wave(ex, full="false", after_green="touch '%s'" % marker)
+        report, rc = self.run_wave(ex, full="false", on_green="touch '%s'" % marker)
         self.assertEqual(rc, 5, report)
         self.assertEqual(report["reason"], "full verification red")
         self.assertEqual(ex.pkgs_dispatched(), ["A"])
         self.assertFalse(os.path.exists(marker))
 
-    def test_full_green_runs_after_green(self):
-        marker = os.path.join(self.tmp, "after-green")
+    def test_full_green_runs_on_green(self):
+        marker = os.path.join(self.tmp, "on-green")
         self.plan([{"id": "A"}])
         ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
-        report, rc = self.run_wave(ex, full="test -f a.txt", after_green="echo x >> '%s'" % marker)
+        report, rc = self.run_wave(ex, full="test -f a.txt", on_green="echo x >> '%s'" % marker)
         self.assertEqual(rc, 0, report)
         self.assertEqual(_read(marker), "x\n")
         events = agent_exec_wave.read_events(self.state_path, None)
-        self.assertIn("after-green", [e["event"] for e in events])
+        self.assertIn("on-green", [e["event"] for e in events])
 
 
 class StageEventTests(_WaveRepo):
@@ -584,15 +605,15 @@ class StageEventTests(_WaveRepo):
         self.assertEqual(self.details("integrate-start"), [{"tasks": ["A", "B"]}])
         self.assertEqual(self.details("integrate-end"), [{"status": "reverted"}])
 
-    def test_full_and_after_green_events(self):
+    def test_full_and_on_green_events(self):
         self.plan([{"id": "A"}])
         ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
-        self.run_wave(ex, full="test -f a.txt", after_green="true")
+        self.run_wave(ex, full="test -f a.txt", on_green="true")
         self.assertEqual(self.details("full-start"), [{}])
         full_end = self.details("full-end")
         self.assertEqual(full_end[0]["status"], "pass")
         self.assertIsInstance(full_end[0]["seconds"], float)
-        self.assertEqual(self.details("after-green"), [{"exit": 0}])
+        self.assertEqual(self.details("on-green")[0]["exit"], 0)
 
     def test_dirty_full_and_pre_dispatch_emit_integration_dirty(self):
         self.plan([{"id": "A"}])
@@ -694,8 +715,189 @@ class StopAndResumeTests(_WaveRepo):
         self.assertEqual(rc, 0, report)
         context = _read(ex.calls[1]["prompt_files"][1])
         self.assertIn("a.txt", context)
+        self.assertTrue(ex.calls[1]["no_resume"])
         self.assertEqual(self.int_file("b.txt"), "b from before\n")
         self.assertEqual(self.int_file("b2.txt"), "b2\n")
+
+
+class _Clock(object):
+    def __init__(self, now=1000.0):
+        self.now = now
+        self.sleeps = []
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class GreenTreeTests(_WaveRepo):
+    def events(self, name):
+        return [e for e in agent_exec_wave.read_events(self.state_path, None)
+                if e["event"] == name]
+
+    def green_path(self):
+        return os.path.join(self.wave_dir, "green-tree")
+
+    def test_on_green_runs_in_green_tree_at_integrated_sha(self):
+        log = os.path.join(self.tmp, "green.log")
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        cmd = "echo \"{sha} $WAVE_GREEN_SHA $(pwd -P)\" >> '%s'" % log
+        report, rc = self.run_wave(ex, full="true", on_green=cmd)
+        self.assertEqual(rc, 0, report)
+        sha, env_sha, cwd = _read(log).split()
+        head = _git(self.int_path(), "rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(sha, head)
+        self.assertEqual(env_sha, head)
+        self.assertEqual(cwd, os.path.realpath(self.green_path()))
+        self.assertNotEqual(cwd, os.path.realpath(self.int_path()))
+
+    def test_tree_reused_on_next_green_with_new_sha(self):
+        log = os.path.join(self.tmp, "green.log")
+        self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
+        cmd = "echo \"$WAVE_GREEN_SHA $(pwd -P)\" >> '%s'" % log
+        report, rc = self.run_wave(ex, full="true", on_green=cmd)
+        self.assertEqual(rc, 0, report)
+        lines = [l.split() for l in _read(log).splitlines()]
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0][1], lines[1][1])
+        self.assertNotEqual(lines[0][0], lines[1][0])
+
+    def test_failing_on_green_does_not_stop(self):
+        self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
+        report, rc = self.run_wave(ex, full="true", on_green="exit 3")
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(report["integrated"], ["A", "B"])
+        self.assertEqual([json.loads(e["detail"])["exit"] for e in self.events("on-green")], [3, 3])
+
+    def test_after_green_is_a_usage_error(self):
+        opts, err = agent_exec_wave_run.parse_run_args([
+            "--plan", "p", "--state", "s", "--into", "i", "--after-green", "true"])
+        self.assertIsNone(opts)
+        self.assertIn("unknown option: --after-green", err)
+        with contextlib.redirect_stderr(io.StringIO()):
+            rc = agent_exec_wave.cmd_wave([
+                "run", "--plan", self.plan_path, "--state", self.state_path,
+                "--into", "i", "--after-green", "true"])
+        self.assertEqual(rc, 2)
+
+    def test_green_tree_kept_on_stop(self):
+        self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}])
+
+        def on_dispatch(pid, spec):
+            if pid == "A":
+                agent_exec_wave.request_stop(self.state_path, "enough")
+
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]},
+                          on_dispatch=on_dispatch)
+        report, rc = self.run_wave(ex, full="true", on_green="true")
+        self.assertEqual(rc, 5, report)
+        self.assertTrue(os.path.isdir(self.green_path()))
+
+    def test_green_tree_removed_on_done(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        report, rc = self.run_wave(ex, full="true", on_green="true")
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(len(self.events("on-green")), 1)
+        self.assertFalse(os.path.exists(self.green_path()))
+
+
+class ResumeOnResetTests(_WaveRepo):
+    def unavailable(self):
+        return result({"status": "unavailable", "executor": "copilot"})
+
+    def run_resume(self, ex, clock, until=1100.0, on_sleep=None, **overrides):
+        if on_sleep is not None:
+            base = clock.sleep
+
+            def sleep(seconds):
+                base(seconds)
+                on_sleep()
+        else:
+            sleep = clock.sleep
+        with mock.patch.object(agent_exec, "resolve_config", return_value=({}, None)), \
+                mock.patch.object(agent_exec, "active_cooldown_expiries",
+                                  return_value={"copilot": until}):
+            report = agent_exec_wave_run.run_wave(
+                self.opts(resume_on_reset=True, **overrides),
+                executor=ex, clock=clock, sleep=sleep)
+        return report, agent_exec_wave_run.exit_code_for(report)
+
+    def test_waits_until_cooldown_expiry_then_integrates(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [self.unavailable(), self.unavailable(),
+                                 edit({"a.txt": "a\n"})]})
+        clock = _Clock()
+        report, rc = self.run_resume(ex, clock)
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(report["integrated"], ["A"])
+        self.assertGreaterEqual(clock.now, 1100.0)
+        self.assertAlmostEqual(sum(clock.sleeps), 100.0)
+        self.assertTrue(all(0 <= s <= 30 for s in clock.sleeps))
+        waits = [e for e in agent_exec_wave.read_events(self.state_path, None)
+                 if e["event"] == "resume-wait"]
+        self.assertEqual(json.loads(waits[0]["detail"])["until"], 1100.0)
+
+    def test_stop_file_during_wait_stops(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [self.unavailable(), self.unavailable()]})
+        clock = _Clock()
+        report, rc = self.run_resume(
+            ex, clock,
+            on_sleep=lambda: agent_exec_wave.request_stop(self.state_path, "enough"))
+        self.assertEqual(rc, 5, report)
+        self.assertEqual(report["reason"], "stop requested")
+        self.assertEqual(len(clock.sleeps), 1)
+
+    def test_stop_at_before_until_stops_without_waiting(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [self.unavailable(), self.unavailable()]})
+        clock = _Clock()
+        report, rc = self.run_resume(ex, clock, stop_at=1050.0)
+        self.assertEqual(rc, 5, report)
+        self.assertEqual(report["reason"], "stop-at reached")
+        self.assertEqual(clock.sleeps, [])
+        self.assertEqual(clock.now, 1000.0)
+
+
+class UiTests(_WaveRepo):
+    def test_ui_url_printed_and_event_written(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 0, report)
+        self.assertIn("ui: http://127.0.0.1:1/", err.getvalue())
+        events = [e for e in agent_exec_wave.read_events(self.state_path, None)
+                  if e["event"] == "ui"]
+        self.assertEqual(json.loads(events[0]["detail"]), {"url": "http://127.0.0.1:1/"})
+
+    def test_ui_failure_only_warns(self):
+        self.ui_mock.side_effect = RuntimeError("boom")
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 0, report)
+        self.assertIn("warning: could not start ui: boom", err.getvalue())
+
+    def test_no_ui_skips_start(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        report, rc = self.run_wave(ex, no_ui=True)
+        self.assertEqual(rc, 0, report)
+        self.ui_mock.assert_not_called()
+        opts, err = agent_exec_wave_run.parse_run_args(
+            ["--plan", "p", "--state", "s", "--into", "i", "--no-ui"])
+        self.assertTrue(opts["no_ui"])
 
 
 class NotifyTests(_WaveRepo):
@@ -715,6 +917,194 @@ class NotifyTests(_WaveRepo):
         payload = json.loads(need_line.split(" ", 1)[1])
         self.assertEqual(payload["pkg"], "A")
         self.assertEqual(payload["kind"], "escalate")
+
+
+class FrozenDispatchTests(_WaveRepo):
+    def test_escalate_carries_context_and_marks_scope_for_outside_path(self):
+        self.plan([{"id": "A", "files_owned": ["a.txt"]}])
+
+        def carry(pid, spec):
+            _write(os.path.join(self.wave_dir, "carry", "A.carry.md"),
+                   "please update src/shared.py\n")
+
+        ex = FakeExecutor(
+            {"A": [edit({"a.txt": "a\n"},
+                        answer="ESCALATE: blocked by src/other.py")]},
+            on_dispatch=carry,
+        )
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(self.need_kinds(), [("A", "scope")])
+        detail = self.state()["needs"][0]["detail"]
+        self.assertIn("--- carry ---", detail)
+        self.assertIn("src/shared.py", detail)
+        self.assertIn("--- outside files_owned ---", detail)
+
+    def test_escalate_prose_with_dotted_words_is_not_scope(self):
+        self.plan([{"id": "A", "files_owned": ["a.txt"]}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"}, answer=(
+            "ESCALATE: need a decision on naming. Thanks, e.g. later."
+            " Keep a.txt as is."))]})
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(self.need_kinds(), [("A", "escalate")])
+
+    def test_mark_widen_writes_override_and_recheck_is_batch(self):
+        self.plan([{"id": "A"}, {"id": "B"}])
+        delegate = {"status": "delegate", "executor": "claude"}
+        ex = FakeExecutor({
+            "A": [result(delegate, files={"a.txt": "a\n"})],
+            "B": [result(delegate, files={"b.txt": "b\n"})],
+        })
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(agent_exec_wave.cmd_wave([
+                "mark", "--state", self.state_path, "--pkg", "A",
+                "--widen", "src/*.py,docs/*.md",
+            ]), 0)
+        with open(os.path.join(self.wave_dir, "plan-overrides.json")) as fh:
+            self.assertEqual(json.load(fh)["A"]["files_owned_add"],
+                             ["src/*.py", "docs/*.md"])
+        self.assertEqual(self.status("A"), "pending")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(agent_exec_wave.cmd_wave([
+                "mark", "--state", self.state_path, "--recheck", "B,A",
+            ]), 0)
+        self.assertEqual(self.status("A"), "verifying")
+        self.assertEqual(self.status("B"), "verifying")
+
+
+    def _stale_b_setup(self, stale_files):
+        head = _git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        created = agent_exec.isolate_create(self.repo, "wave-int", backend="git", onto=head)
+        int_path = created["path"]
+        agent_exec._write_role(int_path, "integration")
+        stale = agent_exec.isolate_create(int_path, "pkg-B", backend="git")
+        for rel, text in stale_files.items():
+            _write(os.path.join(stale["path"], rel), text)
+
+    def test_empty_after_refresh_becomes_need(self):
+        self.plan([{"id": "A", "files_owned": ["a.txt"]},
+                   {"id": "B", "depends_on": ["A"], "files_owned": ["a.txt", "b.txt"]}])
+        # B's leftover tree only holds what A is about to integrate, so after
+        # the refresh nothing of B's own is left and the worker adds nothing.
+        self._stale_b_setup({"a.txt": "a\n"})
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({})]})
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(self.need_kinds(), [("B", "empty-after-refresh")])
+        self.assertEqual(self.status("A"), "integrated")
+
+    def test_escalate_in_correction_answer_is_a_need_not_a_second_verify(self):
+        self.checks(_NO_BAD_CHECK)
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [
+            edit({"a.txt": "BAD\n"}),
+            edit({"a.txt": "BAD\n"}, answer="ESCALATE: cannot fix this"),
+        ]})
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(self.need_kinds(), [("A", "escalate")])
+        self.assertIn("cannot fix this", self.state()["needs"][0]["detail"])
+        starts = [e for e in agent_exec_wave.read_events(self.state_path, None)
+                  if e["event"] == "check-start" and e["pkg"] == "A"]
+        self.assertEqual(len(starts), 1)
+
+    def test_widen_redispatch_sees_new_files_owned_and_overlap_serializes(self):
+        self.plan([{"id": "A", "files_owned": ["a.txt"]},
+                   {"id": "B", "files_owned": ["src/b.py"]}])
+        first = FakeExecutor({"A": [edit({"a.txt": "a\n"},
+                                         answer="ESCALATE: need to change src/shared.py")]})
+        report, rc = self.run_wave(first, max_packages=1)
+        self.assertEqual(self.need_kinds(), [("A", "scope")], report)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(agent_exec_wave.cmd_wave([
+                "mark", "--state", self.state_path, "--pkg", "A", "--widen", "src/*.py",
+            ]), 0)
+        second = FakeExecutor({"A": [edit({"a.txt": "a\n", "src/shared.py": "s\n"})],
+                               "B": [edit({"src/b.py": "b\n"})]})
+        report, rc = self.run_wave(second)
+        self.assertEqual(rc, 0, report)
+        self.assertIn("src/*.py", _read(second.calls[0]["prompt_files"][1]))
+        # The widened glob overlaps B's files_owned, so they no longer share a wave.
+        self.assertEqual(second.pkgs_dispatched(), ["A", "B"])
+        self.assertEqual(report["waves"], 2)
+
+    def test_recheck_batch_dispatches_nothing_and_integrates_next_run(self):
+        self.plan([{"id": "A"}, {"id": "B"}])
+        delegate = {"status": "delegate", "executor": "claude"}
+        ex = FakeExecutor({
+            "A": [result(delegate, files={"a.txt": "a\n"})],
+            "B": [result(delegate, files={"b.txt": "b\n"})],
+        })
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(agent_exec_wave.cmd_wave([
+                "mark", "--state", self.state_path, "--recheck", "A,B",
+            ]), 0)
+        self.assertEqual(self.state()["needs"], [])
+        nothing = NoDispatch()
+        report, rc = self.run_wave(nothing)
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(nothing.calls, [])
+        self.assertEqual(sorted(report["integrated"]), ["A", "B"])
+
+    def test_recheck_bad_id_exits_2_and_changes_nothing(self):
+        self.plan([{"id": "A"}])
+        delegate = {"status": "delegate", "executor": "claude"}
+        ex = FakeExecutor({"A": [result(delegate, files={"a.txt": "a\n"})]})
+        self.run_wave(ex)
+        before = self.state()
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = agent_exec_wave.cmd_wave([
+                "mark", "--state", self.state_path, "--recheck", "A,ZZ",
+            ])
+        self.assertEqual(rc, 2)
+        self.assertIn("ZZ", err.getvalue())
+        after = self.state()
+        self.assertEqual(after["packages"]["A"]["status"], before["packages"]["A"]["status"])
+        self.assertEqual(after["needs"], before["needs"])
+
+    def _flaky_run(self):
+        self.plan([{"id": "A"}, {"id": "B"}, {"id": "C"}])
+        flaky_check = {"status": "pass", "files": [], "checks": [], "flaky": ["t_x.py"]}
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})],
+                           "C": [edit({"c.txt": "c\n"})]})
+        with mock.patch.object(agent_exec_wave_run._Runner, "_check",
+                               return_value=flaky_check):
+            report, _ = self.run_wave(ex)
+        return report
+
+    def test_flaky_event_and_report_default_threshold(self):
+        report = self._flaky_run()
+        events = [e for e in agent_exec_wave.read_events(self.state_path, None)
+                  if e["event"] == "flaky"]
+        self.assertEqual(sorted(e["pkg"] for e in events), ["A", "B", "C"])
+        self.assertEqual(report["flaky_tests"], [{"file": "t_x.py", "count": 3}])
+
+    def test_flaky_threshold_read_from_project_config(self):
+        _write(os.path.join(self.repo, ".claude", "orchestra.yaml"),
+               "checks:\n  flaky_threshold: 4\n")
+        self.assertEqual(self._flaky_run()["flaky_tests"], [])
+
+    def test_correction_in_same_tree_resumes_while_refreshed_first_dispatch_does_not(self):
+        self.checks(_NO_BAD_CHECK)
+        self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}])
+        self._stale_b_setup({"b.txt": "b from before\n"})
+        ex = FakeExecutor({
+            "A": [edit({"a.txt": "a\n"})],
+            "B": [edit({"b2.txt": "BAD\n"}, session="s1"),
+                  edit({"b2.txt": "fixed\n"}, session="s1")],
+        })
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 0, report)
+        b_calls = [c for c in ex.calls if c["pkg"] == "B"]
+        self.assertEqual(len(b_calls), 2)
+        self.assertTrue(b_calls[0]["no_resume"])
+        self.assertFalse(b_calls[1]["no_resume"])
 
 
 class CliTests(_WaveRepo):

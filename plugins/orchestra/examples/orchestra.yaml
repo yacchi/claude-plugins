@@ -217,16 +217,27 @@ isolation:
 # inherits a user-level one it never asked for.
 checks:
   max_parallel: 2   # concurrent check commands machine-wide; 0 = unlimited
+  retry_failed_alone: true
+  flaky_threshold: 3
+  ensure:
+    - exists: "apps/web/node_modules"
+      run: "pnpm install --frozen-lockfile"
   items: []
   # items:
   #   - name: lint
-  #     paths: ["**/*.ts", "**/*.tsx"]   # optional; omitted = always runs
+  #     phase: lint
+  #     paths: ["apps/web/**"]           # always run when this workspace changed
   #     run: "pnpm exec biome check {files}"
   #     fix: "pnpm exec biome check --write {files}"   # optional, runs first,
   #     # exit code and output ignored -- a fixer is not a gate
   #     cwd: "web"             # optional, relative to the tree root, default "."
   #     timeout: 900           # optional seconds, default 1800
   #     junit: "reports/junit.xml"   # optional, relative to `cwd`
+  #     retry_alone: "pnpm exec vitest run {failed}"
+  #   - name: web-build
+  #     phase: prepare
+  #     paths: ["apps/web/**"]
+  #     run: "pnpm --dir apps/web build"
   #   - name: typecheck
   #     paths: ["**/*.ts", "**/*.tsx"]
   #     run: "pnpm exec tsc --noEmit"
