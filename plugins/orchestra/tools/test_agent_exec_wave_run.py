@@ -1230,6 +1230,58 @@ class RedFullTests(_WaveRepo):
         self.assertEqual(self.green()["sha"], self.state()["integration"]["base"])
         self.assert_int_clean()
 
+    def _ensure_cfg(self, exists, run):
+        self.checks("checks:\n  ensure:\n    - exists: %s\n      run: \"%s\"\n" % (exists, run))
+
+    def test_ensure_runs_before_full_and_creates_missing_file(self):
+        self._ensure_cfg("generated.txt", "echo gen > generated.txt")
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        report, rc = self.run_wave(ex, gate="true", full="test -f generated.txt")
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(report["integrated"], ["A"])
+        self.assertEqual(self.events("revert"), [])
+        self.assertEqual(self.need_kinds(), [])
+        self.assertEqual(self.green()["sha"], self.head())
+
+    def test_ensure_failure_and_red_at_last_green_is_environment_need(self):
+        self._ensure_cfg("generated.txt", "echo ensure-boom; exit 1")
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        report, rc = self.run_wave(ex, gate="true", full="true")
+        self.assertEqual(rc, 5, report)
+        self.assertIn("environment", report["reason"])
+        self.assertEqual(self.need_kinds(), [(None, "environment")])
+        self.assertIn("ensure-boom", self.state()["needs"][0]["detail"])
+        self.assertEqual(self.events("revert"), [])
+        self.assertEqual(self.status("A"), "integrated")
+        self.assertEqual(self.int_file("a.txt"), "a\n")
+        self.assertIn("environment", self.state()["stopped"]["reason"])
+        self.assertEqual(len(self.events("environment")), 1)
+        self.assertEqual(self.events("environment")[0]["pkg"], None)
+        self.assert_int_clean()
+
+    def test_clear_environment_then_rerun_continues(self):
+        self._ensure_cfg("generated.txt", "echo ensure-boom; exit 1")
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        report, rc = self.run_wave(ex, gate="true", full="true")
+        self.assertEqual(rc, 5, report)
+        self._ensure_cfg("generated.txt", "echo gen > generated.txt")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = agent_exec_wave.cmd_wave(
+                ["mark", "--state", self.state_path, "--clear-environment"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out.getvalue()), {"environment_cleared": True})
+        self.assertEqual(self.need_kinds(), [])
+        self.assertIsNone(self.state()["stopped"])
+        report, rc = self.run_wave(FakeExecutor({}), gate="true", full="test -f generated.txt")
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(report["status"], "done")
+        self.assertEqual(self.need_kinds(), [])
+        self.assertIsNone(self.state()["stopped"])
+
     def test_second_revert_of_same_package_is_post_integration_need(self):
         self.plan([{"id": "A"}, {"id": "B"}])
         ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})],

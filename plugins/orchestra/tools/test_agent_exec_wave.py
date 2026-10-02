@@ -319,6 +319,16 @@ class ConcurrencyTests(_StateDirCase):
 
 
 class RenderStatusTests(_StateDirCase):
+    def test_render_status_environment_need_shows_wave(self):
+        store = wave.StateStore(self.state_path, clock=lambda: 1000.0)
+        store.init("/abs/plan.json", ["CORE-1"], "wave-int")
+        state = store.add_need(None, "environment", "ensure failed\nmore")
+        self.assertEqual(state["needs"][0]["id"], None)
+        self.assertEqual(state["packages"]["CORE-1"]["status"], "pending")
+        text = wave.render_status(state, now=1100.0)
+        self.assertIn("(wave)  environment  ensure failed", text)
+        self.assertNotIn("None", text)
+
     def test_render_status_contains_elapsed_and_needs(self):
         store = wave.StateStore(self.state_path, clock=lambda: 1000.0)
         state = store.init("/abs/plan.json", ["CORE-1", "CORE-2"], "wave-int")
@@ -393,6 +403,15 @@ class CmdWaveTests(_StateDirCase):
         self.assertEqual(code, 0)
         self.assertEqual(out.count("\n"), 1)
         json.loads(out.strip())
+
+    def test_status_text_and_line_show_wave_level_need(self):
+        self.store.add_need(None, "environment", "ensure failed")
+        code, out, err = self._run(["status", "--state", self.state_path])
+        self.assertEqual(code, 0)
+        self.assertIn("(wave)  environment  ensure failed", out)
+        code, out, err = self._run(["status", "--state", self.state_path, "--line"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out.strip())["needs"], 1)
 
     def test_status_missing_state_exit_3(self):
         missing = os.path.join(self.tmp, "nope.json")

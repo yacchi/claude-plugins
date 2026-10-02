@@ -52,7 +52,14 @@ _CALL_TIMEOUT = 60
 # A selected option of a numbered choice dialog ("❯ 1. Yes") or Claude's
 # permission question; the bare input prompt line ("❯ ") matches neither.
 _CHOICE_RE = re.compile(r"^\s*❯\s*\d+\.")
+_OPTION_RE = re.compile(
+    r"^\s*(?:❯\s*)?(?:\d+\.\s*)?(?:Yes|No|Allow|Deny|Cancel|Approve|Reject)\b")
+# Only a selected option can open a dialog block; plain option-looking lines
+# ("  No issues found") count only after a block has started.
+_SELECTED_OPTION_RE = re.compile(
+    r"^\s*❯\s*(?:\d+\.\s*)?(?:Yes|No|Allow|Deny|Cancel|Approve|Reject)\b")
 _PERMISSION_RE = re.compile(r"Do you want to ")
+_PERMISSION_MODES = frozenset(("acceptEdits", "auto", "default", "plan"))
 
 
 def _agent_exec():
@@ -186,8 +193,30 @@ def _has_prompt_box(screen):
     return any(line.lstrip().startswith("❯") for line in screen)
 
 
+def _dialog_start(screen):
+    for i, line in enumerate(screen):
+        if _PERMISSION_RE.search(line) or _SELECTED_OPTION_RE.match(line):
+            return i
+    return None
+
+
 def _is_dialog(screen):
-    return any(_CHOICE_RE.match(line) or _PERMISSION_RE.search(line) for line in screen)
+    return _dialog_start(screen) is not None
+
+
+def _dialog_lines(screen):
+    """Return the visible block for a permission/choice dialog."""
+    start = _dialog_start(screen)
+    if start is None:
+        return []
+    end = start
+    for i in range(start + 1, len(screen)):
+        line = screen[i]
+        if _OPTION_RE.match(line):
+            end = i
+        elif line.strip() and not line.startswith((" ", "❯")):
+            break
+    return screen[start:end + 1]
 
 
 def _tail(screen):
@@ -330,7 +359,16 @@ class OrcaExecutor(object):
         """`terminal create` on the session's worktree, then wait for the
         prompt box. Raises OrcaNeed on the trust dialog (without auto_trust)
         or when startup_timeout passes."""
-        command = self.cfg["command"].replace("{model}", session.get("model") or "opus")
+        permission_mode = self.cfg.get("permission_mode", "acceptEdits")
+        command_template = str(self.cfg.get("command") or "")
+        if permission_mode not in _PERMISSION_MODES:
+            raise OrcaNeed("error", "invalid orca.permission_mode: %s" % permission_mode)
+        if permission_mode == "bypassPermissions" or (
+                "bypassPermissions" in command_template
+                or "--dangerously-skip-permissions" in command_template):
+            raise OrcaNeed("error", "orca permission bypass is not allowed")
+        command = command_template.replace("{model}", session.get("model") or "opus")
+        command = command.replace("{permission_mode}", permission_mode)
         # The prompt files and the result file live outside the worktree;
         # without --add-dir the session stops on a read/write permission
         # dialog that nobody is there to answer.
@@ -483,22 +521,8 @@ class OrcaExecutor(object):
             session.setdefault("request_ids", []).append(request_id)
             self._save(session)
 
-        deadline = self.clock() + float(timeout)
         try:
-            while True:
-                data = _read_result(result_path)
-                if data is not None:
-                    break
-                try:
-                    screen = self._screen(handle)
-                except _OrcaError as exc:
-                    raise OrcaNeed("stalled", "terminal %s went away: %s" % (handle, exc))
-                if _is_dialog(screen) and not _is_trust(screen):
-                    raise OrcaNeed("stalled", "waiting on a dialog:\n%s" % _tail(screen))
-                remaining = deadline - self.clock()
-                if remaining <= 0:
-                    raise OrcaNeed("timeout", "no result after %ss:\n%s" % (timeout, _tail(screen)))
-                self._wait_idle(handle, remaining)
+            data = self.wait_result(session, result_path, timeout)
         finally:
             if not self.cfg["keep_sessions"]:
                 self._close_terminal(session)
@@ -511,6 +535,32 @@ class OrcaExecutor(object):
             "isolation": {"isolate": True, "path": session["worktree"],
                           "workdir": session["worktree"]},
         }
+
+    def wait_result(self, session, result_path, timeout):
+        """Wait for a result file without sending another prompt."""
+        handle = session.get("terminal")
+        if not handle:
+            raise OrcaNeed("stalled", "terminal is no longer registered")
+        deadline = self.clock() + float(timeout)
+        screen = []
+        while True:
+            data = _read_result(result_path)
+            if data is not None:
+                return data
+            try:
+                screen = self._screen(handle)
+            except _OrcaError as exc:
+                raise OrcaNeed("stalled", "terminal %s went away: %s" % (handle, exc))
+            if _is_dialog(screen) and not _is_trust(screen):
+                lines = _dialog_lines(screen) or screen
+                raise OrcaNeed(
+                    "stalled",
+                    "dialog:\n%s\nterminal: %s\nworktree: %s\nresult: %s"
+                    % ("\n".join(lines), handle, session.get("worktree"), result_path))
+            remaining = deadline - self.clock()
+            if remaining <= 0:
+                raise OrcaNeed("timeout", "no result after %ss:\n%s" % (timeout, _tail(screen)))
+            self._wait_idle(handle, remaining)
 
     def _close_terminal(self, session):
         handle = session.get("terminal")

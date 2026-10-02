@@ -368,6 +368,28 @@ def run_check(item, tree, files, slot_dir, max_parallel=2, on_event=None):
     return _run_check_raw(item, tree, files, slot_dir, max_parallel, on_event)[0]
 
 
+def run_ensure(entries, tree, slot_dir, max_parallel=2, on_event=None):
+    """Run missing `checks.ensure` entries and return their check results."""
+    results = []
+    for entry in entries or []:
+        exists = entry.get("exists", "")
+        if os.path.exists(os.path.join(tree, exists)):
+            continue
+        ensure_item = {
+            "name": "ensure:%s" % exists,
+            "run": entry.get("run", ""),
+            "cwd": entry.get("cwd"),
+            "timeout": entry.get("timeout"),
+        }
+        results.append(run_check(
+            ensure_item, tree, [], slot_dir, max_parallel=max_parallel,
+            on_event=on_event,
+        ))
+        if results[-1]["status"] == "fail":
+            break
+    return results
+
+
 def _run_check_raw(item, tree, files, slot_dir, max_parallel=2, on_event=None):
     """`run_check` plus the unclipped combined output, for retry parsing."""
     name = item["name"]
@@ -432,26 +454,13 @@ def run_checks(items, tree, files, slot_dir, max_parallel=2, run_all=False,
     )
     results = []
     stop = False
-    ensure = ensure or []
-    for entry in ensure:
-        exists = entry.get("exists", "")
-        if os.path.exists(os.path.join(tree, exists)):
-            continue
-        ensure_item = {
-            "name": "ensure:%s" % exists,
-            "run": entry.get("run", ""),
-            "cwd": entry.get("cwd"),
-            "timeout": entry.get("timeout"),
-        }
-        result = run_check(
-            ensure_item, tree, [], slot_dir, max_parallel=max_parallel,
-            on_event=on_event,
-        )
-        if result["status"] == "fail":
-            results.append(result)
-            if not run_all:
-                stop = True
-                break
+    ensure_results = run_ensure(ensure, tree, slot_dir, max_parallel, on_event)
+    ensure_failure = next(
+        (result for result in ensure_results if result["status"] == "fail"), None)
+    if ensure_failure is not None:
+        results.append(ensure_failure)
+    if ensure_failure is not None and not run_all:
+        stop = True
     if stop:
         for _, item in ordered:
             results.append(_empty_result(

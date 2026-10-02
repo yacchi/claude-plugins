@@ -277,8 +277,10 @@ DEFAULTS = {
     # the terminal after every prompt (the worktree stays until integrated).
     "orca": {
         "enabled": "auto",
-        "command": "claude --model {model} --permission-mode acceptEdits",
+        "command": "claude --model {model} --permission-mode {permission_mode}",
         "models": {"light": "sonnet", "standard": "opus", "deep": "opus"},
+        "permission_mode": "acceptEdits",
+        "add_dirs": [],
         "auto_trust": False,
         "startup_timeout": 90,
         "task_timeout": 3600,
@@ -615,7 +617,7 @@ Usage:
                                   a correction.
                                   Exit 0 done, 1 done with needs, 2 usage,
                                   3 environment, 5 stopped.
-  agent-exec wave mark --state PATH --pkg ID --status ready|pending|failed
+  agent-exec wave mark --state PATH --pkg ID --status ready|pending|failed [--await ID]
                   [--detail TEXT]
                                   hand a package back to the runner and
                                   clear its needs entries

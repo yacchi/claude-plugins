@@ -345,7 +345,7 @@ checks:
 
 `{files}` in `run`/`fix` expands to the matched, still-existing files, re-expressed relative to `cwd` (a file outside `cwd` is dropped), each shell-quoted and space-joined. If `run` contains `{files}` and none remain after that filtering, the check is reported `skipped` with reason `no matching files` — it is never run with an empty argument list.
 
-Checks run by phase (`prepare`, `lint`, `type`, `test`, `heavy`) and then config order, stopping at the first failure unless `--all` is given; unreached checks are reported `skipped` with reason `not run after earlier failure`. `fix` (when present) always runs immediately before `run`, in the same `cwd`, with the same `{files}` substitution. An `ensure` command runs only when its `exists` path is missing, before items; a failed ensure is named `ensure:<exists>`. Failed checks can be retried alone: `retry_alone` uses `{failed}`, or a `{files}` check run is adapted automatically. A successful retry reports `flaky`; `--no-retry` disables this behavior.
+Checks run by phase (`prepare`, `lint`, `type`, `test`, `heavy`) and then config order, stopping at the first failure unless `--all` is given; unreached checks are reported `skipped` with reason `not run after earlier failure`. `fix` (when present) always runs immediately before `run`, in the same `cwd`, with the same `{files}` substitution. An `ensure` command runs only when its `exists` path is missing, before items; a failed ensure is named `ensure:<exists>`. Wave `--full` verification runs these ensure entries before every full check and bisect probe, including the last-green baseline probe. Failed checks can be retried alone: `retry_alone` uses `{failed}`, or a `{files}` check run is adapted automatically. A successful retry reports `flaky`; `--no-retry` disables this behavior.
 
 Both `fix` and `run` execute via `/bin/sh -c` in their own process group; on `timeout` the whole group is killed, not just the shell, so a backgrounded child cannot outlive the check. Before each `fix`/`run` command, agent-exec acquires one of `max_parallel` concurrency slots (lock files under the same state directory as the token/cooldown stores, polled every 0.5s); `max_parallel: 0` means unlimited, no slot is acquired at all. This bounds how many check subprocesses run at once *across every `agent-exec check` invocation on the machine*, not just within one call.
 
@@ -365,8 +365,10 @@ Result JSON: `{"status": "pass"|"fail"|"preexisting"|"no-checks"|"error", "tree"
 orca:
   enabled: auto            # auto = use when `orca` is on PATH and `orca status` is ok;
                            # true = required (the run stops: "orca unavailable: <reason>"); false = never
-  command: "claude --model {model} --permission-mode acceptEdits"
+  command: "claude --model {model} --permission-mode {permission_mode}"
   models: {light: sonnet, standard: opus, deep: opus}   # used when the dispatch route's model is absent
+  permission_mode: acceptEdits  # acceptEdits, auto, default, or plan; auto avoids most stalls
+  add_dirs: []             # extra paths; ~ expands and relative paths are repo-relative
   auto_trust: false        # true = accept Claude's folder-trust dialog automatically,
                            # ONLY for worktrees this executor created
   startup_timeout: 90      # seconds to reach the prompt box
@@ -375,4 +377,4 @@ orca:
                            # false = close the terminal after each prompt (the worktree stays)
 ```
 
-`enabled` accepts YAML booleans or the strings `auto`/`true`/`false`; anything else means `auto`. `{model}` in `command` is replaced by the route's model, else `models.<cls>`. Without Orca, or with `enabled: false`, `wave run` behaves exactly as before: the package lands on the needs list as `delegate`. The run-time behaviour is described in `programme.md` §6 ("Orca sessions").
+`enabled` accepts YAML booleans or the strings `auto`/`true`/`false`; anything else means `auto`. `{model}` in `command` is replaced by the route's model, else `models.<cls>`, and `{permission_mode}` is replaced by `permission_mode` when present. Only `acceptEdits`, `auto`, `default`, and `plan` are allowed; permission bypass modes and `--dangerously-skip-permissions` are refused. Orca can reach the repository root, the state/spec/preamble directories, and every `add_dirs` entry. Without Orca, or with `enabled: false`, `wave run` behaves exactly as before: the package lands on the needs list as `delegate`. The run-time behaviour is described in `programme.md` §6 ("Orca sessions").

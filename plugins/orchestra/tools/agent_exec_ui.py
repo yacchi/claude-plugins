@@ -1014,8 +1014,9 @@ function renderWave(w) {
       var line = full.split("\n")[0];
       var box = el("div", { "class": "need" }, [
         el("div", null, [el("span", { "class": "badge s-needs" }, [txt(n.kind)]), " ",
-          fileLink((w.packages || []).filter(function (p) { return p.id === n.id; })[0] &&
-            (w.packages || []).filter(function (p) { return p.id === n.id; })[0].spec, txt(n.id)), " " + line])
+          n.id === null ? txt("(wave)") :
+            fileLink((w.packages || []).filter(function (p) { return p.id === n.id; })[0] &&
+              (w.packages || []).filter(function (p) { return p.id === n.id; })[0].spec, txt(n.id)), " " + line])
       ]);
       if (openNeeds[key]) box.appendChild(el("pre", null, [full]));
       box.addEventListener("click", function () { openNeeds[key] = !openNeeds[key]; render(last); });

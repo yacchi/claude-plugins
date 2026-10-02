@@ -40,7 +40,7 @@ IN_FLIGHT = frozenset({"implementing", "verifying", "fixing", "ready"})
 
 NEED_KINDS = (
     "escalate", "conflict", "post-integration", "self-verify", "delegate", "dispatch-error",
-    "empty-after-refresh", "scope",
+    "empty-after-refresh", "scope", "environment",
 )
 _NEED_KIND_SET = frozenset(NEED_KINDS)
 
@@ -231,6 +231,9 @@ class StateStore(object):
         def fn(state, now):
             needs = state.setdefault("needs", [])
             needs.append({"id": pkg, "kind": kind, "detail": detail, "at": now})
+            if pkg is None:
+                return {"at": now, "pkg": None, "from": None, "to": None,
+                        "event": "need", "detail": detail}
             packages = state.setdefault("packages", {})
             entry = packages.setdefault(pkg, _new_package(now))
             old_status = entry.get("status")
@@ -247,6 +250,13 @@ class StateStore(object):
         def fn(state, now):
             needs = state.get("needs") or []
             state["needs"] = [n for n in needs if n.get("id") != pkg]
+            return None
+
+        return self._mutate(fn)
+
+    def clear_stopped(self):
+        def fn(state, now):
+            state["stopped"] = None
             return None
 
         return self._mutate(fn)
@@ -468,7 +478,9 @@ def render_status(state, now, plan_titles=None, events=None, live=False):
         for need in needs:
             detail = need.get("detail") or ""
             first_line = detail.splitlines()[0] if detail else ""
-            lines.append("  %s  %s  %s" % (need.get("id"), need.get("kind"), first_line))
+            lines.append("  %s  %s  %s" % (
+                "(wave)" if need.get("id") is None else need.get("id"),
+                need.get("kind"), first_line))
 
     if events:
         lines.append("recent:")

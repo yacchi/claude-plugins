@@ -443,6 +443,25 @@ class EnsureTest(_CheckRunnerTest):
         self.assertEqual(results[1]["name"], "a")
         self.assertEqual(results[1]["status"], "skipped")
 
+    def test_run_ensure_runs_missing_only_and_stops_at_first_failure(self):
+        self._write("built/marker")
+        marker = os.path.join(self.tree, "ran.txt")
+        entries = [
+            {"exists": "built/marker", "run": "echo present >> %s" % marker},
+            {"exists": "missing/out", "run": "echo missing >> %s" % marker},
+            {"exists": "bad/out", "run": "echo bad; exit 1"},
+            {"exists": "after/out", "run": "echo after >> %s" % marker},
+        ]
+        results = agent_exec_checks.run_ensure(entries, self.tree, self.slots)
+        self.assertEqual([r["name"] for r in results],
+                         ["ensure:missing/out", "ensure:bad/out"])
+        self.assertEqual([r["status"] for r in results], ["pass", "fail"])
+        with open(marker) as fh:
+            self.assertEqual(fh.read().split(), ["missing"])
+
+    def test_run_ensure_empty(self):
+        self.assertEqual(agent_exec_checks.run_ensure(None, self.tree, self.slots), [])
+
 
 _FLAKY_SCRIPT = (
     "if [ -e first-ran ]; then exit 0; fi; touch first-ran; "

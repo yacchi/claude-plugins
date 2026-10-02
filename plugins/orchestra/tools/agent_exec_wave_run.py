@@ -580,9 +580,22 @@ class _Runner(object):
     def _orca_result_path(self, pid):
         return os.path.join(self.state_dir, "orca", pid + ".result.json")
 
-    def _orca_need(self, token, exc):
-        return {"status": "_orca_need", "kind": exc.kind, "detail": exc.detail,
+    def _orca_need(self, token, exc, pid=None):
+        detail = exc.detail
+        if exc.kind == "stalled" and "dialog:" in detail:
+            detail += (
+                "\napprove it in Orca (terminal %s), then run: agent-exec wave mark "
+                "--state %s --await %s"
+                "\nor add the directory to orca.add_dirs / set orca.permission_mode: "
+                "auto and re-dispatch with --status pending"
+                % (self._orca_handle(detail), self.state_path, pid or "ID")
+            )
+        return {"status": "_orca_need", "kind": exc.kind, "detail": detail,
                 "token": token, "executor": "orca"}
+
+    def _orca_handle(self, detail):
+        match = re.search(r"\nterminal: ([^\n]+)", detail)
+        return match.group(1) if match else "unknown"
 
     def _orca_start(self, pid, token, delegated, prompt_files):
         """Run a `delegate` package in a new Orca session instead of handing it
@@ -604,7 +617,7 @@ class _Runner(object):
                 self.orca.model_for(cls, delegated.get("model")),
                 self.opts.get("run_id"), self.state_dir, add_dirs=self._orca_add_dirs())
         except agent_exec_orca.OrcaNeed as exc:
-            return self._orca_need(token, exc)
+            return self._orca_need(token, exc, pid)
         self.store.update(pid, tree=session["worktree"], executor="orca", session=True)
         if self._context_path(pid) in prompt_files:
             self._write_context(pid, self.notes.get(pid, ""))  # WORKING TREE = the Orca tree
@@ -614,9 +627,14 @@ class _Runner(object):
         """Directories outside the worktree an Orca session must reach: the
         state dir (context, corrections, result files) and every directory
         holding a preamble or spec file of the plan."""
-        dirs = {self.state_dir}
+        dirs = {self.state_dir, self.root}
         for path in list(self.plan["preamble"]) + [p["spec"] for p in self.plan["packages"]]:
             dirs.add(os.path.dirname(os.path.abspath(path)))
+        for path in self.orca.cfg.get("add_dirs") or []:
+            expanded = os.path.expanduser(os.path.expandvars(str(path)))
+            if not os.path.isabs(expanded):
+                expanded = os.path.join(self.root, expanded)
+            dirs.add(os.path.abspath(expanded))
         return sorted(dirs)
 
     def _orca_prompt(self, pid, session, prompt_files, token):
@@ -624,7 +642,23 @@ class _Runner(object):
             return self.orca.prompt(session, prompt_files, self._orca_result_path(pid),
                                     self.orca.cfg["task_timeout"])
         except agent_exec_orca.OrcaNeed as exc:
-            return self._orca_need(token, exc)
+            return self._orca_need(token, exc, pid)
+
+    def _orca_await(self, pid, session):
+        try:
+            result = self.orca.wait_result(
+                session, self._orca_result_path(pid), self.orca.cfg["task_timeout"])
+            summary = str(result.get("summary") or "")
+            answer = ("ESCALATE: " + summary
+                      if result["status"] == "escalate" else summary)
+            return {
+                "status": "ok", "answer": answer, "session_id": session.get("terminal"),
+                "resumed": True, "executor": "orca",
+                "isolation": {"isolate": True, "path": session["worktree"],
+                              "workdir": session["worktree"]},
+            }
+        except agent_exec_orca.OrcaNeed as exc:
+            return self._orca_need(None, exc, pid)
 
     def _orca_close(self, pid):
         if self.orca is None:
@@ -795,6 +829,12 @@ class _Runner(object):
 
     def _run_package(self, pid, phase, refresh_note):
         try:
+            if phase == "await":
+                result = self._orca_await(pid, self.orca.session(pid))
+                if not self._handle(pid, None, result):
+                    return
+                self._verify(pid)
+                return
             if phase == "implement":
                 self.notes[pid] = refresh_note
                 self._write_context(pid, refresh_note)
@@ -1005,6 +1045,36 @@ class _Runner(object):
         return os.path.join(os.path.dirname(os.path.abspath(
             agent_exec._ledger_dir_from_cfg(cfg))), "check-slots"), max_parallel
 
+    def _full_ensure(self, tree):
+        try:
+            cfg, error = agent_exec.resolve_config()
+        except (OSError, TypeError, ValueError):
+            cfg, error = None, "config"
+        if error or not cfg:
+            return []
+        checks = cfg.get("checks") or {}
+        slot_dir, max_parallel = self._check_slots()
+        return agent_exec_checks.run_ensure(
+            checks.get("ensure") or [], tree, slot_dir, max_parallel)
+
+    def _ensure_failure(self, tree):
+        results = self._full_ensure(tree)
+        failed = next((result for result in results if result.get("status") == "fail"), None)
+        if failed is None:
+            return None
+        excerpt = agent_exec_checks.failure_excerpt(
+            "%s\n%s" % (failed.get("name", "ensure"), failed.get("excerpt") or ""))
+        return {"result": failed, "excerpt": excerpt}
+
+    def _environment_failure(self, sha, failure):
+        excerpt = failure.get("excerpt") or ""
+        detail = ("full verification red at the last green SHA %s — environment, "
+                  "not code\nensure results: %s\n%s" % (
+                      sha, failure.get("result", {}).get("name", "ensure"), excerpt))
+        self._need(None, "environment", detail)
+        self._emit("environment", None, {"sha": sha, "excerpt": excerpt})
+        self._stop("environment: full verification red at the last green SHA")
+
     def _full_flaky(self, res):
         """Re-run the red full verification's failing files alone with
         `--full-retry`; True when that passed (the red was flaky)."""
@@ -1100,13 +1170,34 @@ class _Runner(object):
             self._emit(record["event"], by_task.get(pkg, pkg) if pkg else None,
                        dict(record.get("detail") or {}))
 
+        original_verify = agent_exec._run_verify_cmd
+
+        def verify_with_ensure(tree, command, timeout):
+            failure = self._ensure_failure(tree)
+            if failure is not None:
+                return {
+                    "status": "fail", "exit": failure["result"].get("exit"),
+                    "seconds": failure["result"].get("seconds", 0),
+                    "excerpt": failure["excerpt"], "dirtied": 0,
+                    "ensure_failed": True,
+                }
+            return original_verify(tree, command, timeout)
+
+        agent_exec._run_verify_cmd = verify_with_ensure
         try:
             verify = agent_exec._bisect_integration(
                 self.root, self.int_path, branch, green, candidates, results,
                 self.opts["full"], self.opts.get("full_timeout"), _FULL_BISECT_MAX,
                 progress=progress)
         finally:
+            agent_exec._run_verify_cmd = original_verify
             self._restore_integration(branch)
+        if verify.get("baseline") == "fail" and verify.get("ensure_failed"):
+            self._environment_failure(green, {
+                "result": {"name": "ensure"},
+                "excerpt": verify.get("excerpt") or "",
+            })
+            return []
         if verify.get("baseline") == "fail":
             self._stop("full verification red at the last green SHA")
             return []
@@ -1128,14 +1219,24 @@ class _Runner(object):
         package ids a revert sent back to `pending`."""
         self.integrated_since_full = 0
         self._emit("full-start", None, {})
-        res = self._run_cmd(self.opts["full"], self.opts.get("full_timeout"))
+        ensure_failure = self._ensure_failure(self.int_path)
+        if ensure_failure is None:
+            res = self._run_cmd(self.opts["full"], self.opts.get("full_timeout"))
+        else:
+            res = {
+                "status": "fail", "exit": ensure_failure["result"].get("exit"),
+                "seconds": ensure_failure["result"].get("seconds", 0),
+                "excerpt": ensure_failure["excerpt"], "dirtied": 0,
+                "ensure_failed": True,
+            }
         if res.get("dirtied"):
             self._emit("integration-dirty", None, {
                 "files": res["dirtied"], "after": "full"})
         self._emit("full-end", None, {"status": res["status"], "seconds": res["seconds"]})
         self.store.event("full", detail="%s exit=%s\n%s" % (
             res["status"], res["exit"], res["excerpt"]))
-        if res["status"] == "pass" or self._full_flaky(res):
+        if res["status"] == "pass" or (
+                not res.get("ensure_failed") and self._full_flaky(res)):
             self._full_green()
             return []
         return self._full_bisect()
@@ -1157,9 +1258,13 @@ class _Runner(object):
             pkg_states = state["packages"]
             carried = [p["id"] for p in self.plan["packages"]
                        if pkg_states.get(p["id"], {}).get("status") in ("verifying", "ready")]
+            awaiting = [p["id"] for p in self.plan["packages"]
+                        if pkg_states.get(p["id"], {}).get("status") == "implementing"
+                        and pkg_states.get(p["id"], {}).get("detail") == "await-orca"
+                        and self.orca is not None and self.orca.session(p["id"]) is not None]
             selected = agent_exec_wave_plan.select(
                 self.plan, pkg_states, self.opts["max_in_flight"])
-            if not selected and not carried:
+            if not selected and not carried and not awaiting:
                 break
             reason = self._stop_check()
             if reason is not None:
@@ -1172,11 +1277,12 @@ class _Runner(object):
 
             self.waves += 1
             self.store.set_wave(state.get("wave", 0) + 1)
-            self.store.event("wave-start", detail=",".join(carried + selected))
+            self.store.event("wave-start", detail=",".join(carried + awaiting + selected))
 
             head = self._int_head()
             jobs = [(pid, "verify", "") for pid in carried
                     if pkg_states[pid]["status"] == "verifying"]
+            jobs.extend((pid, "await", "") for pid in awaiting)
             for pid in selected:
                 ok, note = self._refresh(pid, head)
                 if ok:
@@ -1335,9 +1441,10 @@ _RUN_USAGE = (
 
 _MARK_USAGE = (
     "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n"
+    "                  or --state STATE --await ID\n"
     "                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n"
     "                  (ready enters self-verifying; pending|failed are terminal handoffs)\n"
-    "                  [--detail TEXT]\n"
+    "                  [--detail TEXT] | --clear-environment\n"
 )
 
 
@@ -1420,13 +1527,26 @@ def cmd_wave_mark(args):
     detail = ""
     widen = None
     recheck = None
+    clear_environment = False
+    await_pkg = None
     value_flags = {"--state": "state", "--pkg": "pkg", "--status": "status", "--detail": "detail",
                    "--widen": "widen", "--recheck": "recheck"}
     values = {}
     i = 0
     while i < len(args):
         tok = args[i]
+        if tok == "--clear-environment":
+            clear_environment = True
+            i += 1
+            continue
         if tok not in value_flags:
+            if tok == "--await":
+                if i + 1 >= len(args):
+                    sys.stderr.write("agent-exec: wave mark: missing value for --await\n")
+                    return 2
+                await_pkg = args[i + 1]
+                i += 2
+                continue
             sys.stderr.write("agent-exec: wave mark: unknown option: %s\n" % tok)
             return 2
         if i + 1 >= len(args):
@@ -1444,7 +1564,19 @@ def cmd_wave_mark(args):
         widen = [item for item in widen.split(",") if item]
     if recheck is not None:
         recheck = [item for item in recheck.split(",") if item]
-    if not state_path or (not pkg and not recheck) or (not status and widen is None and recheck is None):
+    if clear_environment and await_pkg is not None:
+        sys.stderr.write(_MARK_USAGE)
+        return 2
+    if clear_environment:
+        if not state_path or any(item in values for item in ("pkg", "status", "detail", "widen", "recheck")):
+            sys.stderr.write(_MARK_USAGE)
+            return 2
+    elif await_pkg is not None:
+        if (pkg or status or detail or widen is not None or recheck is not None
+                or not state_path):
+            sys.stderr.write(_MARK_USAGE)
+            return 2
+    elif not state_path or (not pkg and not recheck) or (not status and widen is None and recheck is None):
         sys.stderr.write(_MARK_USAGE)
         return 2
     if status is not None and status not in ("ready", "pending", "failed"):
@@ -1454,8 +1586,41 @@ def cmd_wave_mark(args):
         sys.stderr.write("agent-exec: wave mark: no state file at %s\n" % state_path)
         return 3
     store = agent_exec_wave.StateStore(state_path)
+    if clear_environment:
+        store.clear_need(None)
+        store.clear_stopped()
+        print(json.dumps({"environment_cleared": True}, ensure_ascii=False))
+        return 0
     state = store.load()
     packages = state.get("packages", {})
+    if await_pkg is not None:
+        entry = packages.get(await_pkg)
+        need = next((n for n in state.get("needs") or [] if n.get("id") == await_pkg), None)
+        need_detail = {}
+        try:
+            need_detail = json.loads(need.get("detail") or "{}") if need else {}
+        except (TypeError, ValueError):
+            need_detail = {}
+        need_kind = need.get("kind") if need else None
+        is_orca_need = (need_kind in ("stalled", "timeout")
+                        or (need_kind == "delegate"
+                            and need_detail.get("orca") in ("stalled", "timeout")))
+        if (entry is None or entry.get("status") != "needs" or not is_orca_need):
+            sys.stderr.write("agent-exec: wave mark: --await requires an Orca stalled/timeout need\n")
+            return 2
+        orca = agent_exec_orca.OrcaExecutor.from_config()
+        orca.state_dir = os.path.dirname(os.path.abspath(state_path))
+        session = orca._load_registry().get(await_pkg)
+        if (not isinstance(session, dict) or not session.get("terminal")
+                or not session.get("worktree")
+                or not os.path.isdir(session["worktree"])):
+            sys.stderr.write("agent-exec: wave mark: no live Orca session for %s\n" % await_pkg)
+            return 2
+        store.clear_need(await_pkg)
+        store.set_status(await_pkg, "implementing", detail="await-orca")
+        print(json.dumps({"pkg": await_pkg, "status": "implementing",
+                          "detail": "await-orca"}, ensure_ascii=False))
+        return 0
     if recheck is not None:
         if any(item not in packages for item in recheck):
             bad = next(item for item in recheck if item not in packages)

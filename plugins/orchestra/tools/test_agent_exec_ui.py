@@ -212,6 +212,23 @@ class SnapshotTests(UiTestBase):
         snap = self.get_snapshot(self.start())
         self.assertIn("error", snap["waves"][0])
 
+    def test_wave_level_need_with_null_id_is_listed_and_labelled(self):
+        state = self.make_wave()
+        with open(state) as fh:
+            data = json.load(fh)
+        data["needs"].append({"id": None, "kind": "environment",
+                              "detail": "ensure failed\nmore", "at": 2.0})
+        with open(state, "w") as fh:
+            json.dump(data, fh)
+        server = self.start()
+        snap = self.get_snapshot(server)
+        needs = snap["waves"][0]["needs"]
+        self.assertIn({"id": None, "kind": "environment",
+                       "detail": "ensure failed\nmore", "at": 2.0}, needs)
+        status, page = self.request(server, "GET", "/?t=" + TOKEN)
+        self.assertEqual(status, 200)
+        self.assertIn('n.id === null ? txt("(wave)")', page.decode("utf-8"))
+
     def test_html_page_served_and_escapes_via_textnodes(self):
         state = self.make_wave(detail="<script>alert(1)</script>")
         server = self.start()

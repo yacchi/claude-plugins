@@ -15,6 +15,8 @@ Run with: uv run test_agent_exec_orca.py
 """
 
 import json
+import contextlib
+import io
 import os
 import shlex
 import shutil
@@ -467,7 +469,6 @@ class HappyPathTests(_OrcaRepo):
         self.assertEqual(self.registry(), {})
         branches = _git(self.repo, "branch", "--list", "orchestra/pkg-A").stdout.strip()
         self.assertEqual(branches, "")
-
         # The prompt names the Orca worktree as WORKING TREE.
         context = _read(os.path.join(self.wave_dir, "context", "A.md"))
         self.assertIn("WORKING TREE: %s" % pkg["tree"], context)
@@ -475,6 +476,29 @@ class HappyPathTests(_OrcaRepo):
         self.assertEqual(ends[0]["executor"], "orca")
         actions = [json.loads(e["detail"])["action"] for e in self.events("orca-session")]
         self.assertEqual(actions, ["start", "close"])
+
+    def test_add_dirs_and_permission_mode_are_rendered(self):
+        configured = os.path.join(self.repo, "configured")
+        os.makedirs(configured)
+        self.config("permission_mode: auto\nadd_dirs: [configured, ~/orca-extra]\n")
+        self.plan(["A"])
+        self.scenario({"prompts": {"a": [_ok({"a.txt": "a\n"})]}})
+        report, rc = self.run_wave(DelegateExecutor())
+        self.assertEqual(rc, 0, report)
+        command = self.opt(self.calls("terminal create")[0], "--command")
+        self.assertIn("--permission-mode auto", command)
+        self.assertIn("--add-dir " + shlex.quote(self.repo), command)
+        self.assertIn("--add-dir " + shlex.quote(configured), command)
+        self.assertIn("--add-dir " + shlex.quote(os.path.join(self.home, "orca-extra")), command)
+
+    def test_invalid_and_bypass_permission_modes_are_rejected(self):
+        for value in ("nope", "bypassPermissions"):
+            with self.subTest(value=value):
+                self.config("permission_mode: %s\n" % value)
+                self.plan(["A"])
+                report, rc = self.run_wave(DelegateExecutor())
+                self.assertEqual(rc, 1, report)
+                self.assertEqual(self.need_detail("A")["orca"], "error")
 
     def test_adopted_while_running(self):
         self.plan(["A"])
@@ -588,9 +612,50 @@ class PromptWaitTests(_OrcaRepo):
         report, rc = self.run_wave(DelegateExecutor())
         self.assertEqual(rc, 1, report)
         self.assertEqual(self.need_detail("A")["orca"], "stalled")
+        detail = self.need_detail("A")["detail"]
+        self.assertIn("Do you want to make this edit", detail)
+        self.assertIn("terminal term-1", detail)
+        self.assertIn("result:", detail)
+        self.assertIn("approve it in Orca (terminal term-1), then run:", detail)
+        self.assertIn("agent-exec wave mark --state", detail)
+        self.assertIn("--await A", detail)
+        self.assertIn("orca.add_dirs", detail)
 
 
 class ResumeTests(_OrcaRepo):
+    def test_mark_await_resumes_without_resending_prompt(self):
+        self.plan(["A"])
+        self.scenario({"prompts": {"a": [{"dialog": True,
+                                           "files": {"a.txt": "approved\n"},
+                                           "result": {"status": "ok", "summary": "done"},
+                                           "after_waits": 1}]}})
+        report, rc = self.run_wave(DelegateExecutor())
+        self.assertEqual(rc, 1, report)
+        sends_before = len(self.prompts())
+        fake_state_path = os.path.join(self.orca_dir, "state.json")
+        fake = json.loads(_read(fake_state_path))
+        fake["terminals"]["term-1"]["pending"]["dialog"] = False
+        with open(fake_state_path, "w") as fh:
+            json.dump(fake, fh)
+        with contextlib.redirect_stdout(io.StringIO()):
+            marked = agent_exec_wave_run.cmd_wave_mark(
+                ["--state", self.state_path, "--await", "A"])
+        self.assertEqual(marked, 0)
+        report, rc = self.run_wave(NoDispatch())
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(len(self.prompts()), sends_before)
+        self.assertEqual(self.int_file("a.txt"), "approved\n")
+
+    def test_mark_await_without_live_session_exits_two(self):
+        self.plan(["A"])
+        store = agent_exec_wave.StateStore(self.state_path)
+        store.init(self.plan_path, ["A"], "wave-int")
+        store.add_need("A", "delegate", json.dumps({"orca": "stalled"}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            rc = agent_exec_wave_run.cmd_wave_mark(
+                ["--state", self.state_path, "--await", "A"])
+        self.assertEqual(rc, 2)
+
     def test_resume_reuses_live_terminal_and_refreshes_in_place(self):
         self.plan(["A", "B"])
         self.scenario({"prompts": {"a": [
@@ -727,6 +792,13 @@ class UnitTests(unittest.TestCase):
         self.assertTrue(agent_exec_orca._has_prompt_box(["", "❯ "]))
         self.assertFalse(agent_exec_orca._is_dialog(["", "❯ "]))
         self.assertTrue(agent_exec_orca._is_dialog(["❯ 1. Yes", "  2. No"]))
+        self.assertTrue(agent_exec_orca._is_dialog(["❯ No, exit"]))
+        for screen in (["  No matches found for pattern"],
+                       ["● Done", "  No issues found", "❯ "],
+                       ["  Yes, the file exists"],
+                       ["Cancel the build if needed"],
+                       ["Allow list updated"]):
+            self.assertFalse(agent_exec_orca._is_dialog(screen), screen)
 
 
 if __name__ == "__main__":
