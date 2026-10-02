@@ -491,6 +491,28 @@ class HappyPathTests(_OrcaRepo):
         self.assertIn("--add-dir " + shlex.quote(configured), command)
         self.assertIn("--add-dir " + shlex.quote(os.path.join(self.home, "orca-extra")), command)
 
+    def test_setup_is_passed_and_carry_event_is_emitted(self):
+        self.config("setup: inherit\n")
+        _write(os.path.join(self.repo, "CLAUDE.local.md"), "local\n")
+        self.plan(["A"])
+        self.scenario({"prompts": {"a": [_ok({"a.txt": "a\n"})]}})
+        report, rc = self.run_wave(DelegateExecutor())
+        self.assertEqual(rc, 0, report)
+        create = self.calls("worktree create")[0]
+        self.assertEqual(self.opt(create, "--setup"), "inherit")
+        carry = [json.loads(e["detail"]) for e in self.events("orca-session")
+                 if json.loads(e["detail"])["action"] == "carry"]
+        self.assertEqual(carry[0]["files"], 1)
+
+    def test_invalid_setup_is_rejected(self):
+        self.config("setup: nope\n")
+        self.plan(["A"])
+        self.scenario({"prompts": {"a": [_ok({"a.txt": "a\n"})]}})
+        report, rc = self.run_wave(DelegateExecutor())
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(self.status("A"), "needs")
+        self.assertIn("invalid orca.setup", self.need_detail("A")["detail"])
+
     def test_invalid_and_bypass_permission_modes_are_rejected(self):
         for value in ("nope", "bypassPermissions"):
             with self.subTest(value=value):

@@ -240,6 +240,8 @@ DEFAULTS = {
     # be rebuilt from scratch in every worktree.
     "isolation": {
         "carry_extra": [],
+        "carry_files": [".claude/settings.local.json", ".claude/orchestra.local.yaml",
+                        "CLAUDE.local.md"],
     },
     # `agent-exec check` runs these config-declared lint/test commands over a
     # tree's changed files (see `_parse_check_args`/`cmd_check` and
@@ -285,6 +287,7 @@ DEFAULTS = {
         "startup_timeout": 90,
         "task_timeout": 3600,
         "keep_sessions": True,
+        "setup": "skip",
     },
 }
 
@@ -3918,6 +3921,53 @@ def copy_tree_fast(src, dst):
     return copy_tree_fast_method(src, dst) != "failed"
 
 
+def _carry_dependencies(root, path, carry_extra=()):
+    carried = []
+    carry_method = "none"
+    for rel in detect_carry_dirs(root, extra_names=carry_extra):
+        method = copy_tree_fast_method(os.path.join(root, rel), os.path.join(path, rel))
+        if method != "failed":
+            carried.append(rel)
+        if method == "failed":
+            carry_method = "failed"
+        elif carry_method != "failed" and method == "copy":
+            carry_method = "copy"
+        elif carry_method == "none":
+            carry_method = "clone"
+    return carried, carry_method
+
+
+def _path_inside(path, directory):
+    """True when real `path` is `directory` itself or below it."""
+    return path == directory or path.startswith(directory.rstrip(os.sep) + os.sep)
+
+
+def _carry_local_files(root, path, files):
+    if os.path.realpath(root) == os.path.realpath(path):
+        return []
+    copied = []
+    real_root = os.path.realpath(root)
+    real_path = os.path.realpath(path)
+    for rel in files or ():
+        source = os.path.join(root, rel)
+        target = os.path.join(path, rel)
+        if (not os.path.isfile(source) or os.path.islink(source)
+                or os.path.lexists(target) or os.path.islink(target)):
+            continue
+        # `../x` or a symlinked parent would reach outside the repo (source)
+        # or outside the worktree (target): only files that stay inside both.
+        if not (_path_inside(os.path.realpath(source), real_root)
+                and _path_inside(os.path.realpath(target), real_path)):
+            continue
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copy2(source, target)
+        except (OSError, shutil.Error):
+            continue
+        copied.append(rel)
+    return copied
+
+
 def isolate_home(root):
     """Where plain-git worktrees go: a sibling of the repo, never inside it.
 
@@ -4130,7 +4180,7 @@ def _gtr_config_pairs(root):
     return [("gtr.copy.include", p) for p in GTR_FALLBACK_COPY_INCLUDE]
 
 
-def _carry_uncommitted(root, worktree):
+def _carry_uncommitted(root, worktree, excluded_files=()):
     """Reproduce the user's uncommitted state inside the fresh worktree.
 
     A worktree starts at HEAD, so without this the worker would silently work
@@ -4151,6 +4201,8 @@ def _carry_uncommitted(root, worktree):
     for rel in out.splitlines():
         rel = rel.strip()
         if not rel:
+            continue
+        if rel in excluded_files:
             continue
         src = os.path.join(root, rel)
         dst = os.path.join(worktree, rel)
@@ -4287,7 +4339,7 @@ def _worktree_entries(root):
 
 
 def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id=None,
-                   carry_extra=(), carry_deps=None):
+                   carry_extra=(), carry_deps=None, carry_files=None):
     """Create (or return) the worktree for `task`. Idempotent per task.
 
     `onto` names the commit the worktree starts from. Left at None it means
@@ -4311,6 +4363,8 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
         return {"status": "error", "reason": "not a git repository"}
     task = sanitize_task_id(task)
     branch = isolate_branch(task, session_id if session_id is not None else _current_session())
+    if carry_files is None:
+        carry_files = DEFAULTS["isolation"]["carry_files"]
 
     existing = _worktree_for_branch(root, branch)
     if existing:
@@ -4321,6 +4375,7 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
         return {
             "status": "exists", "task": task, "branch": branch, "path": existing,
             "backend": "existing", "carried": [], "carry_method": "none",
+            "carried_files": [],
         }
 
     if onto is not None:
@@ -4341,7 +4396,8 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
         return {"status": "error", "reason": "could not create a worktree for %s" % branch}
 
     if onto is None:
-        _carry_uncommitted(root, path)
+        carry_enabled = carry if carry_deps is None else carry_deps
+        _carry_uncommitted(root, path, excluded_files=() if carry_enabled else carry_files)
 
         # Commit the user's state as this worktree's baseline, so every later
         # diff shows the worker's changes and nothing else.
@@ -4356,16 +4412,10 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
     carried = []
     carry_method = "none"
     if carry if carry_deps is None else carry_deps:
-        for rel in detect_carry_dirs(root, extra_names=carry_extra):
-            method = copy_tree_fast_method(os.path.join(root, rel), os.path.join(path, rel))
-            if method != "failed":
-                carried.append(rel)
-            if method == "failed":
-                carry_method = "failed"
-            elif carry_method != "failed" and method == "copy":
-                carry_method = "copy"
-            elif carry_method == "none":
-                carry_method = "clone"
+        carried, carry_method = _carry_dependencies(root, path, carry_extra)
+    carried_files = []
+    if carry if carry_deps is None else carry_deps:
+        carried_files = _carry_local_files(root, path, carry_files)
 
     # Record the ignored surface exactly as orchestra hands the tree to the
     # worker -- after carried dependency directories landed -- so `isolate
@@ -4375,7 +4425,7 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
     result = {
         "status": "created", "task": task, "branch": branch, "path": path,
         "backend": backend, "baseline": baseline, "carried": carried,
-        "carry_method": carry_method,
+        "carry_method": carry_method, "carried_files": carried_files,
     }
     if carry_method == "copy":
         result["carry_note"] = "CoW was unavailable; carrying dependencies cost real time and disk."
@@ -6068,10 +6118,12 @@ def cmd_isolate_refresh(args):
 # in a marker inside the worktree's git dir; `_resolve_worktree` then finds the
 # tree even though its branch is not an `orchestra/` one.
 
-def _adopt_result(status, task, path=None, branch=None, baseline=None, note=""):
+def _adopt_result(status, task, path=None, branch=None, baseline=None, note="",
+                  carried=None, carry_method="none", carried_files=None):
     return {
         "status": status, "task": task, "path": path, "branch": branch,
-        "baseline": baseline, "note": note,
+        "baseline": baseline, "note": note, "carried": carried or [],
+        "carry_method": carry_method, "carried_files": carried_files or [],
     }
 
 
@@ -6088,7 +6140,8 @@ def _clear_adoption(path):
             pass
 
 
-def isolate_adopt(root, task, path, baseline=None, session_id=None):
+def isolate_adopt(root, task, path, baseline=None, session_id=None, carry=True,
+                  carry_extra=(), carry_files=None):
     """Register an externally created worktree as the task's worktree.
 
     `path` must be a linked worktree of `root` that orchestra did not create.
@@ -6174,8 +6227,19 @@ def isolate_adopt(root, task, path, baseline=None, session_id=None):
         return _adopt_result("error", task, path=path, branch=branch,
                              note="could not write the adoption marker for %s" % path)
     _write_baseline(path, baseline_sha)
+    carried = []
+    carry_method = "none"
+    carried_files = []
+    if carry:
+        carried, carry_method = _carry_dependencies(resolved_root, path, carry_extra)
+        if carry_files is None:
+            carry_files = DEFAULTS["isolation"]["carry_files"]
+        carried_files = _carry_local_files(resolved_root, path, carry_files)
+    _write_created_ignored(path, _ignored_digest(_ignored_entries(path)))
     return _adopt_result("adopted", task, path=path, branch=branch, baseline=baseline_sha,
-                         note="adopted %s as task %s" % (path, task))
+                         note="adopted %s as task %s" % (path, task),
+                         carried=carried, carry_method=carry_method,
+                         carried_files=carried_files)
 
 
 def isolate_unadopt(root, task, session_id=None):
@@ -6210,7 +6274,7 @@ def format_adopt_text(result):
 def _parse_adopt_args(args, value_flags, required):
     """Shared flag parser for `isolate adopt`/`unadopt`. Returns (options, error)."""
     opts = dict((dest, None) for dest in value_flags.values())
-    opts.update({"repo": os.getcwd(), "json": False, "text": False})
+    opts.update({"repo": os.getcwd(), "json": False, "text": False, "carry": True})
     seen = set()
     i = 0
     while i < len(args):
@@ -6227,6 +6291,13 @@ def _parse_adopt_args(args, value_flags, required):
         if tok in ("--json", "--text"):
             seen.add(tok)
             opts[tok[2:]] = True
+            i += 1
+            continue
+        if tok == "--no-carry":
+            if tok in seen:
+                return None, "duplicate option: %s" % tok
+            seen.add(tok)
+            opts["carry"] = False
             i += 1
             continue
         return None, "unknown option: %s" % tok
@@ -6248,9 +6319,20 @@ def cmd_isolate_adopt(args):
     if error is not None:
         sys.stderr.write("agent-exec: isolate adopt: %s\n" % error)
         return 2
+    carry_extra = ()
+    carry_files = None
+    if opts["carry"]:
+        resolved, config_error = resolve_config()
+        if config_error is not None:
+            sys.stderr.write(config_error + "\n")
+            return 1
+        isolation = resolved.get("isolation") or {}
+        carry_extra = isolation.get("carry_extra") or ()
+        carry_files = isolation.get("carry_files")
     result = isolate_adopt(
         opts["repo"], opts["task"], os.path.abspath(opts["path"]),
-        baseline=opts["baseline"], session_id=opts["session"],
+        baseline=opts["baseline"], session_id=opts["session"], carry=opts["carry"],
+        carry_extra=carry_extra, carry_files=carry_files,
     )
     if opts["text"]:
         print(format_adopt_text(result))
@@ -6295,7 +6377,7 @@ def _isolate_usage(stream=sys.stderr):
         "  refresh   --task <id> [--repo <path>] [--onto <ref>] [--session <id>]\n"
         "            [--json|--text]\n"
         "  adopt     --task <id> --path <path> [--baseline <ref>] [--repo <path>]\n"
-        "            [--session <id>] [--json|--text]\n"
+        "            [--session <id>] [--no-carry] [--json|--text]\n"
         "  unadopt   --task <id> [--repo <path>] [--session <id>] [--json|--text]\n"
         "  remove    --task <id> [--repo <path>] [--force]\n"
         "  remove    --session <id> [--repo <path>] [--force]\n"
@@ -6407,8 +6489,12 @@ def cmd_isolate(args):
                     sys.stderr.write(err + "\n")
                     return 1
                 carry_extra = (resolved.get("isolation") or {}).get("carry_extra") or ()
+                carry_files = (resolved.get("isolation") or {}).get("carry_files")
+            else:
+                carry_files = None
             result = isolate_create(
-                directory, task, backend=backend, carry=carry, carry_extra=carry_extra
+                directory, task, backend=backend, carry=carry, carry_extra=carry_extra,
+                carry_files=carry_files,
             )
         elif sub == "list":
             result = {"worktrees": isolate_list(directory, session_id=session)}

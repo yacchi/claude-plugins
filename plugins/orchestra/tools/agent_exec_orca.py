@@ -272,11 +272,13 @@ class OrcaExecutor(object):
     def _orca(self, args, timeout=_CALL_TIMEOUT):
         return _run(self.binary, args, timeout)
 
-    def _event(self, pkg, action, terminal):
+    def _event(self, pkg, action, terminal, **extra):
         if self.on_event is None:
             return
         try:
-            self.on_event(pkg, {"action": action, "terminal": terminal})
+            detail = {"action": action, "terminal": terminal}
+            detail.update(extra)
+            self.on_event(pkg, detail)
         except Exception:
             pass  # observability must never take a package down
 
@@ -435,9 +437,12 @@ class OrcaExecutor(object):
         if not run8:
             run8 = hashlib.sha1(os.path.abspath(state_dir).encode("utf-8")).hexdigest()[:8]
         name = _sanitize_name("wave-%s-%s" % (run8, pkg_id))
+        setup = self.cfg.get("setup", "skip")
+        if setup not in ("skip", "inherit", "run"):
+            raise OrcaNeed("error", "invalid orca.setup: %s" % setup)
         try:
             result = self._orca(["worktree", "create", "--repo", "path:" + repo, "--name", name,
-                                 "--base-branch", base_ref, "--setup", "skip", "--no-parent"],
+                                 "--base-branch", base_ref, "--setup", setup, "--no-parent"],
                                 timeout=300)
         except _OrcaError as exc:
             raise OrcaNeed("error", str(exc))
@@ -452,11 +457,21 @@ class OrcaExecutor(object):
             "add_dirs": sorted(set(os.path.abspath(d) for d in add_dirs)),
         }
         self._save(session)
-        adopted = agent_exec.isolate_adopt(repo, "pkg-" + pkg_id, path, baseline=base_sha,
-                                           session_id=None)
+        resolved, config_error = agent_exec.resolve_config()
+        if config_error is not None:
+            raise OrcaNeed("error", config_error)
+        isolation = (resolved or {}).get("isolation") or agent_exec.DEFAULTS["isolation"]
+        adopted = agent_exec.isolate_adopt(
+            repo, "pkg-" + pkg_id, path, baseline=base_sha, session_id=None, carry=True,
+            carry_extra=(isolation.get("carry_extra") or ()),
+            carry_files=isolation.get("carry_files"),
+        )
         if adopted.get("status") not in ("adopted", "exists"):
             self.close(session, remove_worktree=True)
             raise OrcaNeed("error", "could not adopt %s: %s" % (path, adopted.get("note")))
+        if adopted.get("carried") or adopted.get("carried_files"):
+            self._event(pkg_id, "carry", None, method=adopted.get("carry_method", "none"),
+                        files=len(adopted.get("carried_files") or []))
         try:
             handle = self._open_terminal(session)
         except OrcaNeed:

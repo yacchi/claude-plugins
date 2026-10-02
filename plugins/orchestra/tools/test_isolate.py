@@ -9,6 +9,7 @@ Run with: uv run test_isolate.py
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -388,6 +389,42 @@ class IsolateLifecycleTests(_RepoMixin, unittest.TestCase):
         self.assertTrue(
             os.path.exists(os.path.join(r["path"], "node_modules", "dep", "index.js"))
         )
+
+    def test_local_claude_files_are_carried_only_when_enabled(self):
+        for rel in (".claude/settings.local.json", ".claude/orchestra.local.yaml", "CLAUDE.local.md"):
+            self._write(rel, rel + "\n")
+        carried = self._create(task="with-local", carry=True)
+        for rel in (".claude/settings.local.json", ".claude/orchestra.local.yaml", "CLAUDE.local.md"):
+            self.assertTrue(os.path.isfile(os.path.join(carried["path"], rel)))
+        disabled = self._create(task="without-local", carry=False)
+        self.assertEqual(disabled["carried_files"], [])
+        self.assertFalse(os.path.exists(os.path.join(disabled["path"], "CLAUDE.local.md")))
+
+    def test_local_files_never_reach_outside_the_repo_or_the_tree(self):
+        outside = tempfile.mkdtemp(prefix="orch-outside-")
+        self.addCleanup(shutil.rmtree, outside, True)
+        with open(os.path.join(outside, "secret.txt"), "w") as fh:
+            fh.write("secret\n")
+        os.symlink(outside, os.path.join(self.repo, "linkdir"))
+        tree = tempfile.mkdtemp(prefix="orch-tree-")
+        self.addCleanup(shutil.rmtree, tree, True)
+        rel_up = os.path.relpath(os.path.join(outside, "secret.txt"), self.repo)
+        copied = agent_exec._carry_local_files(
+            self.repo, tree, [rel_up, "linkdir/secret.txt"])
+        self.assertEqual(copied, [])
+        self.assertEqual(os.listdir(tree), [])
+
+    def test_local_claude_files_are_not_overwritten(self):
+        self._write("CLAUDE.local.md", "main\n")
+        target = self._create(task="local-existing", carry=False)["path"]
+        with open(os.path.join(target, "CLAUDE.local.md"), "w") as fh:
+            fh.write("worker\n")
+        # A fresh tree is needed to exercise the carry path without changing
+        # the existing target file.
+        target = self._create(task="local-existing-carried", carry=True)["path"]
+        with open(os.path.join(target, "CLAUDE.local.md"), "w") as fh:
+            fh.write("worker\n")
+        self.assertEqual(open(os.path.join(target, "CLAUDE.local.md")).read(), "worker\n")
 
     def test_carry_can_be_disabled(self):
         os.makedirs(os.path.join(self.repo, "node_modules"))

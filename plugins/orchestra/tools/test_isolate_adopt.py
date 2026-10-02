@@ -201,6 +201,39 @@ class AdoptTests(_AdoptRepo):
         self.assertEqual(result["status"], "exists")
         self.assertEqual(agent_exec._read_baseline(self.ext), head)
 
+    def test_adopt_carries_dependencies_and_local_files(self):
+        with open(os.path.join(self.repo, ".gitignore"), "a") as fh:
+            fh.write("node_modules/\n")
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        with open(os.path.join(self.repo, "node_modules", "x"), "w") as fh:
+            fh.write("dep\n")
+        os.makedirs(os.path.join(self.repo, ".claude"))
+        with open(os.path.join(self.repo, ".claude", "settings.local.json"), "w") as fh:
+            fh.write("{}\n")
+        with open(os.path.join(self.repo, "CLAUDE.local.md"), "w") as fh:
+            fh.write("local\n")
+        _git(self.repo, "add", ".gitignore")
+        _git(self.repo, "commit", "-q", "-m", "ignore deps")
+        result = self._adopt()
+        self.assertEqual(result["status"], "adopted")
+        self.assertIn("node_modules", result["carried"])
+        self.assertEqual(
+            result["carried_files"],
+            [".claude/settings.local.json", "CLAUDE.local.md"],
+        )
+        self.assertTrue(os.path.isfile(os.path.join(self.ext, "node_modules", "x")))
+        self.assertEqual(agent_exec.isolate_remove(self.repo, "ext-1")["status"], "unadopted")
+
+    def test_adopt_no_carry_and_readopt_do_not_copy(self):
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        with open(os.path.join(self.repo, "node_modules", "x"), "w") as fh:
+            fh.write("dep\n")
+        self.assertEqual(self._adopt(carry=False)["carried"], [])
+        self.assertFalse(os.path.exists(os.path.join(self.ext, "node_modules")))
+        again = self._adopt(carry=True)
+        self.assertEqual(again["status"], "exists")
+        self.assertEqual(again["carried"], [])
+
 
 class UnadoptTests(_AdoptRepo):
     def test_unadopt_removes_markers_and_leaves_files(self):

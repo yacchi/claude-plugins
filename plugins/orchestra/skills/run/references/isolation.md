@@ -4,6 +4,13 @@ Load this file when a run needs any of: **a worker to touch a tree that holds un
 
 The premise: version control is effectively free, and an orchestration that can always return to a known-good state is strictly better than one that edits in place and hopes. A run that cannot roll back has to be cautious; a run that can roll back can be aggressive.
 
+Fresh orchestra and adopted worktrees carry gitignored dependency directories
+(`node_modules`, `.venv`, and configured extras) when carrying is enabled. They
+also receive the local Claude files listed by `isolation.carry_files` when
+those files exist in the repository root; existing files in the destination
+are never overwritten. `--no-carry` disables both kinds of carry, and nothing
+is ever copied into the main worktree.
+
 ## 0. Isolate first: the failure this prevents
 
 Seven weeks of transcripts contain **35 destructive VCS commands run by workers** against the user's shared tree — `git checkout -- <paths>`, `git restore`, `git reset --hard`, `git clean -fd`. They are spread across haiku, sonnet, and opus workers alike, so this is not a cheap-model defect. The instructor's countermeasure was prose, escalated three generations deep in the worker prompts ("Never run git checkout…", then "The ONE exception…", then "THE WORKING TREE IS ALREADY DIRTY AND THAT IS EXPECTED AND CORRECT"), and the accidents continued after each escalation.

@@ -146,6 +146,10 @@ ledger:
 # .svelte-kit, .gradle, Pods, .bundle, .dart_tool) - see references/isolation.md.
 isolation:
   carry_extra: []
+  carry_files:
+    - .claude/settings.local.json
+    - .claude/orchestra.local.yaml
+    - CLAUDE.local.md
 
 # Nudges and guards, never hard walls - see the `enforcement` paragraphs below
 # for the escape hatches. NOTE: quote "off" - YAML 1.1 parses a bareword `off`
@@ -375,6 +379,7 @@ orca:
   task_timeout: 3600       # seconds per prompt before the package becomes a need
   keep_sessions: true      # keep terminal+worktree alive until the package is integrated;
                            # false = close the terminal after each prompt (the worktree stays)
+  setup: skip              # Orca worktree setup: skip, inherit, or run
 ```
 
 `enabled` accepts YAML booleans or the strings `auto`/`true`/`false`; anything else means `auto`. `{model}` in `command` is replaced by the route's model, else `models.<cls>`, and `{permission_mode}` is replaced by `permission_mode` when present. Only `acceptEdits`, `auto`, `default`, and `plan` are allowed; permission bypass modes and `--dangerously-skip-permissions` are refused. Orca can reach the repository root, the state/spec/preamble directories, and every `add_dirs` entry. Without Orca, or with `enabled: false`, `wave run` behaves exactly as before: the package lands on the needs list as `delegate`. The run-time behaviour is described in `programme.md` §6 ("Orca sessions").
