@@ -201,6 +201,11 @@ DEFAULTS = {
     # hooks/count-turn-edits.sh: once the main thread has hand-edited this
     # many files inside one turn, the hook asks it once to re-classify into
     # the orchestrated lane. Set to "off" to disable.
+    # "opus_generalist" is the once-per-session nudge consumed by
+    # hooks/nudge-opus-generalist.sh: a general-purpose subagent that would
+    # run on the instructor's own Opus/Fable model (named, or `model`
+    # omitted so it inherits) is denied once and redirected to a cheaper
+    # tier or to orchestra. "nudge" (default) or "off".
     # "session_cleanup" removes the finishing session's orchestra worktrees
     # at SessionEnd, keeping any that still hold uncollected changes.
     # Consumed by hooks/cleanup-worktrees.sh. Set to "off" to disable.
@@ -208,6 +213,7 @@ DEFAULTS = {
         "light_class": "off",
         "worker_vcs": "block",
         "turn_edits": 8,
+        "opus_generalist": "nudge",
         "session_cleanup": "on",
     },
     # auth and nonzero-exit are transient, not resource exhaustion, so 0 means
@@ -1222,6 +1228,14 @@ def resolve_config():
         enforcement["turn_edits"] = "off"
     elif isinstance(turn_edits, bool) or not isinstance(turn_edits, int) or turn_edits <= 0:
         enforcement["turn_edits"] = DEFAULTS["enforcement"]["turn_edits"]
+    # opus_generalist is a nudge, so it normalizes like worker_vcs: only an
+    # explicit "off" (string, or the bareword YAML 1.1 loads as False)
+    # disables it; anything else keeps the default.
+    opus_generalist = enforcement.get("opus_generalist")
+    if opus_generalist is False or (isinstance(opus_generalist, str) and opus_generalist.strip().lower() == "off"):
+        enforcement["opus_generalist"] = "off"
+    else:
+        enforcement["opus_generalist"] = "nudge"
     # session_cleanup normalizes like worker_vcs: only an explicit "off" --
     # as a string, or as the bareword YAML 1.1 loads as False -- turns it
     # off. Any other value (missing, None, True, or an unrecognized string)

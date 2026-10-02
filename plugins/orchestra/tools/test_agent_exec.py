@@ -897,6 +897,28 @@ class EnforcementTurnEditsNormalizationTests(_IsolatedConfigMixin, unittest.Test
         self.assertEqual(resolved["enforcement"]["turn_edits"], 8)
 
 
+class EnforcementOpusGeneralistNormalizationTests(_IsolatedConfigMixin, unittest.TestCase):
+    """enforcement.opus_generalist is a nudge: only an explicit "off" disables
+    it; any other value keeps the default."""
+
+    def test_default_is_nudge(self):
+        resolved, err = self._isolated_resolve(None)
+        self.assertIsNone(err)
+        self.assertEqual(resolved["enforcement"]["opus_generalist"], "nudge")
+
+    def test_explicit_off_disables(self):
+        resolved, _ = self._isolated_resolve('enforcement:\n  opus_generalist: "off"\n')
+        self.assertEqual(resolved["enforcement"]["opus_generalist"], "off")
+
+    def test_bareword_off_disables(self):
+        resolved, _ = self._isolated_resolve("enforcement:\n  opus_generalist: off\n")
+        self.assertEqual(resolved["enforcement"]["opus_generalist"], "off")
+
+    def test_unrecognized_value_keeps_the_nudge(self):
+        resolved, _ = self._isolated_resolve("enforcement:\n  opus_generalist: sometimes\n")
+        self.assertEqual(resolved["enforcement"]["opus_generalist"], "nudge")
+
+
 class ResolveRoutePathStubTests(unittest.TestCase):
     """Demonstrates, by actually stubbing PATH (not by hand-building a
     doctor_report), that a machine without the Copilot CLI resolves `light`

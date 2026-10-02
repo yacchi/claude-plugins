@@ -21,8 +21,18 @@
 #
 # This hook is the mechanical version: count the main thread's edits within one
 # turn, and once they cross a threshold, put a re-route request in front of the
-# model exactly once. It never blocks an edit -- a genuinely EXPRESS turn that
-# happens to be large is legitimate, and the model can say so and continue.
+# model. It never blocks an edit -- a genuinely EXPRESS turn that happens to be
+# large is legitimate, and the model can say so and continue.
+#
+# TWO STAGES. A single nudge was not enough: in a 30-day, two-machine review
+# (plugins/orchestra/feedback/2026-10-03-usage-review.md) the nudge fired in
+# 34 turns with 8+ edits, and the model answered "EXPRESS 継続 (仕様は手元に
+# あります)" and carried on -- up to 37 edits in one turn, with an Agent
+# started in only 3 of them. The "I already hold the spec" exemption is
+# self-declared, so stage 1 (at the threshold) cannot stop it. Stage 2 fires at
+# twice the threshold and says that exemption has expired: holding the spec
+# makes the delegation packet cheap to write, it does not make hand edits at
+# instructor-model prices cheap. Each stage fires once per turn.
 #
 # SCOPE.
 #   - Main thread only. A subagent making 30 edits is the delegation working
@@ -142,28 +152,27 @@ if [ -r "$COUNT_FILE" ]; then
     COUNT=$(cat "$COUNT_FILE" 2>/dev/null) || COUNT=0
 fi
 case "$COUNT" in
-    ''|*[!0-9-]*) COUNT=0 ;;
+    ''|*[!0-9]*) COUNT=0 ;;
 esac
 
-# A negative count is the "already nudged this turn" marker: once fired, this
-# turn stays quiet no matter how many more edits follow.
-if [ "$COUNT" -lt 0 ]; then
-    exit 0
-fi
-
 COUNT=$((COUNT + 1))
+printf '%s' "$COUNT" > "$COUNT_FILE" 2>/dev/null || true
 
-if [ "$COUNT" -lt "$THRESHOLD" ]; then
-    printf '%s' "$COUNT" > "$COUNT_FILE" 2>/dev/null || true
+# Each stage is an exact-equality hit, so it fires once per turn without a
+# separate "already nudged" marker, and counting continues past stage 1.
+if [ "$COUNT" -eq "$THRESHOLD" ]; then
+    STAGE=1
+elif [ "$COUNT" -eq $((THRESHOLD * 2)) ]; then
+    STAGE=2
+else
     exit 0
 fi
 
-printf -- '-1' > "$COUNT_FILE" 2>/dev/null || true
-
-python3 - "$COUNT" <<'PYEOF' 2>/dev/null
+python3 - "$COUNT" "$STAGE" <<'PYEOF' 2>/dev/null
 import sys, json
 count = sys.argv[1]
-message = (
+stage = sys.argv[2]
+stage1 = (
     "orchestra: this turn has now hand-edited %s files in the main thread. "
     "That is past the point where the EXPRESS lane was the right call -- the "
     "request looked small when you classified it, and it is not. Re-classify "
@@ -172,8 +181,22 @@ message = (
     "skill, then delegate the rest with contracts and adversarial review. If "
     "you are deliberately staying in EXPRESS -- you already hold the whole "
     "spec and delegating would mean re-authoring it -- say so in one line and "
-    "carry on. This fires once per turn." % count
+    "carry on. This fires once per turn; a firmer request follows if the turn "
+    "reaches twice this size." % count
 )
+stage2 = (
+    "orchestra: this turn has now hand-edited %s files in the main thread -- "
+    "twice the re-route threshold, and you already saw the first request. "
+    "The \"I already hold the spec\" exemption stops applying here: holding "
+    "the spec makes a delegation packet cheap to write; it does not make this "
+    "many hand edits cheap on the instructor model. Do not just declare "
+    "EXPRESS again. Either (a) load the `orchestra:run` skill and hand the "
+    "remaining edits to a worker, using the spec you hold as the packet, or "
+    "(b) stop at a clean point, say what is left, and let the user's next "
+    "message start a fresh turn that is classified from scratch. This fires "
+    "once more at most." % count
+)
+message = stage2 if stage == "2" else stage1
 sys.stdout.write(json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "PostToolUse",

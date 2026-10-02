@@ -61,7 +61,9 @@ question); no decomposition, no design decisions, no cross-task coordination;
 small expected context bloat. File count is NOT a criterion.
 → Do it yourself, or via ONE cheap subagent (haiku/sonnet). No verifier
   pipeline, no workflow. Hand the test/build run to a cheap subagent and read
-  back only its verdict.
+  back only its verdict. Name the tier: a subagent call that leaves `model`
+  out inherits YOUR model (Opus/Fable), so pass `model: "sonnet"` (or
+  "haiku") explicitly for investigation, search, and test runs.
 The gate is context bloat, NOT your model tier. Before judging size, ask "do I
 already hold this content?" — if writing the delegation prompt would mean
 re-authoring a spec you just wrote, delegating buys nothing. That exemption is

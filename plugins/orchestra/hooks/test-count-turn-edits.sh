@@ -93,6 +93,18 @@ assert_nudged() {
     echo "PASS: $label"; PASS=$((PASS + 1))
 }
 
+# assert_stage: a nudge whose text is the stage-1 or stage-2 variant.
+assert_stage() {
+    local want="$1" label="$2"
+    assert_nudged "$label"
+    if [ "$want" = "2" ] && ! printf '%s' "$OUT" | grep -q 'exemption stops applying'; then
+        echo "FAIL: $label -- expected the stage-2 text, got: $OUT"; FAIL=$((FAIL + 1)); return
+    fi
+    if [ "$want" = "1" ] && printf '%s' "$OUT" | grep -q 'exemption stops applying'; then
+        echo "FAIL: $label -- expected the stage-1 text, got the stage-2 one"; FAIL=$((FAIL + 1)); return
+    fi
+}
+
 # edit_n: fire the hook n times in one turn, leaving OUT/RC from the last call.
 edit_n() {
     local tmpdir="$1" n="$2" session="${3:-s1}" prompt="${4:-p1}"
@@ -125,6 +137,28 @@ T=$(fresh_tmpdir); seed_router_state "$T" instructor s1
 edit_n "$T" 8
 edit_n "$T" 8 s1 p2
 assert_nudged "5. a second oversized turn is nudged again"
+
+# --- stage 2: the held-spec exemption expires at twice the threshold ---------
+T=$(fresh_tmpdir); seed_router_state "$T" instructor s1
+edit_n "$T" 8
+assert_stage 1 "6a. the threshold itself is the stage-1 text"
+
+T=$(fresh_tmpdir); seed_router_state "$T" instructor s1
+edit_n "$T" 15
+assert_silent "6b. between the stages nothing fires, counting continues past stage 1"
+
+T=$(fresh_tmpdir); seed_router_state "$T" instructor s1
+edit_n "$T" 16
+assert_stage 2 "6c. at twice the threshold, the exemption-expired text fires"
+
+T=$(fresh_tmpdir); seed_router_state "$T" instructor s1
+edit_n "$T" 17
+assert_silent "6d. stage 2 fires once per turn too"
+
+T=$(fresh_tmpdir); seed_router_state "$T" instructor s1
+edit_n "$T" 16
+edit_n "$T" 16 s1 p2
+assert_stage 2 "6e. the stages restart on a new turn"
 
 T=$(fresh_tmpdir); seed_router_state "$T" instructor s1
 edit_n "$T" 4

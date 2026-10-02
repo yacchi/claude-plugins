@@ -1,5 +1,5 @@
 {
-  "description": "Injects the orchestra routing protocol (express vs orchestrated lane) at session start, re-injects it after /clear, resume, and compaction, appends a short per-prompt reminder so the router survives long sessions, asks the main thread to re-classify into the orchestrated lane once a single turn has hand-edited enforcement.turn_edits files, blocks a subagent from running destructive VCS commands against the user's shared working tree (enforcement.worker_vcs, on by default), blocks a worker subagent that has an orchestra worktree of its own from writing into the user's main working tree (enforcement.worker_tree, on by default), denies `git stash` to workers in every worktree because the stash stack is shared, leases each linked worktree to one writing subagent at a time and releases the lease at SubagentStop (enforcement.worktree_lease, on by default), (opt-in, off by default) nudges a direct Claude Haiku subagent spawn toward `agent-exec dispatch` once per task when enforcement.light_class=block, and removes the finishing session's orchestra worktrees at SessionEnd, keeping any that still hold uncollected changes (enforcement.session_cleanup, on by default), with independent escape hatches so none of these can become a hard wall",
+  "description": "Injects the orchestra routing protocol (express vs orchestrated lane) at session start, re-injects it after /clear, resume, and compaction, appends a short per-prompt reminder so the router survives long sessions, asks the main thread to re-classify into the orchestrated lane once a single turn has hand-edited enforcement.turn_edits files (and again, firmer, at twice that), blocks a subagent from running destructive VCS commands against the user's shared working tree (enforcement.worker_vcs, on by default), blocks a worker subagent that has an orchestra worktree of its own from writing into the user's main working tree (enforcement.worker_tree, on by default), denies `git stash` to workers in every worktree because the stash stack is shared, leases each linked worktree to one writing subagent at a time and releases the lease at SubagentStop (enforcement.worktree_lease, on by default), denies, once per session, a general-purpose subagent that would run on the instructor's own Opus/Fable model (enforcement.opus_generalist, on by default; an omitted model inherits it), (opt-in, off by default) nudges a direct Claude Haiku subagent spawn toward `agent-exec dispatch` once per task when enforcement.light_class=block, and removes the finishing session's orchestra worktrees at SessionEnd, keeping any that still hold uncollected changes (enforcement.session_cleanup, on by default), with independent escape hatches so none of these can become a hard wall",
   "hooks": {
     "SessionStart": [
       {
@@ -85,6 +85,15 @@
             ],
             "timeout": 15,
             "statusMessage": "Checking light-class enforcement policy..."
+          },
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/nudge-opus-generalist.sh"
+            ],
+            "timeout": 15,
+            "statusMessage": "Checking subagent model tier..."
           }
         ]
       }
