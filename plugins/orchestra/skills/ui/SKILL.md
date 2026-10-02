@@ -6,7 +6,7 @@ when_to_use: Use when the user wants to watch or check on orchestra work without
 
 # ui: the orchestra dashboard
 
-A local, read-mostly web page served by `agent-exec ui` on 127.0.0.1. It reads the files orchestra already writes (wave registry, wave state and events, worktrees, run ledger, cooldown state) and streams them to the browser. It costs zero tokens by design.
+A local, read-mostly web page served by `agent-exec ui` on 127.0.0.1. It reads the files orchestra already writes (wave registry, wave state and events, worktrees, run ledger, cooldown state), and also shows running executors, linked specs/context/corrections, and 24-hour usage; it streams them to the browser. It costs zero tokens by design.
 
 ## Do this
 

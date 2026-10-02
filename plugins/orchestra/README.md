@@ -85,7 +85,7 @@ The largest orchestration found in local history was not an orchestra run: an ul
 
 ## Dashboard (`agent-exec ui`)
 
-`agent-exec ui --open` starts a local, token-protected web page on 127.0.0.1 (the `orchestra:ui` skill wraps it). It shows every registered `agent-exec wave` run - packages, needs, the mechanical-stage timeline - plus worktrees, recent dispatches and cooldowns, updating live over Server-Sent Events. It only reads files orchestra already writes, so it costs no tokens; a "Stop wave" button drops the wave's `STOP` flag. It exits after 30 idle minutes, or on `agent-exec ui --stop`.
+`agent-exec ui --open` starts a local, token-protected web page on 127.0.0.1 (the `orchestra:ui` skill wraps it). It shows every registered `agent-exec wave` run - packages, needs, the mechanical-stage timeline - plus worktrees, recent dispatches, cooldowns, running executors, linked context/spec files, and 24-hour usage, updating live over Server-Sent Events. It only reads files orchestra already writes, so it costs no tokens; a "Stop wave" button drops the wave's `STOP` flag. It exits after 30 idle minutes, or on `agent-exec ui --stop`.
 
 ## Rollback, diffs, and competing implementations (v0.14.0)
 

@@ -576,7 +576,7 @@ Usage:
   agent-exec ledger show [--session ID|--run ID] [--json|--text]
   agent-exec ledger archive [--json|--text]
   agent-exec ledger clear [--yes] [--json|--text]
-  agent-exec wave status --state PATH [--json|--line|--text]
+  agent-exec wave status --state PATH [--json|--line|--text] [--live]
                   [--watch SEC] [--events N]
                                   render a wave's state.json (see
                                   agent_exec_wave.py); --watch redraws every
@@ -2377,6 +2377,26 @@ def cmd_cooldown(args):
                     )
                 )
     return 0
+
+
+def clear_cooldown(cfg, executor=None):
+    path = cooldown_state_path(cfg)
+    state = load_cooldown_state(path)
+    known = set(_USAGE_SOURCES)
+    external = cfg.get("external_executors", {}) if isinstance(cfg, dict) else {}
+    if isinstance(external, dict):
+        known.update(external.keys())
+    if executor is not None and executor not in known:
+        return {"error": "unknown executor: %s" % executor}
+    if executor is None:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    elif executor in state:
+        del state[executor]
+        save_cooldown_state(path, state, time.time())
+    return {"cleared": executor or "all"}
 
 
 # --- run subcommand ----------------------------------------------------------
@@ -6966,6 +6986,40 @@ def _detach_dir_from_cfg(cfg):
 
 def _detach_state_path(cfg, token):
     return os.path.join(_detach_dir_from_cfg(cfg), "%s.json" % token)
+
+
+def list_detached_dispatches(cfg):
+    result = []
+    directory = _detach_dir_from_cfg(cfg)
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return result
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                state = json.load(handle)
+            token = state.get("token") or name[:-5]
+            pid = state.get("pid")
+            spec = None
+            try:
+                spec = _load_dispatch_token(cfg, token)
+            except (ValueError, OSError):
+                pass
+            result.append({
+                "token": token, "pid": pid, "alive": _pid_alive(pid),
+                "started": state.get("started"),
+                "executor": (spec or {}).get("executor", state.get("executor")),
+                "model": (spec or {}).get("model", state.get("model")),
+                "class": (spec or {}).get("class", state.get("class")),
+                "task": (spec or {}).get("task", state.get("task")),
+            })
+        except (OSError, ValueError, TypeError):
+            continue
+    return result
 
 
 def _detach_out_path(cfg, token):

@@ -35,6 +35,8 @@ SSE_POLL_SECONDS = 2.0
 SSE_PING_SECONDS = 15.0
 IDLE_MINUTES_DEFAULT = 30.0
 START_WAIT_SECONDS = 10.0
+_LIVE_CACHE = {}
+_USAGE_CACHE = (0.0, None)
 
 UI_USAGE = """\
 Usage:
@@ -161,6 +163,49 @@ def _wave_snapshot(entry):
                 "attempts": pkg.get("attempts"),
                 "detail": pkg.get("detail"),
             })
+        import agent_exec_wave
+        live = {}
+        for pid, pkg in (state.get("packages") or {}).items():
+            tree = pkg.get("tree") if isinstance(pkg, dict) else None
+            if not isinstance(tree, str):
+                continue
+            key = os.path.abspath(tree)
+            cached = _LIVE_CACHE.get(key)
+            if cached and time.time() - cached[0] < 5:
+                count = cached[1]
+            else:
+                count = agent_exec_wave.live_changes({
+                    "packages": {pid: pkg},
+                }).get(pid)
+                _LIVE_CACHE[key] = (time.time(), count)
+            live[pid] = count
+        plan = state.get("plan")
+        plan_dir = os.path.dirname(os.path.abspath(plan)) if isinstance(plan, str) else None
+        plan_data = {}
+        if isinstance(plan, str):
+            try:
+                with open(plan, "r", encoding="utf-8") as fh:
+                    plan_data = json.load(fh)
+            except (OSError, ValueError):
+                pass
+        specs = plan_data.get("packages", []) if isinstance(plan_data, dict) else []
+        specs = {item.get("id"): item for item in specs if isinstance(item, dict)}
+        context_dir = os.path.join(os.path.dirname(state_path), "context")
+        correction_dir = os.path.join(os.path.dirname(state_path), "corrections")
+        for package in packages:
+            pid = package["id"]
+            package["files_live"] = live.get(pid)
+            spec = specs.get(pid)
+            if isinstance(spec, dict):
+                spec = spec.get("spec") or spec.get("path")
+            if isinstance(spec, str) and plan_dir:
+                package["spec"] = os.path.abspath(os.path.join(plan_dir, spec))
+            else:
+                package["spec"] = None
+            package["context"] = os.path.join(context_dir, "%s.md" % pid) if os.path.isfile(
+                os.path.join(context_dir, "%s.md" % pid)) else None
+            package["correction"] = os.path.join(correction_dir, "%s.md" % pid) if os.path.isfile(
+                os.path.join(correction_dir, "%s.md" % pid)) else None
         out["counts"] = counts
         out["packages"] = packages
     except (OSError, ValueError) as exc:
@@ -238,13 +283,84 @@ def build_snapshot():
     else:
         waves = [_guarded(_wave_snapshot, e) for e in entries]
         worktrees = _guarded(_worktrees_snapshot, entries)
+    running = _running_snapshot(entries)
+    usage = _usage_snapshot()
     return {
         "generated_at": time.time(),
         "waves": waves,
         "worktrees": worktrees,
         "dispatch": _guarded(_dispatch_snapshot),
         "cooldown": _guarded(_cooldown_snapshot),
+        "running": running,
+        "usage": usage,
     }
+
+
+def _running_snapshot(entries):
+    import agent_exec
+    try:
+        cfg = _resolved_config()
+        dispatches = agent_exec.list_detached_dispatches(cfg)
+    except Exception as exc:  # noqa: BLE001
+        dispatches = {"error": str(exc) or exc.__class__.__name__}
+    if not isinstance(dispatches, list):
+        dispatches = []
+    alive = [item for item in dispatches if item.get("alive")]
+    alive.sort(key=lambda item: item.get("started") or 0, reverse=True)
+    sessions = []
+    in_flight = 0
+    by_executor = {}
+    for entry in entries:
+        try:
+            state = _load_json_file(entry["state"])
+            in_flight += sum(1 for pkg in (state.get("packages") or {}).values()
+                             if pkg.get("status") in ("implementing", "verifying", "fixing", "ready"))
+            path = os.path.join(os.path.dirname(entry["state"]), "orca-sessions.json")
+            with open(path, "r", encoding="utf-8") as fh:
+                records = json.load(fh)
+            if isinstance(records, dict):
+                records = list(records.values())
+            for record in records if isinstance(records, list) else []:
+                if isinstance(record, dict):
+                    sessions.append({k: record.get(k) for k in
+                                     ("wave_state", "pkg", "terminal", "worktree")})
+                    sessions[-1]["wave_state"] = sessions[-1]["wave_state"] or entry["state"]
+        except (OSError, ValueError, TypeError):
+            pass
+    for item in alive:
+        name = item.get("executor")
+        if name:
+            by_executor[name] = by_executor.get(name, 0) + 1
+    return {"dispatches": alive, "orca_sessions": sessions,
+            "by_executor": by_executor, "waves_in_flight": in_flight}
+
+
+def _usage_snapshot():
+    global _USAGE_CACHE
+    if time.time() - _USAGE_CACHE[0] < 60 and _USAGE_CACHE[1] is not None:
+        return _USAGE_CACHE[1]
+    try:
+        import agent_exec
+        now = agent_exec.datetime.now(agent_exec.timezone.utc)
+        report = agent_exec.build_usage_report(
+            now - agent_exec.timedelta(hours=24), now,
+            list(agent_exec._USAGE_SOURCES), all_projects=True,
+            cfg=_resolved_config(),
+        )
+        totals = {}
+        for executor, value in report.items():
+            if not isinstance(value, dict):
+                continue
+            by_model = value.get("by_model") or {"unknown": value.get("tokens") or {}}
+            for model, tokens in by_model.items():
+                key = "%s/%s" % (executor, model)
+                totals[key] = dict(tokens)
+                if "cost_micro_usd" in value:
+                    totals[key]["cost_micro_usd"] = value["cost_micro_usd"]
+        _USAGE_CACHE = (time.time(), totals)
+        return totals
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc) or exc.__class__.__name__}
 
 
 def _snapshot_body(snapshot):
@@ -255,6 +371,49 @@ def _snapshot_hash(snapshot):
     """Hash of the snapshot minus its timestamp so an idle system sends nothing."""
     stable = dict((k, v) for k, v in snapshot.items() if k != "generated_at")
     return hashlib.sha256(_snapshot_body(stable).encode("utf-8")).hexdigest()
+
+
+def _allowed_file(path):
+    candidate = os.path.abspath(os.path.expanduser(path))
+    real = os.path.realpath(candidate)
+    if candidate != path or not os.path.isfile(candidate):
+        return None
+    for entry in read_registry():
+        try:
+            state = _load_json_file(entry["state"])
+            plan = state.get("plan")
+            if not isinstance(plan, str):
+                continue
+            with open(plan, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            allowed = []
+            if isinstance(data, dict):
+                preambles = data.get("preamble", [])
+                if isinstance(preambles, str):
+                    preambles = [preambles]
+                for value in preambles:
+                    if isinstance(value, str):
+                        allowed.append(os.path.realpath(os.path.abspath(
+                            os.path.join(os.path.dirname(plan), value))))
+                for key in ("spec", "preamble"):
+                    value = data.get(key)
+                    if isinstance(value, str) and key != "preamble":
+                        allowed.append(os.path.realpath(os.path.abspath(
+                            os.path.join(os.path.dirname(plan), value))))
+                for package in data.get("packages", []):
+                    if isinstance(package, dict) and isinstance(package.get("spec"), str):
+                        allowed.append(os.path.realpath(os.path.abspath(
+                            os.path.join(os.path.dirname(plan), package["spec"]))))
+            state_dir = os.path.dirname(os.path.abspath(entry["state"]))
+            for dirname in ("context", "corrections", "carry"):
+                root = os.path.realpath(os.path.join(state_dir, dirname))
+                if os.path.dirname(real) == root:
+                    allowed.append(real)
+            if real in allowed:
+                return candidate
+        except (OSError, ValueError, TypeError):
+            continue
+    return None
 
 
 # --- HTTP server ----------------------------------------------------------------
@@ -348,6 +507,21 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self._send_json(200, build_snapshot())
         elif route == "/api/stream":
             self._stream()
+        elif route == "/api/file":
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            requested = query.get("path", [""])[0]
+            allowed = _allowed_file(requested)
+            if allowed is None:
+                self._send(404, "not found")
+                return
+            try:
+                if os.path.getsize(allowed) > 1024 * 1024:
+                    self._send(413, "file too large")
+                    return
+                with open(allowed, "rb") as fh:
+                    self._send(200, fh.read())
+            except OSError:
+                self._send(404, "not found")
         else:
             self._send(404, "not found")
 
@@ -355,7 +529,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if not self._gate(header_only=True):
             return
         route = urllib.parse.urlparse(self.path).path
-        if route != "/api/stop":
+        if route not in ("/api/stop", "/api/cooldown/clear", "/api/sweep"):
             self._send(404, "not found")
             return
         try:
@@ -363,6 +537,31 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(min(length, 65536)).decode("utf-8") or "{}")
         except (ValueError, TypeError):
             self._send_json(400, {"error": "invalid body"})
+            return
+        if route == "/api/cooldown/clear":
+            import agent_exec
+            cfg = _resolved_config()
+            executor = payload.get("executor") if isinstance(payload, dict) else None
+            result = agent_exec.clear_cooldown(cfg, executor)
+            if "error" in result:
+                self._send_json(400, result)
+            else:
+                self._send_json(200, result)
+            return
+        if route == "/api/sweep":
+            import agent_exec
+            repo = payload.get("repo") if isinstance(payload, dict) else None
+            registered = [os.path.realpath(e.get("repo")) for e in read_registry()
+                          if isinstance(e.get("repo"), str)]
+            if not isinstance(repo, str) or os.path.realpath(repo) not in registered:
+                self._send_json(404, {"error": "unknown repo"})
+                return
+            result = agent_exec.isolate_sweep(
+                repo, dry_run=not bool(payload.get("apply")),
+                older_than=None, include_current=False, branches=False,
+                force=False, include_live=False,
+            )
+            self._send_json(200, result)
             return
         state = payload.get("state") if isinstance(payload, dict) else None
         registered = [e["state"] for e in read_registry()]
@@ -721,6 +920,11 @@ function table(head, rows) {
   });
   return el("table", null, [el("thead", null, [thead]), el("tbody", null, body)]);
 }
+function fileLink(path, label) {
+  if (!path) return null;
+  return el("a", { href: "/api/file?path=" + encodeURIComponent(path) + "&t=" + encodeURIComponent(TOKEN),
+    target: "_blank", rel: "noopener" }, [label]);
+}
 
 var EVENT_STYLE = [
   [/^dispatch-/, "▶", "e-run"], [/^check-/, "☑", "e-run"],
@@ -754,6 +958,19 @@ function stopWave(state) {
     body: JSON.stringify({ state: state })
   }).then(function (r) { if (!r.ok) alert("stop failed: " + r.status); });
 }
+function sweepRepo(repo) {
+  fetch("/api/sweep", {
+    method: "POST", headers: {"Content-Type": "application/json", "X-Orchestra-Token": TOKEN},
+    body: JSON.stringify({repo: repo, apply: false})
+  }).then(function (r) { return r.json(); }).then(function (dry) {
+    if (confirm("Sweep preview:\n" + JSON.stringify(dry) + "\nApply this sweep?")) {
+      fetch("/api/sweep", {
+        method: "POST", headers: {"Content-Type": "application/json", "X-Orchestra-Token": TOKEN},
+        body: JSON.stringify({repo: repo, apply: true})
+      });
+    }
+  });
+}
 
 function renderWave(w) {
   if (w.error && !w.packages.length) {
@@ -769,7 +986,12 @@ function renderWave(w) {
   ]);
   var pkgs = table(["id", "status", "elapsed", "executor", "files", "attempts"],
     w.packages.map(function (p) {
-      return [p.id, badge(p.status), elapsed(p.since), txt(p.executor), txt(p.files_changed), txt(p.attempts)];
+      var links = [fileLink(p.spec, p.id)];
+      if (p.context) links.push(fileLink(p.context, "context"));
+      if (p.correction) links.push(fileLink(p.correction, "correction"));
+      return [el("span", null, links.filter(Boolean)), badge(p.status), elapsed(p.since), txt(p.executor),
+        txt(p.files_live !== null && p.files_live !== undefined ? p.files_live + "*" : p.files_changed),
+        txt(p.attempts)];
     }));
   var kids = [head, el("div", { "class": "muted" }, [counts]), pkgs];
   (w.packages || []).forEach(function (p) {
@@ -782,7 +1004,9 @@ function renderWave(w) {
       var full = txt(n.detail);
       var line = full.split("\n")[0];
       var box = el("div", { "class": "need" }, [
-        el("div", null, [el("span", { "class": "badge s-needs" }, [txt(n.kind)]), " " + txt(n.id) + " " + line])
+        el("div", null, [el("span", { "class": "badge s-needs" }, [txt(n.kind)]), " ",
+          fileLink((w.packages || []).filter(function (p) { return p.id === n.id; })[0] &&
+            (w.packages || []).filter(function (p) { return p.id === n.id; })[0].spec, txt(n.id)), " " + line])
       ]);
       if (openNeeds[key]) box.appendChild(el("pre", null, [full]));
       box.addEventListener("click", function () { openNeeds[key] = !openNeeds[key]; render(last); });
@@ -805,6 +1029,15 @@ function render(snap) {
   if (!snap) return;
   last = snap;
   var kids = [];
+  var running = snap.running || {};
+  var runRows = (running.dispatches || []).map(function (d) {
+    return [txt(d.executor), txt(d.model), txt(d.task), txt(d.pid)];
+  });
+  kids.push(el("section", null, [
+    el("h2", null, ["Running"]),
+    el("div", { "class": "muted" }, [txt(running.waves_in_flight) + " packages in flight"]),
+    table(["executor", "model", "task", "pid"], runRows)
+  ]));
   if (renderErr(snap.waves)) kids.push(el("section", null, [renderErr(snap.waves)]));
   else if (!snap.waves.length) kids.push(el("section", { "class": "muted" }, ["No waves registered yet."]));
   else snap.waves.forEach(function (w) { kids.push(renderWave(w)); });
@@ -829,11 +1062,34 @@ function render(snap) {
   }
   kids.push(el("section", null, dp));
 
+  var usage = [el("h2", null, ["Usage (24h)"])];
+  if (renderErr(snap.usage)) usage.push(renderErr(snap.usage));
+  else usage.push(table(["executor/model", "input", "output", "cached", "cost"],
+    Object.keys(snap.usage || {}).filter(function (k) { return k !== "error"; }).map(function (k) {
+      var v = snap.usage[k] || {};
+      return [k, txt(v.input_tokens), txt(v.output_tokens), txt(v.cached_input_tokens), txt(v.cost_micro_usd)];
+    })));
+  kids.push(el("section", null, usage));
+
   var cd = [el("h2", null, ["Cooldown"])];
   if (renderErr(snap.cooldown)) cd.push(renderErr(snap.cooldown));
   else if (!Object.keys(snap.cooldown || {}).length) cd.push(el("div", { "class": "muted" }, ["none"]));
   else cd.push(el("pre", { "class": "detail" }, [JSON.stringify(snap.cooldown, null, 2)]));
   kids.push(el("section", null, cd));
+
+  var actions = el("section", null, [
+    el("h2", null, ["Actions"]),
+    el("button", { onclick: function () {
+      if (confirm("Clear all cooldowns?")) fetch("/api/cooldown/clear", {
+        method: "POST", headers: {"Content-Type": "application/json", "X-Orchestra-Token": TOKEN},
+        body: JSON.stringify({executor: null})
+      });
+    } }, ["Clear cooldowns"])
+  ]);
+  (snap.worktrees || []).forEach(function (g) {
+    actions.appendChild(el("button", { onclick: function () { sweepRepo(g.repo); } }, ["Sweep " + g.repo]));
+  });
+  kids.push(actions);
 
   root.textContent = "";
   kids.forEach(function (k) { root.appendChild(k); });

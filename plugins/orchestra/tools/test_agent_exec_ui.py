@@ -162,7 +162,8 @@ class SnapshotTests(UiTestBase):
     def test_shape(self):
         state = self.make_wave()
         snap = self.get_snapshot(self.start())
-        for key in ("generated_at", "waves", "worktrees", "dispatch", "cooldown"):
+        for key in ("generated_at", "waves", "worktrees", "dispatch", "cooldown",
+                    "running", "usage"):
             self.assertIn(key, snap)
         wave = snap["waves"][0]
         self.assertEqual(wave["state"], state)
@@ -171,7 +172,8 @@ class SnapshotTests(UiTestBase):
         self.assertEqual(wave["counts"], {"implementing": 1, "pending": 1})
         pkg = [p for p in wave["packages"] if p["id"] == "A-1"][0]
         self.assertEqual(sorted(pkg), sorted(
-            ["id", "status", "since", "executor", "files_changed", "attempts", "detail"]))
+            ["id", "status", "since", "executor", "files_changed", "files_live",
+             "attempts", "detail", "spec", "context", "correction"]))
         self.assertEqual(wave["needs"][0]["kind"], "escalate")
         self.assertEqual(wave["events"][0]["detail"]["kind"], "implement")
         self.assertEqual(wave["events"][1]["detail"], "not json")
@@ -293,6 +295,350 @@ class StopTests(UiTestBase):
         server = self.start()
         self.assertEqual(self.post(server, state, header=False)[0], 403)
         self.assertFalse(agent_exec_wave.stop_requested(state))
+
+
+class V1Base(UiTestBase):
+    def setUp(self):
+        super().setUp()
+        os.environ["ORCHESTRA_ALIVE_DIR"] = os.path.join(self.tmp, "alive")
+        import agent_exec
+        self.agent_exec = agent_exec
+        self._saved_alive = agent_exec._heartbeat_dir_cache
+        agent_exec._heartbeat_dir_cache = os.path.join(self.tmp, "alive")
+        self.addCleanup(self._restore_alive)
+
+    def _restore_alive(self):
+        self.agent_exec._heartbeat_dir_cache = self._saved_alive
+
+    def cfg(self):
+        cfg, err = self.agent_exec.resolve_config()
+        self.assertFalse(err)
+        return cfg
+
+    def post(self, server, path, payload, header=True):
+        headers = {"Content-Type": "application/json"}
+        if header:
+            headers["X-Orchestra-Token"] = TOKEN
+        else:
+            path += "?t=" + TOKEN
+        return self.request(server, "POST", path, headers=headers, body=json.dumps(payload))
+
+    def snapshot(self, server):
+        status, data = self.request(server, "GET", "/api/snapshot?t=" + TOKEN)
+        self.assertEqual(status, 200)
+        return json.loads(data)
+
+
+class ListDetachedTests(V1Base):
+    def plant(self, token, pid, spec=True, **extra):
+        cfg = self.cfg()
+        detach = self.agent_exec._detach_dir_from_cfg(cfg)
+        os.makedirs(detach, exist_ok=True)
+        with open(os.path.join(detach, token + ".json"), "w") as fh:
+            json.dump(dict({"pid": pid, "token": token, "started": 123.0}, **extra), fh)
+        if spec:
+            tokens = self.agent_exec._token_dir_from_cfg(cfg)
+            os.makedirs(tokens, exist_ok=True)
+            with open(os.path.join(tokens, token + ".json"), "w") as fh:
+                json.dump({"class": "light", "archetype": "default", "workdir": "/w",
+                           "run_id": None, "isolate": "auto", "task": "T-1",
+                           "prompt_files": [], "executor": "codex", "model": "m1"}, fh)
+
+    def test_alive_dead_corrupt_and_missing_token(self):
+        dead = subprocess.Popen([sys.executable, "-c", "pass"])
+        dead.wait()
+        self.plant("dsp-000000000001", os.getpid())
+        self.plant("dsp-000000000002", dead.pid, spec=False)
+        detach = self.agent_exec._detach_dir_from_cfg(self.cfg())
+        with open(os.path.join(detach, "dsp-000000000003.json"), "w") as fh:
+            fh.write("{corrupt")
+        with open(os.path.join(detach, "notes.txt"), "w") as fh:
+            fh.write("ignored")
+        items = {i["token"]: i for i in self.agent_exec.list_detached_dispatches(self.cfg())}
+        self.assertEqual(sorted(items), ["dsp-000000000001", "dsp-000000000002"])
+        live = items["dsp-000000000001"]
+        self.assertTrue(live["alive"])
+        self.assertEqual(live["pid"], os.getpid())
+        self.assertEqual(live["started"], 123.0)
+        self.assertEqual((live["executor"], live["model"], live["class"], live["task"]),
+                         ("codex", "m1", "light", "T-1"))
+        gone = items["dsp-000000000002"]
+        self.assertFalse(gone["alive"])
+        self.assertEqual((gone["executor"], gone["model"], gone["class"], gone["task"]),
+                         (None, None, None, None))
+
+    def test_missing_directory_is_empty(self):
+        self.assertEqual(self.agent_exec.list_detached_dispatches(self.cfg()), [])
+
+
+class RunningSnapshotTests(ListDetachedTests):
+    def test_running_section(self):
+        state = self.make_wave()
+        self.plant("dsp-00000000000a", os.getpid(), executor="copilot")
+        self.plant("dsp-00000000000b", 2 ** 22 + 12345, spec=False)
+        with open(os.path.join(os.path.dirname(state), "orca-sessions.json"), "w") as fh:
+            json.dump([{"wave_state": state, "pkg": "A-1", "terminal": "term-1",
+                        "worktree": "/wt/a1"}], fh)
+        running = self.snapshot(self.start())["running"]
+        self.assertEqual([d["token"] for d in running["dispatches"]], ["dsp-00000000000a"])
+        self.assertEqual(running["by_executor"], {"codex": 1})
+        self.assertEqual(running["orca_sessions"], [{
+            "wave_state": state, "pkg": "A-1", "terminal": "term-1", "worktree": "/wt/a1"}])
+        self.assertEqual(running["waves_in_flight"], 1)
+
+
+class LiveSnapshotTests(V1Base):
+    def test_files_live_in_snapshot(self):
+        tree = os.path.join(self.tmp, "tree")
+        os.makedirs(tree)
+        env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+        subprocess.run(["git", "init", "-q", "."], cwd=tree, check=True, env=env)
+        with open(os.path.join(tree, "x.txt"), "w") as fh:
+            fh.write("x\n")
+        state = self.make_wave()
+        with open(state) as fh:
+            data = json.load(fh)
+        data["packages"]["A-1"]["tree"] = tree
+        with open(state, "w") as fh:
+            json.dump(data, fh)
+        agent_exec_ui._LIVE_CACHE.clear()
+        wave = self.snapshot(self.start())["waves"][0]
+        pkgs = {p["id"]: p for p in wave["packages"]}
+        self.assertEqual(pkgs["A-1"]["files_live"], 1)
+        self.assertIsNone(pkgs["A-2"]["files_live"])
+
+
+class FileRouteTests(V1Base):
+    def setUp(self):
+        super().setUp()
+        self.state = self.make_wave()
+        self.wdir = os.path.dirname(self.state)
+        self.plan_dir = os.path.join(self.tmp, "plan")
+        os.makedirs(os.path.join(self.plan_dir, "specs"))
+        self.plan = os.path.join(self.plan_dir, "plan.json")
+        with open(self.plan, "w") as fh:
+            json.dump({"preamble": ["preamble.md"],
+                       "packages": [{"id": "A-1", "spec": "specs/a1.md"}]}, fh)
+        self.spec = self.write(os.path.join(self.plan_dir, "specs", "a1.md"), "SPEC")
+        self.preamble = self.write(os.path.join(self.plan_dir, "preamble.md"), "PRE")
+        self.unrelated = self.write(os.path.join(self.tmp, "unrelated.md"), "SECRET")
+        with open(self.state) as fh:
+            data = json.load(fh)
+        data["plan"] = self.plan
+        with open(self.state, "w") as fh:
+            json.dump(data, fh)
+        for name in ("context", "corrections", "carry"):
+            os.makedirs(os.path.join(self.wdir, name))
+        self.server = self.start()
+
+    @staticmethod
+    def write(path, text):
+        with open(path, "w") as fh:
+            fh.write(text)
+        return path
+
+    def get(self, path):
+        import urllib.parse
+        return self.request(self.server, "GET",
+                            "/api/file?t=%s&path=%s" % (TOKEN, urllib.parse.quote(path, safe="")))
+
+    def test_allowed_files(self):
+        ctx = self.write(os.path.join(self.wdir, "context", "A-1.md"), "CTX")
+        cor = self.write(os.path.join(self.wdir, "corrections", "A-1.md"), "COR")
+        car = self.write(os.path.join(self.wdir, "carry", "n.md"), "CAR")
+        for path, text in ((self.spec, "SPEC"), (self.preamble, "PRE"), (ctx, "CTX"),
+                           (cor, "COR"), (car, "CAR")):
+            status, data = self.get(path)
+            self.assertEqual((status, data.decode()), (200, text), path)
+
+    def test_content_type_and_token_required(self):
+        port = self.server.server_address[1]
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request("GET", "/api/file?t=%s&path=%s" % (TOKEN, self.spec),
+                     headers={"Host": "127.0.0.1:%d" % port})
+        resp = conn.getresponse()
+        resp.read()
+        self.assertEqual(resp.getheader("Content-Type"), "text/plain; charset=utf-8")
+        conn.close()
+        status, _ = self.request(self.server, "GET", "/api/file?path=" + self.spec)
+        self.assertEqual(status, 403)
+
+    def test_refuses_unrelated_dotdot_plan_and_directory(self):
+        self.assertEqual(self.get(self.unrelated)[0], 404)
+        self.assertEqual(self.get(os.path.join(self.wdir, "context", "..", "..",
+                                               "unrelated.md"))[0], 404)
+        self.assertEqual(self.get(os.path.join(self.plan_dir, "specs", "..", "specs",
+                                               "a1.md"))[0], 404)
+        self.assertEqual(self.get(self.plan)[0], 404)
+        self.assertEqual(self.get(os.path.join(self.wdir, "context"))[0], 404)
+        self.assertEqual(self.get(self.plan_dir)[0], 404)
+        self.assertEqual(self.get("")[0], 404)
+
+    def test_refuses_symlink_escape(self):
+        link = os.path.join(self.wdir, "context", "link.md")
+        os.symlink(self.unrelated, link)
+        self.assertEqual(self.get(link)[0], 404)
+
+    def test_oversize_is_413(self):
+        big = os.path.join(self.wdir, "context", "big.md")
+        with open(big, "wb") as fh:
+            fh.write(b"x" * (1024 * 1024 + 1))
+        self.assertEqual(self.get(big)[0], 413)
+
+    def test_snapshot_links(self):
+        ctx = self.write(os.path.join(self.wdir, "context", "A-1.md"), "CTX")
+        pkgs = {p["id"]: p for p in self.snapshot(self.server)["waves"][0]["packages"]}
+        self.assertEqual(pkgs["A-1"]["spec"], self.spec)
+        self.assertEqual(pkgs["A-1"]["context"], ctx)
+        self.assertIsNone(pkgs["A-1"]["correction"])
+        self.assertIsNone(pkgs["A-2"]["spec"])
+
+
+class UsageSlotTests(V1Base):
+    def setUp(self):
+        super().setUp()
+        agent_exec_ui._USAGE_CACHE = (0.0, None)
+        self.addCleanup(setattr, agent_exec_ui, "_USAGE_CACHE", (0.0, None))
+        self.original = self.agent_exec.build_usage_report
+        self.addCleanup(setattr, self.agent_exec, "build_usage_report", self.original)
+
+    def test_error_is_isolated(self):
+        self.make_wave()
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("usage exploded")
+
+        self.agent_exec.build_usage_report = boom
+        snap = self.snapshot(self.start())
+        self.assertEqual(snap["usage"], {"error": "usage exploded"})
+        self.assertEqual(len(snap["waves"]), 1)
+        self.assertIn("cooldown", snap)
+
+    def test_totals_per_executor_model(self):
+        self.agent_exec.build_usage_report = lambda *a, **k: {
+            "codex": {"by_model": {"m1": {"input_tokens": 5, "output_tokens": 2}}}}
+        snap = self.snapshot(self.start())
+        self.assertEqual(snap["usage"]["codex/m1"]["input_tokens"], 5)
+
+
+class CooldownClearTests(V1Base):
+    def plant(self):
+        path = self.agent_exec.cooldown_state_path(self.cfg())
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        until = time.time() + 1000
+        with open(path, "w") as fh:
+            json.dump({"codex": {"until": until, "reason": "quota"},
+                       "copilot": {"until": until, "reason": "quota"}}, fh)
+        return path
+
+    def load(self, path):
+        try:
+            with open(path) as fh:
+                return json.load(fh)
+        except OSError:
+            return {}
+
+    def test_clear_one_then_all(self):
+        path = self.plant()
+        self.assertTrue(path.startswith(self.home))
+        server = self.start()
+        status, data = self.post(server, "/api/cooldown/clear", {"executor": "codex"})
+        self.assertEqual((status, json.loads(data)), (200, {"cleared": "codex"}))
+        self.assertEqual(list(self.load(path)), ["copilot"])
+        status, data = self.post(server, "/api/cooldown/clear", {"executor": None})
+        self.assertEqual((status, json.loads(data)), (200, {"cleared": "all"}))
+        self.assertEqual(self.load(path), {})
+
+    def test_unknown_executor_400_and_state_untouched(self):
+        path = self.plant()
+        status, _ = self.post(self.start(), "/api/cooldown/clear", {"executor": "nope"})
+        self.assertEqual(status, 400)
+        self.assertEqual(sorted(self.load(path)), ["codex", "copilot"])
+
+    def test_header_token_required(self):
+        path = self.plant()
+        status, _ = self.post(self.start(), "/api/cooldown/clear", {"executor": None},
+                              header=False)
+        self.assertEqual(status, 403)
+        self.assertEqual(sorted(self.load(path)), ["codex", "copilot"])
+
+
+class SweepRouteTests(V1Base):
+    def setUp(self):
+        super().setUp()
+        self.repo = os.path.join(self.tmp, "repo")
+        os.makedirs(self.repo)
+        env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+        for args in (["init", "-q", "-b", "main", "."], ["config", "user.email", "t@e.com"],
+                     ["config", "user.name", "T"]):
+            subprocess.run(["git"] + args, cwd=self.repo, check=True, env=env)
+        with open(os.path.join(self.repo, "README.md"), "w") as fh:
+            fh.write("hi\n")
+        subprocess.run(["git", "add", "-A"], cwd=self.repo, check=True, env=env)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=self.repo, check=True, env=env)
+        self.old_session = os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        self.addCleanup(self._restore_session)
+
+    def _restore_session(self):
+        os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        if self.old_session is not None:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = self.old_session
+
+    def plant(self, task, session):
+        os.environ["CLAUDE_CODE_SESSION_ID"] = session
+        created = self.agent_exec.isolate_create(self.repo, task, backend="git")
+        os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        self.assertEqual(created.get("status"), "created", created)
+        return created["path"]
+
+    def test_unregistered_repo_404(self):
+        self.make_wave()
+        clean = self.plant("alpha", "aaaaaaaa")
+        status, _ = self.post(self.start(), "/api/sweep", {"repo": self.repo, "apply": True})
+        self.assertEqual(status, 404)
+        self.assertTrue(os.path.isdir(clean))
+
+    def test_header_token_required(self):
+        self.make_wave(register=False)
+        self.register(os.path.join(self.tmp, "w1", "state.json"), repo=self.repo)
+        clean = self.plant("alpha", "aaaaaaaa")
+        status, _ = self.post(self.start(), "/api/sweep", {"repo": self.repo, "apply": True},
+                              header=False)
+        self.assertEqual(status, 403)
+        self.assertTrue(os.path.isdir(clean))
+
+    def test_dry_run_then_apply_never_forces(self):
+        state = self.make_wave(register=False)
+        self.register(state, repo=self.repo)
+        clean = self.plant("alpha", "aaaaaaaa")
+        dirty = self.plant("beta", "bbbbbbbb")
+        with open(os.path.join(dirty, "worker.txt"), "w") as fh:
+            fh.write("uncollected\n")
+        server = self.start()
+        status, data = self.post(server, "/api/sweep", {"repo": self.repo, "apply": False})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)["status"], "ok")
+        self.assertTrue(os.path.isdir(clean))
+        self.assertTrue(os.path.isdir(dirty))
+        status, data = self.post(server, "/api/sweep", {"repo": self.repo, "apply": True})
+        self.assertEqual(status, 200)
+        result = json.loads(data)
+        self.assertEqual(result["summary"]["removed"], 1)
+        self.assertEqual(result["summary"]["dirty"], 1)
+        self.assertFalse(os.path.isdir(clean))
+        self.assertTrue(os.path.isfile(os.path.join(dirty, "worker.txt")))
+
+
+class PageSafetyTests(UiTestBase):
+    def test_no_innerhtml_or_inline_data_in_page(self):
+        server = self.start()
+        status, page = self.request(server, "GET", "/?t=" + TOKEN)
+        page = page.decode("utf-8")
+        self.assertEqual(status, 200)
+        for needle in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"):
+            self.assertNotIn(needle, page)
+        for needle in ("/api/file", "/api/cooldown/clear", "/api/sweep", "Usage (24h)", "Running"):
+            self.assertIn(needle, page)
 
 
 class IdleTests(UiTestBase):

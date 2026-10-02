@@ -25,6 +25,7 @@ import os
 import sys
 import tempfile
 import time
+import subprocess
 
 # --- schema ------------------------------------------------------------------
 
@@ -397,7 +398,27 @@ def _format_event_line(event_record):
     return "  ".join(p for p in parts if p)
 
 
-def render_status(state, now, plan_titles=None, events=None):
+def live_changes(state):
+    result = {}
+    for pid, pkg in (state.get("packages") or {}).items():
+        if pkg.get("status") not in IN_FLIGHT:
+            continue
+        tree = pkg.get("tree")
+        if not isinstance(tree, str) or not os.path.isdir(tree):
+            continue
+        try:
+            completed = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=tree, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                text=True, timeout=5, check=False,
+            )
+            result[pid] = len(completed.stdout.splitlines()) if completed.returncode == 0 else None
+        except (OSError, subprocess.TimeoutExpired):
+            result[pid] = None
+    return result
+
+
+def render_status(state, now, plan_titles=None, events=None, live=False):
     """Human-readable status text: header, per-package rows, needs, recent events."""
     lines = []
 
@@ -410,6 +431,10 @@ def render_status(state, now, plan_titles=None, events=None):
     header = "wave %s" % state.get("wave", 0)
     if count_str:
         header += "  " + count_str
+    header += "  running: %d in flight" % sum(
+        1 for pkg in state.get("packages", {}).values()
+        if pkg.get("status") in IN_FLIGHT
+    )
     stopped = state.get("stopped")
     if stopped:
         header += "  stopped: %s" % stopped.get("reason", "")
@@ -422,12 +447,14 @@ def render_status(state, now, plan_titles=None, events=None):
     items.sort(key=lambda kv: (
         _STATUS_ORDER.get(kv[1].get("status"), len(STATUSES)), kv[0],
     ))
+    changes = live_changes(state) if live else {}
     for pid, pkg in items:
         elapsed = _format_elapsed(now - (pkg.get("since") or now))
         row = "  %s  %s  %s  %s  %s  %s" % (
             pid, pkg.get("status"), elapsed,
             pkg.get("executor") or "-",
-            pkg.get("files_changed") if pkg.get("files_changed") is not None else "-",
+            (("%s*" % changes[pid]) if pid in changes and changes[pid] is not None else
+             "-" if pkg.get("files_changed") is None else str(pkg.get("files_changed"))),
             pkg.get("attempts", 0),
         )
         if plan_titles and pid in plan_titles:
@@ -450,7 +477,7 @@ def render_status(state, now, plan_titles=None, events=None):
     return "\n".join(lines)
 
 
-def status_line(state, now):
+def status_line(state, now, live=False):
     """One line of compact JSON: wave/counts(non-zero)/needs/stopped/updated_ago."""
     counts = {}
     for pkg in state.get("packages", {}).values():
@@ -463,7 +490,11 @@ def status_line(state, now):
         "needs": len(state.get("needs") or []),
         "stopped": bool(state.get("stopped")),
         "updated_ago": int(now - state.get("updated", now)),
+        "in_flight": sum(1 for pkg in state.get("packages", {}).values()
+                         if pkg.get("status") in IN_FLIGHT),
     }
+    if live:
+        payload["live_changes"] = live_changes(state)
     return json.dumps(payload, sort_keys=True, ensure_ascii=False)
 
 
@@ -475,6 +506,7 @@ def _cmd_status(args):
     fmt = "text"
     watch = None
     events_limit = None
+    live = False
     i = 0
     while i < len(args):
         tok = args[i]
@@ -497,6 +529,9 @@ def _cmd_status(args):
                 sys.stderr.write("agent-exec: wave: bad --watch value: %s\n" % args[i + 1])
                 return 2
             i += 2
+        elif tok == "--live":
+            live = True
+            i += 1
         elif tok == "--events":
             if i + 1 >= len(args):
                 sys.stderr.write("agent-exec: wave: missing value for --events\n")
@@ -522,11 +557,15 @@ def _cmd_status(args):
         state = StateStore(state_path).load()
         now = time.time()
         if fmt == "json":
+            if live:
+                output = dict(state)
+                output["live_changes"] = live_changes(state)
+                return json.dumps(output, ensure_ascii=False)
             return json.dumps(state, ensure_ascii=False)
         if fmt == "line":
-            return status_line(state, now)
+            return status_line(state, now, live=live)
         events = read_events(state_path, events_limit) if events_limit else None
-        return render_status(state, now, events=events)
+        return render_status(state, now, events=events, live=live)
 
     if watch is None:
         output = render_once()
@@ -601,7 +640,7 @@ _SUBCOMMANDS = {
 }
 
 _USAGE = (
-    "usage: agent-exec wave status --state PATH [--json|--line|--text]\n"
+    "usage: agent-exec wave status --state PATH [--json|--line|--text] [--live]\n"
     "                        [--watch SEC] [--events N]\n"
     "       agent-exec wave stop --state PATH [--reason TEXT]\n"
 )

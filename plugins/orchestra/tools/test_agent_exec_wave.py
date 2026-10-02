@@ -389,6 +389,109 @@ class CmdWaveTests(_StateDirCase):
         self.assertEqual(code, 2)
 
 
+class LiveChangesTests(_StateDirCase):
+    def _git_tree(self, name):
+        import subprocess
+        tree = os.path.join(self.tmp, name)
+        os.makedirs(tree)
+        env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+        for args in (["init", "-q", "-b", "main", "."],
+                     ["config", "user.email", "t@example.com"],
+                     ["config", "user.name", "T"]):
+            subprocess.run(["git"] + args, cwd=tree, check=True, env=env, capture_output=True)
+        with open(os.path.join(tree, "tracked.txt"), "w") as fh:
+            fh.write("one\n")
+        subprocess.run(["git", "add", "-A"], cwd=tree, check=True, env=env, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tree, check=True,
+                       env=env, capture_output=True)
+        return tree
+
+    def _state(self, trees):
+        store = wave.StateStore(self.state_path, clock=lambda: 1000.0)
+        store.init("/abs/plan.json", sorted(trees), "wave-int")
+        for pid, (status, tree) in trees.items():
+            store.set_status(pid, status, tree=tree)
+        return store.load()
+
+    def test_counts_untracked_and_modified(self):
+        tree = self._git_tree("t1")
+        with open(os.path.join(tree, "tracked.txt"), "w") as fh:
+            fh.write("changed\n")
+        os.makedirs(os.path.join(tree, "sub"))
+        with open(os.path.join(tree, "sub", "new.txt"), "w") as fh:
+            fh.write("x\n")
+        with open(os.path.join(tree, "sub", "new2.txt"), "w") as fh:
+            fh.write("y\n")
+        state = self._state({"A-1": ("implementing", tree)})
+        self.assertEqual(wave.live_changes(state), {"A-1": 3})
+
+    def test_skips_missing_tree_and_not_in_flight(self):
+        tree = self._git_tree("t2")
+        state = self._state({
+            "A-1": ("implementing", os.path.join(self.tmp, "gone")),
+            "A-2": ("integrated", tree),
+            "A-3": ("pending", None),
+            "A-4": ("verifying", tree),
+        })
+        self.assertEqual(wave.live_changes(state), {"A-4": 0})
+
+    def test_timeout_is_none(self):
+        import subprocess
+        tree = self._git_tree("t3")
+        state = self._state({"A-1": ("fixing", tree)})
+        original = wave.subprocess.run
+
+        def boom(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], 5)
+
+        wave.subprocess.run = boom
+        try:
+            self.assertEqual(wave.live_changes(state), {"A-1": None})
+        finally:
+            wave.subprocess.run = original
+
+    def test_status_outputs_without_and_with_live(self):
+        tree = self._git_tree("t4")
+        with open(os.path.join(tree, "a.txt"), "w") as fh:
+            fh.write("a\n")
+        state = self._state({"A-1": ("implementing", tree), "A-2": ("pending", None)})
+        plain = wave.render_status(state, now=1000.0)
+        self.assertIn("running: 1 in flight", plain.splitlines()[0])
+        self.assertNotIn("*", plain)
+        live = wave.render_status(state, now=1000.0, live=True)
+        self.assertIn("1*", live)
+        self.assertEqual(plain.splitlines()[0], live.splitlines()[0])
+        line = json.loads(wave.status_line(state, now=1000.0))
+        self.assertEqual(line["in_flight"], 1)
+        self.assertNotIn("live_changes", line)
+        live_line = json.loads(wave.status_line(state, now=1000.0, live=True))
+        self.assertEqual(live_line["live_changes"], {"A-1": 1})
+
+    def test_cmd_status_live_flags(self):
+        import contextlib
+        import io
+        tree = self._git_tree("t5")
+        with open(os.path.join(tree, "a.txt"), "w") as fh:
+            fh.write("a\n")
+        self._state({"A-1": ("implementing", tree)})
+
+        def run(args):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = wave.cmd_wave(args)
+            return code, out.getvalue()
+
+        code, out = run(["status", "--state", self.state_path, "--json", "--live"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["live_changes"], {"A-1": 1})
+        code, out = run(["status", "--state", self.state_path, "--json"])
+        self.assertNotIn("live_changes", json.loads(out))
+        code, out = run(["status", "--state", self.state_path, "--line", "--live"])
+        self.assertEqual(json.loads(out)["live_changes"], {"A-1": 1})
+        code, out = run(["status", "--state", self.state_path, "--live"])
+        self.assertIn("1*", out)
+
+
 class AgentExecReachabilityTests(unittest.TestCase):
     def test_wave_status_reachable_through_main(self):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
