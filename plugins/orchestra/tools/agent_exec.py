@@ -263,6 +263,24 @@ DEFAULTS = {
         "max_parallel": 2,
         "items": [],
     },
+    # `wave run` hands a package whose route resolves to a Claude tier to an
+    # interactive Claude Code session hosted by Orca (agent_exec_orca.py)
+    # instead of returning it as a `delegate` need, and keeps that session
+    # alive for corrections. enabled: auto = when `orca` is on PATH and
+    # `orca status` is ok; true = required (the run stops without it);
+    # false = never. `models` is used when the route names no model.
+    # `auto_trust` accepts Claude's folder-trust dialog, only ever for
+    # worktrees the executor itself created. `keep_sessions: false` closes
+    # the terminal after every prompt (the worktree stays until integrated).
+    "orca": {
+        "enabled": "auto",
+        "command": "claude --model {model} --permission-mode acceptEdits",
+        "models": {"light": "sonnet", "standard": "opus", "deep": "opus"},
+        "auto_trust": False,
+        "startup_timeout": 90,
+        "task_timeout": 3600,
+        "keep_sessions": True,
+    },
 }
 
 USAGE = """\
@@ -579,6 +597,10 @@ Usage:
                                   `isolate integrate` (skip on conflict, gate
                                   + bisect). Anything only the instructor can
                                   settle lands on the state's needs list.
+                                  With Orca available (config `orca`), a
+                                  Claude-tier package runs in an Orca-hosted
+                                  Claude session kept alive for corrections
+                                  instead of becoming a `delegate` need.
                                   Exit 0 done, 1 done with needs, 2 usage,
                                   3 environment, 5 stopped.
   agent-exec wave mark --state PATH --pkg ID --status ready|pending|failed

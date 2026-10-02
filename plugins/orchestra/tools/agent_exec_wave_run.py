@@ -17,7 +17,9 @@ pays for (or depends on) agent_exec. This module imports agent_exec itself
 and calls isolate_create/isolate_refresh/isolate_integrate/cmd_check
 in-process; dispatch goes through an injectable executor (CliExecutor in
 production, a fake in tests) because a real dispatch is a separate process
-anyway.
+anyway. A package the CLI dispatch hands back as `delegate` (a Claude tier)
+runs in an Orca-hosted Claude session instead when Orca is available
+(agent_exec_orca); corrections then go to that same live session.
 """
 
 import concurrent.futures
@@ -33,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent_exec  # noqa: E402
 import agent_exec_checks  # noqa: E402
+import agent_exec_orca  # noqa: E402
 import agent_exec_wave  # noqa: E402
 import agent_exec_wave_plan  # noqa: E402
 
@@ -185,9 +188,12 @@ def _first_line(text):
 
 
 class _Runner(object):
-    def __init__(self, opts, executor, clock):
+    def __init__(self, opts, executor, clock, orca=None):
         self.opts = opts
         self.executor = executor
+        # OrcaExecutor, or None: Claude-tier packages stay `delegate` needs.
+        self.orca = orca
+        self.notes = {}
         self.clock = clock
         self.state_path = os.path.abspath(opts["state"])
         self.state_dir = os.path.dirname(self.state_path)
@@ -308,6 +314,7 @@ class _Runner(object):
         os.makedirs(os.path.join(self.state_dir, "context"), exist_ok=True)
         os.makedirs(os.path.join(self.state_dir, "corrections"), exist_ok=True)
         os.makedirs(os.path.join(self.state_dir, "carry"), exist_ok=True)
+        self._init_orca()
 
         # Packages a crashed run left mid-flight.
         state = self.store.load()
@@ -319,6 +326,27 @@ class _Runner(object):
                     self.store.set_status(pid, "verifying", detail="resumed with changes")
                 else:
                     self.store.set_status(pid, "pending", detail="resumed without changes")
+
+    def _init_orca(self):
+        """Keep self.orca only when it is enabled and reachable; `enabled:
+        true` with Orca unreachable stops the run before anything starts."""
+        if self.orca is None:
+            return
+        enabled = self.orca.enabled
+        if enabled is False:
+            self.orca = None
+            return
+        ok, reason = self.orca.available()
+        if not ok:
+            self.orca = None
+            if enabled is True:
+                self._stop("orca unavailable: %s" % reason)
+            return
+        rc, out = agent_exec._git(self.int_path, "rev-parse", "--abbrev-ref", "HEAD")
+        self.int_branch = out.strip() if rc == 0 and out.strip() != "HEAD" else self.base
+        self.orca.state_dir = self.state_dir
+        self.orca.on_event = lambda pkg, detail: self._emit("orca-session", pkg, detail)
+        os.makedirs(os.path.join(self.state_dir, "orca"), exist_ok=True)
 
     # -- stop / select -------------------------------------------------------
 
@@ -434,7 +462,14 @@ class _Runner(object):
         started = time.time()
         end = {"status": "error", "executor": None}
         try:
-            token, result = self._dispatch_once(pid, prompt_files, no_resume)
+            session = self.orca.session(pid) if self.orca is not None else None
+            if session is not None:
+                # A live Orca session already holds the contract and its code.
+                token, result = None, self._orca_prompt(pid, session, prompt_files, None)
+            else:
+                token, result = self._dispatch_once(pid, prompt_files, no_resume)
+                if result.get("status") == "delegate" and self.orca is not None:
+                    result = self._orca_start(pid, token, result, prompt_files)
             end = {"status": result.get("status"), "executor": result.get("executor")}
             return token, result
         finally:
@@ -469,9 +504,71 @@ class _Runner(object):
             return token, result
         return token, result
 
+    def _orca_result_path(self, pid):
+        return os.path.join(self.state_dir, "orca", pid + ".result.json")
+
+    def _orca_need(self, token, exc):
+        return {"status": "_orca_need", "kind": exc.kind, "detail": exc.detail,
+                "token": token, "executor": "orca"}
+
+    def _orca_start(self, pid, token, delegated, prompt_files):
+        """Run a `delegate` package in a new Orca session instead of handing it
+        to the instructor. Returns a dispatch-shaped result."""
+        # The CLI dispatch already made an orchestra tree for the task; drop
+        # it (it holds nothing yet) so the task id resolves to the Orca tree.
+        isolation = delegated.get("isolation") or {}
+        stray = isolation.get("path")
+        if isolation.get("isolate") and stray and agent_exec._adopted_task(stray) is None:
+            removed = agent_exec.isolate_remove(self.root, self._task(pid))
+            if removed.get("status") not in ("removed", "absent"):
+                return self._orca_need(token, agent_exec_orca.OrcaNeed(
+                    "error", "could not drop the dispatch worktree %s (%s)"
+                    % (stray, removed.get("status"))))
+        cls = self.pkgs[pid]["cls"]
+        try:
+            session = self.orca.start(
+                pid, self.root, self.int_branch, cls,
+                self.orca.model_for(cls, delegated.get("model")),
+                self.opts.get("run_id"), self.state_dir, add_dirs=self._orca_add_dirs())
+        except agent_exec_orca.OrcaNeed as exc:
+            return self._orca_need(token, exc)
+        self.store.update(pid, tree=session["worktree"], executor="orca", session=True)
+        if self._context_path(pid) in prompt_files:
+            self._write_context(pid, self.notes.get(pid, ""))  # WORKING TREE = the Orca tree
+        return self._orca_prompt(pid, session, prompt_files, token)
+
+    def _orca_add_dirs(self):
+        """Directories outside the worktree an Orca session must reach: the
+        state dir (context, corrections, result files) and every directory
+        holding a preamble or spec file of the plan."""
+        dirs = {self.state_dir}
+        for path in list(self.plan["preamble"]) + [p["spec"] for p in self.plan["packages"]]:
+            dirs.add(os.path.dirname(os.path.abspath(path)))
+        return sorted(dirs)
+
+    def _orca_prompt(self, pid, session, prompt_files, token):
+        try:
+            return self.orca.prompt(session, prompt_files, self._orca_result_path(pid),
+                                    self.orca.cfg["task_timeout"])
+        except agent_exec_orca.OrcaNeed as exc:
+            return self._orca_need(token, exc)
+
+    def _orca_close(self, pid):
+        if self.orca is None:
+            return
+        session = self.orca.session(pid)
+        if session is not None:
+            self.orca.close(session, remove_worktree=True)
+
     def _handle(self, pid, token, result):
         """Record a dispatch result. True when the package moved to verifying."""
         status = result.get("status")
+        if status == "_orca_need":
+            self._need(pid, "delegate", json.dumps({
+                "orca": result["kind"], "detail": result["detail"],
+                "token": result.get("token") or token,
+            }, ensure_ascii=False))
+            return False
         if status == "_stop":
             self.store.set_status(pid, "pending", detail=result["reason"])
             self._stop(result["reason"])
@@ -574,6 +671,7 @@ class _Runner(object):
     def _run_package(self, pid, phase, refresh_note):
         try:
             if phase == "implement":
+                self.notes[pid] = refresh_note
                 self._write_context(pid, refresh_note)
                 self.store.set_status(pid, "implementing")
                 token, result = self._dispatch(pid, self._full_files(pid), no_resume=False)
@@ -639,8 +737,10 @@ class _Runner(object):
                 self.store.set_status(pid, "integrated",
                                       commit=self._commit_for(self._task(pid), since))
                 integrated += 1
+                self._orca_close(pid)
             elif status == "empty":
                 self.store.set_status(pid, "integrated", detail="changed nothing")
+                self._orca_close(pid)
             elif status == "conflicted":
                 files = [c.get("file") for c in entry.get("conflicts") or [] if c.get("file")]
                 self._need(pid, "conflict", json.dumps(
@@ -765,15 +865,21 @@ class _Runner(object):
             thread.join(_NOTIFY_TIMEOUT + 5)
 
 
-def run_wave(opts, executor=None, clock=time.time):
+def run_wave(opts, executor=None, clock=time.time, orca=None):
     """Drive the plan to done or stopped; returns the end report dict.
 
     A report with status "error" (plus "reason") means the loop never
     started: bad plan, not a repository, no integration worktree.
+
+    `orca` is an agent_exec_orca.OrcaExecutor (or None). Left at None with
+    the default executor it comes from config; an injected executor without
+    `orca` never touches Orca.
     """
     merged = default_opts()
     merged.update(opts)
-    runner = _Runner(merged, executor or CliExecutor(), clock)
+    if orca is None and executor is None:
+        orca = agent_exec_orca.OrcaExecutor.from_config()
+    runner = _Runner(merged, executor or CliExecutor(), clock, orca=orca)
     try:
         runner.init()
     except agent_exec_wave_plan.PlanError as exc:
@@ -895,7 +1001,8 @@ def cmd_wave_run(args):
         sys.stderr.write("agent-exec: wave run: %s\n" % error)
         sys.stderr.write(_RUN_USAGE)
         return 2
-    report = run_wave(opts, executor=CliExecutor())
+    report = run_wave(opts, executor=CliExecutor(),
+                      orca=agent_exec_orca.OrcaExecutor.from_config())
     if opts["text"]:
         print(format_report_text(report))
     else:

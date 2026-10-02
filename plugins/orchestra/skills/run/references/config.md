@@ -349,3 +349,24 @@ CLI: **`agent-exec check (--task <id> | --path <dir>) [--since <ref>] [--files a
 `--baseline` re-runs each **failed** check, over the same file list (filtered to files that still exist there), inside a temporary detached worktree checked out at the task's recorded baseline commit (or `--since`/`HEAD` for `--path` mode) — carrying in the same gitignored dependency directories (`node_modules`, `.venv`, ...) an ordinary orchestra task worktree gets, so a check that shells out to a real toolchain still has one. If the check fails there too, its status becomes `preexisting` instead of `fail`: the breakage predates the change under test, so the worker should not be blamed for it. The temporary worktree is always removed afterward, success or failure.
 
 Result JSON: `{"status": "pass"|"fail"|"preexisting"|"no-checks"|"error", "tree": <path>, "files": <int>, "checks": [{"name", "status": "pass"|"fail"|"preexisting"|"skipped", "exit": <int|null>, "seconds": <float>, "timed_out": <bool>, "excerpt": <str>, "reason": <str>}, ...]}`. Overall `status` is `fail` if any check failed, else `preexisting` if any check is `preexisting`, else `no-checks` if there were no items or every one was skipped, else `pass`. Exit code mirrors `status`: 0 for `pass`/`no-checks`, 1 for `fail`, 2 for a usage error, 3 for an environment error (not a git repository, unknown task, bad `--path`), 4 for `preexisting`. `--text` prints one line per check (`name status seconds`) followed by the excerpt of any failures, and nothing else — `--json` is the default.
+
+## 5. Orca sessions (`orca`)
+
+`orca` participates in the four-layer deep merge (`models` merges key-by-key). It decides what `agent-exec wave run` does with a package whose route resolves to a Claude tier — the `delegate` case — when Orca (a desktop app with an `orca` CLI) is installed:
+
+```yaml
+orca:
+  enabled: auto            # auto = use when `orca` is on PATH and `orca status` is ok;
+                           # true = required (the run stops: "orca unavailable: <reason>"); false = never
+  command: "claude --model {model} --permission-mode acceptEdits"
+  models: {light: sonnet, standard: opus, deep: opus}   # used when the dispatch route's model is absent
+  auto_trust: false        # true = accept Claude's folder-trust dialog automatically,
+                           # ONLY for worktrees this executor created
+  startup_timeout: 90      # seconds to reach the prompt box
+  task_timeout: 3600       # seconds per prompt before the package becomes a need
+  keep_sessions: true      # keep terminal+worktree alive until the package is integrated;
+                           # false = close the terminal after each prompt (the worktree stays)
+```
+
+`enabled` accepts YAML booleans or the strings `auto`/`true`/`false`; anything else means `auto`. `{model}` in `command` is replaced by the route's model, else `models.<cls>`. Without Orca, or with `enabled: false`, `wave run` behaves exactly as before: the package lands on the needs list as `delegate`. The run-time behaviour is described in `programme.md` §6 ("Orca sessions").
+
