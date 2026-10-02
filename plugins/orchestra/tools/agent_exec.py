@@ -3922,10 +3922,23 @@ def copy_tree_fast(src, dst):
 
 
 def _carry_dependencies(root, path, carry_extra=()):
+    """Copy the main tree's dependency dirs into `path`. Returns
+    (carried, carry_method, already_present).
+
+    A directory that already exists in `path` is left alone: another tool
+    (gtr copy patterns, an Orca setup script, a worker's own install) put it
+    there, and copying onto an existing directory would nest the copy inside
+    it (`node_modules/node_modules`) rather than replace it.
+    """
     carried = []
+    present = []
     carry_method = "none"
     for rel in detect_carry_dirs(root, extra_names=carry_extra):
-        method = copy_tree_fast_method(os.path.join(root, rel), os.path.join(path, rel))
+        target = os.path.join(path, rel)
+        if os.path.lexists(target):
+            present.append(rel)
+            continue
+        method = copy_tree_fast_method(os.path.join(root, rel), target)
         if method != "failed":
             carried.append(rel)
         if method == "failed":
@@ -3934,7 +3947,7 @@ def _carry_dependencies(root, path, carry_extra=()):
             carry_method = "copy"
         elif carry_method == "none":
             carry_method = "clone"
-    return carried, carry_method
+    return carried, carry_method, present
 
 
 def _path_inside(path, directory):
@@ -4411,8 +4424,9 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
 
     carried = []
     carry_method = "none"
+    already_present = []
     if carry if carry_deps is None else carry_deps:
-        carried, carry_method = _carry_dependencies(root, path, carry_extra)
+        carried, carry_method, already_present = _carry_dependencies(root, path, carry_extra)
     carried_files = []
     if carry if carry_deps is None else carry_deps:
         carried_files = _carry_local_files(root, path, carry_files)
@@ -4427,6 +4441,9 @@ def isolate_create(root, task, backend="auto", carry=True, onto=None, session_id
         "backend": backend, "baseline": baseline, "carried": carried,
         "carry_method": carry_method, "carried_files": carried_files,
     }
+    if already_present:
+        # Put there by gtr copy patterns or another tool: left as found.
+        result["already_present"] = already_present
     if carry_method == "copy":
         result["carry_note"] = "CoW was unavailable; carrying dependencies cost real time and disk."
     elif carry_method == "failed":
@@ -6119,12 +6136,16 @@ def cmd_isolate_refresh(args):
 # tree even though its branch is not an `orchestra/` one.
 
 def _adopt_result(status, task, path=None, branch=None, baseline=None, note="",
-                  carried=None, carry_method="none", carried_files=None):
-    return {
+                  carried=None, carry_method="none", carried_files=None,
+                  already_present=None):
+    result = {
         "status": status, "task": task, "path": path, "branch": branch,
         "baseline": baseline, "note": note, "carried": carried or [],
         "carry_method": carry_method, "carried_files": carried_files or [],
     }
+    if already_present:
+        result["already_present"] = already_present
+    return result
 
 
 def _clear_adoption(path):
@@ -6230,8 +6251,10 @@ def isolate_adopt(root, task, path, baseline=None, session_id=None, carry=True,
     carried = []
     carry_method = "none"
     carried_files = []
+    already_present = []
     if carry:
-        carried, carry_method = _carry_dependencies(resolved_root, path, carry_extra)
+        carried, carry_method, already_present = _carry_dependencies(
+            resolved_root, path, carry_extra)
         if carry_files is None:
             carry_files = DEFAULTS["isolation"]["carry_files"]
         carried_files = _carry_local_files(resolved_root, path, carry_files)
@@ -6239,7 +6262,7 @@ def isolate_adopt(root, task, path, baseline=None, session_id=None, carry=True,
     return _adopt_result("adopted", task, path=path, branch=branch, baseline=baseline_sha,
                          note="adopted %s as task %s" % (path, task),
                          carried=carried, carry_method=carry_method,
-                         carried_files=carried_files)
+                         carried_files=carried_files, already_present=already_present)
 
 
 def isolate_unadopt(root, task, session_id=None):

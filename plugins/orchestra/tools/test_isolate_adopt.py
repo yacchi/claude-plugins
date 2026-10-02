@@ -201,6 +201,27 @@ class AdoptTests(_AdoptRepo):
         self.assertEqual(result["status"], "exists")
         self.assertEqual(agent_exec._read_baseline(self.ext), head)
 
+    def test_dependency_dir_already_in_the_tree_is_left_alone(self):
+        # gtr copy patterns / an Orca setup script may have put node_modules
+        # there first; copying onto it would nest node_modules/node_modules.
+        with open(os.path.join(self.repo, ".gitignore"), "a") as fh:
+            fh.write("node_modules/\n")
+        os.makedirs(os.path.join(self.repo, "node_modules"))
+        with open(os.path.join(self.repo, "node_modules", "x"), "w") as fh:
+            fh.write("main\n")
+        _git(self.repo, "add", ".gitignore")
+        _git(self.repo, "commit", "-q", "-m", "ignore deps")
+        os.makedirs(os.path.join(self.ext, "node_modules"))
+        with open(os.path.join(self.ext, "node_modules", "x"), "w") as fh:
+            fh.write("tool\n")
+        result = self._adopt()
+        self.assertEqual(result["status"], "adopted")
+        self.assertNotIn("node_modules", result["carried"])
+        self.assertEqual(result["already_present"], ["node_modules"])
+        self.assertFalse(os.path.exists(os.path.join(self.ext, "node_modules", "node_modules")))
+        with open(os.path.join(self.ext, "node_modules", "x")) as fh:
+            self.assertEqual(fh.read(), "tool\n")
+
     def test_adopt_carries_dependencies_and_local_files(self):
         with open(os.path.join(self.repo, ".gitignore"), "a") as fh:
             fh.write("node_modules/\n")
