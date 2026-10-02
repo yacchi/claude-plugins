@@ -592,9 +592,10 @@ Usage:
                                   state.json for its runner to notice
   agent-exec wave run --plan PLAN --state PATH --into ID [--repo P]
                   [--max-in-flight N] [--gate CMD] [--full CMD]
-                  [--full-every N] [--full-timeout SEC] [--on-green CMD]
-                  [--notify-cmd CMD] [--stop-at EPOCH] [--max-waves N]
-                  [--max-packages N] [--run-id ID] [--json|--text]
+                  [--full-every N] [--full-timeout SEC] [--full-retry CMD]
+                  [--on-green CMD] [--notify-cmd CMD] [--stop-at EPOCH]
+                  [--max-waves N] [--max-packages N] [--run-id ID]
+                  [--json|--text]
                                   the deterministic outer loop: per wave,
                                   dispatch the packages the plan allows,
                                   self-verify each with `check` (one
@@ -607,6 +608,11 @@ Usage:
                                   Claude-tier package runs in an Orca-hosted
                                   Claude session kept alive for corrections
                                   instead of becoming a `delegate` need.
+                                  A red --full is re-run on its failing
+                                  files with --full-retry, then
+                                  bisected since the last green SHA; the
+                                  culprit is reverted and re-dispatched with
+                                  a correction.
                                   Exit 0 done, 1 done with needs, 2 usage,
                                   3 environment, 5 stopped.
   agent-exec wave mark --state PATH --pkg ID --status ready|pending|failed

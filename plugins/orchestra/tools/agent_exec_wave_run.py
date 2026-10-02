@@ -51,6 +51,14 @@ _DISPATCH_POLL_SECONDS = 300
 
 _PASSING_CHECK = frozenset(("pass", "no-checks", "preexisting"))
 
+# Rounds of bisect-and-revert one red `--full` may spend, like integrate's
+# `bisect_max`.
+_FULL_BISECT_MAX = 3
+# First line of a correction written after a red `--full` reverted the
+# package: `_full_files` adds such a file to the next implement dispatch.
+_POST_FULL_HEADER = "# Post-integration correction for %s"
+_POST_FULL_DETAIL = "post-full revert"
+
 
 def _agent_exec_argv():
     """How to invoke agent-exec: this interpreter + the sibling agent_exec.py.
@@ -183,7 +191,8 @@ def default_opts():
     return {
         "plan": None, "state": None, "into": None, "repo": os.getcwd(),
         "max_in_flight": 4, "gate": None, "full": None, "full_every": 1,
-        "full_timeout": None, "on_green": None, "resume_on_reset": False,
+        "full_timeout": None, "full_retry": None, "on_green": None,
+        "resume_on_reset": False,
         "no_ui": False, "notify_cmd": None,
         "stop_at": None, "max_waves": None, "max_packages": None,
         "run_id": None, "text": False,
@@ -342,6 +351,8 @@ class _Runner(object):
         self.int_path = path
         self.base = agent_exec._read_baseline(path) or head
         self.store.set_integration(task=self.into, path=path, base=self.base)
+        if self.opts.get("full") and self._last_green() is None:
+            self._record_green(self.base)
 
         os.makedirs(os.path.join(self.state_dir, "context"), exist_ok=True)
         os.makedirs(os.path.join(self.state_dir, "corrections"), exist_ok=True)
@@ -491,8 +502,31 @@ class _Runner(object):
         return path
 
     def _full_files(self, pid):
-        return (list(self.plan["preamble"]) + [self._context_path(pid)]
-                + [self.pkgs[pid]["spec"]])
+        files = (list(self.plan["preamble"]) + [self._context_path(pid)]
+                 + [self.pkgs[pid]["spec"]])
+        if self._post_full_correction(pid):
+            files.append(self._correction_path(pid))
+        return files
+
+    def _post_full_correction(self, pid):
+        """True when corrections/<id>.md is a not-yet-sent post-full one."""
+        try:
+            with open(self._correction_path(pid), encoding="utf-8") as fh:
+                first = fh.readline().rstrip("\n")
+        except OSError:
+            return False
+        return first == _POST_FULL_HEADER % pid
+
+    def _post_full_sent(self, pid):
+        """Set a sent post-full correction aside so it is never resent (and a
+        later self-verify correction can reuse the path)."""
+        if not self._post_full_correction(pid):
+            return
+        try:
+            os.replace(self._correction_path(pid), os.path.join(
+                self.state_dir, "corrections", pid + ".post-full.sent.md"))
+        except OSError:
+            pass
 
     def _dispatch(self, pid, prompt_files, no_resume, kind="implement", attempt=1):
         """Prepare + dispatch, bracketed by dispatch-start / dispatch-end events."""
@@ -765,9 +799,13 @@ class _Runner(object):
                 self.notes[pid] = refresh_note
                 self._write_context(pid, refresh_note)
                 self.store.set_status(pid, "implementing")
+                post_full = self._post_full_correction(pid)
                 token, result = self._dispatch(
                     pid, self._full_files(pid),
-                    no_resume=bool((self.refresh_info.get(pid) or {}).get("fresh")))
+                    no_resume=post_full or bool(
+                        (self.refresh_info.get(pid) or {}).get("fresh")))
+                if post_full:
+                    self._post_full_sent(pid)
                 if not self._handle(pid, token, result):
                     return
             self._verify(pid)
@@ -930,7 +968,164 @@ class _Runner(object):
         self.unavailable = False
         return True
 
+    def _green_file(self):
+        return os.path.join(self.state_dir, "green.json")
+
+    def _last_green(self):
+        try:
+            with open(self._green_file(), encoding="utf-8") as fh:
+                sha = json.load(fh).get("sha")
+        except (OSError, ValueError, AttributeError):
+            return None
+        return sha if isinstance(sha, str) and sha else None
+
+    def _record_green(self, sha):
+        if not sha:
+            return
+        tmp = self._green_file() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"sha": sha, "at": float(self.clock())}, fh)
+            fh.write("\n")
+        os.replace(tmp, self._green_file())
+
+    def _full_green(self):
+        sha = self._int_head()
+        self._record_green(sha)
+        self._on_green(sha)
+
+    def _check_slots(self):
+        """(slot_dir, max_parallel) shared with `agent-exec check`."""
+        try:
+            cfg, error = agent_exec.resolve_config()
+        except (OSError, TypeError, ValueError):
+            cfg, error = None, "config"
+        if error or not cfg:
+            return os.path.join(self.state_dir, "check-slots"), 2
+        max_parallel = (cfg.get("checks") or {}).get("max_parallel", 2)
+        return os.path.join(os.path.dirname(os.path.abspath(
+            agent_exec._ledger_dir_from_cfg(cfg))), "check-slots"), max_parallel
+
+    def _full_flaky(self, res):
+        """Re-run the red full verification's failing files alone with
+        `--full-retry`; True when that passed (the red was flaky)."""
+        template = self.opts.get("full_retry")
+        if not template:
+            return False
+        slot_dir, max_parallel = self._check_slots()
+        retry = agent_exec_checks.rerun_failed_alone(
+            res.get("excerpt") or "", template, self.int_path, slot_dir,
+            max_parallel, self.opts.get("full_timeout"))
+        self._clean_integration("full-retry")
+        if retry["status"] != "pass":
+            return False
+        self._emit("flaky", None, {"check": "full", "files": retry["failed"]})
+        return True
+
+    def _full_candidates(self, green):
+        """`orchestra integrate <task>` commits in green..HEAD, oldest first,
+        as (task, sha); commits a later `orchestra revert <task>` undid (the
+        gate's own bisect) are not candidates."""
+        rc, out = agent_exec._git(
+            self.int_path, "log", "--reverse", "--format=%H %s", "%s..HEAD" % green)
+        if rc != 0:
+            return []
+        known = set(agent_exec.sanitize_task_id(self._task(pid)) for pid in self.pkgs)
+        candidates = []
+        for line in out.splitlines():
+            sha, _, subject = line.partition(" ")
+            for verb in ("integrate", "revert"):
+                prefix = "orchestra %s " % verb
+                task = subject[len(prefix):] if subject.startswith(prefix) else None
+                if task not in known:
+                    continue
+                if verb == "integrate":
+                    candidates.append((task, sha))
+                else:
+                    for i in range(len(candidates) - 1, -1, -1):
+                        if candidates[i][0] == task:
+                            del candidates[i]
+                            break
+        return candidates
+
+    def _restore_integration(self, branch):
+        """Never leave the integration tree detached, mid-revert or dirty."""
+        agent_exec._git(self.int_path, "revert", "--quit")
+        if branch:
+            rc, out = agent_exec._git(self.int_path, "rev-parse", "--abbrev-ref", "HEAD")
+            if rc != 0 or out.strip() != branch:
+                agent_exec._git(self.int_path, "checkout", "-q", "-f", branch)
+        self._clean_integration("full-bisect")
+
+    def _post_full_revert(self, pid, excerpt):
+        """A red `--full` was bisected to `pid` and its commit reverted:
+        re-dispatch it with a correction, or hand it over the second time."""
+        failed = agent_exec_checks.parse_failed_files(excerpt)
+        excerpt = agent_exec_checks.failure_excerpt(excerpt)
+        previous = [e for e in agent_exec_wave.read_events(self.state_path, None)
+                    if e.get("event") == "status" and e.get("pkg") == pid
+                    and e.get("to") == "pending" and e.get("detail") == _POST_FULL_DETAIL]
+        if previous:
+            self._need(pid, "post-integration", "full verification red after "
+                       "integration (reverted twice); failing tests: %s\n%s"
+                       % (", ".join(failed) or "(none parsed)", excerpt))
+            return False
+        with open(self._correction_path(pid), "w", encoding="utf-8") as fh:
+            fh.write(
+                (_POST_FULL_HEADER % pid) + "\n\nYour integrated change broke the full "
+                "verification after integration, so it was reverted from the "
+                "integration tree. Failing tests: %s\n\nExcerpt:\n\n%s\n\nFix it "
+                "inside files_owned; do not commit.\n"
+                % (", ".join(failed) or "(none parsed)", excerpt))
+        self.store.set_status(pid, "pending", detail=_POST_FULL_DETAIL, commit=None)
+        return True
+
+    def _full_bisect(self):
+        """Bisect a red `--full` over the integrate commits since the last
+        green SHA, reverting culprits (`_bisect_integration`, up to
+        _FULL_BISECT_MAX rounds). Returns the ids sent back to `pending`."""
+        green = self._last_green() or self.base
+        rc, out = agent_exec._git(self.int_path, "rev-parse", "--abbrev-ref", "HEAD")
+        branch = out.strip() if rc == 0 and out.strip() != "HEAD" else None
+        if branch is None:
+            self._stop("full verification red")
+            return []
+        candidates = self._full_candidates(green)
+        by_task = dict((agent_exec.sanitize_task_id(self._task(pid)), pid)
+                       for pid in self.pkgs)
+        results = dict((task, {"task": task, "status": "applied"})
+                       for task, _ in candidates)
+
+        def progress(record):
+            pkg = record.get("pkg")
+            self._emit(record["event"], by_task.get(pkg, pkg) if pkg else None,
+                       dict(record.get("detail") or {}))
+
+        try:
+            verify = agent_exec._bisect_integration(
+                self.root, self.int_path, branch, green, candidates, results,
+                self.opts["full"], self.opts.get("full_timeout"), _FULL_BISECT_MAX,
+                progress=progress)
+        finally:
+            self._restore_integration(branch)
+        if verify.get("baseline") == "fail":
+            self._stop("full verification red at the last green SHA")
+            return []
+        reset = []
+        for task, _ in candidates:
+            entry = results[task]
+            if entry.get("status") == "reverted":
+                if self._post_full_revert(by_task[task], entry.get("verify_excerpt") or ""):
+                    reset.append(by_task[task])
+        if verify.get("status") == "pass":
+            self._full_green()
+        else:
+            self._stop("full verification red")
+        return reset
+
     def _full(self):
+        """Run `--full` at the integration tip. Red goes through the
+        `--full-retry` flaky filter, then bisect-and-revert; returns the
+        package ids a revert sent back to `pending`."""
         self.integrated_since_full = 0
         self._emit("full-start", None, {})
         res = self._run_cmd(self.opts["full"], self.opts.get("full_timeout"))
@@ -940,14 +1135,23 @@ class _Runner(object):
         self._emit("full-end", None, {"status": res["status"], "seconds": res["seconds"]})
         self.store.event("full", detail="%s exit=%s\n%s" % (
             res["status"], res["exit"], res["excerpt"]))
-        if res["status"] != "pass":
-            self._stop("full verification red")
-            return
-        self._on_green(self._int_head())
+        if res["status"] == "pass" or self._full_flaky(res):
+            self._full_green()
+            return []
+        return self._full_bisect()
 
     # -- the loop -------------------------------------------------------------
 
     def loop(self):
+        while True:
+            self._waves()
+            if not (self.opts.get("full") and self.integrated_since_full):
+                return
+            # A final red `--full` that sent packages back re-enters the loop.
+            if not self._full() or self.stop_reason is not None:
+                return
+
+    def _waves(self):
         while True:
             state = self.store.load()
             pkg_states = state["packages"]
@@ -997,9 +1201,6 @@ class _Runner(object):
                 self._full()
             if self.stop_reason is not None:
                 break
-
-        if self.opts.get("full") and self.integrated_since_full:
-            self._full()
 
     def report(self):
         state = self.store.load()
@@ -1125,7 +1326,8 @@ def format_report_text(report):
 _RUN_USAGE = (
     "usage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n"
     "                  [--max-in-flight N] [--gate CMD] [--full CMD] [--full-every N]\n"
-    "                  [--full-timeout SEC] [--on-green CMD] [--resume-on-reset]\n"
+    "                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n"
+    "                  [--resume-on-reset]\n"
     "                  [--no-ui] [--notify-cmd CMD]\n"
     "                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n"
     "                  [--run-id ID] [--json|--text]\n"
@@ -1148,6 +1350,7 @@ def parse_run_args(args):
         "--repo": ("repo", str), "--max-in-flight": ("max_in_flight", int),
         "--gate": ("gate", str), "--full": ("full", str),
         "--full-every": ("full_every", int), "--full-timeout": ("full_timeout", float),
+        "--full-retry": ("full_retry", str),
         "--on-green": ("on_green", str), "--notify-cmd": ("notify_cmd", str),
         "--stop-at": ("stop_at", float), "--max-waves": ("max_waves", int),
         "--max-packages": ("max_packages", int), "--run-id": ("run_id", str),

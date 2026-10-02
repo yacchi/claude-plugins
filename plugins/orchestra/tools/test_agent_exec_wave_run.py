@@ -515,7 +515,8 @@ class IntegrationTests(_WaveRepo):
         ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
         report, rc = self.run_wave(ex, full="false", on_green="touch '%s'" % marker)
         self.assertEqual(rc, 5, report)
-        self.assertEqual(report["reason"], "full verification red")
+        # Red even at the last green SHA: nothing to blame, nothing reverted.
+        self.assertEqual(report["reason"], "full verification red at the last green SHA")
         self.assertEqual(ex.pkgs_dispatched(), ["A"])
         self.assertFalse(os.path.exists(marker))
 
@@ -1105,6 +1106,181 @@ class FrozenDispatchTests(_WaveRepo):
         self.assertEqual(len(b_calls), 2)
         self.assertTrue(b_calls[0]["no_resume"])
         self.assertFalse(b_calls[1]["no_resume"])
+
+
+# Red when any tracked .txt holds POISON; names a failing test file like vitest.
+_POISON_FULL = (
+    "if grep -rqs POISON --include=*.txt .; then "
+    "echo ' FAIL  tests/poison.test.ts > poisoned'; exit 1; fi"
+)
+
+
+class RedFullTests(_WaveRepo):
+    def events(self, name, pkg="__any__"):
+        return [e for e in agent_exec_wave.read_events(self.state_path, None)
+                if e["event"] == name and (pkg == "__any__" or e["pkg"] == pkg)]
+
+    def green(self):
+        with open(os.path.join(self.wave_dir, "green.json")) as fh:
+            return json.load(fh)
+
+    def head(self):
+        return _git(self.int_path(), "rev-parse", "HEAD").stdout.strip()
+
+    def assert_int_clean(self):
+        path = self.int_path()
+        branch = subprocess.run(["git", "symbolic-ref", "-q", "HEAD"], cwd=path,
+                                capture_output=True, text=True, env=_GIT_ENV)
+        self.assertEqual(branch.returncode, 0, "integration tree is detached")
+        self.assertEqual(_git(path, "status", "--porcelain").stdout, "")
+        gitdir = _git(path, "rev-parse", "--absolute-git-dir").stdout.strip()
+        for name in ("REVERT_HEAD", "sequencer"):
+            self.assertFalse(os.path.exists(os.path.join(gitdir, name)), name)
+
+    def test_culprit_reverted_and_redispatched_fresh_with_correction(self):
+        self.plan([{"id": "A"}, {"id": "B"}])
+        seen = {}
+        correction = os.path.join(self.wave_dir, "corrections", "B.md")
+
+        def on_dispatch(pid, spec):
+            if pid != "B":
+                return
+            if "first" not in seen:
+                seen["first"] = True
+                return
+            seen["files"] = list(spec["prompt_files"])
+            seen["correction"] = _read(correction)
+            tree = self.state()["packages"]["B"]["tree"]
+            seen["collected"] = agent_exec._read_collected(tree)
+            seen["b_in_int"] = self.int_file("b.txt")
+
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})],
+                           "B": [edit({"b.txt": "POISON\n"}), edit({"b.txt": "fixed\n"})]},
+                          on_dispatch=on_dispatch)
+        report, rc = self.run_wave(ex, gate="true", full=_POISON_FULL)
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(report["integrated"], ["A", "B"])
+        b_calls = [c for c in ex.calls if c["pkg"] == "B"]
+        self.assertEqual(len(b_calls), 2)
+        self.assertTrue(b_calls[1]["no_resume"])
+        self.assertEqual(seen["files"], [
+            os.path.join(self.wave_dir, "preamble.md"),
+            os.path.join(self.wave_dir, "context", "B.md"),
+            os.path.join(self.wave_dir, "specs", "B.md"),
+            correction])
+        self.assertIn("broke the full verification after integration", seen["correction"])
+        self.assertIn("tests/poison.test.ts", seen["correction"])
+        self.assertIn("files_owned", seen["correction"])
+        self.assertIsNone(seen["collected"])
+        self.assertIsNone(seen["b_in_int"])
+        # Sent once, then set aside so it is never resent.
+        self.assertFalse(os.path.exists(correction))
+        self.assertEqual([e["pkg"] for e in self.events("revert")], ["B"])
+        probes = self.events("bisect-probe")
+        self.assertTrue(probes)
+        self.assertTrue(all(e["pkg"] in ("A", "B") for e in probes))
+        pending = [e for e in self.events("status", "B") if e["to"] == "pending"]
+        self.assertEqual([e["detail"] for e in pending], ["post-full revert"])
+        self.assertEqual(self.int_file("a.txt"), "a\n")
+        self.assertEqual(self.int_file("b.txt"), "fixed\n")
+        self.assertEqual(self.green()["sha"], self.head())
+        self.assert_int_clean()
+
+    def test_flaky_full_rescued_by_full_retry(self):
+        counter = os.path.join(self.tmp, "runs")
+        marker = os.path.join(self.tmp, "on-green")
+        full = ("n=$(cat '%s' 2>/dev/null || echo 0); echo $((n+1)) > '%s'; "
+                "if [ \"$n\" = 0 ]; then echo ' FAIL  tests/flaky.test.ts'; exit 1; fi"
+                % (counter, counter))
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        report, rc = self.run_wave(ex, gate="true", full=full,
+                                   full_retry="test -n {failed}",
+                                   on_green="touch '%s'" % marker)
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(report["integrated"], ["A"])
+        self.assertEqual(self.events("revert"), [])
+        self.assertEqual(self.events("bisect-probe"), [])
+        flaky = self.events("flaky")
+        self.assertEqual(len(flaky), 1)
+        self.assertIsNone(flaky[0]["pkg"])
+        self.assertEqual(json.loads(flaky[0]["detail"])["files"], ["tests/flaky.test.ts"])
+        self.assertEqual(self.green()["sha"], self.head())
+        self.assertTrue(os.path.exists(marker))
+        self.assert_int_clean()
+
+    def test_no_full_retry_means_no_retry(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "POISON\n"})]})
+        self.run_wave(ex, gate="true", full=_POISON_FULL, max_waves=1)
+        self.assertEqual(self.events("flaky"), [])
+        self.assertEqual([e["pkg"] for e in self.events("revert")], ["A"])
+        self.assert_int_clean()
+
+    def test_red_at_last_green_stops_without_revert(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        report, rc = self.run_wave(ex, gate="true", full="false")
+        self.assertEqual(rc, 5, report)
+        self.assertEqual(report["reason"], "full verification red at the last green SHA")
+        self.assertEqual(self.events("revert"), [])
+        self.assertEqual(report["integrated"], ["A"])
+        self.assertEqual(self.int_file("a.txt"), "a\n")
+        # Only the run-start base was ever recorded as green.
+        self.assertEqual(self.green()["sha"], self.state()["integration"]["base"])
+        self.assert_int_clean()
+
+    def test_second_revert_of_same_package_is_post_integration_need(self):
+        self.plan([{"id": "A"}, {"id": "B"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})],
+                           "B": [edit({"b.txt": "POISON\n"}),
+                                 edit({"b.txt": "POISON again\n"})]})
+        report, rc = self.run_wave(ex, gate="true", full=_POISON_FULL)
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(report["integrated"], ["A"])
+        self.assertEqual(ex.pkgs_dispatched().count("B"), 2)
+        self.assertEqual(self.need_kinds(), [("B", "post-integration")])
+        self.assertIn("tests/poison.test.ts", self.state()["needs"][0]["detail"])
+        self.assertEqual([e["pkg"] for e in self.events("revert")], ["B", "B"])
+        self.assertIsNone(self.int_file("b.txt"))
+        self.assertEqual(self.green()["sha"], self.head())
+        self.assert_int_clean()
+
+    def test_two_culprits_found_in_one_red_full_run(self):
+        self.plan([{"id": "A"}, {"id": "B"}, {"id": "C"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "POISON\n"}), edit({"a.txt": "a\n"})],
+                           "B": [edit({"b.txt": "POISON\n"}), edit({"b.txt": "b\n"})],
+                           "C": [edit({"c.txt": "c\n"})]})
+        report, rc = self.run_wave(ex, gate="true", full=_POISON_FULL)
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(report["integrated"], ["A", "B", "C"])
+        self.assertEqual([e["pkg"] for e in self.events("revert")], ["A", "B"])
+        self.assertEqual(ex.pkgs_dispatched().count("C"), 1)
+        self.assertEqual(self.int_file("c.txt"), "c\n")
+        self.assertEqual(self.green()["sha"], self.head())
+        self.assert_int_clean()
+
+    def test_green_recorded_after_green_full(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        report, rc = self.run_wave(ex, gate="true", full="true")
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(self.green()["sha"], self.head())
+        self.assertIsInstance(self.green()["at"], float)
+
+    def test_without_full_no_green_file(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        report, rc = self.run_wave(ex, gate="true")
+        self.assertEqual(rc, 0, report)
+        self.assertFalse(os.path.exists(os.path.join(self.wave_dir, "green.json")))
+
+    def test_parse_full_retry(self):
+        opts, err = agent_exec_wave_run.parse_run_args([
+            "--plan", "p", "--state", "s", "--into", "i", "--full", "f",
+            "--full-retry", "npx vitest run {failed}"])
+        self.assertIsNone(err)
+        self.assertEqual(opts["full_retry"], "npx vitest run {failed}")
 
 
 class CliTests(_WaveRepo):
