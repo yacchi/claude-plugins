@@ -10,40 +10,18 @@
 
 ## 仕組み
 
-```
-User request
-  ▼
-Instructor (Fable / Opus) ── classifies each request (router injected at SessionStart)
-  │
-  ├─ EXPRESS lane ─────────────────────────────────────────────────┐
-  │   one self-contained change, no decomposition, no design       │
-  │   decisions, small context bloat (or: conversational /         │
-  │   read-only). When in doubt → NOT express.                     │
-  │   → handled directly, or by ONE disposable cheap worker        │
-  │     (routed via agent-exec; haiku/sonnet fallback), reviewed   │
-  │     by the instructor itself, no review pipeline.              │
-  │   → scope moves mid-flight? abort → re-route to ORCHESTRATED.  │
-  │                                                                 │
-  └─ ORCHESTRATED lane (the `orchestra:run` skill)                 │
-      │  decomposes tasks, defines contracts, writes the script     │
-      │  NEVER reads implementation files, NEVER sees logs/diffs    │
-      ▼                                                             │
-    Workflow script  ── or ──  orchestra-delegate (Sonnet fallback) │
-      │  drives the loop, holds context across rounds               │
-      ▼                                                             │
-    light-class impl ──implements──────────▶ orchestra-review       │
-    (agent-exec route: Copilot default,                             │
-     Claude Haiku fallback)                    (Sonnet, adversarial)│
-      ▲                                                             │
-      └─ ONE correction round: cited, family-swept packet to a      │
-         FRESH worker, then an incremental re-gate  (2 gates max)   │
-      │                                                             │
-      ▼                                                             │
-    Structured verdict only: { pass, summary, feedback?,            │
-                               optional_hardening?, needsInstructor? }│
-      │                                                             │
-      ▼                                                             ▼
-    Instructor receives ~2KB of JSON, zero tokens spent on execution
+```mermaid
+flowchart TD
+    U["利用者の依頼"] --> I["指示役 (Fable / Opus)<br/>依頼ごとにレーンを判定<br/>(SessionStart で注入されたルーター)"]
+    I -->|"EXPRESS: 自己完結した 1 つの変更、<br/>または会話・読み取りのみ"| E["直接処理するか、安いワーカー 1 つに任せ<br/>指示役自身が確認する"]
+    E -.->|"途中で範囲が広がった"| O
+    I -->|"ORCHESTRATED: それ以外すべて、<br/>判断に迷うとき"| O["orchestra:run スキル<br/>作業を分解し、契約とスクリプトを書く<br/>実装ファイル・ログ・差分は読まない"]
+    O --> W["Workflow スクリプト<br/>(使えなければ orchestra-delegate)"]
+    W --> L["light クラスの実装役<br/>agent-exec route: 既定は Copilot、<br/>予備は Claude Haiku"]
+    L --> R["orchestra-review<br/>(Sonnet、壊しにいくレビュー)"]
+    R -->|"FAIL: 新しいワーカーで<br/>修正 1 回 (ゲートは最大 2 回)"| L
+    R -->|"PASS、または needsInstructor"| V["構造化された判定だけを返す<br/>pass, summary, feedback,<br/>optional_hardening, needsInstructor"]
+    V --> I
 ```
 
 - **2 つのレーン。** `SessionStart` フックがルーターを注入し、指示役は依頼ごとにレーンを判定します。EXPRESS(自己完結した 1 つの変更、または会話・読み取りのみ)は直接処理し、それ以外と判断に迷うものはすべて `orchestra:run` の手順に従います。判定は依頼をまたいで持ち越しません。

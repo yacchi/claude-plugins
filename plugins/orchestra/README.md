@@ -10,40 +10,18 @@ Running every step of a task on your most expensive model wastes money on work t
 
 ## How it works
 
-```
-User request
-  ▼
-Instructor (Fable / Opus) ── classifies each request (router injected at SessionStart)
-  │
-  ├─ EXPRESS lane ─────────────────────────────────────────────────┐
-  │   one self-contained change, no decomposition, no design       │
-  │   decisions, small context bloat (or: conversational /         │
-  │   read-only). When in doubt → NOT express.                     │
-  │   → handled directly, or by ONE disposable cheap worker        │
-  │     (routed via agent-exec; haiku/sonnet fallback), reviewed   │
-  │     by the instructor itself, no review pipeline.              │
-  │   → scope moves mid-flight? abort → re-route to ORCHESTRATED.  │
-  │                                                                 │
-  └─ ORCHESTRATED lane (the `orchestra:run` skill)                 │
-      │  decomposes tasks, defines contracts, writes the script     │
-      │  NEVER reads implementation files, NEVER sees logs/diffs    │
-      ▼                                                             │
-    Workflow script  ── or ──  orchestra-delegate (Sonnet fallback) │
-      │  drives the loop, holds context across rounds               │
-      ▼                                                             │
-    light-class impl ──implements──────────▶ orchestra-review       │
-    (agent-exec route: Copilot default,                             │
-     Claude Haiku fallback)                    (Sonnet, adversarial)│
-      ▲                                                             │
-      └─ ONE correction round: cited, family-swept packet to a      │
-         FRESH worker, then an incremental re-gate  (2 gates max)   │
-      │                                                             │
-      ▼                                                             │
-    Structured verdict only: { pass, summary, feedback?,            │
-                               optional_hardening?, needsInstructor? }│
-      │                                                             │
-      ▼                                                             ▼
-    Instructor receives ~2KB of JSON, zero tokens spent on execution
+```mermaid
+flowchart TD
+    U["User request"] --> I["Instructor (Fable / Opus)<br/>classifies each request<br/>(router injected at SessionStart)"]
+    I -->|"EXPRESS: one self-contained change,<br/>or conversational / read-only"| E["Handled directly, or by ONE cheap worker<br/>reviewed by the instructor itself"]
+    E -.->|"scope grows mid-flight"| O
+    I -->|"ORCHESTRATED: everything else,<br/>and whenever in doubt"| O["orchestra:run skill<br/>decomposes tasks, writes contracts and the script<br/>never reads implementation files, logs, or diffs"]
+    O --> W["Workflow script<br/>(or orchestra-delegate as fallback)"]
+    W --> L["light-class implementer<br/>agent-exec route: Copilot by default,<br/>Claude Haiku as fallback"]
+    L --> R["orchestra-review<br/>(Sonnet, adversarial)"]
+    R -->|"FAIL: one correction round<br/>to a FRESH worker (2 gates max)"| L
+    R -->|"PASS, or needsInstructor"| V["Structured verdict only<br/>pass, summary, feedback,<br/>optional_hardening, needsInstructor"]
+    V --> I
 ```
 
 - **Two lanes.** A `SessionStart` hook injects a router that makes the instructor classify every request. EXPRESS (one self-contained change, or conversational/read-only) is handled directly; everything else — and anything in doubt — goes through the `orchestra:run` playbook. Lane choices never persist across requests.
