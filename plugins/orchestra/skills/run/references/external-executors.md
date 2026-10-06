@@ -388,7 +388,9 @@ function parseExternalVerdict(text) {
     try {
       const v = JSON.parse(braced[0])
       if (typeof v.pass === 'boolean') {
-        return { pass: v.pass, summary: String(v.summary ?? ''), feedback: v.feedback ?? [] }
+        return { pass: v.pass, summary: String(v.summary ?? ''), feedback: v.feedback ?? [],
+                 tests_kept: v.tests_kept ?? [], tests_loc_added: v.tests_loc_added,
+                 impl_loc_changed: v.impl_loc_changed }
       }
     } catch (_) { /* パース失敗 → 下の安全側フォールバックへ */ }
   }

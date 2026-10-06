@@ -85,7 +85,10 @@ export const meta = {
 // `cited_contract` is required on every finding: a reviewer that cannot point
 // at the contract text has an opinion, not a defect (§11.1). `family` drives the
 // retry policy (§11.2). Non-contractual improvements go to `optional_hardening`,
-// which NEVER makes `pass` false.
+// which NEVER makes `pass` false. `tests_kept` / `tests_loc_added` /
+// `impl_loc_changed` make test inflation visible at the verdict instead of
+// after it lands: the reviewer's probes are throwaway, and every test it keeps
+// must name the implementation mistake it detects (§6 rule 8).
 const VERDICT_SCHEMA = {
   type: 'object',
   required: ['pass', 'summary'],
@@ -110,6 +113,21 @@ const VERDICT_SCHEMA = {
     },
     optional_hardening: { type: 'array', items: { type: 'string' } },
     new_family: { type: 'boolean' },       // re-gate found a family that predates the correction
+    tests_kept: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['file', 'case', 'mistake_detected'],
+        properties: {
+          file: { type: 'string' },
+          case: { type: 'string' },
+          mistake_detected: { type: 'string' },  // which implementation mistake it catches
+          found_defect: { type: 'boolean' },     // did it actually find one
+        },
+      },
+    },
+    tests_loc_added: { type: 'integer' },    // git diff --numstat, test files only
+    impl_loc_changed: { type: 'integer' },   // git diff --numstat, everything else
   },
 }
 
@@ -307,7 +325,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
 // its own tree; without them the delegate path lands in the user's), workerPromptFile (path to the
 // literal spec + edge cases + verify command), workerPrompt (same contract text
 // for the fallback correction packet), verifierPrompt (what to re-check + which
-// adversarial cases to add). Optional: workdir, baseline (a snapshot ref - see
+// implementation mistakes to probe for - probes are throwaway, see §6 rule 8). Optional: workdir, baseline (a snapshot ref - see
 // references/isolation.md - so a bad attempt can be rolled back instead of
 // patched, and the re-gate can diff against something real).
 //
@@ -482,7 +500,10 @@ async function runTask(task) {
     }
     if (verdict.pass) {
       return { id: task.id, pass: true, summary: verdict.summary, rounds: gate,
-               optional_hardening: verdict.optional_hardening || [] }
+               optional_hardening: verdict.optional_hardening || [],
+               tests_kept: verdict.tests_kept || [],
+               tests_loc_added: verdict.tests_loc_added,
+               impl_loc_changed: verdict.impl_loc_changed }
     }
 
     // A FAIL with an empty `feedback` array is unactionable: the packet would
@@ -572,14 +593,20 @@ Mandatory for every `workerPrompt`:
 6. **Keep relay-dispatched worker prompts on disk.** Write the prompt to a FILE and give the relay only its path. Never put task text, a base64 blob, or any other payload in the relay's prompt: it is a model and will act on the text or fail to reproduce it verbatim. Split shared preamble and per-task contract into separate files and pass `--prompt-file` twice rather than duplicating the preamble.
 7. **A correction packet has two shapes, chosen at runtime.** When the round-1 executor's session can be resumed (§11), the packet is a *delta*: just the rejection findings with their `cited_contract`, the `must_not_change` paths, and what the next gate checks — the session already holds the contract. When there is no session to resume (a Claude tier, or a task with no correction tokens prepared), the packet must stand alone: the original contract in full, plus the same findings/`must_not_change`/next-gate text, plus the fact that the previous attempt's files are still on disk. `correctionPacketBody()` in §5 builds both shapes from one source so they never drift; `correctionPacket()` wraps the full shape for the no-session fallback path.
 
+8. **Name the implementation mistakes to detect, not a case table to satisfy.** Rule 1's enumeration is for *spec clarity*; this rule governs which of those examples become *tests*. A case table handed over as "tests to write" reads as a floor: the worker satisfies it and then adds more. Instead state what is likely to go wrong — "`current.version || -1` silently maps 0 to -1", "guregu's `Update.If` ANDs successive calls, so a three-way OR must be one `If`". A test that detects an anticipated mistake earns its maintenance cost; a test that proves the specification does not.
+   **Do NOT require tests for:** a constant expression's exact value (a jitter formula, a default timeout); behavior the change does not touch; the proposition "this behavior is unchanged" (the existing suite is that guard); elapsed wall-clock time.
+   **When the contract says a behavior must not change, say explicitly: "do not add tests to prove it."** Otherwise the worker returns the proof as a deliverable.
+   **Carry the probe discipline into every `verifierPrompt` verbatim.** §5's review is `agent()` with `model: 'sonnet'`, not the `orchestra-review` agent, so it never loads that agent's system prompt — paste its step 4, the "never keep" list, the structure-pinning test, and the `git diff --numstat` measurement paragraph from `agents/orchestra-review.md`, and name the mistakes to probe for. A reviewer told nothing writes tests, keeps them all, and leaves `tests_kept` empty.
+
 **Density:** write worker/verifier prompts terse, imperative, English — they are read by cheap models, not humans. **Compress the scaffolding, never the contract:** enumerated I/O examples, boundary values, and the verification command are compression-exempt, and structure (tables, example rows, the response `schema`) beats terse prose for removing ambiguity. Reasoning and the thinking-inflation trap: `references/authoring.md` §3.
 
 ## 7. Latency and review economics
 
 - **Default to parallel work followed by integration, never serialization for file overlap.** A barrier is justified only when a later stage has a real dependency on earlier output, such as a global early-exit or synthesis that literally reads every task. Same-file edits are handled with isolated worktrees and supervisor-run integration, not by making otherwise independent tasks wait.
-- **Author adversarial tests from the spec, concurrently with the first implementation, once.** Tests derive from the spec, not the implementation, so they need not be re-authored per retry; each verify then merely *runs* them.
+- **Author adversarial probes from the spec, concurrently with the first implementation, once.** Probes derive from the spec, not the implementation, so they need not be re-authored per retry; each verify then merely *runs* them. Which probes stay as permanent tests is decided at the gate that PASSes — the ones that found nothing are deleted there.
 - **Size tasks to fill the concurrency width** (`min(16, cores − 2)`): not so coarse that slots idle, not so trivial that spawn overhead dominates. Split only where file ownership is genuinely disjoint.
 - **Review costs ~2x the implementation's output tokens and is worth it.** The PoC's worker passed all 11 of its own tests while shipping a real boundary bug that the reviewer's added test caught. Skip review only when a task's verification is completely self-evident and low-risk — which is exactly what the express criteria (§2) carve out.
+  That 2x buys **defect detection**, not permanent test assets. The PoC reviewer's value was the finding, not the file: keep the test that guards a found defect; delete the probes that found nothing. Read `tests_loc_added / impl_loc_changed` on every PASS — above ~3, open `tests_kept` and strip entries whose `mistake_detected` is a specification restatement (a constant's value, unchanged behavior, wall-clock time) before landing the diff. Observed: a 3-task run landed 1,050 test lines for 340 implementation lines, and 134 of them were deletable with every suite still green.
 
 Measured numbers, the restructured `runTask`, and the full barrier/sizing rules: `references/authoring.md` §2 and §4.
 

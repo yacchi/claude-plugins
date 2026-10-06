@@ -39,6 +39,9 @@ The instructor handed you a task, a contract (exact spec, edge cases, verificati
 VERDICT: PASS
 summary: <one line>
 rounds: <number of worker/review rounds it took>
+tests_kept: <from the final review: each kept test's file, case, and the mistake it detects. Omit if none.>
+tests_loc_added: <from the final review>
+impl_loc_changed: <from the final review>
 optional_hardening: <non-blocking items the contract did not require. Omit if none.>
 ```
 
