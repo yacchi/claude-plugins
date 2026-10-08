@@ -47,6 +47,7 @@ import yaml
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agent_exec_checks  # noqa: E402
 import agent_exec_sandbox  # noqa: E402
+import agent_exec_watchdog  # noqa: E402
 import agent_exec_wave  # noqa: E402
 
 PROFILES = {
@@ -83,6 +84,18 @@ KNOWN_EXECUTORS = {
 }
 
 DEFAULTS = {
+    "watchdog": {
+        "enabled": True,
+        "idle_seconds": 600,
+        "tool_idle_seconds": 900,
+        "repeat_limit": 3,
+        "wall_seconds": {
+            "light": 1200,
+            "standard": 2400,
+            "deep": 5400,
+            "independent-review": 2400,
+        },
+    },
     "tiers": {
         "light": "haiku",
         "standard": "sonnet",
@@ -570,6 +583,18 @@ Usage:
                                   show active executor cooldowns
   agent-exec cooldown clear [<executor>]
                                   clear all, or one, persisted cooldown
+  agent-exec sandbox list [--workdir D] [--json]
+                                  effective writable set for a pi run in D
+                                  (default cwd), learned grants, deny_read,
+                                  backend
+  agent-exec sandbox allow <path> [--json]
+                                  remember a user grant for this machine
+                                  (~/.claude/orchestra/sandbox-learned.json;
+                                  refuses deny_read, ~/.claude, / and $HOME)
+  agent-exec sandbox forget <path>
+                                  remove a learned grant
+  agent-exec sandbox probe [--json]
+                                  which backend a run would use, and why
   agent-exec telemetry record (--json STR | --file F)
                                   append an anonymized telemetry record
                                   (allowlist-sanitized; enabled/disabled via
@@ -674,6 +699,15 @@ def cmd_dispatch(profile_name, args):
         if inj not in final_args:
             final_args = [inj] + final_args
 
+    # Same sandbox as `run`/`dispatch`, confined to the current directory
+    # (the passthrough has no --workdir): every CLI child is covered.
+    pass_cfg, pass_cfg_err = resolve_config()
+    if pass_cfg_err is not None or not isinstance(pass_cfg, dict):
+        pass_cfg = DEFAULTS
+    cwd = os.getcwd()
+    sandbox = _sandbox_spec(profile_name, cwd, pass_cfg)
+    argv = agent_exec_sandbox.wrap_argv([exec_name] + final_args, cwd, sandbox)
+
     if os.environ.get("AGENT_EXEC_DRYRUN"):
         print("PROFILE: %s" % profile_name)
         print("MODE: %s" % mode)
@@ -683,8 +717,13 @@ def cmd_dispatch(profile_name, args):
             )
         else:
             print("ENV: (none)")
-        print("EXEC: %s %s" % (exec_name, " ".join(final_args)))
+        print("SANDBOX: %s (%s)" % (sandbox["backend"], sandbox["reason"]))
+        print("EXEC: %s" % " ".join(argv))
         return 0
+
+    if sandbox["refuse"]:
+        sys.stderr.write("agent-exec: %s: %s\n" % (profile_name, sandbox["reason"]))
+        return 1
 
     resolved = shutil.which(exec_name)
     if resolved is None:
@@ -695,7 +734,8 @@ def cmd_dispatch(profile_name, args):
 
     env = dict(os.environ)
     env.update(profile_env)
-    os.execvpe(exec_name, [exec_name] + final_args, env)  # never returns
+    env = agent_exec_sandbox.child_env(sandbox, env)
+    os.execvpe(argv[0], argv, env)  # never returns
 
 
 # --- install subcommand -----------------------------------------------------
@@ -1295,8 +1335,101 @@ def cmd_config(args):
 
     output = dict(resolved)
     output["warnings"] = _detect_config_warnings()
+    learned, learned_warning = agent_exec_sandbox.load_learned()
+    output["sandbox"] = dict(output.get("sandbox") or {}, learned=learned)
+    if learned_warning:
+        output["warnings"].append({"type": "sandbox_learned", "detail": learned_warning})
     print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0
+
+
+def cmd_sandbox(args):
+    """`agent-exec sandbox list|allow|forget|probe`."""
+    if not args or args[0] in ("-h", "--help"):
+        sys.stderr.write("usage: agent-exec sandbox list [--workdir D] [--json] | "
+                         "allow <path> [--json] | forget <path> | probe [--json]\n")
+        return 2 if not args else 0
+    sub, rest = args[0], args[1:]
+    as_json = "--json" in rest
+    rest = [a for a in rest if a != "--json"]
+    cfg, err = resolve_config()
+    if err is not None or not isinstance(cfg, dict):
+        cfg = DEFAULTS
+    sandbox_cfg = cfg.get("sandbox")
+
+    if sub == "list":
+        workdir = os.getcwd()
+        if rest[:1] == ["--workdir"] and len(rest) == 2:
+            workdir = rest[1]
+        elif rest:
+            sys.stderr.write("agent-exec: sandbox list: unknown option: %s\n" % rest[0])
+            return 2
+        info = agent_exec_sandbox.list_section(sandbox_cfg, workdir)
+        if as_json:
+            print(json.dumps(info, indent=2, ensure_ascii=False))
+            return 0
+        print("backend: %s (%s)" % (info["backend"], info["reason"]))
+        if info["limits"]:
+            print("limits: %s" % ", ".join(info["limits"]))
+        print("writable (%s):" % info["workdir"])
+        for w in info["writable"]:
+            print("  %s" % w)
+        print("learned grants (%s):" % info["learned_path"])
+        for g in info["learned"]:
+            print("  %s  [%s, %s]" % (g["path"], g["source"], g.get("added")))
+        if not info["learned"]:
+            print("  (none)")
+        print("deny_read:")
+        for r in info["deny_read"]:
+            print("  %s" % r)
+        if info["warning"]:
+            print("WARNING: %s" % info["warning"])
+        return 0
+
+    if sub in ("allow", "forget"):
+        if len(rest) != 1:
+            sys.stderr.write("agent-exec: sandbox %s: expected one path\n" % sub)
+            return 2
+        path = os.path.realpath(os.path.expanduser(rest[0]))
+        if sub == "forget":
+            removed = agent_exec_sandbox.forget_grant(path)
+            if as_json:
+                print(json.dumps({"path": path, "removed": removed}))
+            else:
+                print("%s: %s" % ("removed" if removed else "no grant for", path))
+            return 0 if removed else 1
+        deny_read = agent_exec_sandbox.build_policy(
+            os.getcwd(), "pi", agent_exec_sandbox.normalize_config(sandbox_cfg),
+            learned=[])["deny_read"]
+        reason = agent_exec_sandbox.user_grant_refusal(path, deny_read)
+        if reason:
+            sys.stderr.write("agent-exec: sandbox allow: %s\n" % reason)
+            return 1
+        try:
+            entry = agent_exec_sandbox.add_grant(path, "user")
+        except (OSError, ValueError) as exc:
+            sys.stderr.write("agent-exec: sandbox allow: %s\n" % exc)
+            return 1
+        if as_json:
+            print(json.dumps(entry, ensure_ascii=False))
+        else:
+            print("granted: %s" % entry["path"])
+        return 0
+
+    if sub == "probe":
+        info = agent_exec_sandbox.doctor_section(sandbox_cfg)
+        if as_json:
+            print(json.dumps(info, indent=2, ensure_ascii=False))
+            return 0
+        print("mode=%s backend=%s enforced=%s (%s)" % (
+            info["mode"], info["backend"], info["enforced"], info["reason"]))
+        for name, probe in info["probes"].items():
+            print("  - %s: %s (%s)" % (
+                name, "ok" if probe.get("ok") else "unavailable", probe.get("detail")))
+        return 0
+
+    sys.stderr.write("agent-exec: sandbox: unknown subcommand: %s\n" % sub)
+    return 2
 
 
 # --- telemetry -----------------------------------------------------------
@@ -1310,8 +1443,8 @@ def cmd_config(args):
 _TELEMETRY_EVENTS = ("run_summary", "dispatch")
 _TELEMETRY_LANES = ("express", "orchestrated")
 _TELEMETRY_EXECUTORS = ("claude", "codex", "pi")
-_TELEMETRY_CLASSES = ("light", "standard", "deep", "review")
-_TELEMETRY_STATUSES = ("ok", "unavailable")
+_TELEMETRY_CLASSES = ("light", "standard", "deep", "review", "independent-review")
+_TELEMETRY_STATUSES = ("ok", "unavailable", "needs-permission", "runaway")
 _TELEMETRY_REASONS = (
     "quota",
     "rate-limit",
@@ -1320,6 +1453,11 @@ _TELEMETRY_REASONS = (
     "nonzero-exit",
     "error",
     "sandbox",
+    "idle",
+    "tool-idle",
+    "repeat",
+    "wall",
+    "runaway",
 )
 _TELEMETRY_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _TELEMETRY_ROUND_KEY_RE = re.compile(r"^[1-9][0-9]*$")
@@ -1330,8 +1468,8 @@ _RUN_LEDGER_EXECUTORS = ("codex", "claude", "pi")
 # ledgers/telemetry. READ paths keep counting them under their own name;
 # WRITE paths (the sanitizers) only accept current executors.
 _HISTORICAL_EXECUTORS = ("copilot", "opencode")
-_RUN_LEDGER_CLASSES = ("light", "standard", "deep")
-_RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "delegated")
+_RUN_LEDGER_CLASSES = ("light", "standard", "deep", "independent-review")
+_RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "delegated", "needs-permission", "runaway")
 _RUN_LEDGER_MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,64}$")
 _RUN_LEDGER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _RUN_LEDGER_RUN_RE = _RUN_LEDGER_ID_RE
@@ -1413,7 +1551,8 @@ def sanitize_telemetry_record(raw):
         if isinstance(v, bool):
             out["resumed"] = v
 
-    for key in ("task_count", "pass", "fail", "exhausted", "fallbacks"):
+    for key in ("task_count", "pass", "fail", "exhausted", "fallbacks",
+                "sandbox_denials", "sandbox_granted"):
         if key in raw and _is_nonneg_int(raw.get(key)):
             out[key] = raw[key]
 
@@ -1534,7 +1673,7 @@ def sanitize_run_ledger_record(raw):
         "input_tokens", "output_tokens", "cached_input_tokens",
         "api_duration_ms", "session_duration_ms",
         "cache_write_input_tokens", "reasoning_output_tokens",
-        "cost_micro_usd",
+        "cost_micro_usd", "sandbox_denials", "sandbox_granted",
     ):
         value = raw.get(key)
         if _is_nonneg_int(value):
@@ -1964,6 +2103,7 @@ def build_run_ledger_record(executor, model, cls, result):
         "cls": cls,
         "status": result.get("status"),
     }
+    record.update(_sandbox_counts(result))
     if isinstance(usage, dict):
         for key in (
             "api_duration_ms", "session_duration_ms",
@@ -1983,6 +2123,16 @@ def build_run_ledger_record(executor, model, cls, result):
                 if key in tokens:
                     record[key] = tokens[key]
     return record
+
+
+def _sandbox_counts(result):
+    """Counts only -- never paths -- of a result's sandbox denials/grants."""
+    sandbox = result.get("sandbox") if isinstance(result, dict) else None
+    if not isinstance(sandbox, dict) or "denials" not in sandbox:
+        return {}
+    denials = sandbox.get("denials") if isinstance(sandbox.get("denials"), list) else []
+    granted = sandbox.get("granted") if isinstance(sandbox.get("granted"), list) else []
+    return {"sandbox_denials": len(denials), "sandbox_granted": len(granted)}
 
 
 def _path_fingerprint(path):
@@ -2034,6 +2184,7 @@ def build_dispatch_record(profile_name, result, resume, cls):
         "reason": result.get("reason"),
         "resumed": resume is not None,
     }
+    record.update(_sandbox_counts(result))
     if cls is not None:
         record["cls"] = cls
 
@@ -2556,7 +2707,8 @@ def _accumulate_int(target, key, value):
 # --- shared streaming spawn --------------------------------------------------
 
 
-def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None):
+def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None,
+                   watchdog=None, executor=None, cls="standard", watchdog_result=None):
     """Run `argv`, feed `input_text` on stdin, and return
     `(exit_code, stdout_text, stderr_text)`.
 
@@ -2585,6 +2737,10 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None):
         stderr=subprocess.PIPE,
         start_new_session=True,
     )
+    guard = None
+    if watchdog is not None:
+        guard = agent_exec_watchdog.Watchdog(proc, watchdog, executor, cls)
+        guard.start()
     stdin_bytes = (input_text or "").encode("utf-8")
     stderr_chunks = []
 
@@ -2616,10 +2772,12 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None):
             t.start()
         for raw in iter(proc.stdout.readline, b""):
             stdout_chunks.append(raw)
+            record = raw[:-1] if raw.endswith(b"\n") else raw
+            if record.endswith(b"\r"):
+                record = record[:-1]
+            if guard is not None:
+                guard.on_line(record.decode("utf-8", errors="replace"))
             if on_line is not None:
-                record = raw[:-1] if raw.endswith(b"\n") else raw
-                if record.endswith(b"\r"):
-                    record = record[:-1]
                 on_line(record.decode("utf-8", errors="replace"))
         exit_code = proc.wait()
         for t in threads:
@@ -2636,11 +2794,16 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None):
         proc.wait()
         raise
     finally:
+        if guard is not None:
+            guard.stop()
         for stream in (proc.stdout, proc.stderr):
             try:
                 stream.close()
             except OSError:
                 pass
+    runaway = guard.result() if guard is not None else None
+    if watchdog_result is not None:
+        watchdog_result.append(runaway)
     return (
         exit_code,
         b"".join(stdout_chunks).decode("utf-8", errors="replace"),
@@ -2807,7 +2970,7 @@ def parse_codex_jsonl(stdout_text, stderr_text, exit_code, resumed=False):
 
 
 def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json",
-                       sandbox=None):
+                       sandbox=None, watchdog=None, cls="standard"):
     """codex counterpart of `_run_pi_capture`. Same (exit_code,
     result_or_None) contract, including the 127/None missing-binary case."""
     profile = PROFILES[profile_name]
@@ -2823,10 +2986,20 @@ def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume
     # The prompt is a positional argument, so stdin must be an empty, already
     # closed pipe: `codex exec` otherwise blocks reading stdin and appends
     # whatever it finds there to the prompt as a <stdin> block.
-    exit_code, stdout_text, stderr_text = _spawn_capture(
-        argv, cwd=_existing_dir(workdir), env=None, input_text="",
-        sandbox=sandbox,
+    watchdog_result = []
+    spawn_kwargs = {"sandbox": sandbox}
+    if watchdog is not None:
+        spawn_kwargs.update(watchdog=watchdog, executor="codex", cls=cls,
+                            watchdog_result=watchdog_result)
+    captured = _spawn_capture(
+        argv, cwd=_existing_dir(workdir), env=None, input_text="", **spawn_kwargs
     )
+    exit_code, stdout_text, stderr_text = captured
+    runaway = watchdog_result[0] if watchdog_result else None
+    if runaway is not None:
+        result = parse_codex_jsonl(stdout_text, stderr_text, exit_code, resumed=resume is not None)
+        result.update(status="runaway", reason=runaway["reason"], runaway=runaway)
+        return 0, result
     return 0, parse_codex_jsonl(
         stdout_text, stderr_text, exit_code, resumed=resume is not None
     )
@@ -3014,7 +3187,7 @@ def parse_pi_jsonl(stdout_text, stderr_text, exit_code, resumed=False):
 
 
 def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json",
-                    sandbox=None):
+                    sandbox=None, watchdog=None, cls="standard"):
     """pi counterpart of `_run_codex_capture`. Same (exit_code,
     result_or_None) contract, including the 127/None missing-binary case. The
     prompt is fed on stdin and PI_SKIP_VERSION_CHECK is set in the child env
@@ -3031,13 +3204,47 @@ def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, o
     )
     env = dict(os.environ)
     env.update(profile["env"])
+    env = agent_exec_sandbox.child_env(sandbox, env)
+    watchdog_result = []
+    spawn_kwargs = {"sandbox": sandbox}
+    if watchdog is not None:
+        spawn_kwargs.update(watchdog=watchdog, executor="pi", cls=cls,
+                            watchdog_result=watchdog_result)
     exit_code, stdout_text, stderr_text = _spawn_capture(
         argv, cwd=_existing_dir(workdir), env=env, input_text=prompt_text,
-        sandbox=sandbox,
+        **spawn_kwargs
     )
-    return 0, parse_pi_jsonl(
+    runaway = watchdog_result[0] if watchdog_result else None
+    result = parse_pi_jsonl(
         stdout_text, stderr_text, exit_code, resumed=resume is not None
     )
+    if runaway is not None:
+        result.update(status="runaway", reason=runaway["reason"], runaway=runaway)
+        return 0, result
+    if (sandbox or {}).get("policy") is not None:
+        # Raw material for sandbox-denial detection; popped by
+        # `_capture_with_grants` before anything is printed or recorded.
+        result["_denial_input"] = {
+            "events": _pi_tool_end_events(stdout_text),
+            "stderr": stderr_text,
+        }
+    return 0, result
+
+
+def _pi_tool_end_events(stdout_text):
+    """Every `tool_execution_end` record of a pi json run, in order."""
+    out = []
+    for raw_line in (stdout_text or "").split("\n"):
+        line = raw_line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(event, dict) and event.get("type") == "tool_execution_end":
+            out.append(event)
+    return out
 
 
 # One place that knows which executor owns which argv/capture shape. Both
@@ -3075,11 +3282,12 @@ def _build_executor_argv(profile_name, exec_name, model, effort, workdir,
 
 
 def _run_executor_capture(profile_name, model, effort, workdir, prompt_text,
-                          resume, output_fmt="json", sandbox=None):
+                          resume, output_fmt="json", sandbox=None, watchdog=None,
+                          cls="standard"):
     runner = globals()[_registered(_CAPTURE_RUNNERS, profile_name)]
     return runner(
         profile_name, model, effort, workdir, prompt_text, resume, output_fmt,
-        sandbox=sandbox,
+        sandbox=sandbox, watchdog=watchdog, cls=cls,
     )
 
 
@@ -3087,6 +3295,157 @@ def _sandbox_spec(executor, tree, cfg):
     """Sandbox spec for one CLI executor run in `tree` under resolved `cfg`."""
     sandbox_cfg = cfg.get("sandbox") if isinstance(cfg, dict) else None
     return agent_exec_sandbox.prepare(executor, tree, sandbox_cfg)
+
+
+# At most this many auto-grant + resume cycles per dispatch.
+_GRANT_CYCLE_CAP = 2
+_GRANT_RESUME_PROMPT = (
+    "The sandbox blocked writes to: %s. Those paths are now writable. "
+    "Re-run the step that failed and continue the original task. If nothing "
+    "remains to do, repeat your previous final answer unchanged."
+)
+
+
+def _merge_usage(a, b):
+    """Sum two normalized usage dicts (tokens and cost) across grant cycles."""
+    if not isinstance(a, dict):
+        return dict(b) if isinstance(b, dict) else b
+    if not isinstance(b, dict):
+        return a
+    out = {}
+    for key in set(a) | set(b):
+        va, vb = a.get(key), b.get(key)
+        if key == "tokens":
+            tokens = dict(va) if isinstance(va, dict) else {}
+            for k, v in (vb or {}).items() if isinstance(vb, dict) else ():
+                _accumulate_int(tokens, k, v)
+            out[key] = tokens
+        elif _is_nonneg_int(va) and _is_nonneg_int(vb):
+            out[key] = va + vb
+        else:
+            out[key] = vb if vb is not None else va
+    return out
+
+
+def _capture_with_grants(profile_name, model, effort, workdir, prompt_text,
+                         resume, sandbox, sandbox_tree, cfg, watchdog=None,
+                         cls="standard"):
+    """Run one capture; on sandbox denials, auto-grant harmless cache paths,
+    persist them, and resume the SAME session (<= _GRANT_CYCLE_CAP times).
+
+    Returns (exit_code, result, sandbox_spec). `result["sandbox"]` carries
+    the spec report plus `denials`, `granted` and `cycles` when the child
+    was a sandboxed pi run. A denial that is not auto-grantable makes a run
+    that did not end ok `needs-permission` (reason "sandbox"); a run that
+    worked around it stays ok with the denials attached as advisory."""
+    exit_code, result = _run_executor_capture(
+        profile_name, model, effort, workdir, prompt_text, resume, "json",
+        sandbox=sandbox, watchdog=watchdog, cls=cls,
+    )
+    if result is None:
+        return exit_code, result, sandbox
+    result = dict(result)
+    inp = result.pop("_denial_input", None)
+    if profile_name != "pi" or sandbox.get("policy") is None or inp is None:
+        result["sandbox"] = agent_exec_sandbox.report(sandbox)
+        return exit_code, result, sandbox
+
+    # Writable set as it stood when this dispatch started: a denial on a
+    # path granted DURING this dispatch means the grant did not take.
+    base_policy = sandbox["policy"]
+    granted = []
+    report_by_path = {}
+    cycles = 0
+    usage = result.get("usage")
+    while True:
+        denials = agent_exec_sandbox.detect_denials(
+            inp.get("events"), inp.get("stderr"), workdir, base_policy)
+        entries = []
+        for d in denials:
+            entry = {"path": d["path"], "op": d["op"]}
+            if d.get("intentional"):
+                entry.update(intentional=True, auto=False, grant_candidate=None,
+                             why="denied on purpose (deny_read / tamper protection)")
+                report_by_path[d["path"]] = entry
+                continue
+            candidate = agent_exec_sandbox.grant_for(d["path"])
+            entry["grant_candidate"] = candidate or d["path"]
+            if any(agent_exec_sandbox._under(d["path"], g) for g in granted):
+                entry.update(auto=False, why="grant did not resolve the denial")
+            elif candidate is None:
+                entry.update(auto=False,
+                             why="not under an auto-grantable cache root")
+            else:
+                try:
+                    agent_exec_sandbox.add_grant(candidate, "auto", d["path"])
+                    entry.update(auto=True, granted=True)
+                    if sandbox.get("backend") in ("bwrap", "landlock"):
+                        # These backends can only open what exists.
+                        os.makedirs(candidate, mode=0o700, exist_ok=True)
+                except (OSError, ValueError) as exc:
+                    entry.update(auto=False,
+                                 why="could not persist the grant: %s" % exc)
+            entries.append(entry)
+            report_by_path[d["path"]] = entry
+        if not entries:
+            break
+        new_grants = []
+        for e in entries:
+            if e.get("granted") and e["grant_candidate"] not in granted \
+                    and e["grant_candidate"] not in new_grants:
+                new_grants.append(e["grant_candidate"])
+        blocked = [e for e in entries if not e.get("auto")]
+        session_id = result.get("session_id")
+        if (not blocked and new_grants and cycles < _GRANT_CYCLE_CAP
+                and isinstance(session_id, str) and session_id):
+            granted += new_grants
+            next_spec = _sandbox_spec(profile_name, sandbox_tree, cfg)
+            if next_spec.get("refuse") or next_spec.get("policy") is None:
+                break
+            sandbox = next_spec
+            code, nxt = _run_executor_capture(
+                profile_name, model, effort, workdir,
+                _GRANT_RESUME_PROMPT % ", ".join(new_grants), session_id,
+                "json", sandbox=sandbox, watchdog=watchdog, cls=cls,
+            )
+            cycles += 1
+            if nxt is None:
+                break
+            exit_code = code
+            nxt = dict(nxt)
+            inp = nxt.pop("_denial_input", None) or {"events": [], "stderr": ""}
+            usage = _merge_usage(usage, nxt.get("usage"))
+            nxt["usage"] = usage
+            nxt["resumed"] = True
+            result = nxt
+            continue
+        if blocked:
+            last = (inp.get("events") or [])[-1:]
+            last_denied = [
+                d for d in agent_exec_sandbox.detect_denials(
+                    last, "", workdir, base_policy)
+                if not d.get("intentional")
+            ]
+            worked_around = (
+                result.get("status") == "ok"
+                and not last_denied
+                and not agent_exec_sandbox.denial_mentioned(
+                    result.get("answer"), blocked)
+            )
+            if not worked_around:
+                result["status"] = "needs-permission"
+                result["reason"] = "sandbox"
+        break
+
+    out = agent_exec_sandbox.report(sandbox)
+    out["denials"] = list(report_by_path.values())
+    out["granted"] = []
+    for e in out["denials"]:
+        if e.get("granted") and e["grant_candidate"] not in out["granted"]:
+            out["granted"].append(e["grant_candidate"])
+    out["cycles"] = cycles
+    result["sandbox"] = out
+    return exit_code, result, sandbox
 
 
 def _sandbox_refusal(spec):
@@ -3136,6 +3495,12 @@ def cmd_run(args):
         if tok == "--capture":
             capture = True
             i += 1
+        elif tok == "--class":
+            if i + 1 >= len(rest):
+                sys.stderr.write("agent-exec: run: missing value for --class\n")
+                return 2
+            opts["--cls"] = rest[i + 1]
+            i += 2
         elif tok in opts:
             if i + 1 >= len(rest):
                 sys.stderr.write("agent-exec: run: missing value for %s\n" % tok)
@@ -3226,13 +3591,11 @@ def cmd_run(args):
         if sandbox["refuse"]:
             exit_code, result = 0, _sandbox_refusal(sandbox)
         else:
-            exit_code, result = _run_executor_capture(
+            exit_code, result, sandbox = _capture_with_grants(
                 profile_name, model, effort, workdir, prompt_text, resume,
-                output_fmt, sandbox=sandbox,
+                sandbox, workdir, run_cfg,
+                watchdog=run_cfg.get("watchdog"), cls=cls or "standard",
             )
-            if result is not None:
-                result = dict(result)
-                result["sandbox"] = agent_exec_sandbox.report(sandbox)
         if result is None:
             ledger_cfg, ledger_err = resolve_config()
             if ledger_err is not None or not isinstance(ledger_cfg, dict):
@@ -3286,6 +3649,7 @@ def cmd_run(args):
     )
     env = dict(os.environ)
     env.update(profile["env"])
+    env = agent_exec_sandbox.child_env(sandbox, env)
 
     os.execvpe(argv[0], argv, env)  # never returns
 
@@ -3621,6 +3985,10 @@ def _print_doctor_text(report):
             print("  - %s: %s (%s)" % (
                 name, "ok" if probe.get("ok") else "unavailable", probe.get("detail"),
             ))
+        learned = sandbox.get("learned") or {}
+        print("  learned grants: %d (%s)" % (learned.get("count", 0), learned.get("path")))
+        if learned.get("warning"):
+            print("  WARNING: %s" % learned["warning"])
 
 
 def cmd_doctor(args):
@@ -6855,6 +7223,8 @@ def record_unavailable_cooldown(cfg, executor, reason, now, exit_code=None, answ
 
     Never allowed to raise or change the caller's outcome -- always returns
     a bool, fails closed to False (no cooldown written) on any error."""
+    if reason == "runaway":
+        return False
     if exit_code == 0 and isinstance(answer, str) and answer.strip() != "":
         return False
     try:
@@ -7778,9 +8148,10 @@ def cmd_dispatch_route(args):
         # `sandbox.mode: required` and no backend: the child is never spawned.
         exit_code, result = 0, _sandbox_refusal(sandbox)
     else:
-        exit_code, result = _run_executor_capture(
+        exit_code, result, sandbox = _capture_with_grants(
             profile_name, model, effort, workdir, prompt_text, effective_resume,
-            "json", sandbox=sandbox,
+            sandbox, sandbox_tree, resolved,
+            watchdog=resolved.get("watchdog"), cls=cls,
         )
     if result is None:
         run_ledger_append(
@@ -7815,9 +8186,10 @@ def cmd_dispatch_route(args):
 
     # Only a run that both succeeded and produced a session id updates the
     # store: a failed round must leave the last good session intact so the
-    # correction round still has something to resume.
+    # correction round still has something to resume. `needs-permission` is
+    # kept too: the instructor resumes it once the user has decided.
     new_session_id = result.get("session_id")
-    if (task is not None and result.get("status") == "ok"
+    if (task is not None and result.get("status") in ("ok", "needs-permission")
             and isinstance(new_session_id, str) and new_session_id != ""):
         try:
             write_task_session(
@@ -7835,7 +8207,7 @@ def cmd_dispatch_route(args):
     output["resumed"] = resumed
     output["route"] = route
     output["isolation"] = isolation
-    output["sandbox"] = agent_exec_sandbox.report(sandbox)
+    output["sandbox"] = result.get("sandbox") or agent_exec_sandbox.report(sandbox)
     print(json.dumps(output, ensure_ascii=False))
     return 0
 
@@ -9473,6 +9845,9 @@ def main(argv):
 
     if tok == "cooldown":
         return cmd_cooldown(argv[1:])
+
+    if tok == "sandbox":
+        return cmd_sandbox(argv[1:])
 
     if tok == "usage":
         return cmd_usage(argv[1:])

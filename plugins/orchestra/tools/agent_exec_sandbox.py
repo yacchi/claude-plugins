@@ -25,11 +25,15 @@ Seatbelt rule on the unresolved spelling silently never matches.
 """
 
 import ctypes
+import json
 import os
+import re
 import shutil
 import struct
 import subprocess
 import sys
+import tempfile
+from datetime import datetime, timezone
 
 MODES = ("auto", "required", "off")
 
@@ -46,15 +50,71 @@ DEFAULT_DENY_READ = (
 )
 
 # Package/build caches every toolchain a worker runs writes into.
+# NOT `~/.local/share/uv/tools`: that holds uv's INSTALLED tool environments,
+# code that runs later outside any sandbox. A sandboxed child gets
+# UV_TOOL_DIR pointed into temp instead (`child_env`).
 SEED_CACHE_WRITES = (
     "~/.cache",            # uv, pip, pre-commit, generic XDG cache
     "~/.npm",              # npm / npx
     "~/go/pkg/mod",        # go module cache (GOMODCACHE)
-    "~/.local/share/uv/tools",  # uvx: builds its ephemeral tool env here (EPERM without)
 )
 SEED_CACHE_WRITES_DARWIN = (
     "~/Library/Caches",    # go-build cache, Homebrew, pip on macOS
 )
+
+# Shared package caches a denied write may be AUTO-granted under (root + one
+# more path component of the denied path). Allowlist, never a denylist.
+# Shared caches are a cache-poisoning vector the user accepted in exchange
+# for cache reuse across worktrees; what keeps that acceptable is that each
+# ecosystem verifies what it pulls out of the cache against a lockfile or
+# checksum (go.sum, npm/pnpm/yarn integrity, Cargo checksums, Gradle/Maven
+# checksums, nuget/pub/composer hashes, Terraform's .terraform.lock.hcl). A
+# root is only eligible if its ecosystem verifies cached artifacts. Toolchain
+# installs, bin dirs and config dirs are code-execution or persistence paths
+# and are never on this list.
+CACHE_ROOTS = (
+    "~/.cache",
+    "~/Library/Caches",
+    "~/.npm",
+    "~/.pnpm-store",
+    "~/Library/pnpm/store",
+    "~/.local/share/pnpm/store",
+    "~/.yarn/berry/cache",
+    "~/go/pkg/mod",
+    "~/.cargo/registry",
+    "~/.cargo/git",
+    "~/.gradle/caches",
+    "~/.m2/repository",
+    "~/.bun/install/cache",
+    "~/.nuget/packages",
+    "~/.pub-cache",
+    "~/.composer/cache",
+    "~/.ivy2/cache",
+    "~/.terraform.d/plugin-cache",
+)
+
+# Per-machine grants learned from denials (`auto`) or added by the user with
+# `agent-exec sandbox allow` (`user`). Every run adds them to the writable set.
+LEARNED_PATH = "~/.claude/orchestra/sandbox-learned.json"
+
+# Files no worker may write whatever the writable set says (tamper
+# protection): the learned grants, orchestra's user config and its executor
+# state (cooldowns). Plus every `.claude/orchestra*.y*ml` in the task's repo.
+TAMPER_FILES = (
+    LEARNED_PATH,
+    "~/.claude/orchestra.yaml",
+    "~/.claude/orchestra.yml",
+    "~/.claude/orchestra/executor-state.json",
+)
+
+# pi's state dir stays writable (lock files, auth refresh), but what pi LOADS
+# as code or instructions on a later, unsandboxed run must not be plantable.
+PI_DENY_SUBDIRS = ("extensions", "skills", "prompts", "themes", "packages",
+                   "npm", "git", "bin", "install")
+PI_DENY_FILES = ("settings.json", "mcp.json", "models.json", "AGENTS.md",
+                 "SYSTEM.md", "APPEND_SYSTEM.md", "keybindings.json")
+
+UV_TOOL_DIR_NAME = "orchestra-uv-tools"
 
 # Test hook: AGENT_EXEC_SANDBOX_BACKEND=none makes every backend probe fail,
 # so `mode: required` refusal can be exercised on any host.
@@ -79,6 +139,319 @@ def _dedupe(paths):
 
 def _under(path, directory):
     return path == directory or path.startswith(directory.rstrip("/") + "/")
+
+
+def _home(home=None):
+    return os.path.realpath(home or os.path.expanduser("~"))
+
+
+# --- classification ----------------------------------------------------------
+
+
+def cache_roots(home=None):
+    home = _home(home)
+    return [_expand(r, home) for r in CACHE_ROOTS]
+
+
+def grant_for(path, home=None):
+    """The auto-grant for a denied `path`, or None if it is not eligible.
+
+    `path` is realpath'd first (a `~/.cache/x -> ~/.ssh` symlink resolves to
+    `~/.ssh` and no longer matches), then matched with a component boundary
+    (`~/.cache-evil` is not under `~/.cache`). The grant is the matched root
+    plus ONE further component of the denied path, or the root itself when
+    the denial was on the root."""
+    if not isinstance(path, str) or not path:
+        return None
+    real = os.path.realpath(path)
+    for root in cache_roots(home):
+        if real == root:
+            return root
+        if _under(real, root):
+            first = real[len(root.rstrip("/")) + 1:].split("/", 1)[0]
+            if first in ("", ".", ".."):
+                return None
+            return os.path.join(root, first)
+    return None
+
+
+def tamper_paths(home=None):
+    home = _home(home)
+    return [_expand(p, home) for p in TAMPER_FILES]
+
+
+def user_grant_refusal(path, deny_read=(), home=None):
+    """Why a `source: user` grant on `path` is refused, or None if allowed."""
+    home = _home(home)
+    real = os.path.realpath(path)
+    if real == "/":
+        return "refusing to grant /"
+    if real == home:
+        return "refusing to grant the home directory itself"
+    lexical = os.path.abspath(path)
+    for claude in (_expand("~/.claude", home), os.path.join(home, ".claude")):
+        if any(_under(p, claude) or _under(claude, p) for p in (real, lexical)):
+            return "refusing to grant anything under ~/.claude"
+    for r in deny_read:
+        if _under(real, r) or _under(r, real):
+            return "path overlaps deny_read entry %s" % r
+    for t in tamper_paths(home):
+        if _under(t, real):
+            return "path contains orchestra's own state %s" % t
+    return None
+
+
+# --- learned grants store ----------------------------------------------------
+
+
+def learned_path(home=None):
+    return _expand(LEARNED_PATH, _home(home))
+
+
+def _valid_grant(entry, home, deny_read):
+    if not isinstance(entry, dict):
+        return False
+    path = entry.get("path")
+    if not isinstance(path, str) or not os.path.isabs(path):
+        return False
+    source = entry.get("source")
+    if source == "auto":
+        return grant_for(path, home) == os.path.realpath(path)
+    if source == "user":
+        return user_grant_refusal(path, deny_read, home) is None
+    return False
+
+
+def load_learned(home=None, deny_read=None):
+    """(grants, warning). Tolerant: a missing file is ([], None); an
+    unreadable or corrupt one is ([], <warning>). Entries that fail their
+    source's rules are dropped with a warning, never trusted."""
+    home = _home(home)
+    if deny_read is None:
+        deny_read = [_expand(p, home) for p in DEFAULT_DENY_READ]
+    path = learned_path(home)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return [], None
+    except (OSError, ValueError) as exc:
+        return [], "learned sandbox grants unreadable (%s): %s" % (path, exc)
+    grants = data.get("grants") if isinstance(data, dict) else None
+    if not isinstance(grants, list):
+        return [], "learned sandbox grants corrupt (%s): no grants list" % path
+    good = [g for g in grants if _valid_grant(g, home, deny_read)]
+    warning = None
+    if len(good) != len(grants):
+        warning = "learned sandbox grants: ignored %d invalid entr%s in %s" % (
+            len(grants) - len(good), "y" if len(grants) - len(good) == 1 else "ies", path)
+    return [dict(g) for g in good], warning
+
+
+def save_learned(grants, home=None):
+    """Atomic write: temp file in the same dir, 0600, os.replace."""
+    path = learned_path(home)
+    directory = os.path.dirname(path)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    payload = json.dumps({"version": 1, "grants": grants}, indent=2,
+                         ensure_ascii=False) + "\n"
+    fd, tmp = tempfile.mkstemp(prefix=".sandbox-learned-", dir=directory)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def add_grant(path, source, example=None, home=None):
+    """Persist one grant; returns the stored entry. Raises ValueError when
+    the grant is not allowed for `source`. Idempotent per realpath."""
+    home = _home(home)
+    real = os.path.realpath(path)
+    if source == "auto":
+        if grant_for(real, home) != real:
+            raise ValueError("not an eligible cache grant: %s" % real)
+    elif source == "user":
+        reason = user_grant_refusal(real, [_expand(p, home) for p in DEFAULT_DENY_READ], home)
+        if reason:
+            raise ValueError(reason)
+    else:
+        raise ValueError("unknown grant source: %s" % source)
+    grants, _ = load_learned(home)
+    for g in grants:
+        if g["path"] == real:
+            return g
+    entry = {"path": real, "added": _now_iso(), "source": source,
+             "example": os.path.realpath(example) if example else real}
+    grants.append(entry)
+    save_learned(grants, home)
+    return entry
+
+
+def forget_grant(path, home=None):
+    """Remove a grant; True if one was removed."""
+    home = _home(home)
+    real = os.path.realpath(path)
+    grants, _ = load_learned(home)
+    kept = [g for g in grants if g["path"] != real]
+    if len(kept) == len(grants):
+        return False
+    save_learned(kept, home)
+    return True
+
+
+# --- denial detection --------------------------------------------------------
+
+DENIAL_MARKERS = ("operation not permitted", "permission denied",
+                  "read-only file system")
+_MARKER_RE = re.compile("|".join(re.escape(m) for m in DENIAL_MARKERS), re.IGNORECASE)
+_QUOTED_RE = re.compile(r"'([^'\n]+)'|\"([^\"\n]+)\"")
+# Tools/syscalls that only READ. The sandbox never denies a read outside
+# deny_read, so such a failure is never a sandbox write denial (macOS TCC
+# dirs, root-only system dirs under `find /`).
+_READ_PREFIX_RE = re.compile(
+    r"^\s*(?:find|ls|du|cat|grep|egrep|fgrep|rg|ag|stat|head|tail|less|more|"
+    r"wc|tree|file|readlink|realpath|md5|shasum|sha256sum|diff)\s*:", re.IGNORECASE)
+_READ_SYSCALL_RE = re.compile(
+    r"\b(?:scandir|opendir|readdir|lstat|stat|access|readlink|realpath)\b\s*'",
+    re.IGNORECASE)
+
+
+def _line_op(line):
+    if _READ_PREFIX_RE.search(line) or _READ_SYSCALL_RE.search(line):
+        return "read"
+    return "write"
+
+
+def _candidates(line):
+    out = []
+    for m in _QUOTED_RE.finditer(line):
+        tok = (m.group(1) or m.group(2)).strip()
+        if tok:
+            out.append(tok)
+    stripped = _QUOTED_RE.sub(" ", line)
+    for tok in stripped.split():
+        tok = tok.rstrip(":,;")
+        if tok.startswith(("/", "./", "../")) and len(tok) > 1 or tok == "/":
+            out.append(tok)
+    return out
+
+
+def _nearest_existing(path):
+    p = path
+    while p and not os.path.lexists(p):
+        parent = os.path.dirname(p)
+        if parent == p:
+            break
+        p = parent
+    return p or "/"
+
+
+def _event_texts(event):
+    """Text a pi `tool_execution_end` record carries."""
+    if not isinstance(event, dict):
+        return []
+    result = event.get("result")
+    texts = []
+    if isinstance(result, dict):
+        content = result.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and isinstance(block.get("text"), str):
+                    texts.append(block["text"])
+        elif isinstance(content, str):
+            texts.append(content)
+    elif isinstance(result, str):
+        texts.append(result)
+    return texts
+
+
+def detect_denials(result_events, stderr, cwd, policy, access=os.access):
+    """Sandbox denials in a finished pi run: [{path, op, source[, intentional]}].
+
+    Sources: `tool_execution_end` records' `result.content[].text` and the
+    child's stderr. A candidate path is a sandbox denial only if, judged
+    from this UNSANDBOXED parent, it is outside the writable set AND its
+    nearest existing ancestor is writable by the user (otherwise it is an
+    ordinary permission error). A candidate inside deny_read is reported
+    with `intentional: True` (never granted, never escalated)."""
+    policy = policy or {}
+    writable = policy.get("writable") or []
+    deny_read = policy.get("deny_read") or []
+    deny_write = policy.get("deny_write") or []
+    deny_write_rx = [re.compile(r) for r in policy.get("deny_write_regex") or []]
+    cwd = os.path.realpath(cwd or os.getcwd())
+    sources = []
+    for ev in result_events or []:
+        for text in _event_texts(ev):
+            sources.append(("tool", text))
+    if stderr:
+        sources.append(("stderr", stderr))
+    seen = {}
+    out = []
+    for source, text in sources:
+        for line in text.splitlines():
+            if not _MARKER_RE.search(line):
+                continue
+            op = _line_op(line)
+            for cand in _candidates(line):
+                path = cand if os.path.isabs(cand) else os.path.join(cwd, cand)
+                real = os.path.realpath(path)
+                if real in seen:
+                    continue
+                if any(_under(real, r) for r in deny_read):
+                    seen[real] = True
+                    out.append({"path": real, "op": op, "source": source,
+                                "intentional": True})
+                    continue
+                if op == "read":
+                    continue
+                if (any(_under(real, d) for d in deny_write)
+                        or any(rx.search(real) for rx in deny_write_rx)):
+                    # tamper protection / pi config: denied on purpose
+                    seen[real] = True
+                    out.append({"path": real, "op": op, "source": source,
+                                "intentional": True})
+                    continue
+                if any(_under(real, w) for w in writable):
+                    continue
+                if not access(_nearest_existing(real), os.W_OK):
+                    continue
+                seen[real] = True
+                out.append({"path": real, "op": op, "source": source})
+    return out
+
+
+def denial_mentioned(text, denials, home=None):
+    """True when `text` (a final answer) still talks about a denial: a
+    marker phrase or one of the denied paths (also in its `~/` spelling)."""
+    if not isinstance(text, str) or not text:
+        return False
+    if _MARKER_RE.search(text):
+        return True
+    home = _home(home)
+    for d in denials or []:
+        path = d.get("path")
+        if not path:
+            continue
+        spellings = [path]
+        if _under(path, home) and path != home:
+            spellings.append("~" + path[len(home):])
+        if any(s in text for s in spellings):
+            return True
+    return False
 
 
 # --- config ------------------------------------------------------------------
@@ -138,13 +511,64 @@ def executor_state_dirs(executor, home, env):
     return []
 
 
-def build_policy(tree, executor, cfg, home=None, env=None, platform=None):
+def _repo_root(tree):
+    try:
+        proc = subprocess.run(["git", "-C", tree, "rev-parse", "--show-toplevel"],
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    return os.path.realpath(proc.stdout.strip())
+
+
+def _rx_escape(text):
+    # Only POSIX ERE metacharacters: Python's re.escape also escapes `-`,
+    # which SBPL's regex engine need not accept.
+    return re.sub(r"([.^$*+?()\[\]{}|\\])", r"\\\1", text)
+
+
+def repo_config_regex(root):
+    """SBPL/Python regex matching every `.claude/orchestra*.y*ml` under `root`."""
+    return "^%s/(.*/)?\\.claude/orchestra[^/]*\\.y[^/]*ml$" % _rx_escape(root.rstrip("/"))
+
+
+def _repo_config_files(root, limit=200):
+    """Existing `.claude/orchestra*.y*ml` files under `root` (for backends
+    that can only protect what exists), skipping .git and node_modules."""
+    found = []
+    rx = re.compile(repo_config_regex(root))
+    for dirpath, dirnames, _files in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in (".git", "node_modules")]
+        if os.path.basename(dirpath) == ".claude":
+            for name in sorted(os.listdir(dirpath)):
+                full = os.path.join(dirpath, name)
+                if rx.search(full) and os.path.isfile(full):
+                    found.append(full)
+                    if len(found) >= limit:
+                        return found
+    return found
+
+
+def pi_deny_paths(state_dir):
+    state_dir = os.path.realpath(state_dir)
+    return ([os.path.join(state_dir, d) for d in PI_DENY_SUBDIRS]
+            + [os.path.join(state_dir, f) for f in PI_DENY_FILES])
+
+
+def build_policy(tree, executor, cfg, home=None, env=None, platform=None,
+                 learned=None):
     """The one policy every backend enforces.
 
-    Returns {"writable": [...], "readonly": [...], "deny_read": [...]}, all
-    realpath'd. `readonly` lists carve-outs INSIDE a writable path that stay
-    read-only (a non-isolated checkout's own `.git`); writable entries under
-    a carve-out (its `objects`) are re-allowed after it."""
+    Returns {"writable", "readonly", "deny_read", "deny_write",
+    "deny_write_regex", "learned"}, paths realpath'd. `readonly` lists
+    carve-outs INSIDE a writable path that stay read-only (a non-isolated
+    checkout's own `.git`); writable entries under a carve-out (its
+    `objects`) are re-allowed after it. `deny_write` (subpaths) and
+    `deny_write_regex` are emitted AFTER every allow and win over all of
+    them: tamper protection for orchestra's own state/config and pi's
+    code-loading config. `learned` overrides the per-machine grants store
+    (tests); None reads it from `home`."""
     env = os.environ if env is None else env
     home = home or os.path.expanduser("~")
     platform = platform or sys.platform
@@ -168,8 +592,12 @@ def build_policy(tree, executor, cfg, home=None, env=None, platform=None):
     writable.append(os.path.realpath("/private/tmp" if platform == "darwin" else "/tmp"))
     writable.append("/dev")
 
+    deny_write = list(tamper_paths(home))
     for p in executor_state_dirs(executor, home, env):
-        writable.append(_expand(p, home))
+        state = _expand(p, home)
+        writable.append(state)
+        if executor == "pi":
+            deny_write += pi_deny_paths(state)
     seeds = list(SEED_CACHE_WRITES)
     if platform == "darwin":
         seeds += SEED_CACHE_WRITES_DARWIN
@@ -177,6 +605,18 @@ def build_policy(tree, executor, cfg, home=None, env=None, platform=None):
         writable.append(_expand(p, home))
     for p in cfg.get("allow_write") or []:
         writable.append(_expand(p, home))
+    deny_read = [_expand(p, home) for p in DEFAULT_DENY_READ]
+    deny_read += [_expand(p, home) for p in cfg.get("deny_read") or []]
+    if learned is None:
+        learned, _warning = load_learned(home, deny_read)
+    for g in learned:
+        if isinstance(g, dict) and isinstance(g.get("path"), str):
+            writable.append(os.path.realpath(g["path"]))
+
+    deny_write_regex = []
+    root = _repo_root(tree)
+    if root is not None:
+        deny_write_regex.append(repo_config_regex(root))
 
     # The common git dir must stay read-only even when it sits inside
     # something writable (a non-isolated checkout's own `.git`, or a repo
@@ -186,12 +626,15 @@ def build_policy(tree, executor, cfg, home=None, env=None, platform=None):
             _under(common_git, w) for w in writable if w != common_git):
         readonly.append(common_git)
 
-    deny_read = [_expand(p, home) for p in DEFAULT_DENY_READ]
-    deny_read += [_expand(p, home) for p in cfg.get("deny_read") or []]
     return {
         "writable": _dedupe(writable),
         "readonly": _dedupe(readonly),
         "deny_read": _dedupe(deny_read),
+        "deny_write": _dedupe(deny_write),
+        "deny_write_regex": deny_write_regex,
+        "tamper": tamper_paths(home),
+        "repo_root": root,
+        "learned": [g["path"] for g in learned if isinstance(g, dict) and g.get("path")],
     }
 
 
@@ -341,7 +784,8 @@ def prepare(executor, tree, cfg, probe_results=None):
                     reason="macOS Seatbelt (sandbox-exec)")
     elif results["bwrap"]["ok"]:
         spec.update(backend="bwrap", enforced=True,
-                    reason="bubblewrap (user namespaces)")
+                    reason="bubblewrap (user namespaces)",
+                    limits=bwrap_limits(policy))
     elif results["landlock"]["ok"]:
         abi = results["landlock"]["abi"]
         limits = ["deny_read"]
@@ -349,6 +793,8 @@ def prepare(executor, tree, cfg, probe_results=None):
             limits.append("signal")
         if policy["readonly"]:
             limits.append("readonly")
+        policy, extra = landlock_policy(policy, os.path.realpath(tree))
+        limits += extra
         spec.update(backend="landlock", enforced=True, limits=limits, abi=abi,
                     reason="Landlock ABI %d (bwrap unavailable: %s)"
                            % (abi, results["bwrap"]["detail"]))
@@ -365,6 +811,55 @@ def prepare(executor, tree, cfg, probe_results=None):
     spec["policy"] = policy
     spec["writable"] = list(policy["writable"])
     return spec
+
+
+def landlock_policy(policy, tree):
+    """Landlock cannot deny inside an allowed subtree, so: drop every
+    writable root other than the task tree that contains one of orchestra's
+    tamper-protected files (the child's startup assertion then holds), and
+    report what stays unprotected: pi's config inside its (necessarily
+    writable) state dir, and the repo's `.claude/orchestra*.y*ml` inside the
+    task tree. Returns (policy, extra_limits)."""
+    policy = dict(policy)
+    tamper = policy.get("tamper") or tamper_paths()
+    policy["writable"] = [
+        w for w in policy["writable"]
+        if w == tree or not any(_under(t, w) for t in tamper)
+    ]
+    limits = []
+    pi_config = [d for d in policy.get("deny_write") or [] if d not in tamper]
+    if any(_under(d, w) for d in pi_config for w in policy["writable"]):
+        limits.append("pi-config")
+    if policy.get("deny_write_regex"):
+        limits.append("orchestra-config")
+    return policy, limits
+
+
+def bwrap_limits(policy, exists=os.path.exists):
+    """bwrap can only re-bind read-only what exists; a protected path that
+    does not exist yet inside a writable root can still be created."""
+    limits = []
+    writable = policy.get("writable") or []
+    tamper = set(policy.get("tamper") or tamper_paths())
+    missing = [t for t in policy.get("deny_write") or []
+               if not exists(t) and any(_under(t, w) for w in writable)]
+    if any(t not in tamper for t in missing):
+        limits.append("pi-config")
+    if any(t in tamper for t in missing):
+        limits.append("tamper")
+    return limits
+
+
+def child_env(spec, env):
+    """Env additions for a sandboxed child: `uvx` must build its throwaway
+    tool envs in temp, never in `~/.local/share/uv/tools` (installed tools,
+    run later unsandboxed). An explicit UV_TOOL_DIR is left alone."""
+    env = dict(env)
+    if (spec or {}).get("backend") in ("seatbelt", "bwrap", "landlock") \
+            and spec.get("policy") is not None and "UV_TOOL_DIR" not in env:
+        tmp = env.get("TMPDIR") or "/tmp"
+        env["UV_TOOL_DIR"] = os.path.join(os.path.realpath(tmp), UV_TOOL_DIR_NAME)
+    return env
 
 
 def unwrapped(reason):
@@ -409,6 +904,14 @@ def seatbelt_profile(policy):
         rules.append("(deny file-read* %s)"
                      % " ".join(param("R", r) for r in policy["deny_read"]))
     rules.append("(deny signal (require-not (target same-sandbox)))")
+    # Tamper protection + pi config: after every allow, so no grant,
+    # seed or allow_write entry can re-open them.
+    deny = [param("D", d) for d in policy.get("deny_write") or []]
+    for rx in policy.get("deny_write_regex") or []:
+        if '"' not in rx:
+            deny.append('(regex #"%s")' % rx)
+    if deny:
+        rules.append("(deny file-write* %s)" % " ".join(deny))
     return " ".join(rules), params
 
 
@@ -436,6 +939,12 @@ def _bwrap_argv(argv, cwd, policy, exists=os.path.exists, isdir=os.path.isdir):
             out += ["--ro-bind", ro, ro]
     for w in late:
         out += ["--bind", w, w]
+    protected = list(policy.get("deny_write") or [])
+    if policy.get("repo_root") and policy.get("deny_write_regex"):
+        protected += _repo_config_files(policy["repo_root"])
+    for d in protected:
+        if exists(d):
+            out += ["--ro-bind", d, d]
     for r in policy["deny_read"]:
         if not exists(r):
             continue
@@ -453,6 +962,8 @@ def _landlock_argv(argv, policy, python=None, script=None):
     out = [python or sys.executable, script, "_sandbox-exec"]
     for w in policy["writable"]:
         out += ["--write", w]
+    for t in policy.get("tamper") or tamper_paths():
+        out += ["--protect", t]
     return out + ["--"] + list(argv)
 
 
@@ -542,14 +1053,17 @@ def landlock_restrict(write_paths, libc=None, abi=None, open_fn=os.open,
     return abi
 
 
-def parse_sandbox_exec_args(args):
+def parse_sandbox_exec_args(args, with_protect=False):
     writes = []
+    protect = []
     i = 0
     while i < len(args):
         if args[i] == "--":
+            if with_protect:
+                return writes, protect, args[i + 1:]
             return writes, args[i + 1:]
-        if args[i] == "--write" and i + 1 < len(args):
-            writes.append(args[i + 1])
+        if args[i] in ("--write", "--protect") and i + 1 < len(args):
+            (writes if args[i] == "--write" else protect).append(args[i + 1])
             i += 2
             continue
         raise ValueError("unexpected argument: %s" % args[i])
@@ -560,13 +1074,21 @@ def sandbox_exec_main(args, restrict=None, execvp=os.execvp):
     """Entry point of the hidden `_sandbox-exec` subcommand. Fails closed:
     if the restriction cannot be applied the command is not run."""
     try:
-        writes, argv = parse_sandbox_exec_args(args)
+        writes, protect, argv = parse_sandbox_exec_args(args, with_protect=True)
     except ValueError as exc:
         sys.stderr.write("agent-exec: _sandbox-exec: %s\n" % exc)
         return 2
     if not argv:
         sys.stderr.write("agent-exec: _sandbox-exec: no command\n")
         return 2
+    # Startup assertion: Landlock cannot deny inside an allowed root, so no
+    # writable root may contain orchestra's own state (fail closed).
+    for t in protect:
+        for w in writes:
+            if _under(os.path.realpath(t), os.path.realpath(w)):
+                sys.stderr.write("agent-exec: _sandbox-exec: writable root %s "
+                                 "contains protected %s\n" % (w, t))
+                return 126
     try:
         (restrict or landlock_restrict)(writes)
     except OSError as exc:
@@ -584,6 +1106,7 @@ def doctor_section(cfg):
     cfg = normalize_config(cfg)
     results = probes()
     spec = prepare("pi", os.getcwd(), cfg, probe_results=results)
+    grants, warning = load_learned()
     return {
         "mode": cfg["mode"],
         "backend": spec["backend"],
@@ -593,4 +1116,29 @@ def doctor_section(cfg):
         "limits": spec["limits"],
         "codex": "codex-native",
         "probes": results,
+        "learned": {"path": learned_path(), "count": len(grants),
+                    "warning": warning},
+    }
+
+
+def list_section(cfg, workdir):
+    """`agent-exec sandbox list`: effective writable set for a pi run in
+    `workdir`, learned grants, deny_read, backend."""
+    cfg = normalize_config(cfg)
+    spec = prepare("pi", workdir, cfg)
+    policy = spec.get("policy") or build_policy(workdir, "pi", cfg)
+    grants, warning = load_learned()
+    return {
+        "workdir": os.path.realpath(workdir),
+        "backend": spec["backend"],
+        "enforced": spec["enforced"],
+        "reason": spec["reason"],
+        "limits": spec["limits"],
+        "writable": policy["writable"],
+        "deny_read": policy["deny_read"],
+        "deny_write": policy.get("deny_write") or [],
+        "deny_write_regex": policy.get("deny_write_regex") or [],
+        "learned": grants,
+        "learned_path": learned_path(),
+        "warning": warning,
     }

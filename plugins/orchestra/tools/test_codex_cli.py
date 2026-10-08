@@ -442,7 +442,7 @@ class _CodexDispatchHarness(unittest.TestCase):
         }
 
         def fake_runner(profile_name, model, effort, workdir, prompt_text,
-                        resume, output_fmt="json", sandbox=None):
+                        resume, output_fmt="json", sandbox=None, **kwargs):
             argv = agent_exec._build_codex_argv(
                 "codex", model, effort, workdir, prompt_text, resume, output_fmt
             )

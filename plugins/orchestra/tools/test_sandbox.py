@@ -121,7 +121,9 @@ class BackendSelectionTests(unittest.TestCase):
         spec = self._prepare({"seatbelt": NO, "bwrap": NO,
                               "landlock": {"ok": True, "abi": 4, "detail": ""}})
         self.assertEqual(spec["backend"], "landlock")
-        self.assertEqual(spec["limits"], ["deny_read", "signal"])
+        # pi's config lives inside its writable state dir: Landlock cannot
+        # deny inside an allowed subtree, so it is reported, not claimed.
+        self.assertEqual(spec["limits"], ["deny_read", "signal", "pi-config"])
         argv = sb.wrap_argv(["pi", "-p"], self.tree, spec)
         self.assertEqual(argv[2], "_sandbox-exec")
         self.assertEqual(argv[-3:], ["--", "pi", "-p"])
