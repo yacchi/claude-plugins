@@ -32,10 +32,12 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -74,6 +76,16 @@ PROFILES = {
         "mode": "headless",
         "inject_args": [],
     },
+    # pi runs headless through `pi -p --mode json`. The prompt goes on stdin
+    # and the flags that make a run non-interactive are added by
+    # `_build_pi_argv`. PI_SKIP_VERSION_CHECK keeps the child from stalling on
+    # an update check; `_run_pi_capture` sets it in the child env.
+    "pi": {
+        "exec": "pi",
+        "env": {"PI_SKIP_VERSION_CHECK": "1"},
+        "mode": "headless",
+        "inject_args": [],
+    },
 }
 
 # Registry of executors agent-exec knows about even when they have no CLI
@@ -85,6 +97,7 @@ KNOWN_EXECUTORS = {
     "copilot": {"binary": "copilot", "default_dispatch": "cli"},
     "codex": {"binary": "codex", "default_dispatch": "cli"},
     "opencode": {"binary": "opencode", "default_dispatch": "cli"},
+    "pi": {"binary": "pi", "default_dispatch": "cli"},
 }
 
 DEFAULTS = {
@@ -160,7 +173,25 @@ DEFAULTS = {
                 ),
                 "class": "deep",
             },
-        },    },
+        },
+        # pi reaches the OpenAI Codex models through its own provider login
+        # and bills the figure it reports as `cost.total` (recorded as
+        # `cost_micro_usd`). It is not in `priority` yet.
+        "pi": {
+            "enabled": True,
+            "dispatch": "cli",
+            "classes": ["light", "standard", "deep", "independent-review"],
+            "class_policy": {
+                "light": {"model": "openai-codex/gpt-5.6-luna", "effort": "medium"},
+                "standard": {"model": "openai-codex/gpt-5.6-luna", "effort": "medium"},
+                "deep": {"model": "openai-codex/gpt-6.1-sol", "effort": "high"},
+                "independent-review": {
+                    "model": "openai-codex/gpt-6.1-sol",
+                    "effort": "medium",
+                },
+            },
+        },
+    },
     # Ordered executor preference per class/role (and, for the implementation
     # classes, per task archetype). See `resolve_route()` for the algorithm
     # and the `run` skill's SKILL.md §9 for the human-readable version this
@@ -1278,7 +1309,7 @@ def cmd_config(args):
 
 _TELEMETRY_EVENTS = ("run_summary", "dispatch")
 _TELEMETRY_LANES = ("express", "orchestrated")
-_TELEMETRY_EXECUTORS = ("claude", "copilot", "codex", "opencode")
+_TELEMETRY_EXECUTORS = ("claude", "copilot", "codex", "opencode", "pi")
 _TELEMETRY_CLASSES = ("light", "standard", "deep", "review")
 _TELEMETRY_STATUSES = ("ok", "unavailable")
 _TELEMETRY_REASONS = (
@@ -1293,7 +1324,7 @@ _TELEMETRY_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _TELEMETRY_ROUND_KEY_RE = re.compile(r"^[1-9][0-9]*$")
 
 _TELEMETRY_MAX_LINES = 10000
-_RUN_LEDGER_EXECUTORS = ("copilot", "codex", "claude", "opencode")
+_RUN_LEDGER_EXECUTORS = ("copilot", "codex", "claude", "opencode", "pi")
 _RUN_LEDGER_CLASSES = ("light", "standard", "deep")
 _RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "delegated")
 _RUN_LEDGER_MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,64}$")
@@ -1407,7 +1438,7 @@ def sanitize_telemetry_record(raw):
         if isinstance(value, dict):
             sanitized = {}
             for k, v in value.items():
-                if k in ("copilot", "codex", "opencode") and isinstance(v, bool):
+                if k in ("copilot", "codex", "opencode", "pi") and isinstance(v, bool):
                     sanitized[k] = v
             out["external_enabled"] = sanitized
 
@@ -1931,7 +1962,7 @@ def build_run_ledger_record(executor, model, cls, result):
     if isinstance(usage, dict):
         for key in (
             "premium_requests", "api_duration_ms", "session_duration_ms", "aiu_nano",
-            # opencode is the only executor that reports a currency figure
+            # opencode and pi report a currency figure
             # directly; it arrives already rounded to integer micro-USD so it
             # survives the ledger's non-negative-int sanitizer.
             "cost_micro_usd",
@@ -2919,6 +2950,97 @@ def _run_opencode_capture(profile_name, model, effort, workdir, prompt_text, res
 
 
 
+# --- shared streaming spawn --------------------------------------------------
+
+
+def _spawn_capture(argv, *, cwd, env, input_text, on_line=None):
+    """Run `argv`, feed `input_text` on stdin, and return
+    `(exit_code, stdout_text, stderr_text)`.
+
+    stdin is written and closed from a background thread and stderr is
+    drained from another, so a child that reads and writes more than a pipe
+    buffer at the same time cannot deadlock. stdout is read incrementally on
+    the calling thread, one record per `\\n` (a trailing `\\r` is stripped;
+    `str.splitlines` is deliberately NOT used because U+2028/U+2029 are legal
+    inside JSON strings), and each record is handed to `on_line` as it
+    arrives.
+
+    The child runs in its own session so that any exception or
+    KeyboardInterrupt in here can SIGKILL the whole process group, reap the
+    child, and re-raise. There is no timeout; callers add one on top of
+    `on_line`."""
+    proc = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    stdin_bytes = (input_text or "").encode("utf-8")
+    stderr_chunks = []
+
+    def feed_stdin():
+        try:
+            proc.stdin.write(stdin_bytes)
+        except OSError:
+            pass  # the child exited or closed stdin without reading it all
+        finally:
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass
+
+    def drain_stderr():
+        try:
+            for chunk in iter(lambda: proc.stderr.read(65536), b""):
+                stderr_chunks.append(chunk)
+        except (OSError, ValueError):
+            pass
+
+    threads = [
+        threading.Thread(target=feed_stdin, daemon=True),
+        threading.Thread(target=drain_stderr, daemon=True),
+    ]
+    stdout_chunks = []
+    try:
+        for t in threads:
+            t.start()
+        for raw in iter(proc.stdout.readline, b""):
+            stdout_chunks.append(raw)
+            if on_line is not None:
+                record = raw[:-1] if raw.endswith(b"\n") else raw
+                if record.endswith(b"\r"):
+                    record = record[:-1]
+                on_line(record.decode("utf-8", errors="replace"))
+        exit_code = proc.wait()
+        for t in threads:
+            t.join()
+    except BaseException:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except OSError:
+            pass
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        proc.wait()
+        raise
+    finally:
+        for stream in (proc.stdout, proc.stderr):
+            try:
+                stream.close()
+            except OSError:
+                pass
+    return (
+        exit_code,
+        b"".join(stdout_chunks).decode("utf-8", errors="replace"),
+        b"".join(stderr_chunks).decode("utf-8", errors="replace"),
+    )
+
+
 # --- codex ------------------------------------------------------------------
 
 # Sandbox mode is spelled differently on the two codex forms on purpose.
@@ -3093,15 +3215,217 @@ def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume
     # The prompt is a positional argument, so stdin must be an empty, already
     # closed pipe: `codex exec` otherwise blocks reading stdin and appends
     # whatever it finds there to the prompt as a <stdin> block.
-    proc = subprocess.run(
-        argv,
-        input="",
-        cwd=_existing_dir(workdir),
-        capture_output=True,
-        text=True,
+    exit_code, stdout_text, stderr_text = _spawn_capture(
+        argv, cwd=_existing_dir(workdir), env=None, input_text=""
     )
     return 0, parse_codex_jsonl(
-        proc.stdout, proc.stderr, proc.returncode, resumed=resume is not None
+        stdout_text, stderr_text, exit_code, resumed=resume is not None
+    )
+
+
+# --- pi ---------------------------------------------------------------------
+
+
+def _build_pi_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt):
+    """Build the `pi` argv for a single headless invocation.
+
+    pi -p --mode json --no-approve --no-extensions --no-skills
+       --no-prompt-templates --no-themes [--model M] [--thinking E]
+       [--session SID]
+
+    The prompt is NOT in argv: `_run_pi_capture` feeds it on stdin, so
+    `prompt_value` is accepted for signature parity and ignored. `--session`
+    resumes that session in the same cwd; it is absent on a fresh run. pi has
+    no working-directory flag, so `workdir` is applied as cwd by the runner.
+    `effort` maps straight onto `--thinking`. `output_fmt` is unused: json
+    mode is the only form the parser reads."""
+    del workdir, prompt_value, output_fmt
+    argv = [
+        exec_name, "-p", "--mode", "json", "--no-approve", "--no-extensions",
+        "--no-skills", "--no-prompt-templates", "--no-themes",
+    ]
+    if model:
+        argv += ["--model", model]
+    if effort:
+        argv += ["--thinking", effort]
+    if resume is not None:
+        argv += ["--session", resume]
+    return argv
+
+
+# pi reports a missing credential on stderr as "No API key found for <x>."
+_PI_EXTRA_UNAVAILABLE_PATTERNS = [
+    ("auth", re.compile(r"no api key", re.IGNORECASE)),
+]
+
+# Event types that embed worker/tool content. Their text is never scanned for
+# availability signal, whatever fields they carry.
+_PI_CONTENT_EVENT_PREFIXES = (
+    "tool", "message", "turn", "agent", "session",
+)
+
+
+def _pi_text_of(content):
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            text = block.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+    return "\n".join(parts)
+
+
+def parse_pi_jsonl(stdout_text, stderr_text, exit_code, resumed=False):
+    """Pure parser: `pi -p --mode json` stdout + stderr + exit code -> the
+    same normalized result dict `parse_codex_jsonl` returns.
+
+    Records are split on `\\n` only. The ones that matter:
+
+      {"type":"session","version":3,"id":"<uuid>",...}
+      {"type":"message_end","message":{"role":"assistant","content":[...],
+        "usage":{"input","output","cacheRead","cacheWrite","reasoning",
+                 "cost":{"total":<USD>}},
+        "stopReason":"stop"|"toolUse"|"error",["errorMessage":"..."]}}
+
+    `message_end` of an assistant message is authoritative; `message_update`
+    carries cumulative partial usage and is ignored, as is every
+    non-assistant message. The answer is the text of the LAST assistant
+    message (earlier ones are tool-call turns). A final `stopReason` of
+    `error` is a failure even at exit 0 (an unsupported model does exactly
+    that).
+
+    Availability scan is default-deny: only an assistant `errorMessage`,
+    stderr, unparseable lines and top-level error events are scanned. Tool
+    output and message content never are."""
+    session_id = None
+    tokens = {}
+    cost_usd = 0.0
+    saw_cost = False
+    last_assistant = None
+    scannable = []
+
+    for raw_line in (stdout_text or "").split("\n"):
+        line = raw_line[:-1] if raw_line.endswith("\r") else raw_line
+        if line.strip() == "":
+            continue
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            scannable.append(line)
+            continue
+        if not isinstance(event, dict):
+            continue
+        etype = event.get("type")
+
+        if etype == "session":
+            sid = event.get("id")
+            if session_id is None and isinstance(sid, str) and sid != "":
+                session_id = sid
+            continue
+
+        if etype == "message_end":
+            message = event.get("message")
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                continue
+            last_assistant = message
+            usage = message.get("usage")
+            if isinstance(usage, dict):
+                _accumulate_int(tokens, "input_tokens", usage.get("input"))
+                _accumulate_int(tokens, "output_tokens", usage.get("output"))
+                _accumulate_int(tokens, "cached_input_tokens", usage.get("cacheRead"))
+                _accumulate_int(
+                    tokens, "cache_write_input_tokens", usage.get("cacheWrite")
+                )
+                _accumulate_int(
+                    tokens, "reasoning_output_tokens", usage.get("reasoning")
+                )
+                cost = usage.get("cost")
+                total = cost.get("total") if isinstance(cost, dict) else None
+                if (isinstance(total, (int, float)) and not isinstance(total, bool)
+                        and total >= 0):
+                    cost_usd += float(total)
+                    saw_cost = True
+            err = message.get("errorMessage")
+            if isinstance(err, str) and err != "":
+                scannable.append(err)
+            continue
+
+        if isinstance(etype, str) and etype.startswith(_PI_CONTENT_EVENT_PREFIXES):
+            continue
+        if _is_error_bearing_event(event):
+            scannable.append(line)
+
+    answer = None
+    stop_reason = None
+    if last_assistant is not None:
+        stop_reason = last_assistant.get("stopReason")
+        text = _pi_text_of(last_assistant.get("content"))
+        if text.strip() != "":
+            answer = text
+
+    combined_text = "\n".join(scannable) + "\n" + (stderr_text or "")
+    reason = None
+    for candidate_reason, pattern in (
+        list(_UNAVAILABLE_PATTERNS) + _PI_EXTRA_UNAVAILABLE_PATTERNS
+    ):
+        if pattern.search(combined_text):
+            reason = candidate_reason
+            break
+
+    if reason is not None:
+        status = "unavailable"
+    elif exit_code != 0:
+        status = "unavailable"
+        reason = "nonzero-exit"
+    elif stop_reason == "error" or answer is None:
+        status = "unavailable"
+        reason = "error"
+    else:
+        status = "ok"
+
+    usage_out = {}
+    if tokens:
+        usage_out["tokens"] = tokens
+    if saw_cost:
+        usage_out["cost_micro_usd"] = int(round(cost_usd * 1000000))
+
+    return {
+        "status": status,
+        "answer": answer,
+        "session_id": session_id,
+        "resumed": bool(resumed),
+        "reason": reason,
+        "exit_code": exit_code,
+        "usage": usage_out or None,
+    }
+
+
+def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json"):
+    """pi counterpart of `_run_codex_capture`. Same (exit_code,
+    result_or_None) contract, including the 127/None missing-binary case. The
+    prompt is fed on stdin and PI_SKIP_VERSION_CHECK is set in the child env
+    so pi never stalls on an update check."""
+    profile = PROFILES[profile_name]
+    exec_name = profile["exec"]
+
+    resolved = shutil.which(exec_name)
+    if resolved is None:
+        return 127, None
+
+    argv = _build_pi_argv(
+        exec_name, model, effort, workdir, prompt_text, resume, output_fmt
+    )
+    env = dict(os.environ)
+    env.update(profile["env"])
+    exit_code, stdout_text, stderr_text = _spawn_capture(
+        argv, cwd=_existing_dir(workdir), env=env, input_text=prompt_text
+    )
+    return 0, parse_pi_jsonl(
+        stdout_text, stderr_text, exit_code, resumed=resume is not None
     )
 
 
@@ -3113,17 +3437,31 @@ _ARGV_BUILDERS = {
     "copilot": "_build_copilot_argv",
     "opencode": "_build_opencode_argv",
     "codex": "_build_codex_argv",
+    "pi": "_build_pi_argv",
 }
 _CAPTURE_RUNNERS = {
     "copilot": "_run_copilot_capture",
     "opencode": "_run_opencode_capture",
     "codex": "_run_codex_capture",
+    "pi": "_run_pi_capture",
 }
+
+
+def _registered(table, profile_name):
+    """Look up a profile's builder/runner name. An unregistered profile is a
+    programming error and must never fall back to another executor's
+    argv shape (copilot's flags sent to some other binary)."""
+    try:
+        return table[profile_name]
+    except KeyError:
+        raise ValueError(
+            "no executor registered for profile: %s" % profile_name
+        ) from None
 
 
 def _build_executor_argv(profile_name, exec_name, model, effort, workdir,
                          prompt_value, resume, output_fmt):
-    builder = globals()[_ARGV_BUILDERS.get(profile_name, "_build_copilot_argv")]
+    builder = globals()[_registered(_ARGV_BUILDERS, profile_name)]
     return builder(
         exec_name, model, effort, workdir, prompt_value, resume, output_fmt
     )
@@ -3131,7 +3469,7 @@ def _build_executor_argv(profile_name, exec_name, model, effort, workdir,
 
 def _run_executor_capture(profile_name, model, effort, workdir, prompt_text,
                           resume, output_fmt="json"):
-    runner = globals()[_CAPTURE_RUNNERS.get(profile_name, "_run_copilot_capture")]
+    runner = globals()[_registered(_CAPTURE_RUNNERS, profile_name)]
     return runner(
         profile_name, model, effort, workdir, prompt_text, resume, output_fmt
     )
@@ -3299,6 +3637,7 @@ def cmd_run(args):
 
     argv = build_argv(prompt_text)
     env = dict(os.environ)
+    env.update(profile["env"])
 
     os.execvpe(exec_name, argv, env)  # never returns
 
@@ -7801,7 +8140,7 @@ def cmd_dispatch_route(args):
 # its native shape maps onto this vocabulary.
 _USAGE_TOKEN_KEYS = ("input_tokens", "output_tokens", "cached_input_tokens")
 
-_USAGE_SOURCES = ("claude", "codex", "copilot", "opencode")
+_USAGE_SOURCES = ("claude", "codex", "copilot", "opencode", "pi")
 
 _USAGE_WINDOW_RE = re.compile(r"^(\d+)([mhd])$")
 _USAGE_WINDOW_SECONDS = {"m": 60, "h": 3600, "d": 86400}
@@ -8624,7 +8963,7 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
         if scoped and name == "claude":
             out[name] = collect_claude_scoped_usage(
                 home=home, run_ids=run_ids, session_ids=session_ids)
-        elif scoped and name in ("copilot", "codex", "opencode"):
+        elif scoped and name in ("copilot", "codex", "opencode", "pi"):
             if run_ids or session_ids:
                 ledger_dir = _ledger_dir_from_cfg(cfg)
                 paths = _ledger_selected_paths(ledger_dir, run_ids, session_ids)
@@ -8843,8 +9182,8 @@ def _print_usage_text(report):
                     _coerce_count(entry.get("premium_requests")),
                 )
             )
-        elif name == "opencode":
-            # opencode is the one executor that reports a currency figure, so
+        elif name in ("opencode", "pi"):
+            # opencode and pi are the executors that report executor that reports a currency figure, so
             # it gets a dollar line instead of copilot's billing-unit line.
             print(
                 "           cost: $%.6f"

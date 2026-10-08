@@ -524,7 +524,7 @@ class ResolveRouteTests(unittest.TestCase):
         route = agent_exec.resolve_route(cfg, doctor_report, "light")
         self.assertEqual(route["source"], "classes-legacy")
         self.assertEqual(route["executor"], "copilot")
-        self.assertEqual(route["candidates"], ["opencode", "copilot", "claude"])
+        self.assertEqual(route["candidates"], ["opencode", "copilot", "pi", "claude"])
 
     def test_review_resolves_to_claude_sonnet(self):
         cfg = self._cfg()
