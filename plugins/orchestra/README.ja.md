@@ -88,6 +88,12 @@ claude plugin validate .
 
 コメント付きの全項目は [`examples/orchestra.yaml`](examples/orchestra.yaml) を、マージの手順と各オプションは [`skills/run/references/config.md`](skills/run/references/config.md) を参照してください。`/setup` を使えばファイルを代わりに編集してくれます。
 
+### Copilot CLI / opencode からの移行
+
+v0.43.0で、同じモデルへより速く軽く到達できるpiを採用し、Copilot CLIとopencodeの実行役を削除しました。
+Copilotのモデルはpiの`github-copilot/*`、Codex/ChatGPTサブスクリプションのモデルは`openai-codex/*`を使います。
+どちらのプロバイダも`pi`を起動して`/login`でログインし、古いキーを削除するため`orchestra:setup`を再実行してください。
+
 ## 構成
 
 | パス | 役割 |

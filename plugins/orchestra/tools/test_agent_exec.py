@@ -486,26 +486,6 @@ class ResolveRouteTests(unittest.TestCase):
         )
         self.assertEqual(route["remaining"], ["codex"])
 
-    def test_removed_executor_in_priority_is_skipped_as_unknown(self):
-        """An older config can still name executors this version dropped; that
-        must route around them, not crash or dispatch to them."""
-        cfg = self._cfg()
-        cfg["external_executors"]["copilot"] = {
-            "enabled": True, "dispatch": "cli",
-            "class_policy": {"light": {"model": "m", "effort": "low"}},
-        }
-        cfg["priority"]["light"]["default"] = ["copilot", "opencode", "claude"]
-        doctor_report = {"ready": {"copilot": self._ready(True)}}
-        route = agent_exec.resolve_route(cfg, doctor_report, "light")
-        self.assertEqual(route["executor"], "claude")
-        self.assertEqual(
-            route["skipped"],
-            [
-                {"executor": "copilot", "reason": "unknown-executor:copilot"},
-                {"executor": "opencode", "reason": "unknown-executor:opencode"},
-            ],
-        )
-
     def test_exhausted_codex_skips_pi_on_the_same_subscription(self):
         cfg = self._cfg()
         doctor_report = {"ready": {"pi": self._ready(True), "codex": self._ready(True)}}
@@ -675,56 +655,35 @@ class ResolveConfigBackwardCompatTests(_IsolatedConfigMixin, unittest.TestCase):
         )
         self.assertEqual(resolved["priority"]["review"]["default"], ["claude"])
 
-    def test_config_naming_removed_executors_resolves_and_routes_around_them(self):
-        """Users' configs still name executors this version dropped."""
+    def test_removed_executor_names_are_config_errors(self):
         resolved, err = self._isolated_resolve(
             "external_executors:\n"
-            "  copilot:\n"
-            "    enabled: true\n"
-            "    dispatch: cli\n"
-            "    class_policy:\n"
-            "      light: {model: gpt-5.6-luna, effort: medium}\n"
+            "  copilot: {enabled: true}\n"
             "priority:\n"
-            "  light:\n"
-            "    default: [copilot, opencode, claude]\n"
+            "  light: {default: [opencode, claude]}\n"
         )
-        self.assertIsNone(err)
-        route = agent_exec.resolve_route(
-            resolved, {"ready": {"copilot": {"ok": True, "missing": []}}}, "light")
-        self.assertEqual(route["executor"], "claude")
-        self.assertEqual(
-            [item["reason"] for item in route["skipped"]],
-            ["unknown-executor:copilot", "unknown-executor:opencode"],
-        )
+        self.assertIsNone(resolved)
+        self.assertIn("removed in v0.43.0", err)
+        self.assertIn("external_executors.copilot", err)
+        self.assertIn("priority.light.default", err)
+        self.assertIn("github-copilot/*", err)
+        self.assertIn("openai-codex/*", err)
 
-    def test_config_naming_removed_executors_is_a_doctor_warning_not_an_error(self):
+    def test_clear_cooldown_rejects_removed_executor_name(self):
+        cfg = copy.deepcopy(agent_exec.DEFAULTS)
+        self.assertEqual(
+            agent_exec.clear_cooldown(cfg, "copilot"),
+            {"error": "unknown executor: copilot"})
+
+    def test_genuinely_unknown_executor_is_still_a_warning(self):
         with tempfile.TemporaryDirectory() as tmp:
             layer = os.path.join(tmp, "orchestra.yaml")
             with open(layer, "w", encoding="utf-8") as f:
-                f.write(
-                    "external_executors:\n"
-                    "  copilot: {enabled: true, dispatch: cli}\n"
-                    "priority:\n"
-                    "  light: {default: [opencode, claude]}\n"
-                )
-            with mock.patch.object(agent_exec, "_ordered_layer_paths",
-                                   return_value=[layer]):
+                f.write("external_executors: {nonesuch: {enabled: true}}\n")
+            with mock.patch.object(agent_exec, "_ordered_layer_paths", return_value=[layer]):
                 warnings = agent_exec._detect_config_warnings()
         unknown = [w for w in warnings if w["type"] == "unknown_executor"]
-        self.assertEqual(len(unknown), 1)
-        self.assertEqual(unknown[0]["names"], ["copilot", "opencode"])
-
-    def test_cooldown_clear_accepts_a_removed_executor_name(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "state.json")
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump({"copilot": {"reason": "quota", "until": 9e12}}, f)
-            cfg = copy.deepcopy(agent_exec.DEFAULTS)
-            cfg["cooldown"]["path"] = path
-            self.assertEqual(
-                agent_exec.clear_cooldown(cfg, "copilot"), {"cleared": "copilot"})
-            self.assertNotIn("copilot", agent_exec.load_cooldown_state(path))
-            self.assertIn("error", agent_exec.clear_cooldown(cfg, "nonesuch"))
+        self.assertEqual(unknown[0]["names"], ["nonesuch"])
 
     def test_no_config_at_all_still_gets_full_defaults(self):
         resolved, err = self._isolated_resolve(None)

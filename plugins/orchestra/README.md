@@ -88,6 +88,12 @@ Config is deep-merged from four layers (later wins): built-in defaults ← `~/.c
 
 See [`examples/orchestra.yaml`](examples/orchestra.yaml) for the full commented schema and [`skills/run/references/config.md`](skills/run/references/config.md) for the merge algorithm and every option. `/setup` edits the file for you.
 
+### Migrating from Copilot CLI / opencode
+
+In v0.43.0, the Copilot CLI and opencode executors were removed because pi is a faster, lighter path to the same models.
+Use pi's `github-copilot/*` provider for Copilot models and `openai-codex/*` for Codex/ChatGPT-subscription models.
+Log in to either provider with `/login` inside `pi`, then re-run `orchestra:setup` to remove old configuration keys.
+
 ## Components
 
 | Path | Role |

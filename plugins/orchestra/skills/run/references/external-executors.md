@@ -52,7 +52,7 @@ piは複数プロバイダに単一インターフェースで到達するコー
 
 既定の`class_policy`は、`light`/`standard`が`openai-codex/gpt-5.6-luna`/medium、`deep`が`openai-codex/gpt-6.1-sol`/high、`independent-review`が`openai-codex/gpt-6.1-sol`/mediumである。`gpt-6-luna`は再ベンチで36/38(`order=asc|desc`の読み違い、`poc-findings.md`参照)だったため既定には入れていない。
 
-**クォータ共有。** `openai-codex/*`上のpiとCodexは同じChatGPTサブスクリプションを使うため、片方が枯渇またはcooldownになるともう片方も`exhausted-shared:` / `cooldown-shared:`としてスキップされる。設定に書かれた未知のエグゼキュータ名(削除済みの`copilot`/`opencode`など)は`unknown-executor:<name>`としてスキップされ、エラーにはならない — 残っていれば消すこと。
+**クォータ共有。** `openai-codex/*`上のpiとCodexは同じChatGPTサブスクリプションを使うため、片方が枯渇またはcooldownになるともう片方も`exhausted-shared:` / `cooldown-shared:`としてスキップされる。設定に書かれた未知のエグゼキュータ名(削除済みの`copilot`/`opencode`を除く)は`unknown-executor:<name>`としてスキップされる。削除済みの名前は設定エラーになり、移行ガイドが表示される。
 
 **起動コマンド(agent-execが組み立てる。`command`テンプレートは不要):**
 
@@ -395,4 +395,4 @@ v0.43.0で次の2つのCLI実行役を削除した。CLIの実行役は`pi`(§2)
 - **`copilot`(GitHub Copilot CLI)** — 同じモデルでもpiより遅く、新規入力トークンが桁違いに多い(2026-10-08の再ベンチでopencodeの約19倍)うえ、課金はpiの`github-copilot/*`プロバイダと同じトークン従量で、勝てる点が無い。Copilotのモデルは今後も`pi`の`github-copilot/*`経由で使える(§3の単価表)。
 - **`opencode`** — 同じ課金の同じモデルに対して、piより遅く(同じ`gpt-5.6-luna`で86秒対49-70秒)、入力トークンは約3-4倍。長時間のランナウェイ(単一の`glob`が2539秒)も観測した。Codex系モデルを呼ぶ用途はpiの`openai-codex/*`が担う。
 
-理由は両者とも「同じ課金で厳密に劣る」ことである(データと表は`poc-findings.md`の2026-10-08節)。ユーザー設定に`copilot`/`opencode`のブロックや`priority`の項目が残っていても、未知のエグゼキュータ名として`unknown-executor:<name>`でスキップされ、エラーにはならない。ただし残してもその項目は何も効かないので削除すること。過去のPoC節(`poc-findings.md`の2026-07〜09)にある両者の記述は履歴としてそのまま残してある。
+理由は両者とも「同じ課金で厳密に劣る」ことである(データと表は`poc-findings.md`の2026-10-08節)。ユーザー設定に`copilot`/`opencode`のブロックや`priority`の項目が残っていると設定エラーになり、v0.43.0で削除されたことと、piの`github-copilot/*` / `openai-codex/*`へ移行する案内が表示される。キーを削除するか`orchestra:setup`を再実行すること。過去のPoC節(`poc-findings.md`の2026-07〜09)にある両者の記述は履歴としてそのまま残してある。

@@ -40,8 +40,8 @@ class LedgerCommandTests(unittest.TestCase):
         with open(os.path.join(session, "run-1.jsonl"), "w",
                   encoding="utf-8") as handle:
             handle.write(json.dumps({
-                # A record from an executor since removed: still counted.
-                "executor": "copilot",
+                # A record from an unknown executor is ignored.
+                "executor": "nonesuch",
                 "input_tokens": 4, "output_tokens": 2,
             }) + "\n")
         with open(os.path.join(session, "no.run.jsonl"), "w",
@@ -73,7 +73,7 @@ class LedgerCommandTests(unittest.TestCase):
             self.assertEqual(parsed["legacy_runs"]["legacy-run"]["records"], 1)
             proc = run_cli(home.name, ["ledger", "show", "--session", "session-1",
                                        "--json"])
-            self.assertEqual(json.loads(proc.stdout)["executors"]["copilot"]["input_tokens"], 4)
+            self.assertNotIn("nonesuch", json.loads(proc.stdout)["executors"])
             proc = run_cli(home.name, ["ledger", "show", "--run", "run-1", "--json"])
             self.assertEqual(json.loads(proc.stdout)["records"], 1)
             proc = run_cli(home.name, ["ledger", "show", "--run", "legacy-run",

@@ -819,13 +819,13 @@ class DeterministicScopeTests(unittest.TestCase):
             self.assertNotIn("since", report)
             self.assertNotIn("now", report)
 
-    def test_historical_ledger_lines_of_removed_executors_do_not_break_reports(self):
+    def test_unknown_ledger_lines_do_not_break_reports(self):
         with tempfile.TemporaryDirectory() as home:
             ledger_dir = os.path.join(home, "runs")
             write_lines(os.path.join(ledger_dir, "sess-h", "no.run.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 7,
+                json.dumps({"executor": "nonesuch", "input_tokens": 7,
                             "aiu_nano": 123, "premium_requests": 1}),
-                json.dumps({"executor": "opencode", "input_tokens": 8,
+                json.dumps({"executor": "other-unknown", "input_tokens": 8,
                             "cost_micro_usd": 5}),
                 json.dumps({"executor": "pi", "input_tokens": 5}),
             ])

@@ -1193,12 +1193,11 @@ def _detect_config_warnings():
                 if tier_key in tiers:
                     keys_found.append("tiers.%s" % tier_key)
 
-        # Executors this version no longer knows (e.g. removed ones still
-        # named in an older config). They are tolerated -- `route` skips them
-        # with `unknown-executor:<name>` -- but surfaced here.
+        # Genuinely unknown names remain warnings and are skipped by route.
         unknown = []
         if isinstance(external, dict):
-            unknown.extend(str(n) for n in external if n not in KNOWN_EXECUTORS)
+            unknown.extend(str(n) for n in external
+                           if n not in KNOWN_EXECUTORS and n not in _REMOVED_EXECUTORS)
         priority = data.get("priority")
         if isinstance(priority, dict):
             for per_cls in priority.values():
@@ -1210,6 +1209,7 @@ def _detect_config_warnings():
                             n for n in names
                             if isinstance(n, str) and n != "claude"
                             and n not in KNOWN_EXECUTORS
+                            and n not in _REMOVED_EXECUTORS
                         )
         unknown = sorted(set(unknown))
         if unknown:
@@ -1236,16 +1236,60 @@ def _builtin_exec_for(name):
     return profile["exec"]
 
 
+_REMOVED_EXECUTORS = ("copilot", "opencode")
+
+
+def _removed_executor_keys(data):
+    """Return config keys naming executors removed in v0.43.0."""
+    found = []
+    external = data.get("external_executors") if isinstance(data, dict) else None
+    if isinstance(external, dict):
+        for name in _REMOVED_EXECUTORS:
+            if name in external:
+                found.append("external_executors.%s" % name)
+    priority = data.get("priority") if isinstance(data, dict) else None
+    if isinstance(priority, dict):
+        for cls, per_archetype in priority.items():
+            if not isinstance(per_archetype, dict):
+                continue
+            for archetype, names in per_archetype.items():
+                if isinstance(names, list):
+                    for name in _REMOVED_EXECUTORS:
+                        if name in names:
+                            key = "priority.%s.%s" % (cls, archetype)
+                            if key not in found:
+                                found.append(key)
+    return found
+
+
+def _removed_executor_error(violations):
+    details = "; ".join(
+        "%s: %s" % (path, ", ".join(keys)) for path, keys in violations
+    )
+    return (
+        "agent-exec: removed executor configuration found in %s. "
+        "copilot and opencode were removed in v0.43.0. Use Copilot models "
+        "through pi's github-copilot/* provider, or Codex/ChatGPT-subscription "
+        "models through pi's openai-codex/* provider (log in to either with "
+        "/login inside pi). "
+        "Delete the keys or re-run the orchestra:setup skill."
+    ) % details
+
+
 def resolve_config():
     """Resolve the 4-layer config. Returns (resolved_dict_or_None,
     error_message_or_None)."""
     resolved = copy.deepcopy(DEFAULTS)
     sandbox_union = {"allow_write": [], "deny_read": []}
+    removed = []
 
     for path in _ordered_layer_paths():
         data, err = _load_yaml_layer(path)
         if err is not None:
             return None, "agent-exec: invalid YAML in %s: %s" % (path, err)
+        keys = _removed_executor_keys(data)
+        if keys:
+            removed.append((os.path.abspath(path), keys))
         layer_sandbox = data.get("sandbox") if isinstance(data, dict) else None
         if isinstance(layer_sandbox, dict):
             for key, acc in sandbox_union.items():
@@ -1253,6 +1297,9 @@ def resolve_config():
                 if isinstance(values, list):
                     acc.extend(v for v in values if isinstance(v, str) and v not in acc)
         resolved = _deep_merge(resolved, data)
+
+    if removed:
+        return None, _removed_executor_error(removed)
 
     resolved["sandbox"] = agent_exec_sandbox.normalize_config(
         resolved.get("sandbox"), sandbox_union
@@ -1466,10 +1513,6 @@ _TELEMETRY_ROUND_KEY_RE = re.compile(r"^[1-9][0-9]*$")
 
 _TELEMETRY_MAX_LINES = 10000
 _RUN_LEDGER_EXECUTORS = ("codex", "claude", "pi")
-# Executors removed from orchestra whose records may still sit in users'
-# ledgers/telemetry. READ paths keep counting them under their own name;
-# WRITE paths (the sanitizers) only accept current executors.
-_HISTORICAL_EXECUTORS = ("copilot", "opencode")
 _RUN_LEDGER_CLASSES = ("light", "standard", "deep", "independent-review")
 _RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "delegated", "needs-permission", "runaway")
 _RUN_LEDGER_MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,64}$")
@@ -2417,8 +2460,7 @@ def cmd_ledger(args):
         by_executor = {}
         for record in records:
             executor = record.get("executor")
-            if (executor not in _RUN_LEDGER_EXECUTORS
-                    and executor not in _HISTORICAL_EXECUTORS):
+            if executor not in _RUN_LEDGER_EXECUTORS:
                 continue
             entry = by_executor.setdefault(executor, {"records": 0})
             entry["records"] += 1
@@ -2603,7 +2645,7 @@ def cmd_cooldown(args):
 def clear_cooldown(cfg, executor=None):
     path = cooldown_state_path(cfg)
     state = load_cooldown_state(path)
-    known = set(_USAGE_SOURCES) | set(_HISTORICAL_EXECUTORS)
+    known = set(_USAGE_SOURCES)
     external = cfg.get("external_executors", {}) if isinstance(cfg, dict) else {}
     if isinstance(external, dict):
         known.update(external.keys())
@@ -7435,7 +7477,10 @@ def cmd_route(args):
 
     resolved, err = resolve_config()
     if err is not None:
-        sys.stderr.write(err + "\n")
+        if fmt == "--json":
+            print(json.dumps({"error": err}, ensure_ascii=False))
+        else:
+            sys.stderr.write(err + "\n")
         return 1
     _sweep_retention(resolved)
 
@@ -7903,7 +7948,7 @@ def cmd_dispatch_route(args):
             return 2
         resolved, err = resolve_config()
         if err is not None:
-            sys.stderr.write(err + "\n")
+            print(json.dumps({"error": err}, ensure_ascii=False))
             return 1
         _sweep_retention(resolved)
         try:
@@ -7956,7 +8001,7 @@ def cmd_dispatch_route(args):
 
     resolved, err = resolve_config()
     if err is not None:
-        sys.stderr.write(err + "\n")
+        print(json.dumps({"error": err}, ensure_ascii=False))
         return 1
 
     _sweep_retention(resolved)
