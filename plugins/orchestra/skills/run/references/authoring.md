@@ -4,6 +4,8 @@ Detail split out of `SKILL.md` in v0.12.0 so the playbook itself stays short. Th
 
 Load this file when you are actually writing a Workflow script and hit one of: parallel file-mutation safety, `agentType` resolution, per-task latency, prompt density, or the no-Workflow fallback shape.
 
+Every worker preamble must say: never search outside the working tree. Do not run `find /` or start a glob from `/`; the watchdog will kill that runaway traversal.
+
 ## 1. Workflow template notes (`SKILL.md` §5)
 
 **Parallel-with-integration is the default.** `pipeline()` and `parallel()` run their file-changing workers concurrently. For same-tree runs, assign disjoint file ownership up front — pin each worker's target files in its prompt and fix shared contracts/types in the prompts too. When ownership genuinely overlaps, use `isolation: 'worktree'` and have the supervisor integrate afterward with:

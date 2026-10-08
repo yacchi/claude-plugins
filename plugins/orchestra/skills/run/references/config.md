@@ -118,6 +118,29 @@ cooldown:
     credits: 3600
     auth: 0
     nonzero-exit: 0
+    sandbox: 0
+
+# OS sandbox around CLI executor children. Lists are UNIONED across all config
+# layers (unlike ordinary arrays), so a project cannot silently remove a user
+# layer's protection or writable exception.
+sandbox:
+  mode: auto          # auto | required | off
+  allow_write: []     # extra writable paths
+  deny_read: []       # extra unreadable paths
+
+# Runaway protection for CLI executors.
+watchdog:
+  enabled: true
+  idle_seconds: 600
+  tool_idle_seconds: 900
+  repeat_limit: 3
+  wall_seconds:
+    light: 1200
+    standard: 2400
+    deep: 5400
+    independent-review: 2400
+
+The learned sandbox grants are stored at `~/.claude/orchestra/sandbox-learned.json` (the path may be a synced directory). `agent-exec sandbox allow` adds a user grant; harmless cache denials can be learned automatically. Use `agent-exec sandbox list|allow|forget|probe` to inspect or change them. `cooldown.seconds.sandbox` defaults to `0`: a required-sandbox refusal never cools down an executor.
 
 # pi ships `enabled: true` above, so this list actually prefers it
 # when ready - `agent-exec route`/`dispatch` execute the walk, not the

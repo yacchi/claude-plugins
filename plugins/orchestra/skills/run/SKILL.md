@@ -157,9 +157,10 @@ function routingFlags(r) {
 // isolated tree, i.e. dispatch reported it could not make one.
 function treeLine(path) {
   return path
-    ? 'WORKING TREE: ' + path + '\ncd there FIRST and do every read, edit, test, and ' +
+      ? 'WORKING TREE: ' + path + '\ncd there FIRST and do every read, edit, test, and ' +
       'command inside it. Never touch, revert, or inspect files outside that path - ' +
-      'other trees hold work you did not author.\n\n'
+      'other trees hold work you did not author. Never run find / or start a glob from /; ' +
+      'search only inside this working tree or the watchdog may kill the run.\n\n'
     : ''
 }
 
@@ -269,6 +270,22 @@ async function dispatchClass(cls, promptText, opts = {}) {
   const iso = r.isolation || {}
   if (opts.iso) opts.iso.path = iso.isolate ? (iso.workdir || iso.path) : null
   if (!iso.isolate) log('NOT isolated: ' + (opts.label || cls) + ' - ' + (iso.reason || 'no reason given'))
+  if (r.sandbox && r.sandbox.enforced === false) {
+    log('NOT sandboxed: ' + (opts.label || cls) + ' - ' + (r.sandbox.reason || 'no reason given'))
+  }
+
+  if (opts.out) opts.out.sandbox = r.sandbox || null
+
+  if (r.status === 'needs-permission') {
+    return 'NEEDS-PERMISSION ' + JSON.stringify((r.sandbox && r.sandbox.denials) || [])
+  }
+  if (r.status === 'runaway') {
+    const runaway = r.runaway || {}
+    const lastTool = runaway.last_tool && runaway.last_tool.name
+      ? ' (' + runaway.last_tool.name + ')'
+      : ''
+    return 'RUNAWAY ' + (r.reason || runaway.reason || 'unknown') + lastTool
+  }
 
   if (r.status === 'ok') {
     // a CLI executor (e.g. pi or Codex's `dispatch: cli`) already ran it.
@@ -424,7 +441,8 @@ async function runTask(task) {
   let sessionClass = cls          // class in effect when `out` below was last populated
   let prior = null
   const iso = {}                  // dispatchClass fills iso.path with the task's tree
-  const out = { sessionId: null, resumed: false } // dispatchClass fills this from the last dispatch (§11 B1)
+  const out = { sessionId: null, resumed: false, sandbox: null } // dispatchClass fills this from the last dispatch (§11 B1)
+  let runawaySeen = false
 
   for (let gate = 1; gate <= MAX_GATES; gate++) {
     let work
@@ -479,6 +497,33 @@ async function runTask(task) {
       return { id: task.id, pass: false, needsInstructor: true, summary: 'escalated at deep class: ' + work.slice(0, 300) }
     }
 
+    if (typeof work === 'string' && work.startsWith('NEEDS-PERMISSION')) {
+      let denials = []
+      try { denials = JSON.parse(work.slice('NEEDS-PERMISSION'.length).trim()) || [] } catch (e) {}
+      return { id: task.id, pass: false, needsInstructor: true, needsPermission: true,
+               denials, summary: 'worker needs permission for sandbox paths' }
+    }
+    if (typeof work === 'string' && work.startsWith('RUNAWAY')) {
+      // Second runaway: the packet is mis-sized for this class (like a
+      // twice-failing family) - escalate the class; only at deep is there
+      // nowhere left to go.
+      if (runawaySeen) {
+        if (NEXT_CLASS[cls] === cls) {
+          return { id: task.id, pass: false, needsInstructor: true, rounds: gate,
+                   summary: 'watchdog runaway twice at deep class: ' + work.slice('RUNAWAY'.length).trim() }
+        }
+        cls = NEXT_CLASS[cls]
+      }
+      runawaySeen = true
+      prior = { pass: false, summary: work, feedback: [{
+        id: task.id + '-runaway', family: 'runaway', case: 'watchdog termination',
+        expected: 'worker completes without triggering the watchdog', actual: work,
+        cited_contract: 'orchestra watchdog',
+      }] }
+      await writeCorrectionPacket(task, gate, out.sessionId != null, prior)
+      continue
+    }
+
     // Review stays pinned to Sonnet and unrouted: `priority.review` is
     // `[claude]`-only, so routing it would just add a relay hop.
     // The reviewer audits the tree the work landed in, not the session cwd: an
@@ -504,6 +549,13 @@ async function runTask(task) {
                tests_kept: verdict.tests_kept || [],
                tests_loc_added: verdict.tests_loc_added,
                impl_loc_changed: verdict.impl_loc_changed }
+    }
+
+    const sandboxDenials = (out.sandbox && out.sandbox.denials) || []
+    if (sandboxDenials.some(d => d && d.auto === false)) {
+      return { id: task.id, pass: false, needsInstructor: true, needsPermission: true,
+               denials: sandboxDenials.filter(d => d && d.auto === false), rounds: gate,
+               summary: 'review failed after sandbox denials: ' + verdict.summary }
     }
 
     // A FAIL with an empty `feedback` array is unactionable: the packet would
@@ -614,6 +666,8 @@ Measured numbers, the restructured `runTask`, and the full barrier/sizing rules:
 
 Launch `orchestra-delegate` (Sonnet, pinned in its own frontmatter) via the Agent tool; it runs `agent-exec dispatch --class light --capture` per round itself, spawns `orchestra-review`, applies the same two-gate discipline (§11) — one correction round with a cited, family-swept packet to a fresh worker, then an incremental re-gate — and reports back only the structured verdict. When it returns `needsInstructor`, that is your re-analysis cue, not a signal to tell it to try again. Full shape: `references/authoring.md` §5.
 
+When a verdict has `needsPermission: true`, ask the user with `AskUserQuestion`, showing every denial's `grant_candidate` and `why` with allow/deny choices. For each allowed path, run `agent-exec sandbox allow <path>` (through a relay or yourself), then re-dispatch the **same task id**: the session store resumes the same executor session and keeps its learned cache state. If a path is denied, put that path in the correction packet as off-limits to the worker. A sandbox denial is not executor exhaustion and must not consume a gate.
+
 ## 9. Configuration and external executors
 
 Everything you normally need is one call: **`agent-exec doctor --json`** returns both the readiness verdicts (`ready.<executor>.ok`) and the resolved config (`config.values` — `tiers`, `external_executors`, `priority`, `telemetry.enabled`) already deep-merged from all four layers (defaults ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`).
@@ -642,6 +696,7 @@ Rounds are the pipeline's real cost. Slow runs are usually not slow because a mo
 - **Escalate the class on `ESCALATE` or a twice-failing family** — that doesn't consume a gate, since a mis-sized packet is not a defect. Start auth/session/concurrency/security work at `standard`/`deep` rather than proving it through a cheap failure. Escalation never widens scope.
 - **Corrections resume the round-1 executor's session when one exists, and fall back to a fresh invocation only when it doesn't.** `runTask()` (§5) sends a correction round back through `dispatchClass()` with a per-task correction token, so agent-exec's session store picks the SAME executor back up mid-conversation — the anchoring cost of returning to the "same" worker is outweighed by not re-sending the full contract on every round. A class escalation always forces a full, non-resuming token regardless: the resumed session belongs to the OLD class's executor, which the new class may not even route to. Only a Claude-tier round-1, or a task with no correction tokens prepared, falls back to a genuinely fresh pinned-Sonnet `agent()` call with the full packet.
 - **Budget invocations:** ~12 shell calls per worker and per review, 6 per re-gate. An interrupted or budget-exhausted review is a FAIL, never a PASS.
+- **Sandbox and watchdog outcomes are control signals, not ordinary defects.** `needs-permission` returns immediately without exhausting an executor or consuming a gate. The first `runaway` gets one synthesized `runaway` finding and a correction packet; a second one escalates the class. After a review FAIL, any non-auto sandbox denial returns `needsInstructor`/`needsPermission` rather than spending a correction round.
 
 Rationale, failure modes, and the family taxonomy: `references/gates.md`.
 
@@ -657,7 +712,7 @@ agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--i
 
 `--tasks` is required and takes comma-separated orchestra task IDs in the order to integrate. Same-file edits are not a reason to serialize. The only legitimate reason to serialize is a real dependency in which a later task must consume an earlier task's output or state.
 
-Isolation is still the default whenever the tree is dirty, not a special-case optimization. `agent-exec dispatch` isolates on its own (`--isolate auto`, needs `--task <id>`), covering CLI executors that `agent()`'s `isolation` option cannot reach; pass `--isolate always` to isolate a clean tree too, `never` to opt out. It carries the user's uncommitted work in, copies gitignored dependency dirs (`node_modules`, `.venv`, …) by CoW clone so no worker re-runs an install, and reuses one worktree per `--task` across retry rounds. Where git-worktree-runner is installed it goes through `gtr`, so the user's own copy patterns and postCreate hooks apply; orchestra never writes gtr config.
+Isolation is still the default whenever the tree is dirty, not a special-case optimization. `agent-exec dispatch` isolates on its own (`--isolate auto`, needs `--task <id>`), covering CLI executors that `agent()`'s `isolation` option cannot reach; pass `--isolate always` to isolate a clean tree too, `never` to opt out. It carries the user's uncommitted work in, copies gitignored dependency dirs (`node_modules`, `.venv`, …) by CoW clone so no worker re-runs an install, and reuses one worktree per `--task` across retry rounds. Where git-worktree-runner is installed it goes through `gtr`, so the user's own copy patterns and postCreate hooks apply; orchestra never writes gtr config. The OS sandbox is a second boundary: isolation decides where work lands, while the sandbox decides what the worker can touch.
 
 Beyond safety, isolation also lifts the disjoint-file-ownership constraint (§5) — use it to parallelize genuinely tangled work, make exploratory failures free, and run **competing implementations of one contract**, where variant disagreement is a defect report about your *spec*. N× tokens, so spend that variant-fanout on the risky core.
 

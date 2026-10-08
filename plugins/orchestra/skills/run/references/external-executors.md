@@ -96,6 +96,42 @@ piが`--session`を持つのと同じ意味で、Codexも`exec resume <SESSION_I
 
 `dispatch: agent`(`codex:codex-rescue`サブエージェント経由、上記の明示的オーバーライド)はこれらのBashパーミッション設定を必要としない — 生のBashコマンドではなくサブエージェント呼び出しだからである。
 
+## 2a. サンドボックス
+
+CLI実行役(pi)の子プロセスは、既定(`sandbox.mode: auto`)でOSのサンドボックスに包んで起動する。`required`では包めない環境で起動せず(`status: unavailable`、`reason: sandbox`、クールダウンなし)、`off`では包まない。codexは自前のSeatbelt/Landlock(`workspace-write`)で動くので二重には包まない(`backend: codex-native`)。
+
+| OS | バックエンド | 強制できること | `limits`に出る制約 |
+|---|---|---|---|
+| macOS | Seatbelt(`sandbox-exec`) | 書き込み範囲、秘密情報の読み取り拒否、サンドボックス外へのシグナル拒否 | なし |
+| Linux | bubblewrap(`bwrap`) | 同上(PID名前空間でシグナルも遮断) | 存在しないファイルの改ざん防止 |
+| Linux(bwrapが使えないとき) | Landlock(カーネル5.13以上) | 書き込み範囲、シグナル(ABI 6以上) | `deny_read`、`pi-config`、`orchestra-config` |
+
+Ubuntu 24.04以降は非特権のユーザー名前空間がAppArmorで塞がれているため、bwrapの事前確認に失敗してLandlockに切り替わる。Landlockは許可したディレクトリの内側を個別に禁止できないので、秘密情報の読み取り拒否と、piの設定・拡張機能やorchestraの設定の書き込み禁止が効かない。できる環境ではbwrapを使うこと。Docker上で両方の経路を確かめるには`tools/dev/linux-sandbox/run.sh all`を使う。
+
+**書き込める場所。** タスクの作業ツリー、そのgitの作業用ディレクトリ(`.git/worktrees/<名前>`)と`objects`、一時ディレクトリ、実行役の状態(`~/.pi/agent`、`~/.codex`)、主要なキャッシュ(`~/.cache`、`~/Library/Caches`、`~/.npm`、`~/go/pkg/mod`)、設定の`sandbox.allow_write`、学習済みの許可。`uvx`の一時環境は一時ディレクトリに作る(`UV_TOOL_DIR`)。
+
+**常に書き込めない場所。** `~/.claude/orchestra/sandbox-learned.json`、`~/.claude/orchestra.yaml`/`.yml`、`~/.claude/orchestra/executor-state.json`、`~/.local/share/uv/tools`、タスクのリポジトリ内の`.claude/orchestra*.y*ml`、piが読み込む設定と拡張(`~/.pi/agent/`の`extensions` `skills` `prompts` `themes` `packages` `npm` `git` `bin` `install`、および`settings.json` `mcp.json` `models.json` `AGENTS.md` `SYSTEM.md` `APPEND_SYSTEM.md` `keybindings.json`)。どれも、後で別のプロセスがコードや指示として読み込む場所である。許可の追加でも開けられない。
+
+**拒否の検知と自動許可。** piのツール出力とエラー出力から、`operation not permitted` / `permission denied` / `read-only file system`の前後にあるパスを拾う(coreutils・Go・Python・Nodeの各形式、UTF-8環境の引用符を含む)。ユーザー自身にも書けない場所(`find /`で出るような拒否)と`deny_read`の内側は対象にしない。
+
+- 拒否されたパスがキャッシュの置き場所(`~/.cache`、`~/Library/Caches`、`~/.npm`、pnpm/yarnのストア、`~/go/pkg/mod`、`~/.cargo/registry`など、取得物を検証する生態系のもの)の中なら、自動で許可する。許可するのは「置き場所＋1階層」で、置き場所の直下への拒否なら置き場所そのもの。許可は`~/.claude/orchestra/sandbox-learned.json`に記録し、同じセッションを再開する(1回のdispatchにつき最大2回)。
+- それ以外への拒否で、実行役が失敗を報告したときは`status: needs-permission`を返す。指示役はユーザーに確認し、許可されたら`agent-exec sandbox allow <path>`のあと同じタスクIDで再dispatchする(セッションが再開される)。
+- 実行役が成功を報告したときは`ok`のまま、`sandbox.denials`に拒否を添える(`auto: false`)。作業が実際に済んでいるかはレビューが判定し、不合格なら指示役がユーザーに確認する。
+
+一覧・追加・削除・診断は`agent-exec sandbox list|allow|forget|probe`。
+
+## 2b. 暴走対策(watchdog)
+
+CLI実行役の子プロセスを監視し、次のいずれかでプロセスグループごと止めて`status: runaway`を返す(クールダウンや代替先への切り替えはしない)。
+
+- 出力が`idle_seconds`(既定600秒)途切れた。ツールの実行中は`tool_idle_seconds`(既定900秒)。
+- 同じツールを同じ引数で`repeat_limit`(既定3)回続けて呼んだ。間に別の呼び出しが挟まる繰り返しは数えない。
+- 総時間が区分ごとの上限(light 1200秒、standard 2400秒、deep 5400秒、independent-review 2400秒)を超えた。
+
+根拠は2026-10-08の計測。opencode経由のワーカーが`/`を起点にglobを1回実行し、2539秒止まっていた。piの通常の実行11本では、同じ呼び出しの連続は最大1回、間を挟んだ同じ呼び出しは最大3回だった(修正後の検証のやり直し)。
+
+piの`stopReason: "error"`は`unavailable`として扱うため、一時的なエラーでもその回の残りでは使い切り扱い(sticky exhausted)になる。codexと同じ振る舞いである。
+
 ## 3. 公式の単価表と、実際の請求に関する注意
 
 **GitHub Copilot(piの`github-copilot/*`プロバイダ経由)はトークン従量課金。** 2026-06以降、GitHubは[Models and pricing](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)でトークン単価を公開している(2026-10-08確認。価格は変動するため重要な判断の前に再取得すること)。100万トークンあたり:

@@ -173,6 +173,28 @@ cooldown:
     credits: 3600
     auth: 0
     nonzero-exit: 0
+    sandbox: 0
+
+# OS sandbox for CLI executor children. `auto` uses the best backend available;
+# `required` refuses to run without one; `off` never wraps. These two lists are
+# UNIONED across config layers, so a project cannot silently remove an entry.
+sandbox:
+  mode: auto
+  allow_write: []
+  deny_read: []
+
+# Runaway protection. The watchdog kills wall-clock, idle/tool-idle, or repeat
+# runaway work and returns a structured `runaway` dispatch status.
+watchdog:
+  enabled: true
+  idle_seconds: 600
+  tool_idle_seconds: 900
+  repeat_limit: 3
+  wall_seconds:
+    light: 1200
+    standard: 2400
+    deep: 5400
+    independent-review: 2400
 
 # Additional gitignored directory names (or relative paths, matched by
 # basename) that `isolate create` should copy into a fresh worktree, on top

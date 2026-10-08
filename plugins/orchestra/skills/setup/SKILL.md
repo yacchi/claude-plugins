@@ -92,6 +92,12 @@ are present:
    - **When the safety classifier blocks an edit, hand the change to the user and close with a review.** Changes that touch permission-bypass settings (the permission settings entries above are the usual trigger) can be auto-denied by Claude Code's auto-mode safety classifier, even for a plain `Edit`/`Write`, because the *content* matches a bypass pattern — the block is on the text, not the intent. Do not try to route around it with `Bash`/`sed`/heredocs: that defeats the classifier's intent and is likely blocked too. Instead, follow the denial guidance — show the user the exact end state (what each file/section should become), let them apply it by hand or via a `!`-prefixed command in their own shell, then close the loop by re-reading the files and reviewing: recompute the effective config (next step) and confirm the manual edit landed correctly.
 5. Recompute and show the resulting effective config so the user can confirm the change did what they intended before considering the task done.
 
+## Linux sandbox prerequisites
+
+- macOS needs no additional package. On Linux, bubblewrap (`bwrap`) is recommended. On Ubuntu 24.04 and later, unprivileged user namespaces are blocked by AppArmor when `kernel.apparmor_restrict_unprivileged_userns` is enabled, so `agent-exec` falls back to Landlock (kernel 5.13 or newer). Check the selected backend with `agent-exec sandbox probe` or `agent-exec doctor`.
+- Landlock has limits: `deny_read` is not enforced, and pi's own config/extension paths (`limits: pi-config`) plus the orchestra config (`orchestra-config`) cannot be write-protected. Prefer bwrap where possible.
+- For a repeatable Linux check, run `tools/dev/linux-sandbox/run.sh`; it exercises the sandbox in Docker.
+
 ## 6. What this skill does not do
 
 - It does not change the model-tier defaults documented in `run` SKILL.md §3 — those are hard-coded fallback values; this skill only edits the override file that sits on top of them.

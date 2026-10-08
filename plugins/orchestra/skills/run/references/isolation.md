@@ -11,6 +11,8 @@ those files exist in the repository root; existing files in the destination
 are never overwritten. `--no-carry` disables both kinds of carry, and nothing
 is ever copied into the main worktree.
 
+Worktree isolation decides **where** the work lands; the OS sandbox decides what the worker **can** touch. Both are enabled by default for CLI workers, and they protect different boundaries.
+
 ## 0. Isolate first: the failure this prevents
 
 Seven weeks of transcripts contain **35 destructive VCS commands run by workers** against the user's shared tree — `git checkout -- <paths>`, `git restore`, `git reset --hard`, `git clean -fd`. They are spread across haiku, sonnet, and opus workers alike, so this is not a cheap-model defect. The instructor's countermeasure was prose, escalated three generations deep in the worker prompts ("Never run git checkout…", then "The ONE exception…", then "THE WORKING TREE IS ALREADY DIRTY AND THAT IS EXPECTED AND CORRECT"), and the accidents continued after each escalation.
