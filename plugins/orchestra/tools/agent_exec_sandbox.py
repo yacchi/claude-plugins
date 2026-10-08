@@ -95,7 +95,7 @@ CACHE_ROOTS = (
 
 # Per-machine grants learned from denials (`auto`) or added by the user with
 # `agent-exec sandbox allow` (`user`). Every run adds them to the writable set.
-LEARNED_PATH = "~/.local/state/orchestra/sandbox-learned.json"
+LEARNED_PATH = "~/.local/state/claude-orchestra/sandbox-learned.json"
 
 # Paths no worker may write whatever the writable set says (tamper
 # protection): the learned grants, orchestra's user config, its executor
@@ -223,7 +223,7 @@ def learned_path(home=None):
     home = _home(home)
     state_home = os.environ.get("XDG_STATE_HOME")
     if state_home and os.path.isabs(state_home):
-        return os.path.realpath(os.path.join(state_home, "orchestra", "sandbox-learned.json"))
+        return os.path.realpath(os.path.join(state_home, "claude-orchestra", "sandbox-learned.json"))
     return _expand(LEARNED_PATH, home)
 
 

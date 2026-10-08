@@ -110,11 +110,11 @@ Ubuntu 24.04以降は非特権のユーザー名前空間がAppArmorで塞がれ
 
 **書き込める場所。** タスクの作業ツリー、そのgitの作業用ディレクトリ(`.git/worktrees/<名前>`)と`objects`、一時ディレクトリ、実行役の状態(`~/.pi/agent`、`~/.codex`)、主要なキャッシュ(`~/.cache`、`~/Library/Caches`、`~/.npm`、`~/go/pkg/mod`)、設定の`sandbox.allow_write`、学習済みの許可。`uvx`の一時環境は一時ディレクトリに作る(`UV_TOOL_DIR`)。
 
-**常に書き込めない場所。** `$XDG_STATE_HOME/orchestra/sandbox-learned.json`(未設定または相対パスなら`~/.local/state/orchestra/sandbox-learned.json`)、`~/.claude/orchestra.yaml`/`.yml`、`~/.claude/orchestra/executor-state.json`、`~/.local/share/uv/tools`、タスクのリポジトリ内の`.claude/orchestra*.y*ml`、piが読み込む設定と拡張(`~/.pi/agent/`の`extensions` `skills` `prompts` `themes` `packages` `npm` `git` `bin` `install`、および`settings.json` `mcp.json` `models.json` `AGENTS.md` `SYSTEM.md` `APPEND_SYSTEM.md` `keybindings.json`)。どれも、後で別のプロセスがコードや指示として読み込む場所である。許可の追加でも開けられない。
+**常に書き込めない場所。** `$XDG_STATE_HOME/claude-orchestra/sandbox-learned.json`(未設定または相対パスなら`~/.local/state/claude-orchestra/sandbox-learned.json`)、`~/.claude/orchestra.yaml`/`.yml`、`~/.claude/orchestra/executor-state.json`、`~/.local/share/uv/tools`、タスクのリポジトリ内の`.claude/orchestra*.y*ml`、piが読み込む設定と拡張(`~/.pi/agent/`の`extensions` `skills` `prompts` `themes` `packages` `npm` `git` `bin` `install`、および`settings.json` `mcp.json` `models.json` `AGENTS.md` `SYSTEM.md` `APPEND_SYSTEM.md` `keybindings.json`)。どれも、後で別のプロセスがコードや指示として読み込む場所である。許可の追加でも開けられない。
 
 **拒否の検知と自動許可。** piのツール出力とエラー出力から、`operation not permitted` / `permission denied` / `read-only file system`の前後にあるパスを拾う(coreutils・Go・Python・Nodeの各形式、UTF-8環境の引用符を含む)。ユーザー自身にも書けない場所(`find /`で出るような拒否)と`deny_read`の内側は対象にしない。
 
-- 拒否されたパスがキャッシュの置き場所(`~/.cache`、`~/Library/Caches`、`~/.npm`、pnpm/yarnのストア、`~/go/pkg/mod`、`~/.cargo/registry`など、取得物を検証する生態系のもの)の中なら、自動で許可する。許可するのは「置き場所＋1階層」で、置き場所の直下への拒否なら置き場所そのもの。許可はマシンごとの`$XDG_STATE_HOME/orchestra/sandbox-learned.json`(未設定または相対パスなら`~/.local/state/orchestra/sandbox-learned.json`)に記録し、同じセッションを再開する(1回のdispatchにつき最大2回)。
+- 拒否されたパスがキャッシュの置き場所(`~/.cache`、`~/Library/Caches`、`~/.npm`、pnpm/yarnのストア、`~/go/pkg/mod`、`~/.cargo/registry`など、取得物を検証する生態系のもの)の中なら、自動で許可する。許可するのは「置き場所＋1階層」で、置き場所の直下への拒否なら置き場所そのもの。許可はマシンごとの`$XDG_STATE_HOME/claude-orchestra/sandbox-learned.json`(未設定または相対パスなら`~/.local/state/claude-orchestra/sandbox-learned.json`)に記録し、同じセッションを再開する(1回のdispatchにつき最大2回)。
 - それ以外への拒否で、実行役が失敗を報告したときは`status: needs-permission`を返す。指示役はユーザーに確認し、許可されたら`agent-exec sandbox allow <path>`のあと同じタスクIDで再dispatchする(セッションが再開される)。
 - 実行役が成功を報告したときは`ok`のまま、`sandbox.denials`に拒否を添える(`auto: false`)。作業が実際に済んでいるかはレビューが判定し、不合格なら指示役がユーザーに確認する。
 

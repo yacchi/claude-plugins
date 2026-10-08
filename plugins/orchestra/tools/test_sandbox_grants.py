@@ -171,13 +171,13 @@ class GrantForTests(HomeCase):
 
 class LearnedStoreTests(HomeCase):
     def test_store_defaults_to_local_state_and_honors_absolute_xdg_state_home(self):
-        self.assertEqual(sb.learned_path(), self.h(".local/state/orchestra/sandbox-learned.json"))
+        self.assertEqual(sb.learned_path(), self.h(".local/state/claude-orchestra/sandbox-learned.json"))
         xdg = self.h("state")
         with mock.patch.dict(os.environ, {"XDG_STATE_HOME": xdg}):
-            self.assertEqual(sb.learned_path(), os.path.join(xdg, "orchestra", "sandbox-learned.json"))
-            self.assertIn(os.path.join(xdg, "orchestra"), sb.tamper_paths())
+            self.assertEqual(sb.learned_path(), os.path.join(xdg, "claude-orchestra", "sandbox-learned.json"))
+            self.assertIn(os.path.join(xdg, "claude-orchestra"), sb.tamper_paths())
         with mock.patch.dict(os.environ, {"XDG_STATE_HOME": "relative-state"}):
-            self.assertEqual(sb.learned_path(), self.h(".local/state/orchestra/sandbox-learned.json"))
+            self.assertEqual(sb.learned_path(), self.h(".local/state/claude-orchestra/sandbox-learned.json"))
 
     def test_local_tree_does_not_block_pnpm_cache_grants(self):
         pnpm = self.h(".local/share/pnpm/store")

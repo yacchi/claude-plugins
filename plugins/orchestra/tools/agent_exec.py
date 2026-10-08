@@ -591,7 +591,7 @@ Usage:
                                   backend
   agent-exec sandbox allow <path> [--json]
                                   remember a user grant for this machine
-                                  (~/.local/state/orchestra/sandbox-learned.json by default;
+                                  (~/.local/state/claude-orchestra/sandbox-learned.json by default;
                                   refuses deny_read, ~/.claude, / and $HOME)
   agent-exec sandbox forget <path>
                                   remove a learned grant
