@@ -171,7 +171,7 @@ def run_scenarios(backend):
 
     # 6 tamper protection.
     targets = {
-        "~/.claude/orchestra/sandbox-learned.json": '{"version": 1, "grants": []}\n',
+        "~/.local/state/orchestra/sandbox-learned.json": '{"version": 1, "grants": []}\n',
         "~/.claude/orchestra.yaml": None,
         "~/.pi/agent/settings.json": None,
         "~/.pi/agent/extensions/x.ts": None,
@@ -266,7 +266,7 @@ def grant_ok(res, grant, target):
     sid = res.get("session_id")
     log = read(os.path.join(HOME, ".pi/agent/sessions/%s.jsonl" % sid)) or ""
     lines = [json.loads(line) for line in log.splitlines() if line.strip()]
-    learned = json.loads(read(os.path.join(HOME, ".claude/orchestra/sandbox-learned.json"))
+    learned = json.loads(read(os.path.join(HOME, ".local/state/orchestra/sandbox-learned.json"))
                          or '{"grants": []}')
     return (res.get("status") == "ok" and s.get("cycles") == 1
             and grant in (s.get("granted") or [])

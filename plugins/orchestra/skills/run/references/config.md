@@ -140,7 +140,7 @@ watchdog:
     deep: 5400
     independent-review: 2400
 
-The learned sandbox grants are stored at `~/.claude/orchestra/sandbox-learned.json` (the path may be a synced directory). `agent-exec sandbox allow` adds a user grant; harmless cache denials can be learned automatically. Use `agent-exec sandbox list|allow|forget|probe` to inspect or change them. `cooldown.seconds.sandbox` defaults to `0`: a required-sandbox refusal never cools down an executor.
+The learned sandbox grants are stored per machine at `$XDG_STATE_HOME/orchestra/sandbox-learned.json`, or `~/.local/state/orchestra/sandbox-learned.json` when `XDG_STATE_HOME` is unset or non-absolute. `agent-exec sandbox allow` adds a user grant; harmless cache denials can be learned automatically. Use `agent-exec sandbox list|allow|forget|probe` to inspect or change them. `cooldown.seconds.sandbox` defaults to `0`: a required-sandbox refusal never cools down an executor.
 
 # pi ships `enabled: true` above, so this list actually prefers it
 # when ready - `agent-exec route`/`dispatch` execute the walk, not the

@@ -95,14 +95,13 @@ CACHE_ROOTS = (
 
 # Per-machine grants learned from denials (`auto`) or added by the user with
 # `agent-exec sandbox allow` (`user`). Every run adds them to the writable set.
-LEARNED_PATH = "~/.claude/orchestra/sandbox-learned.json"
+LEARNED_PATH = "~/.local/state/orchestra/sandbox-learned.json"
 
 # Paths no worker may write whatever the writable set says (tamper
 # protection): the learned grants, orchestra's user config, its executor
 # state (cooldowns) and uv's installed tools (run later, unsandboxed). Plus
 # every `.claude/orchestra*.y*ml` in the task's repo.
 TAMPER_FILES = (
-    LEARNED_PATH,
     "~/.claude/orchestra.yaml",
     "~/.claude/orchestra.yml",
     "~/.claude/orchestra/executor-state.json",
@@ -158,43 +157,41 @@ def cache_roots(home=None):
 def grant_for(path, home=None):
     """The auto-grant for a denied `path`, or None if it is not eligible.
 
-    `path` is realpath'd first (a `~/.cache/x -> ~/.ssh` symlink resolves to
-    `~/.ssh` and no longer matches), then matched with a component boundary
-    (`~/.cache-evil` is not under `~/.cache`). The grant is the matched root
-    plus ONE further component of the denied path, or the root itself when
-    the denial was on the root."""
+    This is the one eligibility rule. `path` is realpath'd first (a
+    `~/.cache/x -> ~/.ssh` symlink resolves to `~/.ssh` and no longer
+    matches), then matched with a component boundary (`~/.cache-evil` is not
+    under `~/.cache`). The grant is the matched root plus ONE further
+    component of the denied path, or the root itself when the denial was on
+    or directly inside the root. A candidate overlapping a tamper-protected
+    path (e.g. the grant store) is never returned."""
     if not isinstance(path, str) or not path:
         return None
     real = os.path.realpath(path)
+    protected = tamper_paths(home)
     for root in cache_roots(home):
+        candidate = None
         if real == root:
-            return root
-        if _under(real, root):
+            candidate = root
+        elif _under(real, root):
             relative = real[len(root.rstrip("/")) + 1:]
             first, separator, _rest = relative.partition("/")
             if first in ("", ".", ".."):
-                return None
-            if not separator:
-                return root
-            return os.path.join(root, first)
+                continue
+            candidate = root if not separator else os.path.join(root, first)
+        if candidate and not any(_under(candidate, t) or _under(t, candidate)
+                                for t in protected):
+            return candidate
     return None
-
-
-def _eligible_grant_path(path, home=None):
-    """Whether `path` is a cache root or its first child component."""
-    real = os.path.realpath(path)
-    for root in cache_roots(home):
-        if real == root:
-            return True
-        if _under(real, root):
-            relative = real[len(root.rstrip("/")) + 1:]
-            return "/" not in relative and relative not in ("", ".", "..")
-    return False
 
 
 def tamper_paths(home=None):
     home = _home(home)
-    return [_expand(p, home) for p in TAMPER_FILES]
+    # learned_path is resolved here too, so the active store is protected even
+    # when XDG_STATE_HOME points somewhere other than ~/.local/state.
+    paths = [_expand(p, home) for p in TAMPER_FILES]
+    store = learned_path(home)
+    paths.extend((store, os.path.dirname(store)))
+    return _dedupe(paths)
 
 
 def user_grant_refusal(path, deny_read=(), home=None):
@@ -222,7 +219,12 @@ def user_grant_refusal(path, deny_read=(), home=None):
 
 
 def learned_path(home=None):
-    return _expand(LEARNED_PATH, _home(home))
+    """Resolve the machine-local grant store in one place."""
+    home = _home(home)
+    state_home = os.environ.get("XDG_STATE_HOME")
+    if state_home and os.path.isabs(state_home):
+        return os.path.realpath(os.path.join(state_home, "orchestra", "sandbox-learned.json"))
+    return _expand(LEARNED_PATH, home)
 
 
 def _valid_grant(entry, home, deny_read):
@@ -233,7 +235,7 @@ def _valid_grant(entry, home, deny_read):
         return False
     source = entry.get("source")
     if source == "auto":
-        return _eligible_grant_path(path, home)
+        return grant_for(path, home) is not None
     if source == "user":
         return user_grant_refusal(path, deny_read, home) is None
     return False
@@ -298,7 +300,7 @@ def add_grant(path, source, example=None, home=None):
     home = _home(home)
     real = os.path.realpath(path)
     if source == "auto":
-        if not _eligible_grant_path(real, home):
+        if grant_for(real, home) is None:
             raise ValueError("not an eligible cache grant: %s" % real)
     elif source == "user":
         reason = user_grant_refusal(real, [_expand(p, home) for p in DEFAULT_DENY_READ], home)

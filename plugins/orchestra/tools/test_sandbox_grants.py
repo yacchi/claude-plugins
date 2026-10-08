@@ -170,6 +170,31 @@ class GrantForTests(HomeCase):
 
 
 class LearnedStoreTests(HomeCase):
+    def test_store_defaults_to_local_state_and_honors_absolute_xdg_state_home(self):
+        self.assertEqual(sb.learned_path(), self.h(".local/state/orchestra/sandbox-learned.json"))
+        xdg = self.h("state")
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": xdg}):
+            self.assertEqual(sb.learned_path(), os.path.join(xdg, "orchestra", "sandbox-learned.json"))
+            self.assertIn(os.path.join(xdg, "orchestra"), sb.tamper_paths())
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": "relative-state"}):
+            self.assertEqual(sb.learned_path(), self.h(".local/state/orchestra/sandbox-learned.json"))
+
+    def test_local_tree_does_not_block_pnpm_cache_grants(self):
+        pnpm = self.h(".local/share/pnpm/store")
+        self.assertEqual(sb.grant_for(pnpm + "/v3/package"),
+                         self.h(".local/share/pnpm/store/v3"))
+        local = self.h("." + ".local")
+        policy = sb.build_policy(self.tree, "pi", {"allow_write": [local]},
+                                 home=self.home, env={})
+        self.assertNotIn(local, policy["deny_write"])
+        err = io.StringIO()
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": ""}), \
+                mock.patch.object(agent_exec, "resolve_config", return_value=(agent_exec.DEFAULTS, None)), \
+                mock.patch("sys.stderr", err), mock.patch("sys.stdout", io.StringIO()):
+            rc = agent_exec.cmd_sandbox(["allow", "~/" + ".local"])
+        self.assertEqual(rc, 1)
+        self.assertIn("tamper-protected", err.getvalue())
+
     def test_atomic_0600_and_roundtrip(self):
         sb.add_grant(self.h(".cache/uv"), "auto", self.h(".cache/uv/x"))
         path = sb.learned_path()
@@ -214,6 +239,20 @@ class LearnedStoreTests(HomeCase):
         policy = sb.build_policy(self.tree, "pi", {}, home=self.home, env={})
         self.assertIn(self.h(".pub-cache/p"), policy["writable"])
 
+    def test_root_grant_is_built_by_every_backend_policy(self):
+        root = self.h(".cache")
+        sb.add_grant(root, "auto")
+        base = sb.build_policy(self.tree, "pi", {}, home=self.home, env={})
+        self.assertIn(root, base["writable"])
+        seatbelt, _ = sb.seatbelt_profile(base)
+        self.assertIn(root, [v for _k, v in sb.seatbelt_profile(base)[1]])
+        landlock, _limits = sb.landlock_policy(base, self.tree)
+        self.assertIn(root, landlock["writable"])
+        self.assertIn(root, sb._bwrap_argv(["pi"], self.tree, base,
+                                           exists=lambda p: True)[::3] +
+                      sb._bwrap_argv(["pi"], self.tree, base,
+                                     exists=lambda p: True))
+
 
 class TamperProtectionTests(HomeCase):
     def test_denies_win_over_every_allow_in_sbpl(self):
@@ -239,7 +278,7 @@ class TamperProtectionTests(HomeCase):
 
     def test_landlock_child_asserts_no_root_contains_a_protected_file(self):
         rc = sb.sandbox_exec_main(
-            ["--write", self.h(".claude"), "--protect", sb.learned_path(), "--", "true"],
+            ["--write", self.h(".local"), "--protect", sb.learned_path(), "--", "true"],
             restrict=lambda w: self.fail("restricted"), execvp=lambda *a: self.fail("ran"))
         self.assertEqual(rc, 126)
 
