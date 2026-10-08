@@ -40,7 +40,7 @@ IN_FLIGHT = frozenset({"implementing", "verifying", "fixing", "ready"})
 
 NEED_KINDS = (
     "escalate", "conflict", "post-integration", "self-verify", "delegate", "dispatch-error",
-    "empty-after-refresh", "scope", "environment",
+    "empty-after-refresh", "scope", "environment", "permission", "runaway",
 )
 _NEED_KIND_SET = frozenset(NEED_KINDS)
 

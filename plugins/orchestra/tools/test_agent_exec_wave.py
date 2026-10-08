@@ -329,6 +329,18 @@ class RenderStatusTests(_StateDirCase):
         self.assertIn("(wave)  environment  ensure failed", text)
         self.assertNotIn("None", text)
 
+    def test_render_status_shows_permission_and_runaway_needs(self):
+        store = wave.StateStore(self.state_path, clock=lambda: 1000.0)
+        store.init("/abs/plan.json", ["CORE-1", "CORE-2"], "wave-int")
+        store.add_need("CORE-1", "permission", json.dumps({"denials": [
+            {"path": "/h/.config/x", "grant_candidate": "/h/.config/x", "why": "w"}]}))
+        state = store.add_need("CORE-2", "runaway",
+                               json.dumps({"reason": "tool-idle", "last_tool": "bash"}))
+        state = json.loads(json.dumps(state))
+        text = wave.render_status(state, now=1100.0)
+        self.assertIn("CORE-1  permission  {\"denials\"", text)
+        self.assertIn("CORE-2  runaway  {\"reason\": \"tool-idle\"", text)
+
     def test_render_status_contains_elapsed_and_needs(self):
         store = wave.StateStore(self.state_path, clock=lambda: 1000.0)
         state = store.init("/abs/plan.json", ["CORE-1", "CORE-2"], "wave-int")

@@ -433,6 +433,35 @@ class NeedsTests(_WaveRepo):
         self.assertTrue(any(e["event"] == "check-start" and e["pkg"] == "A"
                             for e in events))
 
+    def test_needs_permission_is_a_permission_need_not_a_fallback(self):
+        self.plan([{"id": "A"}])
+        payload = {"status": "needs-permission", "reason": "sandbox", "executor": "pi",
+                   "session_id": "s1", "sandbox": {"denials": [
+                       {"path": "/h/.config/x", "op": "write", "auto": False,
+                        "grant_candidate": "/h/.config/x", "why": "not cache"}]}}
+        ex = FakeExecutor({"A": [result(payload)]})
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(len(ex.calls), 1)
+        self.assertEqual(self.need_kinds(), [("A", "permission")])
+        detail = json.loads(self.state()["needs"][0]["detail"])
+        self.assertEqual(detail, {"denials": [{"path": "/h/.config/x",
+                                               "grant_candidate": "/h/.config/x",
+                                               "why": "not cache"}]})
+
+    def test_runaway_is_a_runaway_need_with_reason_and_tool_name(self):
+        self.plan([{"id": "A"}])
+        payload = {"status": "runaway", "reason": "tool-idle", "executor": "pi",
+                   "runaway": {"reason": "tool-idle", "elapsed_s": 5.1,
+                               "last_tool": {"name": "bash", "args_preview": "{}"}}}
+        ex = FakeExecutor({"A": [result(payload)]})
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(len(ex.calls), 1)
+        self.assertEqual(self.need_kinds(), [("A", "runaway")])
+        self.assertEqual(json.loads(self.state()["needs"][0]["detail"]),
+                         {"reason": "tool-idle", "last_tool": "bash"})
+
     def test_mark_rejects_unknown_status(self):
         self.plan([{"id": "A"}])
         agent_exec_wave.StateStore(self.state_path).init(self.plan_path, ["A"], "wave-int")

@@ -51,6 +51,79 @@ class WatchdogCaptureTests(unittest.TestCase):
         self.assertIsNone(runaway)
         self.assertEqual(code, 0)
 
+    def test_parallel_tool_end_only_removes_its_own_call(self):
+        watchdog = agent_exec_watchdog.Watchdog(
+            type("Proc", (), {"pid": 1})(),
+            {"enabled": True}, "pi")
+        watchdog.on_line(json.dumps({"type": "tool_execution_start", "toolCallId": "a",
+                                     "toolName": "bash", "args": {}}))
+        watchdog.on_line(json.dumps({"type": "tool_execution_start", "toolCallId": "b",
+                                     "toolName": "bash", "args": {}}))
+        watchdog.on_line(json.dumps({"type": "tool_execution_end", "toolCallId": "a"}))
+        self.assertEqual(watchdog._active_tools, {"b"})
+        self.assertTrue(watchdog.tool_running)
+
+    def _clocked(self, config):
+        now = [100.0]
+        watchdog = agent_exec_watchdog.Watchdog(
+            type("Proc", (), {"pid": 1})(), config, "pi", clock=lambda: now[0])
+        return watchdog, now
+
+    def _tool(self, watchdog, kind, call_id):
+        record = {"type": "tool_execution_%s" % kind, "toolCallId": call_id}
+        if kind == "start":
+            record.update(toolName="bash", args={"id": call_id})
+        watchdog.on_line(json.dumps(record))
+
+    def test_idle_budget_returns_once_every_parallel_call_ended(self):
+        watchdog, now = self._clocked({"idle_seconds": 3, "tool_idle_seconds": 5})
+        self._tool(watchdog, "start", "a")
+        self._tool(watchdog, "start", "b")
+        self._tool(watchdog, "end", "b")
+        now[0] += 4
+        self.assertIsNotNone(watchdog._check(now[0]))  # a still runs: tool-idle
+        self._tool(watchdog, "end", "a")
+        now[0] += 3
+        watchdog._check(now[0])
+        self.assertEqual(watchdog.result()["reason"], "idle")
+
+    def test_turn_end_closes_calls_whose_end_was_unparseable(self):
+        watchdog, now = self._clocked({"idle_seconds": 3, "tool_idle_seconds": 50})
+        self._tool(watchdog, "start", "a")
+        watchdog.on_line('{"type": "tool_execution_end", "toolCallId": ')
+        watchdog.on_line(json.dumps({"type": "turn_end"}))
+        self.assertFalse(watchdog.tool_running)
+        now[0] += 3
+        watchdog._check(now[0])
+        self.assertEqual(watchdog.result()["reason"], "idle")
+
+    def test_deadline_is_not_early_and_elapsed_is_frozen_at_the_trip(self):
+        watchdog, now = self._clocked({"idle_seconds": 3, "tool_idle_seconds": 5})
+        self._tool(watchdog, "start", "a")
+        now[0] += 4.9
+        self.assertAlmostEqual(watchdog._check(now[0]), 0.1)
+        self.assertIsNone(watchdog.result())
+        now[0] += 0.1
+        self.assertIsNone(watchdog._check(now[0]))
+        now[0] += 5  # time spent terminating the group is not reported
+        result = watchdog.result()
+        self.assertEqual((result["reason"], result["elapsed_s"]), ("tool-idle", 5.0))
+        self.assertEqual(result["runtime_s"], 5.0)
+
+    def test_fires_within_half_a_second_of_the_threshold(self):
+        code, _, _, runaway = self.run_child(
+            """
+            import json, time
+            print(json.dumps({'type': 'tool_execution_start', 'toolCallId': 'c', 'toolName': 'bash', 'args': {}}), flush=True)
+            time.sleep(10)
+            """,
+            {"enabled": True, "idle_seconds": 0.2, "tool_idle_seconds": 0.6,
+             "wall_seconds": {"standard": 30}},
+        )
+        self.assertEqual(runaway["reason"], "tool-idle")
+        self.assertGreaterEqual(runaway["elapsed_s"], 0.6)
+        self.assertLess(runaway["elapsed_s"], 1.1)
+
     def test_consecutive_repeat_only(self):
         code, _, _, runaway = self.run_child(
             """

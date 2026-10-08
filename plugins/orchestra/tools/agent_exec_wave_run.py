@@ -710,6 +710,27 @@ class _Runner(object):
                 "model": result.get("model"), "effort": result.get("effort"), "tree": tree,
             }, ensure_ascii=False))
             return False
+        # Neither is a cooldown/fallback signal: the user grants a path, or
+        # the cause of the runaway is fixed, and the package is resumed.
+        if status in ("needs-permission", "runaway"):
+            self.store.update(pid, tree=tree, executor=result.get("executor"))
+        if status == "needs-permission":
+            denials = (result.get("sandbox") or {}).get("denials") or []
+            self._need(pid, "permission", json.dumps({
+                "denials": [dict((key, denial.get(key)) for key in
+                                 ("path", "grant_candidate", "why"))
+                            for denial in denials if isinstance(denial, dict)],
+            }, ensure_ascii=False))
+            return False
+        if status == "runaway":
+            runaway = result.get("runaway") or {}
+            last_tool = runaway.get("last_tool")
+            self._need(pid, "runaway", json.dumps({
+                "reason": result.get("reason") or runaway.get("reason"),
+                "last_tool": (last_tool.get("name") if isinstance(last_tool, dict)
+                              else last_tool),
+            }, ensure_ascii=False))
+            return False
         detail = result.get("reason") or json.dumps(
             dict((k, result.get(k)) for k in ("status", "exit_code", "answer")),
             ensure_ascii=False)

@@ -97,14 +97,16 @@ CACHE_ROOTS = (
 # `agent-exec sandbox allow` (`user`). Every run adds them to the writable set.
 LEARNED_PATH = "~/.claude/orchestra/sandbox-learned.json"
 
-# Files no worker may write whatever the writable set says (tamper
-# protection): the learned grants, orchestra's user config and its executor
-# state (cooldowns). Plus every `.claude/orchestra*.y*ml` in the task's repo.
+# Paths no worker may write whatever the writable set says (tamper
+# protection): the learned grants, orchestra's user config, its executor
+# state (cooldowns) and uv's installed tools (run later, unsandboxed). Plus
+# every `.claude/orchestra*.y*ml` in the task's repo.
 TAMPER_FILES = (
     LEARNED_PATH,
     "~/.claude/orchestra.yaml",
     "~/.claude/orchestra.yml",
     "~/.claude/orchestra/executor-state.json",
+    "~/.local/share/uv/tools",
 )
 
 # pi's state dir stays writable (lock files, auth refresh), but what pi LOADS
@@ -196,8 +198,8 @@ def user_grant_refusal(path, deny_read=(), home=None):
         if _under(real, r) or _under(r, real):
             return "path overlaps deny_read entry %s" % r
     for t in tamper_paths(home):
-        if _under(t, real):
-            return "path contains orchestra's own state %s" % t
+        if _under(t, real) or _under(real, t):
+            return "path overlaps tamper-protected %s" % t
     return None
 
 
@@ -432,26 +434,6 @@ def detect_denials(result_events, stderr, cwd, policy, access=os.access):
                 seen[real] = True
                 out.append({"path": real, "op": op, "source": source})
     return out
-
-
-def denial_mentioned(text, denials, home=None):
-    """True when `text` (a final answer) still talks about a denial: a
-    marker phrase or one of the denied paths (also in its `~/` spelling)."""
-    if not isinstance(text, str) or not text:
-        return False
-    if _MARKER_RE.search(text):
-        return True
-    home = _home(home)
-    for d in denials or []:
-        path = d.get("path")
-        if not path:
-            continue
-        spellings = [path]
-        if _under(path, home) and path != home:
-            spellings.append("~" + path[len(home):])
-        if any(s in text for s in spellings):
-            return True
-    return False
 
 
 # --- config ------------------------------------------------------------------
@@ -824,7 +806,7 @@ def landlock_policy(policy, tree):
     tamper = policy.get("tamper") or tamper_paths()
     policy["writable"] = [
         w for w in policy["writable"]
-        if w == tree or not any(_under(t, w) for t in tamper)
+        if w == tree or not any(_under(t, w) or _under(w, t) for t in tamper)
     ]
     limits = []
     pi_config = [d for d in policy.get("deny_write") or [] if d not in tamper]
@@ -1082,10 +1064,12 @@ def sandbox_exec_main(args, restrict=None, execvp=os.execvp):
         sys.stderr.write("agent-exec: _sandbox-exec: no command\n")
         return 2
     # Startup assertion: Landlock cannot deny inside an allowed root, so no
-    # writable root may contain orchestra's own state (fail closed).
+    # writable root may contain -- or sit inside -- orchestra's protected
+    # state (fail closed).
     for t in protect:
         for w in writes:
-            if _under(os.path.realpath(t), os.path.realpath(w)):
+            real_t, real_w = os.path.realpath(t), os.path.realpath(w)
+            if _under(real_t, real_w) or _under(real_w, real_t):
                 sys.stderr.write("agent-exec: _sandbox-exec: writable root %s "
                                  "contains protected %s\n" % (w, t))
                 return 126

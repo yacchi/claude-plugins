@@ -368,9 +368,11 @@ Usage:
                                   must exist when the token is dispatched.
   agent-exec dispatch session --task ID [--executor N] [--json]
                                   print the session record a `dispatch: cli`
-                                  executor with resumable sessions (codex)
-                                  stored for that task, or status `none`.
-                                  --executor defaults to codex. Read-only:
+                                  executor with resumable sessions (pi,
+                                  codex) stored for that task, or status
+                                  `none`. Without --executor, the most
+                                  recently updated record of any executor
+                                  is shown. Read-only:
                                   it never creates or changes anything, and
                                   exits 0 either way.
   agent-exec dispatch --token dsp-<12 lowercase hex> [--capture]
@@ -395,7 +397,7 @@ Usage:
                                   telemetry record for the cli branch, same
                                   as `run --capture`.
                                   With --task, a `dispatch: cli` executor that
-                                  has resumable sessions (codex) continues
+                                  has resumable sessions (pi, codex) continues
                                   that task's previous session instead of
                                   starting cold, so a correction round keeps
                                   the contract it already read. --resume SID
@@ -3356,6 +3358,7 @@ def _capture_with_grants(profile_name, model, effort, workdir, prompt_text,
     granted = []
     report_by_path = {}
     cycles = 0
+    grant_note = None
     usage = result.get("usage")
     while True:
         denials = agent_exec_sandbox.detect_denials(
@@ -3413,26 +3416,23 @@ def _capture_with_grants(profile_name, model, effort, workdir, prompt_text,
                 break
             exit_code = code
             nxt = dict(nxt)
+            if not nxt.get("session_id"):
+                # A resumed run that died before naming its session is still
+                # the same session: keep it resumable for the next round.
+                nxt["session_id"] = session_id
             inp = nxt.pop("_denial_input", None) or {"events": [], "stderr": ""}
             usage = _merge_usage(usage, nxt.get("usage"))
             nxt["usage"] = usage
             nxt["resumed"] = True
             result = nxt
             continue
+        if not blocked and new_grants:
+            if not isinstance(session_id, str) or not session_id:
+                grant_note = "granted; not resumed: no-session"
+            elif cycles >= _GRANT_CYCLE_CAP:
+                grant_note = "granted; not resumed: cycle-cap"
         if blocked:
-            last = (inp.get("events") or [])[-1:]
-            last_denied = [
-                d for d in agent_exec_sandbox.detect_denials(
-                    last, "", workdir, base_policy)
-                if not d.get("intentional")
-            ]
-            worked_around = (
-                result.get("status") == "ok"
-                and not last_denied
-                and not agent_exec_sandbox.denial_mentioned(
-                    result.get("answer"), blocked)
-            )
-            if not worked_around:
+            if result.get("status") != "ok":
                 result["status"] = "needs-permission"
                 result["reason"] = "sandbox"
         break
@@ -3444,6 +3444,8 @@ def _capture_with_grants(profile_name, model, effort, workdir, prompt_text,
         if e.get("granted") and e["grant_candidate"] not in out["granted"]:
             out["granted"].append(e["grant_candidate"])
     out["cycles"] = cycles
+    if grant_note:
+        out["grant_note"] = grant_note
     result["sandbox"] = out
     return exit_code, result, sandbox
 
@@ -7463,11 +7465,14 @@ def cmd_route(args):
 def cmd_dispatch_session(args):
     """`agent-exec dispatch session --task ID [--executor N] [--json]`.
 
+    Without --executor, every session-capable executor's record for the
+    task is read and the most recently updated one is reported.
+
     Strictly read-only: it never creates the store, never sweeps it, and
     never mutates a record. Exit 0 whether or not anything is stored -- a
     miss is the normal first-round state, reported as status `none`."""
     task = None
-    executor = "codex"
+    executor = None
     as_json = False
     i = 0
     while i < len(args):
@@ -7502,7 +7507,15 @@ def cmd_dispatch_session(args):
         sys.stderr.write(err + "\n")
         return 1
 
-    record = read_task_session(resolved, executor, task)
+    if executor is not None:
+        record = read_task_session(resolved, executor, task)
+    else:
+        # The store is keyed by (executor, task): without --executor, any
+        # session-capable executor may hold the task (pi is the default CLI
+        # executor), so report the most recently updated record.
+        records = [r for r in (read_task_session(resolved, name, task)
+                               for name in sorted(PROFILES)) if r is not None]
+        record = max(records, key=lambda r: r["updated"]) if records else None
     if record is None:
         if as_json:
             print(json.dumps({"status": "none"}, ensure_ascii=False))
@@ -8186,10 +8199,11 @@ def cmd_dispatch_route(args):
 
     # Only a run that both succeeded and produced a session id updates the
     # store: a failed round must leave the last good session intact so the
-    # correction round still has something to resume. `needs-permission` is
-    # kept too: the instructor resumes it once the user has decided.
+    # correction round still has something to resume. `needs-permission` and
+    # `runaway` are kept too: the instructor resumes them once the user has
+    # decided / the cause is fixed.
     new_session_id = result.get("session_id")
-    if (task is not None and result.get("status") in ("ok", "needs-permission")
+    if (task is not None and result.get("status") in ("ok", "needs-permission", "runaway")
             and isinstance(new_session_id, str) and new_session_id != ""):
         try:
             write_task_session(

@@ -113,6 +113,33 @@ class GrantForTests(HomeCase):
         self.assertIsNone(sb.grant_for(self.h(".cache/../.ssh/x")))
         self.assertIsNone(sb.grant_for(self.h(".local/share/mise/installs/x")))
 
+    def test_uv_installed_tools_cannot_be_reopened(self):
+        tools = self.h(".local/share/uv/tools")
+        self.assertIsNone(sb.grant_for(tools + "/tool/bin"))
+        for path in (self.h(".local/share"), tools, tools + "/tool"):
+            with self.subTest(path), self.assertRaises(ValueError):
+                sb.add_grant(path, "user")
+        for platform in ("darwin", "linux"):
+            policy = sb.build_policy(self.tree, "pi", {"allow_write": ["~/.local/share"]},
+                                     home=self.home, env={}, platform=platform)
+            self.assertIn(tools, policy["deny_write"])
+        landlock, _ = sb.landlock_policy(dict(policy, writable=policy["writable"] + [tools + "/x"]),
+                                         self.tree)
+        self.assertNotIn(self.h(".local/share"), landlock["writable"])
+        self.assertNotIn(tools + "/x", landlock["writable"])
+        rc = sb.sandbox_exec_main(
+            ["--write", tools + "/x", "--protect", tools, "--", "true"],
+            restrict=lambda w: self.fail("restricted"), execvp=lambda *a: self.fail("ran"))
+        self.assertEqual(rc, 126)
+
+    def test_sandbox_allow_refuses_uv_installed_tools(self):
+        err = io.StringIO()
+        with mock.patch("sys.stderr", err), mock.patch("sys.stdout", io.StringIO()):
+            rc = agent_exec.cmd_sandbox(["allow", self.h(".local/share/uv/tools")])
+        self.assertEqual(rc, 1)
+        self.assertIn("tamper-protected", err.getvalue())
+        self.assertFalse(os.path.exists(sb.learned_path()))
+
     def test_symlink_out_of_a_cache_root_is_rejected(self):
         os.makedirs(self.h(".cache"))
         os.makedirs(self.h(".ssh"))
@@ -279,7 +306,7 @@ class GrantLoopTests(HomeCase):
     def test_mixed_set_persists_the_safe_one_and_does_not_resume(self):
         r = self.run_loop([_pi(answer="mkdir failed: Operation not permitted",
                                texts=[self.deny(".pub-cache/p"), self.deny(".config/q")])])
-        self.assertEqual((r["status"], r["reason"]), ("needs-permission", "sandbox"))
+        self.assertEqual(r["status"], "ok")
         self.assertEqual(len(self.calls), 1)
         by_path = {d["path"]: d for d in r["sandbox"]["denials"]}
         self.assertTrue(by_path[self.h(".pub-cache/p")]["granted"])
@@ -298,14 +325,42 @@ class GrantLoopTests(HomeCase):
                            _pi(texts=[self.deny(".cache/c/x")])])
         self.assertEqual(len(self.calls), 3)
         self.assertEqual(r["sandbox"]["cycles"], 2)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["sandbox"]["grant_note"], "granted; not resumed: cycle-cap")
+
+    def test_grant_without_a_session_is_noted_not_resumed(self):
+        r = self.run_loop([_pi(sid=None, texts=[self.deny(".cache/a/x")])])
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["sandbox"]["grant_note"], "granted; not resumed: no-session")
+
+    def test_resumed_run_without_session_id_keeps_the_session(self):
+        r = self.run_loop([_pi(texts=[self.deny(".cache/a/x")]),
+                           _pi(status="error", sid=None)])
+        self.assertEqual((r["status"], r["session_id"]), ("error", "s1"))
+        self.assertNotIn("grant_note", r["sandbox"])
 
     def test_grant_that_does_not_resolve_stops(self):
         r = self.run_loop([_pi(texts=[self.deny(".cache/a/x")]),
                            _pi(answer="still Operation not permitted",
                                texts=[self.deny(".cache/a/x")])])
         self.assertEqual(len(self.calls), 2)
-        self.assertEqual(r["status"], "needs-permission")
+        self.assertEqual(r["status"], "ok")
         self.assertEqual(r["sandbox"]["denials"][0]["why"], "grant did not resolve the denial")
+
+    def test_ok_answer_with_unsafe_denial_stays_ok_with_advisory(self):
+        r = self.run_loop([_pi(answer="DONE", texts=[self.deny(".config/outside")])])
+        self.assertEqual(r["status"], "ok")
+        denial = r["sandbox"]["denials"][0]
+        self.assertFalse(denial["auto"])
+        self.assertEqual(denial["grant_candidate"], self.h(".config/outside"))
+        self.assertIn("why", denial)
+
+    def test_failed_run_with_unsafe_denial_needs_permission(self):
+        r = self.run_loop([_pi(status="error", answer="DONE",
+                               texts=[self.deny(".config/outside")])])
+        self.assertEqual((r["status"], r["reason"]), ("needs-permission", "sandbox"))
+        self.assertFalse(r["sandbox"]["denials"][0]["auto"])
 
 
 class NeedsPermissionDispatchTests(HomeCase):
@@ -338,6 +393,12 @@ class NeedsPermissionDispatchTests(HomeCase):
         out = json.loads(buf.getvalue())
         self.assertEqual(out["status"], "needs-permission")
         self.assertEqual(agent_exec.read_task_session(cfg, "pi", "t1")["session_id"], "s9")
+        session_out = io.StringIO()
+        with mock.patch.object(agent_exec, "resolve_config", return_value=(cfg, None)), \
+                mock.patch.object(sys, "stdout", session_out):
+            agent_exec.cmd_dispatch_route(["session", "--task", "t1", "--json"])
+        session = json.loads(session_out.getvalue())
+        self.assertEqual((session["executor"], session["session_id"]), ("pi", "s9"))
         dumped = ""
         for root in (cfg["ledger"]["dir"], cfg["telemetry"]["dir"]):
             for dirpath, _d, files in os.walk(root):
