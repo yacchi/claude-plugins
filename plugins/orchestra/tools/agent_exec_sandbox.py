@@ -170,11 +170,26 @@ def grant_for(path, home=None):
         if real == root:
             return root
         if _under(real, root):
-            first = real[len(root.rstrip("/")) + 1:].split("/", 1)[0]
+            relative = real[len(root.rstrip("/")) + 1:]
+            first, separator, _rest = relative.partition("/")
             if first in ("", ".", ".."):
                 return None
+            if not separator:
+                return root
             return os.path.join(root, first)
     return None
+
+
+def _eligible_grant_path(path, home=None):
+    """Whether `path` is a cache root or its first child component."""
+    real = os.path.realpath(path)
+    for root in cache_roots(home):
+        if real == root:
+            return True
+        if _under(real, root):
+            relative = real[len(root.rstrip("/")) + 1:]
+            return "/" not in relative and relative not in ("", ".", "..")
+    return False
 
 
 def tamper_paths(home=None):
@@ -218,7 +233,7 @@ def _valid_grant(entry, home, deny_read):
         return False
     source = entry.get("source")
     if source == "auto":
-        return grant_for(path, home) == os.path.realpath(path)
+        return _eligible_grant_path(path, home)
     if source == "user":
         return user_grant_refusal(path, deny_read, home) is None
     return False
@@ -283,7 +298,7 @@ def add_grant(path, source, example=None, home=None):
     home = _home(home)
     real = os.path.realpath(path)
     if source == "auto":
-        if grant_for(real, home) != real:
+        if not _eligible_grant_path(real, home):
             raise ValueError("not an eligible cache grant: %s" % real)
     elif source == "user":
         reason = user_grant_refusal(real, [_expand(p, home) for p in DEFAULT_DENY_READ], home)

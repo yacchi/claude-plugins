@@ -219,6 +219,17 @@ def run_scenarios(backend):
                                                              "~/.pnpm-store/v3/x.txt"),
           grant_info(res))
 
+    # 7c a file directly inside a cache root must grant the root, not create
+    # the file as a directory.
+    os.makedirs(os.path.expanduser("~/.pnpm-store"), exist_ok=True)
+    probe = "~/.pnpm-store/probe-%d.txt" % os.getpid()
+    probe_path = os.path.expanduser(probe)
+    res, _tree, _repo = dispatch("s7c", ["printf x > %s" % probe],
+                                 env_extra={"LANG": "C", "LC_ALL": "C"})
+    check(backend, "7c auto-grant (file in cache root)",
+          grant_ok(res, "~/.pnpm-store", probe) and os.path.isfile(probe_path),
+          grant_info(res))
+
     # 8 watchdog.
     def local_cfg(repo):
         write(os.path.join(repo, ".claude/orchestra.local.yaml"),

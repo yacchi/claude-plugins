@@ -127,6 +127,9 @@ class GrantForTests(HomeCase):
         self.assertEqual(sb.grant_for(self.h(".cache/uv/archive-v0/x")), self.h(".cache/uv"))
         self.assertEqual(sb.grant_for(self.h(".pub-cache")), self.h(".pub-cache"))
 
+    def test_direct_file_inside_root_grants_root(self):
+        self.assertEqual(sb.grant_for(self.h(".pnpm-store/x.txt")), self.h(".pnpm-store"))
+
     def test_prefix_confusion_and_dotdot(self):
         self.assertIsNone(sb.grant_for(self.h(".cache-evil/x")))
         self.assertIsNone(sb.grant_for(self.h(".cache/../.ssh/x")))
@@ -294,8 +297,9 @@ class GrantLoopTests(HomeCase):
                      "policy": self.policy()}
         self.calls = []
 
-    def run_loop(self, results):
+    def run_loop(self, results, backend=None):
         results = list(results)
+        spec = dict(self.spec, backend=backend or self.spec["backend"])
 
         def fake(profile, model, effort, workdir, prompt, resume, fmt, sandbox=None,
                  watchdog=None, cls="standard"):
@@ -303,9 +307,9 @@ class GrantLoopTests(HomeCase):
             return results.pop(0)
 
         with mock.patch.object(agent_exec, "_run_executor_capture", fake), \
-                mock.patch.object(agent_exec, "_sandbox_spec", return_value=self.spec):
+                mock.patch.object(agent_exec, "_sandbox_spec", return_value=spec):
             return agent_exec._capture_with_grants(
-                "pi", "m", "low", self.tree, "task", None, self.spec, self.tree, {})[1]
+                "pi", "m", "low", self.tree, "task", None, spec, self.tree, {})[1]
 
     def deny(self, rel):
         return "mkdir: %s: Operation not permitted" % self.h(rel)
@@ -324,11 +328,11 @@ class GrantLoopTests(HomeCase):
 
     def test_mixed_set_persists_the_safe_one_and_does_not_resume(self):
         r = self.run_loop([_pi(answer="mkdir failed: Operation not permitted",
-                               texts=[self.deny(".pub-cache/p"), self.deny(".config/q")])])
+                               texts=[self.deny(".pub-cache/p/x"), self.deny(".config/q")])])
         self.assertEqual(r["status"], "ok")
         self.assertEqual(len(self.calls), 1)
         by_path = {d["path"]: d for d in r["sandbox"]["denials"]}
-        self.assertTrue(by_path[self.h(".pub-cache/p")]["granted"])
+        self.assertTrue(by_path[self.h(".pub-cache/p/x")]["granted"])
         self.assertFalse(by_path[self.h(".config/q")]["auto"])
         self.assertEqual([g["path"] for g in sb.load_learned()[0]], [self.h(".pub-cache/p")])
 
@@ -358,6 +362,16 @@ class GrantLoopTests(HomeCase):
                            _pi(status="error", sid=None)])
         self.assertEqual((r["status"], r["session_id"]), ("error", "s1"))
         self.assertNotIn("grant_note", r["sandbox"])
+
+    def test_direct_file_grant_does_not_create_file_as_directory(self):
+        path = self.h(".pnpm-store/probe.txt")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w") as fh:
+            fh.write("x")
+        r = self.run_loop([_pi(texts=[self.deny(".pnpm-store/probe.txt")]),
+                           _pi(tokens=5)], backend="bwrap")
+        self.assertEqual(r["sandbox"]["granted"], [self.h(".pnpm-store")])
+        self.assertTrue(os.path.isfile(path))
 
     def test_grant_that_does_not_resolve_stops(self):
         r = self.run_loop([_pi(texts=[self.deny(".cache/a/x")]),
@@ -392,6 +406,7 @@ class NeedsPermissionDispatchTests(HomeCase):
         cfg["telemetry"] = {"enabled": True, "dir": os.path.join(self.home, "tel")}
         result = {"status": "needs-permission", "reason": "sandbox", "answer": "a",
                   "session_id": "s9", "exit_code": 0, "usage": None,
+                  "resumed": True,
                   "sandbox": {"backend": "seatbelt", "denials": [
                       {"path": self.h(".config/secret-name"), "auto": False}],
                       "granted": [], "cycles": 0}}
@@ -411,6 +426,7 @@ class NeedsPermissionDispatchTests(HomeCase):
                 "--isolate", "never", "--task", "t1"])
         out = json.loads(buf.getvalue())
         self.assertEqual(out["status"], "needs-permission")
+        self.assertTrue(out["resumed"])
         self.assertEqual(agent_exec.read_task_session(cfg, "pi", "t1")["session_id"], "s9")
         session_out = io.StringIO()
         with mock.patch.object(agent_exec, "resolve_config", return_value=(cfg, None)), \

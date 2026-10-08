@@ -3384,7 +3384,8 @@ def _capture_with_grants(profile_name, model, effort, workdir, prompt_text,
                     entry.update(auto=True, granted=True)
                     if sandbox.get("backend") in ("bwrap", "landlock"):
                         # These backends can only open what exists.
-                        os.makedirs(candidate, mode=0o700, exist_ok=True)
+                        if candidate != d["path"] or not os.path.isfile(d["path"]):
+                            os.makedirs(candidate, mode=0o700, exist_ok=True)
                 except (OSError, ValueError) as exc:
                     entry.update(auto=False,
                                  why="could not persist the grant: %s" % exc)
@@ -8218,7 +8219,7 @@ def cmd_dispatch_route(args):
     output["executor"] = profile_name
     output["model"] = model
     output["effort"] = effort
-    output["resumed"] = resumed
+    output["resumed"] = resumed or result.get("resumed") is True
     output["route"] = route
     output["isolation"] = isolation
     output["sandbox"] = result.get("sandbox") or agent_exec_sandbox.report(sandbox)
