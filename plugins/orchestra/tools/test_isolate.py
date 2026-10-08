@@ -1237,7 +1237,8 @@ class DispatchIsolationTests(_RepoMixin, unittest.TestCase):
         self._orig_capture = agent_exec._run_pi_capture
         self.captured = {}
 
-        def fake_capture(profile, model, effort, workdir, prompt_file, resume, fmt):
+        def fake_capture(profile, model, effort, workdir, prompt_file, resume, fmt,
+                         sandbox=None):
             self.captured["workdir"] = workdir
             return 0, {"status": "ok", "answer": "done", "session_id": None,
                        "reason": None, "exit_code": 0}

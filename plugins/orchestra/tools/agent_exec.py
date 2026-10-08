@@ -46,6 +46,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agent_exec_checks  # noqa: E402
+import agent_exec_sandbox  # noqa: E402
 import agent_exec_wave  # noqa: E402
 
 PROFILES = {
@@ -206,7 +207,23 @@ DEFAULTS = {
             "credits": 3600,
             "auth": 0,
             "nonzero-exit": 0,
+            # A `sandbox.mode: required` refusal is about this host, not the
+            # executor's capacity: never cool the executor down for it.
+            "sandbox": 0,
         },
+    },
+    # OS sandbox around every CLI executor child (agent_exec_sandbox.py).
+    # mode: auto = best available backend, unsandboxed (and reported) when
+    # none; required = no backend -> the child is not run (status
+    # unavailable, reason "sandbox"); off = never wrap.
+    # `allow_write` (extra writable paths) and `deny_read` (extra unreadable
+    # paths) are UNIONED across config layers -- an exception to the
+    # list-replace rule, so a project layer cannot silently drop a path the
+    # user layer protects or needs. See resolve_config().
+    "sandbox": {
+        "mode": "auto",
+        "allow_write": [],
+        "deny_read": [],
     },
     "telemetry": {
         "enabled": False,
@@ -1181,12 +1198,23 @@ def resolve_config():
     """Resolve the 4-layer config. Returns (resolved_dict_or_None,
     error_message_or_None)."""
     resolved = copy.deepcopy(DEFAULTS)
+    sandbox_union = {"allow_write": [], "deny_read": []}
 
     for path in _ordered_layer_paths():
         data, err = _load_yaml_layer(path)
         if err is not None:
             return None, "agent-exec: invalid YAML in %s: %s" % (path, err)
+        layer_sandbox = data.get("sandbox") if isinstance(data, dict) else None
+        if isinstance(layer_sandbox, dict):
+            for key, acc in sandbox_union.items():
+                values = layer_sandbox.get(key)
+                if isinstance(values, list):
+                    acc.extend(v for v in values if isinstance(v, str) and v not in acc)
         resolved = _deep_merge(resolved, data)
+
+    resolved["sandbox"] = agent_exec_sandbox.normalize_config(
+        resolved.get("sandbox"), sandbox_union
+    )
 
     external = resolved.get("external_executors") or {}
     if isinstance(external, dict):
@@ -1291,6 +1319,7 @@ _TELEMETRY_REASONS = (
     "auth",
     "nonzero-exit",
     "error",
+    "sandbox",
 )
 _TELEMETRY_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _TELEMETRY_ROUND_KEY_RE = re.compile(r"^[1-9][0-9]*$")
@@ -2527,7 +2556,7 @@ def _accumulate_int(target, key, value):
 # --- shared streaming spawn --------------------------------------------------
 
 
-def _spawn_capture(argv, *, cwd, env, input_text, on_line=None):
+def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None):
     """Run `argv`, feed `input_text` on stdin, and return
     `(exit_code, stdout_text, stderr_text)`.
 
@@ -2542,7 +2571,11 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None):
     The child runs in its own session so that any exception or
     KeyboardInterrupt in here can SIGKILL the whole process group, reap the
     child, and re-raise. There is no timeout; callers add one on top of
-    `on_line`."""
+    `on_line`.
+
+    `sandbox` is the spec from `agent_exec_sandbox.prepare`; the argv is
+    wrapped for it here, so every capture spawn is sandboxed the same way."""
+    argv = agent_exec_sandbox.wrap_argv(argv, cwd, sandbox)
     proc = subprocess.Popen(
         argv,
         cwd=cwd,
@@ -2773,7 +2806,8 @@ def parse_codex_jsonl(stdout_text, stderr_text, exit_code, resumed=False):
     }
 
 
-def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json"):
+def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json",
+                       sandbox=None):
     """codex counterpart of `_run_pi_capture`. Same (exit_code,
     result_or_None) contract, including the 127/None missing-binary case."""
     profile = PROFILES[profile_name]
@@ -2790,7 +2824,8 @@ def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume
     # closed pipe: `codex exec` otherwise blocks reading stdin and appends
     # whatever it finds there to the prompt as a <stdin> block.
     exit_code, stdout_text, stderr_text = _spawn_capture(
-        argv, cwd=_existing_dir(workdir), env=None, input_text=""
+        argv, cwd=_existing_dir(workdir), env=None, input_text="",
+        sandbox=sandbox,
     )
     return 0, parse_codex_jsonl(
         stdout_text, stderr_text, exit_code, resumed=resume is not None
@@ -2978,7 +3013,8 @@ def parse_pi_jsonl(stdout_text, stderr_text, exit_code, resumed=False):
     }
 
 
-def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json"):
+def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json",
+                    sandbox=None):
     """pi counterpart of `_run_codex_capture`. Same (exit_code,
     result_or_None) contract, including the 127/None missing-binary case. The
     prompt is fed on stdin and PI_SKIP_VERSION_CHECK is set in the child env
@@ -2996,7 +3032,8 @@ def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, o
     env = dict(os.environ)
     env.update(profile["env"])
     exit_code, stdout_text, stderr_text = _spawn_capture(
-        argv, cwd=_existing_dir(workdir), env=env, input_text=prompt_text
+        argv, cwd=_existing_dir(workdir), env=env, input_text=prompt_text,
+        sandbox=sandbox,
     )
     return 0, parse_pi_jsonl(
         stdout_text, stderr_text, exit_code, resumed=resume is not None
@@ -3038,11 +3075,31 @@ def _build_executor_argv(profile_name, exec_name, model, effort, workdir,
 
 
 def _run_executor_capture(profile_name, model, effort, workdir, prompt_text,
-                          resume, output_fmt="json"):
+                          resume, output_fmt="json", sandbox=None):
     runner = globals()[_registered(_CAPTURE_RUNNERS, profile_name)]
     return runner(
-        profile_name, model, effort, workdir, prompt_text, resume, output_fmt
+        profile_name, model, effort, workdir, prompt_text, resume, output_fmt,
+        sandbox=sandbox,
     )
+
+
+def _sandbox_spec(executor, tree, cfg):
+    """Sandbox spec for one CLI executor run in `tree` under resolved `cfg`."""
+    sandbox_cfg = cfg.get("sandbox") if isinstance(cfg, dict) else None
+    return agent_exec_sandbox.prepare(executor, tree, sandbox_cfg)
+
+
+def _sandbox_refusal(spec):
+    """The result a `sandbox.mode: required` refusal reports in place of a run."""
+    return {
+        "status": "unavailable",
+        "answer": None,
+        "session_id": None,
+        "reason": "sandbox",
+        "exit_code": None,
+        "usage": None,
+        "sandbox": agent_exec_sandbox.report(spec),
+    }
 
 
 def cmd_run(args):
@@ -3140,11 +3197,19 @@ def cmd_run(args):
             resume, output_fmt,
         )
 
+    run_cfg, run_cfg_err = resolve_config()
+    if run_cfg_err is not None or not isinstance(run_cfg, dict):
+        run_cfg = DEFAULTS
+    sandbox = _sandbox_spec(profile_name, workdir, run_cfg)
+
     if os.environ.get("AGENT_EXEC_DRYRUN"):
-        argv = build_argv(prompt_text)
+        argv = agent_exec_sandbox.wrap_argv(
+            build_argv(prompt_text), _existing_dir(workdir), sandbox
+        )
         print("PROFILE: %s" % profile_name)
         print("MODE: %s" % mode)
         print("ENV: (none)")
+        print("SANDBOX: %s (%s)" % (sandbox["backend"], sandbox["reason"]))
         print("EXEC: %s" % " ".join(argv))
         if capture:
             print(
@@ -3153,10 +3218,21 @@ def cmd_run(args):
             )
         return 0
 
+    if sandbox["refuse"] and not capture:
+        sys.stderr.write("agent-exec: run: %s\n" % sandbox["reason"])
+        return 1
+
     if capture:
-        exit_code, result = _run_executor_capture(
-            profile_name, model, effort, workdir, prompt_text, resume, output_fmt
-        )
+        if sandbox["refuse"]:
+            exit_code, result = 0, _sandbox_refusal(sandbox)
+        else:
+            exit_code, result = _run_executor_capture(
+                profile_name, model, effort, workdir, prompt_text, resume,
+                output_fmt, sandbox=sandbox,
+            )
+            if result is not None:
+                result = dict(result)
+                result["sandbox"] = agent_exec_sandbox.report(sandbox)
         if result is None:
             ledger_cfg, ledger_err = resolve_config()
             if ledger_err is not None or not isinstance(ledger_cfg, dict):
@@ -3205,11 +3281,13 @@ def cmd_run(args):
         )
         return 127
 
-    argv = build_argv(prompt_text)
+    argv = agent_exec_sandbox.wrap_argv(
+        build_argv(prompt_text), _existing_dir(workdir), sandbox
+    )
     env = dict(os.environ)
     env.update(profile["env"])
 
-    os.execvpe(exec_name, argv, env)  # never returns
+    os.execvpe(argv[0], argv, env)  # never returns
 
 
 # --- doctor subcommand -------------------------------------------------------
@@ -3447,6 +3525,7 @@ def _build_doctor_report():
         "ready": ready,
         "route": route_preview,
         "cooldowns": {"path": doctor_state_path, "active": doctor_cooldowns},
+        "sandbox": agent_exec_sandbox.doctor_section(doctor_cfg.get("sandbox")),
     }
 
 
@@ -3532,6 +3611,16 @@ def _print_doctor_text(report):
                 "  - %s: %s (until %s)"
                 % (name, entry.get("reason", "unknown"), entry.get("until"))
             )
+    sandbox = report.get("sandbox")
+    if sandbox:
+        print("sandbox: mode=%s backend=%s enforced=%s (%s)" % (
+            sandbox["mode"], sandbox["backend"], sandbox["enforced"],
+            sandbox["reason"],
+        ))
+        for name, probe in sandbox["probes"].items():
+            print("  - %s: %s (%s)" % (
+                name, "ok" if probe.get("ok") else "unavailable", probe.get("detail"),
+            ))
 
 
 def cmd_doctor(args):
@@ -7593,6 +7682,9 @@ def cmd_dispatch_route(args):
             "agent_type": route["agent_type"],
             "route": route,
             "isolation": isolation,
+            "sandbox": agent_exec_sandbox.report(agent_exec_sandbox.unwrapped(
+                "delegated to an agent; agent-exec spawns no child to sandbox"
+            )),
         }
         if route["executor"] != "claude":
             correlation_id = _new_correlation_id()
@@ -7627,6 +7719,9 @@ def cmd_dispatch_route(args):
             "effort": effort,
             "route": route,
             "isolation": isolation,
+            "sandbox": agent_exec_sandbox.report(agent_exec_sandbox.unwrapped(
+                "no invocation profile for this executor; nothing was spawned"
+            )),
         }
         print(json.dumps(output, ensure_ascii=False))
         record_unavailable_cooldown(
@@ -7658,14 +7753,20 @@ def cmd_dispatch_route(args):
             effective_resume = stored["session_id"]
             resumed = True
 
+    # The sandbox confines the child to the task tree: the worktree root
+    # when isolated (not the possibly-deeper workdir), else the workdir.
+    sandbox_tree = isolation.get("path") if isolation.get("isolate") else workdir
+    sandbox = _sandbox_spec(profile_name, sandbox_tree, resolved)
+
     if os.environ.get("AGENT_EXEC_DRYRUN"):
-        argv = _build_executor_argv(
+        argv = agent_exec_sandbox.wrap_argv(_build_executor_argv(
             profile_name, exec_name, model, effort, workdir, prompt_text,
             effective_resume, "json",
-        )
+        ), _existing_dir(workdir), sandbox)
         print("PROFILE: %s" % profile_name)
         print("MODE: headless")
         print("ENV: (none)")
+        print("SANDBOX: %s (%s)" % (sandbox["backend"], sandbox["reason"]))
         print("EXEC: %s" % " ".join(argv))
         print(
             "CAPTURE: yes (would subprocess-run %s and emit normalized "
@@ -7673,9 +7774,14 @@ def cmd_dispatch_route(args):
         )
         return 0
 
-    exit_code, result = _run_executor_capture(
-        profile_name, model, effort, workdir, prompt_text, effective_resume, "json"
-    )
+    if sandbox["refuse"]:
+        # `sandbox.mode: required` and no backend: the child is never spawned.
+        exit_code, result = 0, _sandbox_refusal(sandbox)
+    else:
+        exit_code, result = _run_executor_capture(
+            profile_name, model, effort, workdir, prompt_text, effective_resume,
+            "json", sandbox=sandbox,
+        )
     if result is None:
         run_ledger_append(
             build_run_ledger_record(profile_name, model, cls, {"status": "unavailable"}),
@@ -7729,6 +7835,7 @@ def cmd_dispatch_route(args):
     output["resumed"] = resumed
     output["route"] = route
     output["isolation"] = isolation
+    output["sandbox"] = agent_exec_sandbox.report(sandbox)
     print(json.dumps(output, ensure_ascii=False))
     return 0
 
@@ -9325,6 +9432,11 @@ def main(argv):
     # signal `isolate sweep` uses for cross-session liveness in a single place.
     if tok in ("isolate", "dispatch", "route", "run"):
         heartbeat_touch()
+
+    if tok == "_sandbox-exec":
+        # Hidden: the Landlock backend's re-exec'd child. Restricts only
+        # itself, then execs the executor.
+        return agent_exec_sandbox.sandbox_exec_main(argv[1:])
 
     if tok == "install":
         return cmd_install()

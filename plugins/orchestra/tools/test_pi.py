@@ -169,7 +169,7 @@ class RunPiCaptureTests(unittest.TestCase):
     def test_child_env_has_skip_version_check_and_prompt_on_stdin(self):
         seen = {}
 
-        def fake_spawn(argv, *, cwd, env, input_text, on_line=None):
+        def fake_spawn(argv, *, cwd, env, input_text, on_line=None, sandbox=None):
             seen.update(argv=argv, env=env, input_text=input_text)
             return 0, _stdout(_session(), _assistant_end(text="PONG")), ""
 
@@ -193,7 +193,7 @@ class RunPiCaptureWorkdirTests(unittest.TestCase):
     def _run(self, workdir):
         seen = {}
 
-        def fake_spawn(argv, *, cwd, env, input_text, on_line=None):
+        def fake_spawn(argv, *, cwd, env, input_text, on_line=None, sandbox=None):
             seen["cwd"] = cwd
             return 0, _stdout(_session(), _assistant_end(text="ok")), ""
 
