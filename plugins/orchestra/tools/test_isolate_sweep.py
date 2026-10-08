@@ -303,7 +303,11 @@ class SweepCliTests(_SweepRepo):
             [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                           "agent_exec.py"), "isolate", "sweep"] + list(args),
             capture_output=True, text=True,
-            env=dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null"),
+            # The child resolves liveness from ORCHESTRA_ALIVE_DIR, not from this
+            # process's cache; other test modules repoint that variable at import
+            # time, so pin it to this test's own heartbeat dir.
+            env=dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null",
+                     ORCHESTRA_ALIVE_DIR=agent_exec._heartbeat_dir_cache),
         )
 
     def test_json_output_is_the_default(self):

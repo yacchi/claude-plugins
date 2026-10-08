@@ -1135,9 +1135,14 @@ class SubprocessEndToEndTests(_RepoMixin, unittest.TestCase):
     """A real `agent-exec isolate` subprocess, not the in-process CLI wrapper --
     covers (1) session-scoped branches and (3) listing/session fields."""
 
+    def setUp(self):
+        super().setUp()
+        self._alive_tmp = tempfile.mkdtemp(prefix="orch-iso-subprocess-alive-")
+        self.addCleanup(shutil.rmtree, self._alive_tmp, ignore_errors=True)
+
     def _agent_exec(self, *args, session_id=None):
         script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_exec.py")
-        env = dict(os.environ)
+        env = dict(os.environ, ORCHESTRA_ALIVE_DIR=self._alive_tmp)
         if session_id is None:
             env.pop("CLAUDE_CODE_SESSION_ID", None)
         else:
