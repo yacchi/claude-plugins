@@ -319,7 +319,9 @@ def forget_grant(path, home=None):
 DENIAL_MARKERS = ("operation not permitted", "permission denied",
                   "read-only file system")
 _MARKER_RE = re.compile("|".join(re.escape(m) for m in DENIAL_MARKERS), re.IGNORECASE)
-_QUOTED_RE = re.compile(r"'([^'\n]+)'|\"([^\"\n]+)\"")
+# GNU coreutils quotes names as 'x' in the C locale but as \u2018x\u2019 under any
+# UTF-8 locale (an ordinary Linux desktop): both, or a Linux denial is missed.
+_QUOTED_RE = re.compile("'([^'\\n]+)'|\"([^\"\\n]+)\"|\u2018([^\u2019\\n]+)\u2019")
 # Tools/syscalls that only READ. The sandbox never denies a read outside
 # deny_read, so such a failure is never a sandbox write denial (macOS TCC
 # dirs, root-only system dirs under `find /`).
@@ -327,7 +329,7 @@ _READ_PREFIX_RE = re.compile(
     r"^\s*(?:find|ls|du|cat|grep|egrep|fgrep|rg|ag|stat|head|tail|less|more|"
     r"wc|tree|file|readlink|realpath|md5|shasum|sha256sum|diff)\s*:", re.IGNORECASE)
 _READ_SYSCALL_RE = re.compile(
-    r"\b(?:scandir|opendir|readdir|lstat|stat|access|readlink|realpath)\b\s*'",
+    "\\b(?:scandir|opendir|readdir|lstat|stat|access|readlink|realpath)\\b\\s*['\u2018]",
     re.IGNORECASE)
 
 
@@ -340,7 +342,7 @@ def _line_op(line):
 def _candidates(line):
     out = []
     for m in _QUOTED_RE.finditer(line):
-        tok = (m.group(1) or m.group(2)).strip()
+        tok = (m.group(1) or m.group(2) or m.group(3)).strip()
         if tok:
             out.append(tok)
     stripped = _QUOTED_RE.sub(" ", line)

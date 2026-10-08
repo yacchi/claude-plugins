@@ -71,6 +71,25 @@ class DetectDenialsTests(HomeCase):
                 self.assertEqual([d["path"] for d in got], [target])
                 self.assertEqual(got[0]["op"], "write")
 
+    def test_real_linux_coreutils_shapes(self):
+        # GNU coreutils under bwrap (EROFS) and Landlock (EACCES), captured
+        # in tools/dev/linux-sandbox: ASCII quotes in the C locale, U+2018/
+        # U+2019 under a UTF-8 locale (the default on a Linux desktop).
+        target = self.h(".pub-cache/probe")
+        shapes = {
+            "touch-c-erofs": "touch: cannot touch '%s': Read-only file system" % target,
+            "touch-c-eacces": "touch: cannot touch '%s': Permission denied" % target,
+            "mkdir-utf8-erofs": "mkdir: cannot create directory ‘%s’: "
+                                "Read-only file system" % target,
+            "touch-utf8-eacces": "touch: cannot touch ‘%s’: Permission denied" % target,
+            "bash-redirect": "bash: line 1: %s: Read-only file system" % target,
+        }
+        for name, line in shapes.items():
+            with self.subTest(name):
+                got = self._detect(line)
+                self.assertEqual([d["path"] for d in got], [target])
+                self.assertEqual(got[0]["op"], "write")
+
     def test_stderr_is_a_source_and_relative_paths_resolve_against_cwd(self):
         outside = self.h("work/elsewhere")
         got = sb.detect_denials([], "mkdir: ../elsewhere: Operation not permitted\n",
