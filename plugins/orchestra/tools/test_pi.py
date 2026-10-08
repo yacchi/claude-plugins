@@ -156,7 +156,7 @@ class BuildPiArgvTests(unittest.TestCase):
 
 
 class UnregisteredProfileTests(unittest.TestCase):
-    def test_unregistered_profile_does_not_fall_back_to_copilot(self):
+    def test_unregistered_profile_does_not_fall_back_to_another_executor(self):
         with self.assertRaises(ValueError):
             agent_exec._build_executor_argv(
                 "nonesuch", "nonesuch", "m", "low", "/w", "p", None, "json")
@@ -183,6 +183,71 @@ class RunPiCaptureTests(unittest.TestCase):
         self.assertEqual(result["answer"], "PONG")
         self.assertEqual(seen["env"]["PI_SKIP_VERSION_CHECK"], "1")
         self.assertEqual(seen["input_text"], "the prompt")
+
+
+class RunPiCaptureWorkdirTests(unittest.TestCase):
+    """The CLI must run *inside* the workdir, else a worker told to create a
+    file "in the working directory" writes it wherever agent-exec was invoked
+    from -- outside the isolated worktree."""
+
+    def _run(self, workdir):
+        seen = {}
+
+        def fake_spawn(argv, *, cwd, env, input_text, on_line=None):
+            seen["cwd"] = cwd
+            return 0, _stdout(_session(), _assistant_end(text="ok")), ""
+
+        with mock.patch.object(agent_exec, "_spawn_capture", fake_spawn), \
+                mock.patch.object(agent_exec.shutil, "which", return_value="/bin/pi"):
+            agent_exec._run_pi_capture("pi", "m", "low", workdir, "p", None)
+        return seen["cwd"]
+
+    def test_capture_runs_in_workdir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._run(tmp), tmp)
+
+    def test_missing_workdir_inherits_cwd_instead_of_raising(self):
+        self.assertIsNone(self._run("/no/such/dir"))
+
+
+class PiLedgerRecordTests(unittest.TestCase):
+    def test_cost_and_extra_token_keys_reach_the_ledger_record(self):
+        result = agent_exec.parse_pi_jsonl(
+            _stdout(_session(), _assistant_end(
+                text="x", usage=_usage(10, 6, cache_read=4, cost=0.002699))),
+            "", 0)
+        record = agent_exec.build_run_ledger_record(
+            "pi", "openai-codex/gpt-5.6-luna", "light", result)
+        self.assertEqual(record["executor"], "pi")
+        self.assertEqual(record["status"], "ok")
+        self.assertEqual(record["cost_micro_usd"], 2699)
+
+    def test_ledger_sanitizer_keeps_executor_cost_and_extra_tokens(self):
+        """`executor` must survive sanitization or `usage --run` finds
+        nothing: `_ledger_usage` filters records by that exact field."""
+        sanitized = agent_exec.sanitize_run_ledger_record({
+            "executor": "pi", "cls": "light", "status": "ok",
+            "cost_micro_usd": 2699, "reasoning_output_tokens": 10,
+            "cache_write_input_tokens": 4,
+        })
+        self.assertEqual(sanitized["executor"], "pi")
+        self.assertEqual(sanitized["cost_micro_usd"], 2699)
+        self.assertEqual(sanitized["reasoning_output_tokens"], 10)
+        self.assertEqual(sanitized["cache_write_input_tokens"], 4)
+
+    def test_ledger_usage_attributes_cost_to_pi(self):
+        records = [
+            {"executor": "pi", "input_tokens": 3, "output_tokens": 8,
+             "cached_input_tokens": 10766, "cost_micro_usd": 226},
+            {"executor": "codex", "input_tokens": 99, "cost_micro_usd": 5},
+        ]
+        acc = agent_exec._ledger_usage(records, "pi")
+        self.assertEqual(acc["records"], 1)
+        self.assertEqual(acc["cost_micro_usd"], 226)
+        self.assertEqual(acc["tokens"]["cached_input_tokens"], 10766)
+
+    def test_pi_is_a_usage_source(self):
+        self.assertIn("pi", agent_exec._USAGE_SOURCES)
 
 
 class SpawnCaptureTests(unittest.TestCase):

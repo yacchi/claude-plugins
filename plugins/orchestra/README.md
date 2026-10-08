@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-A Claude Code plugin for **cost-tiered multi-agent orchestration**: an expensive instructor model (e.g. Fable/Opus) decomposes work and writes orchestration scripts, `agent-exec route` picks the cheapest ready implementer for each task (an external executor like Copilot by default, Claude Haiku as fallback), Sonnet reviewers adversarially check the result, and only structured pass/fail verdicts flow back up.
+A Claude Code plugin for **cost-tiered multi-agent orchestration**: an expensive instructor model (e.g. Fable/Opus) decomposes work and writes orchestration scripts, `agent-exec route` picks the cheapest ready implementer for each task (Claude Haiku for light work, an external executor such as pi or Codex for standard / independent-review work), Sonnet reviewers adversarially check the result, and only structured pass/fail verdicts flow back up.
 
 ## Why
 
@@ -17,7 +17,7 @@ flowchart TD
     E -.->|"scope grows mid-flight"| O
     I -->|"ORCHESTRATED: everything else,<br/>and whenever in doubt"| O["orchestra:run skill<br/>decomposes tasks, writes contracts and the script<br/>never reads implementation files, logs, or diffs"]
     O --> W["Workflow script<br/>(or orchestra-delegate as fallback)"]
-    W --> L["light-class implementer<br/>agent-exec route: Copilot by default,<br/>Claude Haiku as fallback"]
+    W --> L["light-class implementer<br/>agent-exec route: Claude Haiku first,<br/>pi as fallback"]
     L --> R["orchestra-review<br/>(Sonnet, adversarial)"]
     R -->|"FAIL: one correction round<br/>to a FRESH worker (2 gates max)"| L
     R -->|"PASS, or needsInstructor"| V["Structured verdict only<br/>pass, summary, feedback,<br/>optional_hardening, needsInstructor"]
@@ -71,7 +71,7 @@ Companion skills:
 
 | Skill | Purpose |
 |---|---|
-| `/setup` (`orchestra:setup`) | Detect Codex/Copilot and write `orchestra.yaml` interactively |
+| `/setup` (`orchestra:setup`) | Detect Codex/pi and write `orchestra.yaml` interactively |
 | `/cleanup` (`orchestra:cleanup`) | Reclaim leftover orchestra worktrees and branches in the repository |
 | `orchestra:ui` | Open the local dashboard (`agent-exec ui --open`): waves, worktrees, dispatches, usage — live, no tokens spent |
 
@@ -80,7 +80,7 @@ Companion skills:
 Config is deep-merged from four layers (later wins): built-in defaults ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`. A project file only needs the keys it changes. `agent-exec config` prints the merged result.
 
 - **`tiers`** — Claude models per class/role (`light`, `standard`, `deep`, `review`), used whenever routing resolves to `claude`.
-- **`external_executors`** — Codex, Copilot, opencode, … as implementers or reviewers. Enabled by default but gated on real availability; with neither CLI installed, everything resolves to `claude`. The recommended setup is the bundled `agent-exec` wrapper (`agent-exec install`) plus one `Bash(agent-exec:*)` allow rule.
+- **`external_executors`** — Codex, pi, … as implementers or reviewers. Enabled by default but gated on real availability; with neither CLI installed, everything resolves to `claude`. The recommended setup is the bundled `agent-exec` wrapper (`agent-exec install`) plus one `Bash(agent-exec:*)` allow rule.
 - **`priority`** — ordered executors per class/role. `agent-exec route` / `agent-exec dispatch` perform the walk so the instructor never does it by hand.
 - **`enforcement.*`** — the hook guards (`worker_vcs`, `worker_tree`, `worktree_lease`, `session_cleanup`, `turn_edits`, `opus_generalist`, opt-in `light_class`). Each has an escape marker and an environment kill switch.
 

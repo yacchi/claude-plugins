@@ -142,10 +142,10 @@ class NestedDictFiltering(unittest.TestCase):
     def test_external_enabled_bad_subkey_and_int_value_dropped(self):
         raw = {
             "event": "dispatch",
-            "external_enabled": {"copilot": True, "codex": 1, "evil": True},
+            "external_enabled": {"pi": True, "codex": 1, "evil": True},
         }
         out = sanitize_telemetry_record(raw)
-        self.assertEqual(out.get("external_enabled"), {"copilot": True})
+        self.assertEqual(out.get("external_enabled"), {"pi": True})
 
 
 class StampFieldsCannotBeSpoofed(unittest.TestCase):
@@ -199,7 +199,7 @@ class BuildDispatchRecordNeverLeaksAnswer(unittest.TestCase):
             "reason": None,
             "exit_code": 0,
         }
-        record = build_dispatch_record("copilot", result, resume=None, cls=None)
+        record = build_dispatch_record("pi", result, resume=None, cls=None)
         self.assertNotIn("answer", record)
         allowed = {"event", "executor", "status", "reason", "resumed", "cls"}
         self.assertTrue(set(record.keys()).issubset(allowed))
@@ -213,7 +213,7 @@ class BuildDispatchRecordNeverLeaksAnswer(unittest.TestCase):
             "exit_code": 1,
         }
         record = build_dispatch_record(
-            "copilot", result, resume="sess-123", cls="standard"
+            "pi", result, resume="sess-123", cls="standard"
         )
         self.assertNotIn("answer", record)
         self.assertEqual(
@@ -282,7 +282,7 @@ class MalformedInputNeverRaises(unittest.TestCase):
             "event": "dispatch",
             "classes": {"light": {"nested": "junk"}},
             "rounds": {"1": [1, 2, 3]},
-            "external_enabled": {"copilot": {"nested": True}},
+            "external_enabled": {"pi": {"nested": True}},
             "reason": {"nested": "dict"},
             "resumed": {"nested": "dict"},
             "orchestra_version": 12345,

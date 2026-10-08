@@ -40,6 +40,7 @@ class LedgerCommandTests(unittest.TestCase):
         with open(os.path.join(session, "run-1.jsonl"), "w",
                   encoding="utf-8") as handle:
             handle.write(json.dumps({
+                # A record from an executor since removed: still counted.
                 "executor": "copilot",
                 "input_tokens": 4, "output_tokens": 2,
             }) + "\n")
@@ -51,7 +52,7 @@ class LedgerCommandTests(unittest.TestCase):
         with open(os.path.join(ledger, "legacy-run.jsonl"), "w",
                   encoding="utf-8") as handle:
             handle.write(json.dumps({
-                "executor": "copilot", "input_tokens": 1,
+                "executor": "pi", "input_tokens": 1,
             }) + "\n")
         return home, ledger
 
@@ -126,7 +127,7 @@ class LedgerCommandTests(unittest.TestCase):
                       encoding="utf-8") as handle:
                 for _ in range(count):
                     handle.write(json.dumps({
-                        "executor": "copilot", "input_tokens": 1,
+                        "executor": "pi", "input_tokens": 1,
                     }) + "\n")
         return home, ledger
 

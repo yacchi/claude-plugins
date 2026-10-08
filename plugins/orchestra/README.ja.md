@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-**コスト階層型のマルチエージェント実行**のための Claude Code プラグインです。高価な指示役モデル(Fable/Opus など)が作業を分解してオーケストレーション用のスクリプトを書き、`agent-exec route` がタスクごとに使える最も安い実装役を選び(既定は Copilot などの外部実行系、予備は Claude Haiku)、Sonnet のレビュー役が結果を壊しにかかって検証し、指示役には構造化された合否の判定だけが返ります。
+**コスト階層型のマルチエージェント実行**のための Claude Code プラグインです。高価な指示役モデル(Fable/Opus など)が作業を分解してオーケストレーション用のスクリプトを書き、`agent-exec route` がタスクごとに使える最も安い実装役を選び(light は Claude Haiku、standard や独立レビューは pi・Codex などの外部実行系)、Sonnet のレビュー役が結果を壊しにかかって検証し、指示役には構造化された合否の判定だけが返ります。
 
 ## なぜ必要か
 
@@ -17,7 +17,7 @@ flowchart TD
     E -.->|"途中で範囲が広がった"| O
     I -->|"ORCHESTRATED: それ以外すべて、<br/>判断に迷うとき"| O["orchestra:run スキル<br/>作業を分解し、契約とスクリプトを書く<br/>実装ファイル・ログ・差分は読まない"]
     O --> W["Workflow スクリプト<br/>(使えなければ orchestra-delegate)"]
-    W --> L["light クラスの実装役<br/>agent-exec route: 既定は Copilot、<br/>予備は Claude Haiku"]
+    W --> L["light クラスの実装役<br/>agent-exec route: 既定は Claude Haiku、<br/>予備は pi"]
     L --> R["orchestra-review<br/>(Sonnet、壊しにいくレビュー)"]
     R -->|"FAIL: 新しいワーカーで<br/>修正 1 回 (ゲートは最大 2 回)"| L
     R -->|"PASS、または needsInstructor"| V["構造化された判定だけを返す<br/>pass, summary, feedback,<br/>optional_hardening, needsInstructor"]
@@ -71,7 +71,7 @@ claude plugin validate .
 
 | スキル | 用途 |
 |---|---|
-| `/setup` (`orchestra:setup`) | Codex/Copilot の有無を調べ、対話形式で `orchestra.yaml` を書く |
+| `/setup` (`orchestra:setup`) | Codex/pi の有無を調べ、対話形式で `orchestra.yaml` を書く |
 | `/cleanup` (`orchestra:cleanup`) | リポジトリに残った orchestra の worktree とブランチを片付ける |
 | `orchestra:ui` | ローカルのダッシュボード(`agent-exec ui --open`)を開く。wave、worktree、dispatch、使用量をリアルタイムに表示し、トークンは消費しない |
 
@@ -80,7 +80,7 @@ claude plugin validate .
 設定は 4 つの層を後勝ちで深くマージします: 組み込みの既定値 ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`。プロジェクトの設定ファイルには変えたいキーだけを書けば足ります。マージ結果は `agent-exec config` で確認できます。
 
 - **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。
-- **`external_executors`** — Codex、Copilot、opencode などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、どちらの CLI も入っていなければすべて `claude` に振り分けられます。推奨は同梱の `agent-exec` ラッパー(`agent-exec install`)と、`Bash(agent-exec:*)` の許可ルール 1 つです。
+- **`external_executors`** — Codex、pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、どちらの CLI も入っていなければすべて `claude` に振り分けられます。推奨は同梱の `agent-exec` ラッパー(`agent-exec install`)と、`Bash(agent-exec:*)` の許可ルール 1 つです。
 - **`priority`** — クラス/役割ごとの実行系の優先順。順に候補をたどる処理は `agent-exec route` / `agent-exec dispatch` が行い、指示役が手作業でたどることはありません。
 - **`enforcement.*`** — フックによる防護(`worker_vcs`、`worker_tree`、`worktree_lease`、`session_cleanup`、`turn_edits`、`opus_generalist`、オプトインの `light_class`)。どれにも回避用のマーカーと、環境変数による無効化スイッチがあります。
 

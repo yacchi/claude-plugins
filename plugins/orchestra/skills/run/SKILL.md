@@ -1,6 +1,6 @@
 ---
 name: run
-description: Playbook for cost-tiered multi-agent delegation. The instructor (Fable/Opus main session) only decomposes tasks, writes contracts, and writes the Workflow script; implementation goes to a cheap tier resolved by `agent-exec route` (an external executor like Copilot by default, Claude Haiku/Sonnet as fallback), an adversarial review pass checks the result, failures retry with precise feedback, and only structured verdicts flow back. Invoke with /run (cross-plugin: `orchestra:run`), or whenever cost-tiered delegation or large parallel task execution is called for. Also the ORCHESTRATED lane of the <orchestra-router> protocol this plugin injects at SessionStart.
+description: Playbook for cost-tiered multi-agent delegation. The instructor (Fable/Opus main session) only decomposes tasks, writes contracts, and writes the Workflow script; implementation goes to a cheap tier resolved by `agent-exec route` (Claude Haiku for light work, pi `openai-codex/gpt-5.6-luna` for standard work, Sonnet as fallback), an adversarial review pass checks the result, failures retry with precise feedback, and only structured verdicts flow back. Invoke with /run (cross-plugin: `orchestra:run`), or whenever cost-tiered delegation or large parallel task execution is called for. Also the ORCHESTRATED lane of the <orchestra-router> protocol this plugin injects at SessionStart.
 when_to_use: Use when delegating multiple tasks in parallel to cheap models, when building a cheap-implementation + adversarial-review pipeline, or when the instructor must receive only structured verdicts — never logs, diffs, or intermediate artifacts.
 ---
 
@@ -18,7 +18,7 @@ You are the **instructor** — the main session, on an expensive model. This ski
 | `references/gates.md` | A gate rule (§11) is biting and you need the why: a reviewer's rejection looks out of scope, rounds keep closing one sibling at a time, or you must decide whether to spend a third round. |
 | `references/isolation.md` | A worker will touch a tree holding uncommitted work (isolation is the default there), or the run needs rollback on failure, a real diff for the reviewer, worktree-isolated parallelism, competing implementations of one contract, or an approval budget for non-interactive workers. |
 | `references/config.md` | A configuration question actually arises: key semantics, four-layer merge, why `route` dropped a candidate, `enforcement.light_class`, telemetry fields. |
-| `references/external-executors.md` | Choosing or second-guessing a Codex/Copilot/opencode model+effort, or needing the raw CLI recipe / pricing. opencode (§7) is the executor to reach for when a run needs exact per-task cost. |
+| `references/external-executors.md` | Choosing or second-guessing a Codex/pi model+effort, or needing the raw CLI recipe / pricing. pi reports per-run usage and a list-price cost estimate (a real charge only on metered providers such as `github-copilot/*`). |
 | `references/poc-findings.md` | Making a model-policy decision that depends on specific benchmark numbers. |
 | `references/programme.md` | The work is dozens of session-sized packages with ordering between them (an audit-then-refactor, a multi-feature build-out): agent-produced plans, dependency scheduling, a rolling integration base, carry-over, chunk budgets. §13. |
 
@@ -55,9 +55,9 @@ The full pipeline on every request is overkill. **Express only when ALL hold:**
 | Class | Resolved via | Role |
 |---|---|---|
 | Instructor | Fable / Opus — fixed, never routed | Decomposition, contracts, script writing, exception judgment ONLY |
-| `deep` | `agent-exec route --class deep` — Opus (`orchestra-deep`); Codex Sol/xhigh only if Claude is unavailable | Real design latitude: algorithm choice, API shape, tradeoffs |
-| `standard` | `agent-exec route --class standard` — opencode `github-copilot/gpt-5.6-luna`/medium by default, then Copilot, Sonnet otherwise | Ordinary implementation; review needing adversarial test design and failure interpretation |
-| `light` | `agent-exec route --class light` — opencode `github-copilot/gpt-5.6-luna`/medium by default, then Copilot, Haiku otherwise | Implementation or review whose procedure is 100% prescribed |
+| `deep` | `agent-exec route --class deep` — Opus (`orchestra-deep`) first, then pi `openai-codex/gpt-6.1-sol`/high, then Codex Sol | Real design latitude: algorithm choice, API shape, tradeoffs |
+| `standard` | `agent-exec route --class standard` — pi `openai-codex/gpt-5.6-luna`/medium by default, then Sonnet, then Codex | Ordinary implementation; review needing adversarial test design and failure interpretation |
+| `light` | `agent-exec route --class light` — Claude Haiku first, then pi `openai-codex/gpt-5.6-luna`/medium | Implementation or review whose procedure is 100% prescribed |
 
 **Review class:** `standard` is the default. `light` suffices only when the review procedure is fully prescribed (exact commands, explicit pass criteria). For review needing heavy design judgment, pass `model: 'opus'` inline — there is deliberately no `deep`-class review agent. The template's own same-run `review` stage stays pinned to Sonnet and unrouted, because `priority.review` is `[claude]`-only by design.
 
@@ -78,7 +78,7 @@ Adapt per task set. Constraints: `export const meta` must be a pure literal (no 
 ```javascript
 export const meta = {
   name: 'cost-tiered-pipeline',
-  description: 'Light-class implementation per task (executor resolved by agent-exec route/dispatch - Copilot by default, Haiku as fallback), an adversarial review pass checks the result, a rejection gets one correction round with a cited, family-swept packet and an incremental re-gate, and only structured verdicts return.',
+  description: 'Light-class implementation per task (executor resolved by agent-exec route/dispatch - Claude Haiku first, pi as fallback), an adversarial review pass checks the result, a rejection gets one correction round with a cited, family-swept packet and an incremental re-gate, and only structured verdicts return.',
 }
 
 // --- Verdict schema: forces the review reply into structured JSON ---
@@ -193,7 +193,7 @@ function extractDispatchJson(raw) {
 
 // Dispatch one task at a capability class ('light' | 'standard' | 'deep').
 // Selection is `agent-exec route`'s job, not this function's and not yours.
-// Same call shape whether it resolves to Copilot, Codex's `dispatch: cli`, or
+// Same call shape whether it resolves to pi, Codex's `dispatch: cli`, or
 // a Claude tier.
 //
 // opts.out — optional object; on every return path that can carry a session
@@ -212,7 +212,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
     ' --class ' + cls +
     (exhausted.size ? ' --exhausted ' + [...exhausted].join(',') : '') +
     (opts.noResume ? ' --no-resume' : '')
-  // A codex/copilot dispatch routinely runs past any hard per-call timeout a
+  // A codex/pi dispatch routinely runs past any hard per-call timeout a
   // relay's Bash tool enforces (commonly ~600s) -- long enough on a
   // session-sized package that the relay's OWN call gets killed mid-dispatch
   // and reports prose instead of the dispatch's JSON. `--detach` starts the
@@ -271,7 +271,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
   if (!iso.isolate) log('NOT isolated: ' + (opts.label || cls) + ' - ' + (iso.reason || 'no reason given'))
 
   if (r.status === 'ok') {
-    // a CLI executor (e.g. Copilot, opencode, or Codex's `dispatch: cli`) already ran it.
+    // a CLI executor (e.g. pi or Codex's `dispatch: cli`) already ran it.
     if (opts.out) { opts.out.sessionId = r.session_id ?? null; opts.out.resumed = !!r.resumed }
     return r.answer
   }
@@ -562,7 +562,7 @@ await agent(
 return results
 ```
 
-The run id rides in the dispatch token, not in the relay command: pass `--run-id <the workflow run id>` to `agent-exec dispatch prepare` when you mint each task's token, so Copilot/Codex cost lands in the same ledger the instructor later queries. `agent-exec dispatch --token ...` **rejects** `--run-id` (and every other prepare-time flag) with `--token conflicts with --run-id` — the relay is given the token and nothing else by design.
+The run id rides in the dispatch token, not in the relay command: pass `--run-id <the workflow run id>` to `agent-exec dispatch prepare` when you mint each task's token, so pi/Codex cost lands in the same ledger the instructor later queries. `agent-exec dispatch --token ...` **rejects** `--run-id` (and every other prepare-time flag) with `--token conflicts with --run-id` — the relay is given the token and nothing else by design.
 
 **Same-tree parallelism safety.** `pipeline()`/`parallel()` run file-changing workers concurrently against the **same working tree** — two workers with overlapping file ownership silently corrupt each other. Pin disjoint target files (and shared contracts/types) in each worker's prompt, and keep workers small. Full guidance: `references/authoring.md` §1.
 
@@ -618,9 +618,9 @@ Launch `orchestra-delegate` (Sonnet, pinned in its own frontmatter) via the Agen
 
 Everything you normally need is one call: **`agent-exec doctor --json`** returns both the readiness verdicts (`ready.<executor>.ok`) and the resolved config (`config.values` — `tiers`, `external_executors`, `priority`, `telemetry.enabled`) already deep-merged from all four layers (defaults ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`).
 
-**Run this `doctor --json` check yourself, once, before writing the Workflow script — not delegated to a relay.** If its `shim.installed` is false, STOP and tell the user to run `agent-exec install` (or point them at the `setup` skill) before proceeding. A missing shim is not a hard error anywhere downstream — `route`/`dispatch` just gate every external executor on `ready.<x>.ok` and fall through to `claude`, exactly as designed for a machine with no Copilot/Codex — but that silent, correct-looking fallback means every task in the run bills the user's OWN Claude quota instead of the external executor they configured, with no error to notice until it is gone. Observed: a run with the shim missing exhausted a session's entire weekly quota on work that should have gone to Copilot/Codex.
+**Run this `doctor --json` check yourself, once, before writing the Workflow script — not delegated to a relay.** If its `shim.installed` is false, STOP and tell the user to run `agent-exec install` (or point them at the `setup` skill) before proceeding. A missing shim is not a hard error anywhere downstream — `route`/`dispatch` just gate every external executor on `ready.<x>.ok` and fall through to `claude`, exactly as designed for a machine with no pi/Codex — but that silent, correct-looking fallback means every task in the run bills the user's OWN Claude quota instead of the external executor they configured, with no error to notice until it is gone. Observed: a run with the shim missing exhausted a session's entire weekly quota on work that should have gone to pi/Codex.
 
-**You never walk the priority list.** `agent-exec route --class <cls>` does: it gates every candidate on reality (disabled, binary missing, `ready.ok` false, no `class_policy` for the class, or listed in `--exhausted`) and returns the survivor; `agent-exec dispatch` additionally runs a `dispatch: cli` winner. Copilot and Codex ship `enabled: true`, which is safe precisely because of that gate — on a machine with neither installed, everything resolves to `claude`.
+**You never walk the priority list.** `agent-exec route --class <cls>` does: it gates every candidate on reality (disabled, binary missing, `ready.ok` false, no `class_policy` for the class, or listed in `--exhausted`) and returns the survivor; `agent-exec dispatch` additionally runs a `dispatch: cli` winner. pi and Codex ship `enabled: true`, which is safe precisely because of that gate — on a machine with neither installed, everything resolves to `claude`.
 
 **Unavailable ≠ failed.** Only a genuinely unavailable executor (quota, credits, auth, unresolved binary) is a fallback signal, and it becomes sticky via `exhausted` for the rest of the run. A wrong *result* is not — it stays on the same executor and goes through the normal review/retry loop.
 
@@ -663,7 +663,7 @@ Beyond safety, isolation also lifts the disjoint-file-ownership constraint (§5)
 
 Workers never touch VCS state; snapshots, merges, and cleanup are the supervisor's — and "cleanup" has a deadline: reclaim the run's worktrees at run end (see §5's tail), because the SessionEnd hook is insurance that a killed session never collects. `agent-exec isolate sweep` is the verb; `--include-current` covers this run, and it clears dead sessions' leftovers at the same time while leaving trees of other sessions seen within the live window alone. Descendant agent branches are disposable and unrestricted; the PR branch is built from the accepted diff and stays clean. Never commit to, rebase, or push the user's branch without an explicit request. Full guidance: `references/isolation.md`.
 
-**The stash stack is shared.** `refs/stash` is one stack for every worktree of a repository, so parallel workers that `git stash`/`pop` take each other's entries — observed swapping two workers' changes between their worktrees. `guard-worker-vcs.sh` therefore denies stash push/pop/apply/drop to workers even inside their own orchestra worktree. Workers do have real reasons to set changes aside (confirming a new test fails without the fix, checking a staged subset alone, checking whether a failure predates them), so give them the per-worktree equivalent: `agent-exec shelf push [--keep-index] [-- PATH...]` / `shelf pop`, whose entries live in the worktree's own git dir. Say so in every worker prompt: CLI executors (Copilot, Codex, opencode) run outside Claude's hooks, so the guard cannot stop them.
+**The stash stack is shared.** `refs/stash` is one stack for every worktree of a repository, so parallel workers that `git stash`/`pop` take each other's entries — observed swapping two workers' changes between their worktrees. `guard-worker-vcs.sh` therefore denies stash push/pop/apply/drop to workers even inside their own orchestra worktree. Workers do have real reasons to set changes aside (confirming a new test fails without the fix, checking a staged subset alone, checking whether a failure predates them), so give them the per-worktree equivalent: `agent-exec shelf push [--keep-index] [-- PATH...]` / `shelf pop`, whose entries live in the worktree's own git dir. Say so in every worker prompt: CLI executors (pi, Codex) run outside Claude's hooks, so the guard cannot stop them.
 
 ## 13. Programme scale
 

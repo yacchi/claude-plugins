@@ -30,7 +30,7 @@ agent_exec._heartbeat_dir_cache = _ALIVE_TMP
 def _append_from_child(directory, run_id):
     os.environ["CLAUDE_CODE_SESSION_ID"] = "parallel-session"
     agent_exec.run_ledger_append(
-        {"executor": "copilot", "status": "ok"},
+        {"executor": "pi", "status": "ok"},
         run_id,
         {"ledger": {"dir": directory, "enabled": True}},
     )
@@ -50,15 +50,13 @@ class RunLedgerSanitizingTests(unittest.TestCase):
     def test_allowlist_and_numeric_validation(self):
         raw = {
             "ts": "2026-08-19T07:00:00+00:00",
-            "executor": "copilot",
+            "executor": "pi",
             "cls": "standard",
             "model": "gpt-5.6-luna",
             "status": "error",
             "input_tokens": 1,
             "output_tokens": 2,
             "cached_input_tokens": 3,
-            "aiu_nano": 4,
-            "premium_requests": 5,
             "api_duration_ms": 6,
             "session_duration_ms": 7,
             "extra": "drop",
@@ -70,15 +68,22 @@ class RunLedgerSanitizingTests(unittest.TestCase):
                 self.assertIn(key, result)
 
         for key in (
-            "input_tokens", "output_tokens", "cached_input_tokens", "aiu_nano",
-            "premium_requests", "api_duration_ms", "session_duration_ms",
+            "input_tokens", "output_tokens", "cached_input_tokens",
+            "api_duration_ms", "session_duration_ms",
         ):
             for value in (True, False, -1):
                 invalid = dict(raw, **{key: value})
                 self.assertNotIn(key, agent_exec.sanitize_run_ledger_record(invalid))
 
+    def test_removed_executor_is_not_accepted_on_the_write_path(self):
+        for name in ("copilot", "opencode"):
+            result = agent_exec.sanitize_run_ledger_record(
+                {"executor": name, "status": "ok", "input_tokens": 1})
+            self.assertNotIn("executor", result)
+            self.assertEqual(result["input_tokens"], 1)
+
     def test_bad_model_is_dropped(self):
-        base = {"executor": "copilot", "status": "ok", "input_tokens": 1}
+        base = {"executor": "pi", "status": "ok", "input_tokens": 1}
         for model in ("has space", "has\nnewline", "x" * 65):
             result = agent_exec.sanitize_run_ledger_record(dict(base, model=model))
             self.assertNotIn("model", result)
@@ -151,12 +156,12 @@ class RunLedgerSanitizingTests(unittest.TestCase):
                 self.assertEqual(result["status"], "delegated")
 
     def test_bad_run_field_is_dropped_rest_survives(self):
-        base = {"executor": "copilot", "cls": "standard", "status": "ok",
+        base = {"executor": "pi", "cls": "standard", "status": "ok",
                 "input_tokens": 9}
         for bad_run in ("", " ", "a b", "x" * 65, "run/with/slash", ".."):
             result = agent_exec.sanitize_run_ledger_record(dict(base, run=bad_run))
             self.assertNotIn("run", result)
-            self.assertEqual(result["executor"], "copilot")
+            self.assertEqual(result["executor"], "pi")
             self.assertEqual(result["input_tokens"], 9)
         good = agent_exec.sanitize_run_ledger_record(dict(base, run="wf_ok-1"))
         self.assertNotIn("run", good)
@@ -176,7 +181,7 @@ class RunLedgerWritingTests(unittest.TestCase):
     def test_append_mode_compact_json_and_telemetry_independent(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False}}
-            record = {"executor": "copilot", "model": "gpt-5.6-luna", "status": "ok"}
+            record = {"executor": "pi", "model": "gpt-5.6-luna", "status": "ok"}
             agent_exec.run_ledger_append(record, "wf_a26027ae-bdb", cfg)
             agent_exec.run_ledger_append(record, "wf_a26027ae-bdb", cfg)
             directory = os.path.join(tmp, "runs")
@@ -187,19 +192,19 @@ class RunLedgerWritingTests(unittest.TestCase):
                 lines = f.readlines()
             self.assertEqual(len(lines), 2)
             for line in lines:
-                self.assertEqual(json.loads(line)["executor"], "copilot")
+                self.assertEqual(json.loads(line)["executor"], "pi")
                 self.assertNotIn(": ", line)
 
     def test_append_never_raises(self):
         cfg = {"telemetry": {"dir": "/dev/null/telemetry", "enabled": False}}
-        agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+        agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, "run", cfg)
 
     def test_allocates_session_ordinals_and_reuses_them(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = {"ledger": {"dir": os.path.join(tmp, "runs"), "enabled": True}}
-            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "wf_a", cfg)
-            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "wf_a", cfg)
-            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "wf_b", cfg)
+            agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, "wf_a", cfg)
+            agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, "wf_a", cfg)
+            agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, "wf_b", cfg)
             directory = os.path.join(tmp, "runs", "session-test")
             self.assertEqual(sorted(os.listdir(directory)),
                              [".ordinal-001.reserve", ".ordinal-002.reserve",
@@ -245,7 +250,7 @@ class RunLedgerSessionIdValidationTests(unittest.TestCase):
                 cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"),
                                      "enabled": False}}
                 agent_exec.run_ledger_append(
-                    {"executor": "copilot", "status": "ok"}, "run_id_ok", cfg)
+                    {"executor": "pi", "status": "ok"}, "run_id_ok", cfg)
                 directory = os.path.join(tmp, "runs")
                 self.assertFalse(os.path.exists(directory), repr(bad))
                 # No traversal outside the tempdir either: nothing at all
@@ -269,14 +274,14 @@ class RunLedgerSessionUnsetTests(unittest.TestCase):
     def test_unset_session_id_writes_nothing_without_run_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False}}
-            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, None, cfg)
+            agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, None, cfg)
             self.assertFalse(os.path.exists(os.path.join(tmp, "runs")))
 
     def test_unset_session_id_writes_nothing_with_run_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = {"telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False}}
             agent_exec.run_ledger_append(
-                {"executor": "copilot", "status": "ok"}, "wf_a1b2c3d4e5f6", cfg)
+                {"executor": "pi", "status": "ok"}, "wf_a1b2c3d4e5f6", cfg)
             self.assertFalse(os.path.exists(os.path.join(tmp, "runs")))
 
 
@@ -301,7 +306,7 @@ class RunLedgerTelemetryIndependenceTests(unittest.TestCase):
                 "telemetry": {"dir": telemetry_dir, "enabled": True},
                 "ledger": {"dir": os.path.join(tmp, "runs"), "enabled": False},
             }
-            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+            agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, "run", cfg)
             self.assertFalse(os.path.exists(os.path.join(tmp, "runs")))
 
             agent_exec.telemetry_append({"event": "dispatch"}, cfg)
@@ -314,7 +319,7 @@ class RunLedgerTelemetryIndependenceTests(unittest.TestCase):
                 "telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False},
                 "ledger": {"dir": os.path.join(tmp, "runs"), "enabled": True},
             }
-            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+            agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, "run", cfg)
             path = os.path.join(tmp, "runs", "session-independence", "001-run.jsonl")
             self.assertTrue(os.path.exists(path))
             self.assertFalse(
@@ -365,7 +370,7 @@ class RunLedgerRetentionTests(unittest.TestCase):
                 "telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False},
                 "ledger": {"dir": directory, "enabled": True, "retention_days": 30},
             }
-            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+            agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, "run", cfg)
 
             self.assertFalse(os.path.exists(old_path))
             self.assertTrue(os.path.exists(new_path))
@@ -388,7 +393,7 @@ class RunLedgerRetentionTests(unittest.TestCase):
                 "telemetry": {"dir": os.path.join(tmp, "telemetry"), "enabled": False},
                 "ledger": {"dir": directory, "enabled": True, "retention_days": 30},
             }
-            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+            agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, "run", cfg)
             self.assertFalse(os.path.exists(old_path))
 
             # Re-create the now-stale file after the first (successful)
@@ -397,7 +402,7 @@ class RunLedgerRetentionTests(unittest.TestCase):
             with open(old_path, "w", encoding="utf-8") as f:
                 f.write("{}\n")
             os.utime(old_path, (old_time, old_time))
-            agent_exec.run_ledger_append({"executor": "copilot", "status": "ok"}, "run", cfg)
+            agent_exec.run_ledger_append({"executor": "pi", "status": "ok"}, "run", cfg)
             self.assertTrue(os.path.exists(old_path))
 
 
@@ -516,7 +521,7 @@ class RunIdValidationTests(unittest.TestCase):
         prompt.close()
         try:
             args = (
-                ["run", "copilot", "--run-id", run_id, "--model", "m",
+                ["run", "pi", "--run-id", run_id, "--model", "m",
                  "--effort", "e", "--workdir", ".", "--prompt-file", prompt.name]
                 if command == "run" else
                 ["dispatch", "--run-id", run_id, "--class", "light",
@@ -553,7 +558,7 @@ class RunIdValidationTests(unittest.TestCase):
                 try:
                     self.assertEqual(
                         agent_exec.main([
-                            "run", "copilot", "--model", "m", "--effort", "e",
+                            "run", "pi", "--model", "m", "--effort", "e",
                             "--workdir", ".", "--prompt-file", prompt.name,
                         ]),
                         0,

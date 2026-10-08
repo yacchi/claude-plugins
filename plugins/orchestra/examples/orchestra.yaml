@@ -14,16 +14,16 @@
 # it wants to override; everything else is inherited from the previous layer (or the built-in
 # defaults below if nothing else sets it). See the `run` skill's SKILL.md §9 for the exact
 # algorithm and `setup` for a skill that can author this file for you interactively (detects
-# Codex/Copilot, asks which scope to write to, edits in place, and offers to gitignore
+# Codex/pi, asks which scope to write to, edits in place, and offers to gitignore
 # project-local files).
 #
-# Example project override that changes nothing except turning Copilot back OFF for
+# Example project override that changes nothing except turning pi back OFF for
 # this repo (it ships `enabled: true` by default as of v0.11.0 - see below; every
 # candidate is still gated on real availability by `agent-exec route`, so this is
 # only needed to opt out entirely, e.g. on a machine that must never shell out):
 #
 #   external_executors:
-#     copilot:
+#     pi:
 #       enabled: false
 
 # Capability/performance classes and verification roles, each mapped to a Claude
@@ -41,13 +41,13 @@ tiers:
   # `independent-review` has no built-in Claude model on purpose — it exists to
   # add a DIFFERENT provider's eyes; see `priority.independent-review` below.
 
-# Non-Claude executors (Codex, Copilot, ...) that may be woven into the pipeline.
+# Non-Claude executors (Codex, pi, ...) that may be woven into the pipeline.
 # Only entries with `enabled: true` are used.
 external_executors:
   codex:
     enabled: true
     # `dispatch: cli` is the default as of v0.27.0: direct `codex exec`/`codex
-    # exec resume <SESSION_ID>` invocation, same shape as copilot/opencode
+    # exec resume <SESSION_ID>` invocation, same shape as pi
     # below — this replaced the old `dispatch: agent` (via `codex:codex-rescue`)
     # default because the CLI takes an explicit session UUID (the rescue
     # agent's only continuation, `--resume-last`, grabs the wrong session
@@ -82,66 +82,40 @@ external_executors:
       when: task requires deep traversal of a large repo (Luna's long-context recall is weak)
       class: deep
 
-  copilot:
+  # pi is the CLI executor. agent-exec builds the whole invocation itself (no
+  # `command` template here): `PI_SKIP_VERSION_CHECK=1 pi -p --mode json
+  # --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes
+  # --model <provider/id> --thinking <effort> [--session <id>]`, prompt on
+  # stdin, cwd = the worktree. `model` is always `provider/id`; a bare id will
+  # not resolve. The `openai-codex/*` models run on the ChatGPT subscription
+  # (the same one Codex uses, so the two share a quota group: exhausting or
+  # cooling one skips the other), and pi's reported `cost` there is a
+  # list-price estimate, NOT a charge. Metered providers such as
+  # `github-copilot/*` report a real cost. An exit-0 run whose final message
+  # has stopReason "error" is treated as a failure. Session resume uses
+  # `--session`. See run skill references/external-executors.md.
+  pi:
     enabled: true
     dispatch: cli
-    # Dispatched through the `agent-exec` wrapper (see `agent-exec install`).
-    # Measured on Copilot CLI 1.0.74: `copilot -p` runs file-write/shell/network
-    # tool calls autonomously in non-interactive mode with just --add-dir +
-    # --output-format json — no allow-all flag/env var needed for headless
-    # dispatch, so agent-exec no longer injects COPILOT_ALLOW_ALL and none is
-    # needed in settings.json. --disable-builtin-mcps is a hardening default
-    # (drops the github-mcp-server/customize-cloud-agent builtin MCP tools,
-    # cuts token/latency). The only permission rule required is
-    # `Bash(agent-exec:*)`; /setup offers to add it. NOTE: Copilot's own
-    # tool-permission flags (--allow-tool/--deny-tool/--excluded-tools) are
-    # NOT a security boundary — the agent has been observed rerouting a
-    # denied tool call through a different tool. Real containment needs an
-    # external OS sandbox (container/sandbox-exec/restricted user/egress
-    # control/disposable worktree) — future work, not implemented here. See
-    # run skill references/external-executors.md §2 for details and the
-    # manual permission-only setup for users who don't install agent-exec.
-    command: >-
-      agent-exec copilot -p {promptfile} --model {model} --effort {effort}
-      --add-dir {workdir} --output-format json --disable-builtin-mcps
-    resume_command: >-
-      agent-exec copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort}
-      --add-dir {workdir} --output-format json --disable-builtin-mcps
     classes:
       - light
       - standard
+      - deep
+      - independent-review
     class_policy:
       light:
-        model: gpt-5.6-luna
+        model: openai-codex/gpt-5.6-luna
         effort: medium
       standard:
-        model: gpt-5.6-luna
+        model: openai-codex/gpt-5.6-luna
+        effort: medium
+      deep:
+        model: openai-codex/gpt-6.1-sol
+        effort: high
+      independent-review:
+        model: openai-codex/gpt-6.1-sol
         effort: medium
 
-  # opencode reaches the SAME Copilot-billed models through one interface, and
-  # is the only executor that reports a dollar cost directly: `run --format
-  # json` emits tokens (input/output/reasoning/cache) plus `cost`, which
-  # agent-exec stores as integer micro-USD in the run ledger. It is preferred
-  # AHEAD of copilot for the implementation bands: measured on an identical
-  # task, quality and wall-clock tied while opencode processed about a third
-  # of copilot's fresh input tokens. Note the
-  # `provider/model` form of `model` — a bare model id will not resolve.
-  # v1 (`opencode`) only; v2 ships as a separate `opencode2` binary whose
-  # plugin/server APIs are still in beta. See run skill
-  # references/external-executors.md §7.
-  opencode:
-    enabled: true
-    dispatch: cli
-    classes:
-      - light
-      - standard
-    class_policy:
-      light:
-        model: github-copilot/gpt-5.6-luna
-        effort: medium
-      standard:
-        model: github-copilot/gpt-5.6-luna
-        effort: medium
 
 # Ordered executor preference per class/role (and, for the implementation classes,
 # per task archetype) — this list is still the single source of truth for
@@ -149,13 +123,13 @@ external_executors:
 # `agent-exec dispatch`, not by the instructor reading this list by hand. `route`
 # tries candidates left-to-right and drops to the NEXT one on a *reactive fallback
 # signal*: the current executor is unavailable — NOT the task failing. "Unavailable"
-# = hit a rate-limit / usage-window cap (Claude, Codex), ran out of AI credits /
-# premium requests (Copilot), is `enabled: false`, its agent/CLI did not resolve in
+# = hit a rate-limit / usage-window cap (Claude, Codex), ran out of credits /
+# quota (Codex, a metered pi provider), is `enabled: false`, its agent/CLI did not resolve in
 # this environment, or the caller passed it in `--exhausted`. A task that RUNS but
 # returns a wrong result is NOT a fallback signal — that stays on the SAME executor
 # and goes through the normal review/retry loop.
 #
-# Entries are an `external_executors` key (`codex`, `copilot`, `opencode`, ...) or the sentinel
+# Entries are an `external_executors` key (`codex`, `pi`, ...) or the sentinel
 # `claude` (the built-in `tiers.<name>` model). An executor named here must have a
 # matching `class_policy.<class>` on its `external_executors` block, or `route`
 # skips it as misconfigured. Once `route`/`dispatch` finds an executor unavailable
@@ -262,21 +236,20 @@ checks:
 
 priority:
   light:
-    # Copilot gpt-5.6-luna/medium first — the fastest+cheapest validated executor
-    # for the light band (and for investigation fan-out). copilot ships
-    # `enabled: true` above, so this actually prefers it whenever `agent-exec
-    # route` finds it ready; only drops to claude on a genuine unavailable signal.
-    investigation: [opencode, copilot, claude]
-    default: [opencode, copilot, claude]
+    # Claude Haiku 5.5 first - measured fastest for the light band and it runs
+    # on the subscription; pi (Luna/medium) is the fallback on a genuine
+    # unavailable signal.
+    investigation: [claude, pi]
+    default: [claude, pi]
   standard:
-    # luna clears sonnet-class work too, so it also leads the standard band.
-    default: [opencode, copilot, claude, codex]
+    # pi Luna clears sonnet-class work, so it leads the standard band.
+    default: [pi, claude, codex]
   deep:
-    default: [claude, codex]
+    default: [claude, pi, codex]
   review:
     default: [claude]
   independent-review:
-    default: [codex]
+    default: [pi, codex]
 
 # Opt-in guardrail against defaulting to a direct Claude Haiku implementer when a
 # ready external executor exists — a NUDGE WITH A GUARANTEED ESCAPE, never a hard
@@ -290,7 +263,7 @@ priority:
 # tool has no per-call tool-restriction params (its schema is only
 # description/isolation/model/prompt/run_in_background/subagent_type), so a
 # named agent is how tool access and a specialized system prompt get pinned,
-# and Copilot can't substitute for either - `orchestra:orchestra-light` stays
+# and an external executor can't substitute for either - `orchestra:orchestra-light` stays
 # a deny target, since redirecting it to `agent-exec dispatch` is the point.
 # Escape hatches: (1) a HARD CAP of one deny per session, full stop - after
 # the first nudge the hook goes inert for the rest of the session regardless

@@ -1,6 +1,6 @@
 # poc-fixtures: 再試験用フィクスチャ一式
 
-`../poc-findings.md`に記録した6ラウンドのPoCを、別のモデル(Codex/Copilotの新モデル、Claudeの新バージョン、あるいは全く別のプロバイダ)で再実行し、横並び比較するためのフィクスチャ集。各ラウンドのタスク仕様書・独立検証ハーネス・(該当する場合は)正解実装とバグ入り実装をそのまま保存してある。
+`../poc-findings.md`に記録した6ラウンドのPoCを、別のモデル(Codex/piの新モデル、Claudeの新バージョン、あるいは全く別のプロバイダ)で再実行し、横並び比較するためのフィクスチャ集。各ラウンドのタスク仕様書・独立検証ハーネス・(該当する場合は)正解実装とバグ入り実装をそのまま保存してある。
 
 ## 検証方針(全ラウンド共通)
 
@@ -24,18 +24,16 @@ codex exec -m <MODEL_ID> -c model_reasoning_effort=<EFFORT> \
 
 `<MODEL_ID>`は`gpt-5.6-luna`/`gpt-5.6-terra`/`gpt-5.6-sol`など。`--json`をつけると`run.log`から`turn.completed`イベントの`usage.input_tokens`/`usage.cached_input_tokens`/`usage.output_tokens`が取れ、`SKILL.md` §9.3の単価表と掛け合わせて実コストを計算できる。
 
-### Copilot CLI
+### pi
 
 ```bash
 cd <candidate-dir>
-copilot -p "Read <TASK_FILE> in this directory and implement exactly what it describes." \
-  --model <MODEL_ID> --effort <EFFORT> --add-dir "$(pwd)" \
-  --output-format json > run.jsonl 2> run.stderr
+pi -p --mode json --model <provider/id> --thinking <effort> < /dev/null \
+  "Read <TASK_FILE> in this directory and implement exactly what it describes." \
+  > run.jsonl 2> run.stderr
 ```
 
-ツール自動許可は`--allow-all-tools`フラグではなく環境変数`COPILOT_ALLOW_ALL=true`で与える(Claude Code内から再試験する場合、フラグ入りコマンドはBash安全クラシファイアにブロックされる — `external-executors.md` §2参照)。素のターミナルから実行するなら`COPILOT_ALLOW_ALL=true copilot ...`の前置でよい。
-
-コストは`run.jsonl`の`outputTokens`合計のみ取得可能(入力トークンは非公開、下限値としてしか算出できない — `poc-findings.md`の各ラウンドの注意点を参照)。`grep -o '"outputTokens":[0-9]*' run.jsonl | awk -F: '{s+=$2} END{print s}'`で合計を取れる。
+`<provider/id>`は`openai-codex/gpt-5.6-luna`(ChatGPT サブスクリプション)や`github-copilot/claude-haiku-5.5`(従量課金)など。`<effort>`は`--thinking`に渡す(`medium`など)。cwd は候補ディレクトリにする。`run.jsonl`の`message_end`レコードに usage が入る。`cost`は pi の定価ベースの推定値で、`openai-codex/*`では実際の課金ではない(サブスクリプション)。終了コード 0 でも最終メッセージの`stopReason`が`error`なら失敗として扱う — `external-executors.md`の pi の節を参照。
 
 ### Claude(Agent ツール経由)
 

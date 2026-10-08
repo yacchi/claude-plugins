@@ -1234,7 +1234,7 @@ class DispatchIsolationTests(_RepoMixin, unittest.TestCase):
         super().setUp()
         self._orig_cfg = agent_exec.resolve_config
         self._orig_doctor = agent_exec._build_doctor_report
-        self._orig_capture = agent_exec._run_copilot_capture
+        self._orig_capture = agent_exec._run_pi_capture
         self.captured = {}
 
         def fake_capture(profile, model, effort, workdir, prompt_file, resume, fmt):
@@ -1242,16 +1242,16 @@ class DispatchIsolationTests(_RepoMixin, unittest.TestCase):
             return 0, {"status": "ok", "answer": "done", "session_id": None,
                        "reason": None, "exit_code": 0}
 
-        agent_exec._run_copilot_capture = fake_capture
+        agent_exec._run_pi_capture = fake_capture
 
     def tearDown(self):
         agent_exec.resolve_config = self._orig_cfg
         agent_exec._build_doctor_report = self._orig_doctor
-        agent_exec._run_copilot_capture = self._orig_capture
+        agent_exec._run_pi_capture = self._orig_capture
         super().tearDown()
 
     def _dispatch(self, *extra, cls="review", workdir=None):
-        """cls=review resolves to claude (no subprocess); light hits copilot."""
+        """cls=review resolves to claude (no subprocess); standard hits pi."""
         import contextlib
         import copy as _copy
         import io
@@ -1259,7 +1259,7 @@ class DispatchIsolationTests(_RepoMixin, unittest.TestCase):
         cfg = _copy.deepcopy(agent_exec.DEFAULTS)
         agent_exec.resolve_config = lambda: (cfg, None)
         agent_exec._build_doctor_report = lambda: {
-            "ready": {"copilot": {"ok": True, "models": ["gpt-5.6-luna"]}}
+            "ready": {"pi": {"ok": True, "models": ["gpt-5.6-luna"]}}
         }
         prompt_file = os.path.join(self.tmp, "prompt.txt")
         with open(prompt_file, "w") as fh:
@@ -1298,7 +1298,7 @@ class DispatchIsolationTests(_RepoMixin, unittest.TestCase):
     def test_executor_actually_runs_in_the_worktree(self):
         """The point of the whole feature: the CLI executor's cwd is the worktree."""
         self._write("README.md", "changed\n")
-        rc, out = self._dispatch("--task", "t1", cls="light")
+        rc, out = self._dispatch("--task", "t1", cls="standard")
         self.assertEqual(out["status"], "ok")
         self.assertEqual(self.captured["workdir"], out["isolation"]["path"])
         self.assertNotEqual(self.captured["workdir"], self.repo)

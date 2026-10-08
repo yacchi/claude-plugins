@@ -9,18 +9,18 @@ Load this file only when a configuration question actually arises: what a key me
 
 At the start of every orchestration, the instructor resolves configuration from up to four layers, merged in this order (later layers win):
 
-1. **Defaults**: `tiers` — light: haiku, standard: sonnet, deep: opus, review: sonnet (unchanged — these remain the Claude-side fallback models `agent-exec route` resolves to). `external_executors.copilot`, `external_executors.codex` and `external_executors.opencode` now ship **`enabled: true`** out of the box, each with its `class_policy` (Copilot: `gpt-5.6-luna`/medium for `light`+`standard`; Codex: `gpt-5.6-luna`/medium `standard`, `gpt-5.6-sol`/xhigh `deep`, `gpt-5.6-sol`/low `review`; opencode: `github-copilot/gpt-5.6-luna`/medium for `light`+`standard`) and a built-in `priority` (`light: [opencode, copilot, claude]`, `standard: [opencode, copilot, claude, codex]`, `deep: [claude, codex]`, `review: [claude]`, `independent-review: [codex]`), plus `enforcement.light_class: off` and `ledger.enabled: true`, `ledger.dir: "~/.claude/orchestra/runs"`, `ledger.retention_days: 30`. Shipping external executors enabled by default is safe because `agent-exec route` gates every candidate on actual availability (below) — on a machine with neither CLI installed, every call still resolves to `claude`.
+1. **Defaults**: `tiers` — light: haiku, standard: sonnet, deep: opus, review: sonnet (unchanged — these remain the Claude-side fallback models `agent-exec route` resolves to). `external_executors.pi` and `external_executors.codex` now ship **`enabled: true`** out of the box, each with its `class_policy` (pi: `openai-codex/gpt-5.6-luna`/medium for `light`+`standard`, `openai-codex/gpt-6.1-sol`/high `deep`, `openai-codex/gpt-6.1-sol`/medium `independent-review`; Codex: `gpt-5.6-luna`/medium `standard`, `gpt-5.6-sol`/xhigh `deep`, `gpt-5.6-sol`/low `review`) and a built-in `priority` (`light: [claude, pi]` (investigation the same), `standard: [pi, claude, codex]`, `deep: [claude, pi, codex]`, `review: [claude]`, `independent-review: [pi, codex]`), plus `enforcement.light_class: off` and `ledger.enabled: true`, `ledger.dir: "~/.claude/orchestra/runs"`, `ledger.retention_days: 30`. Shipping external executors enabled by default is safe because `agent-exec route` gates every candidate on actual availability (below) — on a machine with neither pi nor Codex installed, every call still resolves to `claude`.
 2. **User**: `~/.claude/orchestra.yaml` (or `.yml`), if present.
 3. **Project**: `.claude/orchestra.yaml` (or `.yml`), if present — checked into git, shared with the team.
 4. **Project-local**: `.claude/orchestra.local.yaml` (or `.yml`), if present — this developer's personal override for this one project. Mirrors Claude Code's own `settings.json` / `settings.local.json` split; never commit this file (see `setup` SKILL.md §1).
 
-This is a **deep merge**, not a first-found-wins lookup: object/mapping keys are merged recursively key-by-key, so a project file only needs to state the keys it actually wants to change — e.g. a project override of just `external_executors.copilot.enabled: true` inherits everything else (codex's whole block, copilot's `class_policy`, etc.) from the user config or defaults. Scalars and arrays are replaced wholesale by the more specific layer, not concatenated or element-merged. An explicit `null`/`~` is a value, not "reset to default" — omit the key entirely to inherit.
+This is a **deep merge**, not a first-found-wins lookup: object/mapping keys are merged recursively key-by-key, so a project file only needs to state the keys it actually wants to change — e.g. a project override of just `external_executors.pi.enabled: true` inherits everything else (codex's whole block, pi's `class_policy`, etc.) from the user config or defaults. Scalars and arrays are replaced wholesale by the more specific layer, not concatenated or element-merged. An explicit `null`/`~` is a value, not "reset to default" — omit the key entirely to inherit.
 
-**Upgrade trap for existing configs:** the key-by-key merge means a *partial* `priority` override does not insulate the untouched classes from new built-in defaults. A config written before v0.11.0 that overrides only, say, `priority.deep` (to add Codex there) will, after upgrading, silently inherit the *entire new* `priority.light`/`priority.standard` maps from the v0.11.0 defaults — i.e. the new copilot-first ordering — because those keys were never stated in the user's own file and so were never "theirs" to keep frozen. If you want to keep pre-v0.11.0 behavior for a class you didn't mean to touch, state that class's `priority` list explicitly in your own config, or set `external_executors.copilot.enabled: false` to opt out of external executors altogether.
+**Upgrade trap for existing configs:** the key-by-key merge means a *partial* `priority` override does not insulate the untouched classes from new built-in defaults. A config written before v0.11.0 that overrides only, say, `priority.deep` (to add Codex there) will, after upgrading, silently inherit the *entire new* `priority.light`/`priority.standard` maps from the v0.11.0 defaults — i.e. the new built-in ordering — because those keys were never stated in the user's own file and so were never "theirs" to keep frozen. If you want to keep pre-v0.11.0 behavior for a class you didn't mean to touch, state that class's `priority` list explicitly in your own config, or set `external_executors.pi.enabled: false` to opt out of external executors altogether.
 
 The format is YAML, not JSON, specifically so the file can carry comments (JSON can't). `.claude/orchestra.json` / `~/.claude/orchestra.json` (the pre-YAML format) are no longer read — use the `setup` skill (`orchestra:setup`) to convert an old one.
 
-Instead of merging these four layers in-context, the instructor can obtain the already-resolved configuration deterministically via **`agent-exec config [--json]`** — it deep-merges the same four layers with the same precedence/merge rules described above and additionally reports, per `external_executors.<name>` with `enabled: true` and `dispatch: cli`, whether its executable resolves on `PATH` (`"available": true/false`, or `null` if the name has no built-in profile). This keeps the merge logic out of the instructor's own context. **Prefer a single startup call, though:** `agent-exec doctor --json` (needed anyway for the `dispatch: cli` pre-flight below) now embeds this exact resolved config under `config.values` alongside its readiness report, so one `doctor` call yields both the `ready.<executor>.ok` verdicts *and* the resolved `tiers` / `external_executors` / `priority` — a standalone `config` call is only worth it when you want the config and nothing else. Likewise, Copilot's `dispatch: cli` invocation may use **`agent-exec run <profile> --model M --effort E --workdir W --prompt-file F [--prompt-file G ...] [...] [--run-id ID]`** as a normalized entry point; a supplied `--run-id ID` tags the ledger line with that run. With `--capture`, it runs copilot as a subprocess and prints one normalized `{ status, answer, session_id, reason, exit_code }` JSON object to stdout — see `references/external-executors.md` §5 for details.
+Instead of merging these four layers in-context, the instructor can obtain the already-resolved configuration deterministically via **`agent-exec config [--json]`** — it deep-merges the same four layers with the same precedence/merge rules described above and additionally reports, per `external_executors.<name>` with `enabled: true` and `dispatch: cli`, whether its executable resolves on `PATH` (`"available": true/false`, or `null` if the name has no built-in profile). This keeps the merge logic out of the instructor's own context. **Prefer a single startup call, though:** `agent-exec doctor --json` (needed anyway for the `dispatch: cli` pre-flight below) now embeds this exact resolved config under `config.values` alongside its readiness report, so one `doctor` call yields both the `ready.<executor>.ok` verdicts *and* the resolved `tiers` / `external_executors` / `priority` — a standalone `config` call is only worth it when you want the config and nothing else. Likewise, a `dispatch: cli` invocation may use **`agent-exec run <profile> --model M --effort E --workdir W --prompt-file F [--prompt-file G ...] [...] [--run-id ID]`** as a normalized entry point; a supplied `--run-id ID` tags the ledger line with that run. With `--capture`, it runs the executor as a subprocess and prints one normalized `{ status, answer, session_id, reason, exit_code }` JSON object to stdout — see `references/external-executors.md` §5 for details.
 
 `--prompt-file` is repeatable on both `dispatch` and `run`: files are read in order and concatenated with exactly one blank line between consecutive files. One file is backward-compatible; a missing or unreadable file is a usage error (exit 2), names the path on stderr, and dispatches nothing.
 
@@ -48,7 +48,7 @@ external_executors:
   codex:
     enabled: true
     dispatch: cli   # default as of v0.27.0 - direct `codex exec`/`codex exec resume`,
-    # same shape as copilot/opencode below. `dispatch: agent` (via
+    # same shape as pi below. `dispatch: agent` (via
     # `agent_type: codex:codex-rescue`) remains a fully supported override -
     # see `references/external-executors.md` §1 for why the default flipped
     # and how to opt back in.
@@ -76,31 +76,33 @@ external_executors:
       when: task requires deep traversal of a large repo (Luna's long-context recall is weak)
       class: deep
 
-  copilot:
+  pi:
     enabled: true  # ships true by default; gated on binary+doctor readiness, see §9 below
     dispatch: cli
-    # dispatched via the agent-exec wrapper: copilot -p 1.0.74 runs file/shell/
-    # network tools autonomously in non-interactive mode without any allow-all
-    # flag or env var, so agent-exec injects nothing — the only permission
-    # rule needed is Bash(agent-exec:*). --disable-builtin-mcps drops the
-    # builtin github-mcp-server/customize-cloud-agent tools from the surface
-    # (lower token/latency cost); --add-dir scopes the filesystem to workdir.
-    # (see the dispatch: "cli" notes below, and the M2 sandboxing caveat)
-    command: >-
-      agent-exec copilot -p {promptfile} --model {model} --effort {effort}
-      --add-dir {workdir} --output-format json --disable-builtin-mcps
-    resume_command: >-
-      agent-exec copilot --resume={session_id} -p {promptfile} --model {model} --effort {effort}
-      --add-dir {workdir} --output-format json --disable-builtin-mcps
+    # No `command` template: agent-exec builds the whole invocation itself
+    # (PI_SKIP_VERSION_CHECK=1 pi -p --mode json --no-approve --no-extensions
+    # --no-skills --no-prompt-templates --no-themes --model <provider/id>
+    # --thinking <effort> [--session <id>], prompt on stdin, cwd = worktree).
+    # `model` is always `provider/id`. `openai-codex/*` runs on the ChatGPT
+    # subscription shared with Codex (one quota group); pi's `cost` there is a
+    # list-price estimate, not a charge. See external-executors.md.
     classes:
       - light
       - standard
+      - deep
+      - independent-review
     class_policy:
       light:
-        model: gpt-5.6-luna
+        model: openai-codex/gpt-5.6-luna
         effort: medium
       standard:
-        model: gpt-5.6-luna
+        model: openai-codex/gpt-5.6-luna
+        effort: medium
+      deep:
+        model: openai-codex/gpt-6.1-sol
+        effort: high
+      independent-review:
+        model: openai-codex/gpt-6.1-sol
         effort: medium
 
 # Persisted, time-decaying executor cooldown. Entries are written automatically
@@ -117,21 +119,21 @@ cooldown:
     auth: 0
     nonzero-exit: 0
 
-# copilot ships `enabled: true` above, so this list actually prefers it
+# pi ships `enabled: true` above, so this list actually prefers it
 # when ready - `agent-exec route`/`dispatch` execute the walk, not the
 # instructor (see the route/dispatch paragraph above).
 priority:
   light:
-    investigation: [copilot, claude]
-    default: [copilot, claude]
+    investigation: [claude, pi]
+    default: [claude, pi]
   standard:
-    default: [copilot, claude, codex]
+    default: [pi, claude, codex]
   deep:
-    default: [claude, codex]
+    default: [claude, pi, codex]
   review:
     default: [claude]
   independent-review:
-    default: [codex]
+    default: [pi, codex]
 
 # Local executor usage ledger. It is default-on, local-only, and independent
 # of telemetry. It records only when Claude Code supplies a session id.
@@ -171,22 +173,22 @@ stays in the filename because the Claude source resolves transcripts through
 the harness's own `workflows/<run-id>` directory, which a locally minted id
 could not address. Older un-prefixed files are still read and are not migrated.
 
-To set this up interactively (detect whether Codex/Copilot are actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `setup` skill instead of hand-editing — see its own SKILL.md.
+To set this up interactively (detect whether Codex/pi are actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `setup` skill instead of hand-editing — see its own SKILL.md.
 
 **`tiers`** overrides the model-class defaults of section 3. Values are model aliases (or full model IDs) used whenever this skill — or `agent-exec route` — resolves a class/role to a Claude model: the `claude` candidate in `priority`, or any class/role with no external executor configured for it.
 
-**`external_executors`** declares non-Claude executors (Codex, Copilot, etc.) that may be woven into the pipeline. Only entries with `"enabled": true` are used. Two dispatch mechanisms:
+**`external_executors`** declares non-Claude executors (Codex, pi, etc.) that may be woven into the pipeline. Only entries with `"enabled": true` are used. Two dispatch mechanisms:
 
 - **`dispatch: "agent"`** — the executor is an installed plugin subagent. Codex supports this as an explicit override (`external_executors.codex.dispatch: agent`); it is no longer the default (see `dispatch: "cli"` below). Pass `agent_type`'s value as `agentType` in Workflow `agent()` calls, or as `subagent_type` in the Agent tool. **The route's `model`/`effort` must be appended to the prompt text as `--model <m> --effort <e>`, not passed as `agent()` options** — those options select a *Claude* tier and are meaningless to a plugin subagent, while Codex's rescue agent explicitly leaves the executor's model and reasoning effort unset unless the request names them. Drop them and the run silently falls back to whatever `~/.codex/config.toml` defaults to, which is typically a different tier entirely (e.g. `gpt-5.6-sol`/`low` instead of the resolved `gpt-5.6-luna`/`medium`). See `dispatchClass()`'s `routingFlags()` helper in SKILL.md §5. If the agent name doesn't resolve in this environment, fall back to the normal model tier for that class/role.
 - A delegated Codex dispatch (this override path) is correlated primarily by a one-way fingerprint of its prompt-file paths, because the path is required for the task to be carried out at all and therefore survives request rewriting, whereas a decorative marker can be dropped at no cost. The ledger stores only those fingerprints and never paths; the marker remains a secondary signal.
-- **`dispatch: "cli"`** — the executor is a non-interactive CLI (Copilot, opencode, and — as of v0.27.0 — Codex by default, via `codex exec`/`codex exec resume`). The instructor prepares a token with `agent-exec dispatch prepare --class <cls> --prompt-file F --workdir W [--run-id R] [--isolate ...] [--task ID]` (every routing/accounting flag is fixed here, at prepare time; the prompt file(s) named need not exist yet — only `--token` dispatch time requires them to). `dispatchClass()` (§5) gives only that token to one relay agent, which runs `agent-exec dispatch --token ... --capture` (plus `--exhausted`/`--no-resume` if needed) and hands back its JSON verbatim. The token form accepts only `--capture`/`--exhausted`/`--no-resume`; combining it with `--run-id`, `--class`, `--workdir` or any other prepare-time flag exits 2 with `--token conflicts with <flag>`. `dispatch` calls `route` internally, so the `ready.<executor>.ok` gate has already been applied before the CLI ever runs.
-  **Not a security boundary (M2):** `copilot -p` is not reliably confinable by its own tool-permission flags — excluding a named tool (e.g. `--excluded-tools=bash`) has been observed to be routed around via the `task` tool rather than actually blocked. `--allow-tool`/`--deny-tool`/`--excluded-tools` are defense-in-depth at best, never treat them as a containment guarantee; real containment needs an external OS sandbox (container, `sandbox-exec`, restricted user, network egress control) or a disposable worktree, which this plugin does not implement — treat any `dispatch: cli` Copilot task as an autonomous, directory-scoped agent, and prefer a disposable workdir (a scratch clone or worktree it can freely write/execute in) over the user's primary working tree when the task doesn't need to persist there. A `--deny-tool` list may still be set by the user as an optional, explicitly-advisory knob, but document it to them as narrowing the *named* surface only, not as a boundary.
-  **Per-task session store and auto-resume (all `dispatch: cli` executors with a session concept — Codex, Copilot, opencode):** `~/.claude/orchestra/sessions/<executor>-<task>.json` (dir mode 0700, file mode 0600) holds `{"executor","task","session_id","workdir","updated"}` for the last dispatch of that `(executor, task)` pair. `agent-exec dispatch --task <id>` with no explicit `--resume` looks it up: a hit resumes (`resumed: true`), a miss starts fresh (`resumed: false` — never an error). An explicit `--resume SID` always wins; `--no-resume` opts out of the lookup for that call only. A stored record whose `workdir` differs from the current `--workdir` is treated as a miss (a reused task id in another tree never resumes a foreign session) and is overwritten on success. **This store has no dedicated retention setting** — it is swept by the same `ledger.retention_days` the token/ledger sweep already uses (`_sweep_retention`), not a second knob. `agent-exec dispatch session --task <id> [--executor codex] [--json]` prints the stored record (or `{"status":"none"}`/`status=none`) without creating or mutating anything.
+- **`dispatch: "cli"`** — the executor is a non-interactive CLI (pi, and — as of v0.27.0 — Codex by default, via `codex exec`/`codex exec resume`). The instructor prepares a token with `agent-exec dispatch prepare --class <cls> --prompt-file F --workdir W [--run-id R] [--isolate ...] [--task ID]` (every routing/accounting flag is fixed here, at prepare time; the prompt file(s) named need not exist yet — only `--token` dispatch time requires them to). `dispatchClass()` (§5) gives only that token to one relay agent, which runs `agent-exec dispatch --token ... --capture` (plus `--exhausted`/`--no-resume` if needed) and hands back its JSON verbatim. The token form accepts only `--capture`/`--exhausted`/`--no-resume`; combining it with `--run-id`, `--class`, `--workdir` or any other prepare-time flag exits 2 with `--token conflicts with <flag>`. `dispatch` calls `route` internally, so the `ready.<executor>.ok` gate has already been applied before the CLI ever runs.
+  **Not a security boundary (M2):** `pi -p` and the other CLI executors are not reliably confinable by its own tool-permission flags — excluding a named tool (e.g. `--excluded-tools=bash`) has been observed to be routed around via the `task` tool rather than actually blocked. `--allow-tool`/`--deny-tool`/`--excluded-tools` are defense-in-depth at best, never treat them as a containment guarantee; real containment needs an external OS sandbox (container, `sandbox-exec`, restricted user, network egress control) or a disposable worktree, which this plugin does not implement — treat any `dispatch: cli` task as an autonomous, directory-scoped agent, and prefer a disposable workdir (a scratch clone or worktree it can freely write/execute in) over the user's primary working tree when the task doesn't need to persist there. A `--deny-tool` list may still be set by the user as an optional, explicitly-advisory knob, but document it to them as narrowing the *named* surface only, not as a boundary.
+  **Per-task session store and auto-resume (all `dispatch: cli` executors with a session concept — Codex, pi):** `~/.claude/orchestra/sessions/<executor>-<task>.json` (dir mode 0700, file mode 0600) holds `{"executor","task","session_id","workdir","updated"}` for the last dispatch of that `(executor, task)` pair. `agent-exec dispatch --task <id>` with no explicit `--resume` looks it up: a hit resumes (`resumed: true`), a miss starts fresh (`resumed: false` — never an error). An explicit `--resume SID` always wins; `--no-resume` opts out of the lookup for that call only. A stored record whose `workdir` differs from the current `--workdir` is treated as a miss (a reused task id in another tree never resumes a foreign session) and is overwritten on success. **This store has no dedicated retention setting** — it is swept by the same `ledger.retention_days` the token/ledger sweep already uses (`_sweep_retention`), not a second knob. `agent-exec dispatch session --task <id> [--executor codex] [--json]` prints the stored record (or `{"status":"none"}`/`status=none`) without creating or mutating anything.
 
 **`classes`** controls where the executor is used:
 - `"light"`: as a light-class implementer (in place of, or alongside, the Claude `light` tier).
 - `"standard"`: as a standard-class implementer (in place of, or alongside, the Claude `standard` tier / `model: 'sonnet'`).
-- `"deep"`: as a design-latitude implementation class (in place of, or alongside, `orchestra-deep`/Opus) — only meaningful for an executor whose `class_policy` names a model strong enough for that class (see the Codex policy below; Copilot's shipped example intentionally omits this class — see the Copilot section).
+- `"deep"`: as a design-latitude implementation class (in place of, or alongside, `orchestra-deep`/Opus) — only meaningful for an executor whose `class_policy` names a model strong enough for that class (see the Codex policy below; pi's `deep` policy is `openai-codex/gpt-6.1-sol`/high — see the pi section of the reference doc).
 - `"review"`: as the same-run adversarial review pass (in place of, or alongside, the Claude `review` tier / `orchestra-review`).
 - `"independent-review"`: as a third-party review pass in addition to the Claude review — useful to avoid single-provider model bias. An independent review supplements `orchestra-review`; it does not replace the structured-verdict contract, so wrap its output into the same verdict shape. Because an external, CLI-backed reviewer may ignore the Workflow `schema:` option, force JSON in the prompt and normalize the reply with a tolerant parser — see `references/external-executors.md` §4 (`parseExternalVerdict`).
 
@@ -196,7 +198,7 @@ To set this up interactively (detect whether Codex/Copilot are actually availabl
 
 **`cooldown`** enables the persisted, time-decaying cross-run layer beneath the in-run `--exhausted`/sticky exhaustion `Set`. `seconds` is a mapping, so deep-merge combines it per key; unlike the `priority` lists, it is not replaced wholesale. The CLI surface is `agent-exec cooldown` to inspect state, `agent-exec cooldown clear [executor]` to reset it, and `--no-cooldown` on `route`/`dispatch` to bypass it for one call.
 
-**`enforcement.light_class`** (`"off"` default | `"block"` — quote the value; YAML 1.1 parses a bareword `off` as boolean `False`, not the string) is a **nudge with a guaranteed escape, not a hard wall**. When set to `"block"`, a `PreToolUse` hook (`hooks/enforce-router.sh`) fires only when `agent-exec route --class light` reports a non-`claude` executor ready — i.e. only when there's genuinely something better to redirect to — and the call would spawn a **generic** Claude implementer: no `subagent_type` at all, or `subagent_type` in `general-purpose`/`claude`, at a Haiku-class model. **Naming any other specific `subagent_type` is itself the carve-out**: the Agent tool has no per-call tool-restriction parameters — its schema is only `description`/`isolation`/`model`/`prompt`/`run_in_background`/`subagent_type` — so a named agent is how tool access and a specialized system prompt actually get pinned, and Copilot can substitute for neither; `orchestra:orchestra-light` itself stays a deny target, since redirecting it to `agent-exec dispatch` is the whole point. Escape hatches:
+**`enforcement.light_class`** (`"off"` default | `"block"` — quote the value; YAML 1.1 parses a bareword `off` as boolean `False`, not the string) is a **nudge with a guaranteed escape, not a hard wall**. When set to `"block"`, a `PreToolUse` hook (`hooks/enforce-router.sh`) fires only when `agent-exec route --class light` reports a non-`claude` executor ready — i.e. only when there's genuinely something better to redirect to — and the call would spawn a **generic** Claude implementer: no `subagent_type` at all, or `subagent_type` in `general-purpose`/`claude`, at a Haiku-class model. **Naming any other specific `subagent_type` is itself the carve-out**: the Agent tool has no per-call tool-restriction parameters — its schema is only `description`/`isolation`/`model`/`prompt`/`run_in_background`/`subagent_type` — so a named agent is how tool access and a specialized system prompt actually get pinned, and an external executor can substitute for neither; `orchestra:orchestra-light` itself stays a deny target, since redirecting it to `agent-exec dispatch` is the whole point. Escape hatches:
 
 1. **Hard cap: one deny per session, full stop.** Not a per-task or per-prompt cap — after the first nudge the hook goes inert for the rest of the session regardless of what's asked next. (A prompt-keyed fingerprint doesn't work here: this plugin's own retry convention appends new feedback text to the prompt every round (§5), which would re-deny every round of the same task — so the bound is session-wide instead.)
 2. **Explicit escape marker.** `[orchestra:allow-claude: <reason>]` anywhere in the prompt/description allows immediately, no deny recorded — for a deliberate choice to stay on Claude.
@@ -234,14 +236,14 @@ Ships **`"off"`** — turning it on is a deliberate opt-in via the `setup` skill
 
 **Safety note:** `cli` dispatch only ever executes command templates that come from the user's own configuration file (`.claude/orchestra.yaml` or `~/.claude/orchestra.yaml`). This plugin ships no CLI commands of its own and must never invent one; if no config file declares a CLI executor, `cli` dispatch is unavailable. The `agent-exec` binary those templates call through is not part of this plugin either — it's a separate tool the user explicitly installs and authorizes via their own `Bash(agent-exec:*)` permission rule (see the `setup` skill); this plugin only ever writes the command template that invokes it, never runs it directly, and never grants it permission on the user's behalf.
 
-### 9.1 External executor model policy (Codex / Copilot), pricing, and CLI usage
+### 9.1 External executor model policy (Codex / pi), pricing, and CLI usage
 
-Full detail lives in `references/external-executors.md` (Japanese) — Codex's Sol/Terra/Luna + effort policy and class assignment, Copilot's model catalog and `light`/`standard`-class candidates, exact CLI usage recipes (one-shot and session-continuation for retry rounds), and official per-token pricing for Codex/Copilot/Claude. Read it before dispatching to an external executor, and before second-guessing any model/effort choice in the example config.
+Full detail lives in `references/external-executors.md` (Japanese) — Codex's Sol/Terra/Luna + effort policy and class assignment, pi's model ids/providers and invocation, the removed-executors note, exact CLI usage recipes (one-shot and session-continuation for retry rounds), and official per-token pricing for Codex/Claude and the metered Copilot-provider models. Read it before dispatching to an external executor, and before second-guessing any model/effort choice in the example config.
 
 In brief, as of this plugin's own validation (full reasoning and every round-by-round result: `references/poc-findings.md`):
 
 - **Codex `standard`** → `gpt-5.6-luna` at **`effort: medium`** (not `high` — this plugin's own PoC found `high` produced a real bug on a realistic task that `medium` did not, cheaper and faster besides). **`deep`** → `gpt-5.6-sol`/`xhigh`. **`review`** → `gpt-5.6-sol`/`low` (this is the `class_policy` entry Codex uses when the `priority.independent-review` list dispatches to it). `gpt-5.6-terra` is not in the default policy but hasn't been shown to be dominated either — worth reconsidering for `independent-review` if cost is a concern.
-- **Copilot `light`/`standard`** → `gpt-5.6-luna` at `effort: medium`, the fastest/cheapest validated candidate — luna leads the `priority` list for both the `light` and `standard` classes (see `examples/orchestra.yaml`); `kimi-k2.7-code` and the newly-resolved `mai-code-1-flash-picker` are viable alternatives (see the reference doc for what's been observed about each).
+- **pi `light`/`standard`** → `openai-codex/gpt-5.6-luna` at `effort: medium` (ChatGPT subscription; leads `standard`, second in `light` behind Claude Haiku 5.5, which the 2026-10-08 re-bench measured fastest). **`deep`** → `openai-codex/gpt-6.1-sol`/high; **`independent-review`** → `openai-codex/gpt-6.1-sol`/medium, then Codex. pi on `openai-codex/*` and Codex share one quota group: exhausting or cooling one skips the other (`exhausted-shared:` / `cooldown-shared:`). Unknown executor names in a user config (e.g. a leftover `copilot`/`opencode` entry) are skipped as `unknown-executor:<name>`, not errors — delete them. See the reference doc and `references/poc-findings.md`.
 - **Long-context caveat:** Luna has measurably weak long-context recall. Escalate a nominally `light`/`standard`-class task to `deep` if it requires deep traversal of a large repository — the `long_context_escalation` field (`{ class: deep }`) in the example config documents this trigger.
 - Across 6 rounds of escalating task difficulty, no accuracy differentiation was observed until task size crossed into genuine multi-file, multi-language feature territory — at which point every cheap tier tested eventually showed at least one real, narrow defect. Treat the adversarial review stage as mandatory beyond a trivially small change, regardless of which model/provider/effort level is implementing the work — this holds for external executors exactly as much as for Claude's own tiers.
 
@@ -259,7 +261,7 @@ Allowed fields:
 - `event`: `run_summary` | `dispatch`
 - `lane`: `express` | `orchestrated`
 - `orchestra_version`: semver
-- `executor`: `claude` | `copilot` | `codex` | `opencode`
+- `executor`: `claude` | `codex` | `pi`
 - `cls`: `light` | `standard` | `deep` | `review`
 - `status`: `ok` | `unavailable`
 - `reason`: `quota` | `rate-limit` | `credits` | `auth` | `nonzero-exit` | `error`
@@ -290,8 +292,8 @@ Example `run_summary` payload — categorical/numeric fields only, no ids or fre
   "fallbacks": 1,
   "classes": { "light": 2, "standard": 1 },
   "rounds": { "1": 2, "3": 1 },
-  "executors_used": { "claude": 2, "copilot": 1 },
-  "external_enabled": { "copilot": 1 }
+  "executors_used": { "claude": 2, "pi": 1 },
+  "external_enabled": { "pi": 1 }
 }
 ```
 
@@ -301,7 +303,7 @@ Example `run_summary` payload — categorical/numeric fields only, no ids or fre
 - **`agent-exec telemetry show [--json]`** — inspect what's stored.
 - **`agent-exec telemetry archive [--out FILE]`** — bundle stored records into a `.tar.gz`.
 - **`agent-exec telemetry clear`** — delete stored records.
-- **`agent-exec usage [--since <N>m|<N>h|<N>d|<ISO8601>] [--run <id>[,<id>...]] [--session <id>[,<id>...]] [--list-runs] [--source claude,codex,copilot,opencode] [--all-projects] [--json|--text]`** — read-only aggregation of Claude transcripts, Codex rollouts, and Copilot ledger/telemetry records. Use `--run` as the deterministic scope for a workflow run; it applies no time filtering and accepts a comma-separated list. `--session` is the deterministic session scope, also without time filtering, and accepts a comma-separated list. `--run` and `--session` may be combined as a de-duplicated union. An empty list element is a usage error (exit 2); unknown run or session ids contribute nothing and are not errors. `--list-runs` prints discoverable run ids and exits 0, ignoring `--since`; JSON is `{"runs":[{"run_id":str,"files":int,"first_ts":ISO,"last_ts":ISO}, ...]}`, sorted by `last_ts` ascending, while text prints one run per line. `--since` retains its 24-hour default for windowed measurement when no deterministic id is available. `--since` cannot be combined with `--run` or `--session`; `--list-runs` cannot be combined with `--run`, `--session`, or `--since`; each violation exits 2 with a message on stderr and nothing on stdout. Under a run or session scope, the JSON report has a top-level `scope` object: `{"kind":"window","since":<ISO>,"until":<ISO>}`, `{"kind":"run","run_ids":[...]}`, `{"kind":"session","session_ids":[...]}`, or `{"kind":"run+session","run_ids":[...],"session_ids":[...]}`. In text output the scope is the first line. The top-level `since`/`now` keys appear **only** under the window scope: a deterministic scope applies no time filter, so reporting one would invite a consumer to read the numbers as filtered. A source that cannot be attributed reports `{"attributable":false,"reason":<short fixed string>}` in place of its totals, or `<source>: not attributable (<reason>)` in text. Claude usage defaults to the current project; Copilot telemetry usage requires telemetry to be enabled, while ledger usage is independent of that setting.
+- **`agent-exec usage [--since <N>m|<N>h|<N>d|<ISO8601>] [--run <id>[,<id>...]] [--session <id>[,<id>...]] [--list-runs] [--source claude,codex,pi] [--all-projects] [--json|--text]`** — read-only aggregation of Claude transcripts, Codex rollouts, and pi ledger/telemetry records. Use `--run` as the deterministic scope for a workflow run; it applies no time filtering and accepts a comma-separated list. `--session` is the deterministic session scope, also without time filtering, and accepts a comma-separated list. `--run` and `--session` may be combined as a de-duplicated union. An empty list element is a usage error (exit 2); unknown run or session ids contribute nothing and are not errors. `--list-runs` prints discoverable run ids and exits 0, ignoring `--since`; JSON is `{"runs":[{"run_id":str,"files":int,"first_ts":ISO,"last_ts":ISO}, ...]}`, sorted by `last_ts` ascending, while text prints one run per line. `--since` retains its 24-hour default for windowed measurement when no deterministic id is available. `--since` cannot be combined with `--run` or `--session`; `--list-runs` cannot be combined with `--run`, `--session`, or `--since`; each violation exits 2 with a message on stderr and nothing on stdout. Under a run or session scope, the JSON report has a top-level `scope` object: `{"kind":"window","since":<ISO>,"until":<ISO>}`, `{"kind":"run","run_ids":[...]}`, `{"kind":"session","session_ids":[...]}`, or `{"kind":"run+session","run_ids":[...],"session_ids":[...]}`. In text output the scope is the first line. The top-level `since`/`now` keys appear **only** under the window scope: a deterministic scope applies no time filter, so reporting one would invite a consumer to read the numbers as filtered. A source that cannot be attributed reports `{"attributable":false,"reason":<short fixed string>}` in place of its totals, or `<source>: not attributable (<reason>)` in text. Claude usage defaults to the current project; pi telemetry usage requires telemetry to be enabled, while ledger usage is independent of that setting.
 
 ## 3. Run ledger
 
@@ -309,7 +311,7 @@ The ledger is a default-on, local-only store, separate from telemetry and never 
 
 Each session is a directory, `<ledger-dir>/<session-id>/`, where the session id comes only from the `CLAUDE_CODE_SESSION_ID` environment variable and must match `^[A-Za-z0-9_.-]{1,128}$` (with `..` rejected). A dispatch with `--run-id <id>` writes to `<ledger-dir>/<session-id>/<run-id>.jsonl`; one without it writes to `<ledger-dir>/<session-id>/no.run.jsonl`. Run ids must match `^[A-Za-z0-9_-]{1,64}$` and still exit 2 when invalid. The run id is carried by the path, not by a record field. Ledger lines retain the existing allowlist — `ts`, `executor`, `cls`, `model`, `status`, the integer usage counters, delegated Codex `corr`, and prompt-path fingerprints — and appends are best-effort and never alter dispatch behavior. Flat pre-v0.20.0 `<ledger-dir>/<run-id>.jsonl` files are inert history, readable only through `ledger show`, never through `--run` or `--session`, and are not migrated. A v0.19.0 session file and a v0.18.0 run file cannot be told apart, so continuing to read them is the one remaining way a session total could be reported as a run total.
 
-`agent-exec usage --run <id>` reads every `<id>.jsonl` inside every session directory, de-duplicating by resolved path; flat legacy files are inert. A session directory can therefore never satisfy a run lookup. `--session <id>` reads every JSONL file directly inside that session directory and never reads legacy flat files. Under session scope, Copilot and Codex report normal ledger totals when lines exist and add a `runs` breakdown keyed by each run id plus literal `no-run`; delegated Codex lines resolve through the correlation id and retain the `delegated`/`measured` counters. Without matching lines they report `attributable: false` with reason `no matching run ledger data`; `--since` behavior is unchanged. A session figure is a different quantity from a run figure: a dispatch with no run id belongs to its session and to no run, so a session total must never be used as the cost of a single run. On the Claude side, a run lookup requires the literal `workflows/<run-id>` path segment.
+`agent-exec usage --run <id>` reads every `<id>.jsonl` inside every session directory, de-duplicating by resolved path; flat legacy files are inert. A session directory can therefore never satisfy a run lookup. `--session <id>` reads every JSONL file directly inside that session directory and never reads legacy flat files. Under session scope, pi and Codex report normal ledger totals when lines exist and add a `runs` breakdown keyed by each run id plus literal `no-run`; delegated Codex lines resolve through the correlation id and retain the `delegated`/`measured` counters. Without matching lines they report `attributable: false` with reason `no matching run ledger data`; `--since` behavior is unchanged. A session figure is a different quantity from a run figure: a dispatch with no run id belongs to its session and to no run, so a session total must never be used as the cost of a single run. On the Claude side, a run lookup requires the literal `workflows/<run-id>` path segment.
 
 The ledger CLI is **`agent-exec ledger show [--session <id>] [--run <id>] [--json|--text]`**, **`agent-exec ledger archive [--json|--text]`**, and **`agent-exec ledger clear [--yes] [--json|--text]`**. `show` reports ledger contents as counts and summed integer fields per executor; without a selector it distinguishes session directories (including their run files) from legacy flat run files. `archive` and `clear` cover both layouts. Missing files or directories are empty, not errors; unknown options or malformed selectors exit 2, and an empty ledger exits 0.
 

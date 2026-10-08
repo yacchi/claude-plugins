@@ -284,7 +284,7 @@ class EditExecutor(DelegateExecutor):
         created = agent_exec.isolate_create(spec["workdir"], spec["task"], backend="git")
         for rel, text in self.files[pid].items():
             _write(os.path.join(created["path"], rel), text)
-        return {"status": "ok", "answer": "done", "executor": "copilot",
+        return {"status": "ok", "answer": "done", "executor": "pi",
                 "isolation": {"isolate": True, "path": created["path"],
                               "workdir": created["path"]}}
 

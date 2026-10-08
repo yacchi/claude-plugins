@@ -186,12 +186,12 @@ class SnapshotTests(UiTestBase):
         runs = os.path.join(self.home, ".claude", "orchestra", "runs")
         os.makedirs(runs)
         with open(os.path.join(runs, "r1.jsonl"), "w") as fh:
-            fh.write(json.dumps({"executor": "copilot", "model": "m", "cls": "light",
+            fh.write(json.dumps({"executor": "pi", "model": "m", "cls": "light",
                                  "status": "ok", "paths": ["x"], "duration_s": 1.5}) + "\n")
         snap = self.get_snapshot(self.start())
         if isinstance(snap["dispatch"], dict):
             self.fail("dispatch errored: %r" % snap["dispatch"])
-        self.assertEqual(snap["dispatch"][0]["executor"], "copilot")
+        self.assertEqual(snap["dispatch"][0]["executor"], "pi")
         self.assertNotIn("paths", snap["dispatch"][0])
         self.assertEqual(snap["dispatch"][0]["duration_s"], 1.5)
 
@@ -391,7 +391,7 @@ class ListDetachedTests(V1Base):
 class RunningSnapshotTests(ListDetachedTests):
     def test_running_section(self):
         state = self.make_wave()
-        self.plant("dsp-00000000000a", os.getpid(), executor="copilot")
+        self.plant("dsp-00000000000a", os.getpid(), executor="pi")
         self.plant("dsp-00000000000b", 2 ** 22 + 12345, spec=False)
         with open(os.path.join(os.path.dirname(state), "orca-sessions.json"), "w") as fh:
             json.dump([{"wave_state": state, "pkg": "A-1", "terminal": "term-1",
@@ -545,7 +545,7 @@ class CooldownClearTests(V1Base):
         until = time.time() + 1000
         with open(path, "w") as fh:
             json.dump({"codex": {"until": until, "reason": "quota"},
-                       "copilot": {"until": until, "reason": "quota"}}, fh)
+                       "pi": {"until": until, "reason": "quota"}}, fh)
         return path
 
     def load(self, path):
@@ -561,7 +561,7 @@ class CooldownClearTests(V1Base):
         server = self.start()
         status, data = self.post(server, "/api/cooldown/clear", {"executor": "codex"})
         self.assertEqual((status, json.loads(data)), (200, {"cleared": "codex"}))
-        self.assertEqual(list(self.load(path)), ["copilot"])
+        self.assertEqual(list(self.load(path)), ["pi"])
         status, data = self.post(server, "/api/cooldown/clear", {"executor": None})
         self.assertEqual((status, json.loads(data)), (200, {"cleared": "all"}))
         self.assertEqual(self.load(path), {})
@@ -570,14 +570,14 @@ class CooldownClearTests(V1Base):
         path = self.plant()
         status, _ = self.post(self.start(), "/api/cooldown/clear", {"executor": "nope"})
         self.assertEqual(status, 400)
-        self.assertEqual(sorted(self.load(path)), ["codex", "copilot"])
+        self.assertEqual(sorted(self.load(path)), ["codex", "pi"])
 
     def test_header_token_required(self):
         path = self.plant()
         status, _ = self.post(self.start(), "/api/cooldown/clear", {"executor": None},
                               header=False)
         self.assertEqual(status, 403)
-        self.assertEqual(sorted(self.load(path)), ["codex", "copilot"])
+        self.assertEqual(sorted(self.load(path)), ["codex", "pi"])
 
 
 class SweepRouteTests(V1Base):

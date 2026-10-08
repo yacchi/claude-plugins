@@ -1,10 +1,13 @@
 #!/bin/bash
 # orchestra plugin - PreToolUse enforcement for enforcement.light_class=block.
 #
-# PURPOSE. Config already prefers an external executor (Copilot gpt-5.6-luna)
-# over a direct Claude Haiku subagent for `light`-class implementation work,
-# but an instructor keeps picking Haiku anyway because "spawn a Claude
-# subagent" is 1 step and "relay through Copilot" used to be 6. This hook is
+# PURPOSE. When a user's priority puts an external executor (e.g. pi) ahead of
+# Claude for the `light` class, config prefers it over a direct Claude Haiku
+# subagent, but an instructor keeps picking Haiku anyway because "spawn a
+# Claude subagent" is 1 step and "relay through an executor" used to be 6.
+# NOTE: with the default priority (light -> claude first) `route --class light`
+# reports a claude executor, so this hook is inert unless a user's priority
+# puts an external executor first. This hook is
 # the opt-in (`enforcement.light_class: "block"`, default "off") last-layer
 # nudge: it denies the FIRST matching direct-Haiku spawn in a session and
 # tells the model to call `agent-exec dispatch` instead (now also 1 step).
@@ -12,7 +15,7 @@
 # THIS IS A NUDGE, NEVER A WALL. A permanent block on Haiku is unacceptable —
 # there are legitimate reasons to want a real Claude subagent (most notably
 # fine-grained tool control / a specialized system prompt via a named
-# `subagent_type`, which the Copilot CLI has no equivalent for). Four
+# `subagent_type`, which external CLI executors have no equivalent for). Four
 # INDEPENDENT escape hatches guarantee this script can never trap a session
 # in a deny loop:
 #
@@ -48,7 +51,7 @@
 #
 #   3. AUTOMATIC CARVE-OUTS. Always allowed, no exec needed to decide:
 #        - the prompt/description mentions `agent-exec` -- this is the relay
-#          that RUNS the Copilot dispatch; denying it would deadlock the
+#          that RUNS the external dispatch; denying it would deadlock the
 #          entire mechanism.
 #        - `subagent_type` contains "orchestra-review" (review is
 #          Claude-only by design).
@@ -194,7 +197,7 @@ try:
     # point. Any OTHER named subagent_type (Explore, Plan, statusline-setup,
     # claude-code-guide, a project-defined custom agent, ...) is out of
     # scope by construction: naming a specific agent IS the tool-control /
-    # specialized-system-prompt mechanism, and Copilot cannot substitute
+    # specialized-system-prompt mechanism, and an external executor cannot substitute
     # for it.
     is_generic = st_lc in ("", "general-purpose", "claude")
     is_orchestra_light = st_lc in ("orchestra-light", "orchestra:orchestra-light")
@@ -415,7 +418,7 @@ if [ -n "$FINGERPRINT" ]; then
     printf '%s\n' "$FINGERPRINT" >> "$DENY_FILE" 2>/dev/null || true
 fi
 
-REASON="orchestra: enforcement.light_class=block prefers ${ROUTE_EXECUTOR:-copilot} (model ${ROUTE_MODEL:-gpt-5.6-luna}, effort ${ROUTE_EFFORT:-medium}) over a direct Claude Haiku subagent for light-class work. Use: agent-exec dispatch --class light --prompt-file <prompt-file> --workdir <workdir> --capture -- one call, replaces the manual multi-step relay. This nudge fires at most ONCE per session: every further orchestra-light/Haiku call this session -- this same task, a retry with feedback, or an unrelated task -- will be allowed automatically from here on. To bypass permanently for a legitimate reason (e.g. you need a named subagent for fine-grained tool control or a specialized system prompt, which Copilot has no equivalent for), add [orchestra:allow-claude: <reason>] to the prompt."
+REASON="orchestra: enforcement.light_class=block prefers ${ROUTE_EXECUTOR:-an external executor}${ROUTE_MODEL:+ (model ${ROUTE_MODEL}${ROUTE_EFFORT:+, effort ${ROUTE_EFFORT}})} over a direct Claude Haiku subagent for light-class work. Use: agent-exec dispatch --class light --prompt-file <prompt-file> --workdir <workdir> --capture -- one call, replaces the manual multi-step relay. This nudge fires at most ONCE per session: every further orchestra-light/Haiku call this session -- this same task, a retry with feedback, or an unrelated task -- will be allowed automatically from here on. To bypass permanently for a legitimate reason (e.g. you need a named subagent for fine-grained tool control or a specialized system prompt, which an external executor has no equivalent for), add [orchestra:allow-claude: <reason>] to the prompt."
 
 python3 - "$REASON" <<'PYEOF' 2>/dev/null
 import sys, json

@@ -18,7 +18,7 @@ agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--i
 
 **On `agentType`:** this plugin ships `agents/orchestra-light.md`, `agents/orchestra-deep.md`, and `agents/orchestra-review.md`. These matter only on `dispatchClass`'s fallback branch (`status: 'delegate'` with no `agent_type`, i.e. Claude was the routed candidate) or when writing the express lane / §8 fallback pattern by hand — whether the plugin-scoped names (e.g. `orchestra:orchestra-light`) resolve as the `agentType` option of `agent()` is environment-dependent and unconfirmed. Before relying on it, check the list of available subagents (the @-mention typeahead, or the names visible to the Agent tool); if `orchestra:orchestra-light` / `orchestra:orchestra-deep` / `orchestra:orchestra-review` resolve, pass e.g. `agentType: 'orchestra:orchestra-light'`. If they don't resolve, fall back further to explicit `model: 'haiku'` / `'opus'` / `'sonnet'`. Either way, rule #4 stands: exactly one of `model` or `agentType` must always be explicit — `dispatchClass`'s own branches already guarantee this on the routed path. The `standard` class has no dedicated Claude agent definition — its Claude-side fallback is `model: 'sonnet'` inline instead of an `agentType`.
 
-For tasks with modest design latitude, call `dispatchClass('standard', workerPromptFile, opts)` instead of `'light'` — same helper; `agent-exec route --class standard` resolves it (Copilot Luna by default, Sonnet otherwise). For tasks with real design latitude, route the work stage to `orchestra-deep` (Opus) instead: `dispatchClass('deep', workerPromptFile, opts)`, or, on the fallback branch, `agentType: 'orchestra:orchestra-deep'` / `model: 'opus'` directly.
+For tasks with modest design latitude, call `dispatchClass('standard', workerPromptFile, opts)` instead of `'light'` — same helper; `agent-exec route --class standard` resolves it (pi `openai-codex/gpt-5.6-luna` first, then Sonnet). For tasks with real design latitude, route the work stage to `orchestra-deep` (Opus) instead: `dispatchClass('deep', workerPromptFile, opts)`, or, on the fallback branch, `agentType: 'orchestra:orchestra-deep'` / `model: 'opus'` directly.
 
 ## 2. Shortening the critical path
 
@@ -114,9 +114,13 @@ Worker and verifier prompts are read by cheap models, not humans. They owe nothi
 
 - **Do NOT compress the spec.** The `formatBytes(1048575) → "1 MiB"` boundary example (requirement 1 above) cannot lose a character without losing meaning, and the one example you delete to save tokens is exactly where §7's rounding-carry class of bug hides. Enumerated I/O examples, boundary values, and the verification command are compression-exempt.
 - **Reduce variance with structure, not with prose compression.** Terse natural language is *more* ambiguous, not less. When you want to pin down behaviour and kill wording drift, reach for tables, enumerated example rows, and the response `schema` — structure removes ambiguity; dropping particles adds it.
-- **Do NOT compress worker/verifier *output*.** It is already lean: the verdict is forced into `VERDICT_SCHEMA` JSON and code/log/diff pasting is already forbidden (§6-3). The review pass's main output is adversarial *test code*, which does not compress. Light-class workers (Copilot Luna/medium, or Haiku when routed there as fallback) think little at their cheapest effort setting, so the thinking-inflation risk is low there — but never ask the Sonnet reviewer to write tersely at the cost of the tests it authors.
+- **Do NOT compress worker/verifier *output*.** It is already lean: the verdict is forced into `VERDICT_SCHEMA` JSON and code/log/diff pasting is already forbidden (§6-3). The review pass's main output is adversarial *test code*, which does not compress. Light-class workers (Claude Haiku first, pi Luna/medium as fallback) think little at their cheapest effort setting, so the thinking-inflation risk is low there — but never ask the Sonnet reviewer to write tersely at the cost of the tests it authors.
 
 Rule of thumb: **strip everything a human would want and a machine does not; keep every concrete fact the worker must reproduce exactly.**
+
+### 6.2 Never rely on "asc"/"desc" for a semantic order
+
+When a spec defines a sort or ranking over a domain ordering (priority, severity, status), do not say "ascending"/"descending" or `order=asc|desc` and leave the reader to infer which end is which. Enumerate the expected order with a concrete example instead: `sort=priority&order=asc` returns `low, medium, high`; `order=desc` returns `high, medium, low`. In the 2026-10-08 re-bench every model that scored 36/38 read `asc` as "most urgent first" and failed exactly those two checks — Claude Haiku 5.5 did so in all 10 of its runs across four harnesses — while gpt-5.6-luna, gpt-6.1-sol and MAI-Code passed the same wording. This matters most for light-class work, which now goes to Claude Haiku first (`poc-findings.md` §11).
 
 ## 4. Findings proven by the PoC
 
@@ -140,7 +144,7 @@ Where Dynamic Workflows are unavailable or disabled, fall back to a 3-level nest
 Instructor (Fable/Opus)
   └─ Agent tool: launch orchestra-delegate (no model needed - pinned to sonnet in its own frontmatter)
        └─ orchestra-delegate itself runs `agent-exec dispatch --class light --capture` per round
-            (no relay needed - it already has Bash) - Copilot by default, orchestra-light/haiku
+            (no relay needed - it already has Bash) - whatever route resolves (Claude Haiku first, pi as fallback); orchestra-light/haiku
             only on that call's own "delegate" fallback, never launched directly
        └─ orchestra-delegate internally launches orchestra-review (sonnet) via the Agent tool
        └─ on FAIL, orchestra-delegate re-dispatches a self-contained correction packet

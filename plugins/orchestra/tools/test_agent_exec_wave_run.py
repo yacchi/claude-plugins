@@ -74,7 +74,7 @@ def _read(path):
 # --- fake executor -----------------------------------------------------------
 
 
-def edit(files, answer="done", session=None, executor="copilot"):
+def edit(files, answer="done", session=None, executor="pi"):
     """A round that creates/reuses the task tree and writes `files` into it."""
     def round_fn(spec, exhausted):
         created = agent_exec.isolate_create(spec["workdir"], spec["task"], backend="git")
@@ -443,17 +443,17 @@ class NeedsTests(_WaveRepo):
 
     def test_unavailable_retries_with_exhausted(self):
         self.plan([{"id": "A"}])
-        ex = FakeExecutor({"A": [result({"status": "unavailable", "executor": "copilot"}),
+        ex = FakeExecutor({"A": [result({"status": "unavailable", "executor": "pi"}),
                                  edit({"a.txt": "a\n"}, executor="codex")]})
         report, rc = self.run_wave(ex)
         self.assertEqual(rc, 0, report)
         self.assertEqual(ex.calls[0]["exhausted"], [])
-        self.assertEqual(ex.calls[1]["exhausted"], ["copilot"])
+        self.assertEqual(ex.calls[1]["exhausted"], ["pi"])
         self.assertEqual(self.state()["packages"]["A"]["executor"], "codex")
 
     def test_all_unavailable_stops_with_package_pending(self):
         self.plan([{"id": "A"}])
-        ex = FakeExecutor({"A": [result({"status": "unavailable", "executor": "copilot"}),
+        ex = FakeExecutor({"A": [result({"status": "unavailable", "executor": "pi"}),
                                  result({"status": "unroutable", "route": {}})]})
         report, rc = self.run_wave(ex)
         self.assertEqual(rc, 5, report)
@@ -551,7 +551,7 @@ class StageEventTests(_WaveRepo):
             end = self.details("dispatch-end", pid)
             self.assertEqual(len(end), 1)
             self.assertEqual(end[0]["status"], "ok")
-            self.assertEqual(end[0]["executor"], "copilot")
+            self.assertEqual(end[0]["executor"], "pi")
             self.assertIsInstance(end[0]["seconds"], float)
             self.assertEqual(len(self.details("check-start", pid)), 1)
             check_end = self.details("check-end", pid)
@@ -811,7 +811,7 @@ class GreenTreeTests(_WaveRepo):
 
 class ResumeOnResetTests(_WaveRepo):
     def unavailable(self):
-        return result({"status": "unavailable", "executor": "copilot"})
+        return result({"status": "unavailable", "executor": "pi"})
 
     def run_resume(self, ex, clock, until=1100.0, on_sleep=None, **overrides):
         if on_sleep is not None:
@@ -824,7 +824,7 @@ class ResumeOnResetTests(_WaveRepo):
             sleep = clock.sleep
         with mock.patch.object(agent_exec, "resolve_config", return_value=({}, None)), \
                 mock.patch.object(agent_exec, "active_cooldown_expiries",
-                                  return_value={"copilot": until}):
+                                  return_value={"pi": until}):
             report = agent_exec_wave_run.run_wave(
                 self.opts(resume_on_reset=True, **overrides),
                 executor=ex, clock=clock, sleep=sleep)

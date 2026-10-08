@@ -213,6 +213,49 @@ Copilot `gpt-5.6-luna`はRound 6で最速・最安・満点という抜きん出
 
 **総合結論: コストティアは速度の予測因子としては一貫して機能したが、単純な孤立タスクでの正答率の予測因子としては一度も機能しなかった。しかしタスクの規模・複雑さが実機能の領域を超えた瞬間、このシリーズでテストした安価ティア(Codex Luna、Claude Haiku、MAI、そして十分な試行回数で見たCopilot Luna自身)は、いずれもどこかで実際の不具合を見せた。** これは、どのモデル・プロバイダ・effortレベルで実装されたかによらず、adversarial verifierの段階を任意ではなく必須のステージとして扱うという、orchestra自体の設計を裏付ける具体的な根拠である。
 
+## 11. 2026-10-08 再ベンチ: ハーネス比較と pi の採用(v0.43.0)
+
+フィクスチャは`poc-fixtures/round6-webapp`(38項目: backend 15、analysis 11、frontend 12)。実行前に参照実装で38/38を再確認した。全実行をeffort/thinking mediumの逐次実行(verify-backendはポート8091を使うため1本ずつ)で行った。
+
+### 結果
+
+| ハーネス | モデル | n | 所要秒 | 入力トークン(キャッシュ込み、1実行あたり) | 1実行あたりのコスト | スコア |
+|---|---|---|---|---|---|---|
+| pi 1.1.0 | openai-codex/gpt-5.6-luna(ChatGPTサブスクリプション) | 3 | 49 / 50 / 70 | 95.7K / 114K / 94.6K | サブスクリプション | 38 / 38 / 38 |
+| pi | openai-codex/gpt-6.1-sol(サブスクリプション) | 1 | 96 | 37.8K | サブスクリプション | 38 |
+| pi | openai-codex/gpt-6-luna(サブスクリプション) | 3 | 45-57 | 68-77K | サブスクリプション | 36 x3 |
+| pi | github-copilot/gpt-5.6-luna | 2 | 63 / 67 | 60-85K | $0.009-0.011 | 38 x2 |
+| pi | github-copilot/claude-haiku-5.5 | 3 | 33-43 | 63-107K | $0.006-0.007 | 36 x3 |
+| pi | github-copilot/gpt-6-luna | 1 | 74 | 107K | $0.005 | 36 |
+| opencode 1.18.29 | github-copilot/gpt-5.6-luna | 1 | 86 | 275K | $0.021 | 38 |
+| opencode | github-copilot/claude-haiku-5.5 | 3 | 40-54 | 194-264K | $0.009-0.012 | 35 / 36 / 36 |
+| opencode | github-copilot/gpt-6-luna | 3 | 114-145 | 339-388K | $0.012-0.013 | 36 / 35 / 36 |
+| opencode | github-copilot/gpt-6.1-sol | 1 | 158 | 270K | $0.161 | 38 |
+| opencode | github-copilot/claude-sonnet-5.5 | 1 | 32 | 96.6K | $0.125 | 36 |
+| opencode | github-copilot/gpt-5.6-sol | 1 | 105 | 257K | $0.372 | 36 |
+| opencode | github-copilot/mai-code-1.1-flash | 1 | 2668 | 244K | $0.042 | 38 |
+| Copilot CLI 1.0.89 | gpt-6-luna | 1 | 122 | 507K(新規)+ 226K(キャッシュ) | 従量 | 36 |
+| Copilot CLI | claude-haiku-5.5 | 1 | 85 | 1.57M(新規)+ 745K(キャッシュ) | 従量 | 36 |
+| Claude Code サブエージェント | haiku(= Claude Haiku 5.5) | 3 | 46 / 50 / 92 | サブエージェント 59-70K | サブスクリプション | 36 x3 |
+
+Copilotの課金は2026-06からトークン従量(GitHub「Models and pricing」): GPT-6 LunaとClaude Haiku 5.5はどちらも入力$0.10 / 出力$0.50(100万トークンあたり。Haiku 5.5は100Kトークン超のプロンプトで$0.50/$2.50)、GPT-6/6.1 Solは$2/$10、GPT-5.6 Lunaは$0.20/$1.20。piが`openai-codex`で報告する`cost`は定価ベースの推定値で、請求ではない(サブスクリプション)。
+
+### 知見
+
+- **失敗は毎回同じ2項目だった: `sort=priority&order=asc|desc`。** 36/38のモデルはすべて`asc`を「最も緊急なものが先」と読んだ。通過したのはgpt-5.6-luna(July分を含め全ハーネスで6/6)、gpt-6.1-sol、opencodeのMAI。フィクスチャ側の仕様文は「order by how urgent the priority is ... `order=asc`(default)vs `order=desc` flips the direction」で、曖昧と言える。契約への教訓: 期待する順序を列挙し、asc/descの語に頼らない(`authoring.md` §6.2)。
+- もう1件、dueDateが同日のときの並び順が実行ごとに分かれたことがある(仕様が定義していないため判定から除外)。
+- **速度とトークンはモデルよりハーネスで決まる。** 同じgpt-5.6-lunaが、pi 49-70秒、opencode 86秒、Codex CLI 316秒(7月)。piはopencodeの約1/3-1/4の入力トークン、Copilot CLIの新規入力はopencodeの約19倍。
+- ChatGPTアカウントのCodex CLIは`gpt-6-luna`/`gpt-6-sol`/`gpt-6.1-sol`をHTTP 400(「not supported when using Codex with a ChatGPT account」)で拒否する。piの`openai-codex`プロバイダは同じサブスクリプションでそれらを実行できる。
+- 自己検証: pi 11実行のすべてが自分で`go build` / `tsc` / `pytest`を実行した(1-8コマンド)。自己申告だけで終えた実行は無かった。
+- ランナウェイ: MAIの2668秒は、opencodeの`glob`1回(`**/INSTRUCTIONS.md`、パス`/`)が2539秒だったもの。pi 11実行では、同一ツール呼び出しの連続は最大1回、非連続の同一呼び出しは最大3回(修正後の検証の再実行)。
+- 副次的な事故: Claude haikuワーカーが、自分のスモークテスト中にポート18080の自分のものでないプロセスをkillした(並行実行のサーバだった可能性が高い)。
+
+### 判断
+
+- **Copilot CLIとopencodeを削除し、piをCLIの実行役にする**(同じ課金で厳密に劣る)。
+- light: Claude haikuを先頭(サブスクリプション、最速)。standard: pi `openai-codex/gpt-5.6-luna`。deep: Claude opusのあとpi `gpt-6.1-sol`。independent-review: pi `gpt-6.1-sol`、次にcodex。
+- Claude Haiku 5.5はこの再ベンチで36/38(4つのハーネスにまたがる10実行すべてが`asc`の読み違い)。lightの契約では順序を列挙する(`authoring.md` §6.2)。
+
 ## 未検証の領域
 
 このPoCシリーズがまだ検証していない、サードパーティのCoding Indexの差(Sol 70-78 vs Luna 63)が実際に効いてくると思われる領域:

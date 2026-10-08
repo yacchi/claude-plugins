@@ -55,7 +55,7 @@ case "$1" in
             exit 1
         fi
         printf '{"executor":"%s","dispatch":"cli","model":"%s","effort":"%s"}\n' \
-            "${STUB_ROUTE_EXECUTOR:-copilot}" "${STUB_ROUTE_MODEL:-gpt-5.6-luna}" "${STUB_ROUTE_EFFORT:-medium}"
+            "${STUB_ROUTE_EXECUTOR:-pi}" "${STUB_ROUTE_MODEL:-openai-codex/gpt-5.6-luna}" "${STUB_ROUTE_EFFORT:-medium}"
         exit 0
         ;;
     *)
@@ -182,7 +182,7 @@ assert_eq() {
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-killswitch" "Agent" "orchestra-light" "haiku" "Implement X" "impl task")
-run_hook "$P" "$T" ORCHESTRA_ENFORCEMENT=off STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" ORCHESTRA_ENFORCEMENT=off STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "1. kill switch ORCHESTRA_ENFORCEMENT=off -> allow"
 assert_eq "1b. kill switch -> zero agent-exec invocations" "0" "$(log_lines "$T")"
 
@@ -202,21 +202,21 @@ else
 fi
 
 # =============================================================================
-# 3 & 4. haiku + block + copilot available -> deny exactly once; the SAME
+# 3 & 4. haiku + block + pi available -> deny exactly once; the SAME
 #    input a second time -> allow (anti-lockout guarantee), with zero new
 #    agent-exec invocations (proves the session cache is actually reused).
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-denyonce" "Agent" "orchestra-light" "haiku" "Implement formatBytes" "impl task")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot STUB_ROUTE_MODEL=gpt-5.6-luna STUB_ROUTE_EFFORT=medium
-assert_deny "3. haiku + block + copilot available -> deny"
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi STUB_ROUTE_MODEL=openai-codex/gpt-5.6-luna STUB_ROUTE_EFFORT=medium
+assert_deny "3. haiku + block + pi available -> deny"
 case "$OUT" in
     *agent-exec\ dispatch*) echo "PASS: 3b. deny reason names agent-exec dispatch"; PASS=$((PASS + 1)) ;;
     *) echo "FAIL: 3b. deny reason should name agent-exec dispatch, got: $OUT"; FAIL=$((FAIL + 1)) ;;
 esac
 LINES_AFTER_FIRST=$(log_lines "$T")
 
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "4. identical call a second time -> allow (anti-lockout)"
 assert_eq "4b. no NEW agent-exec invocations on the cached retry" "$LINES_AFTER_FIRST" "$(log_lines "$T")"
 
@@ -226,7 +226,7 @@ assert_eq "4b. no NEW agent-exec invocations on the cached retry" "$LINES_AFTER_
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-relay" "Agent" "orchestra-light" "haiku" "Run agent-exec dispatch --class light --prompt-file f --workdir w --capture" "relay call")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "5. prompt mentions agent-exec -> allow (relay carve-out)"
 assert_eq "5b. relay carve-out short-circuits before any agent-exec call" "0" "$(log_lines "$T")"
 
@@ -235,7 +235,7 @@ assert_eq "5b. relay carve-out short-circuits before any agent-exec call" "0" "$
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-marker" "Agent" "orchestra-light" "haiku" "Implement Z [orchestra:allow-claude: needs Read-only tools]" "impl task")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "6. [orchestra:allow-claude: needs Read-only tools] -> allow"
 assert_eq "6b. escape marker short-circuits before any agent-exec call" "0" "$(log_lines "$T")"
 
@@ -244,14 +244,14 @@ assert_eq "6b. escape marker short-circuits before any agent-exec call" "0" "$(l
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-restrict" "Agent" "orchestra-light" "haiku" "Implement W" "impl task" "tools=Read,Grep")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "7. tools restriction key present -> allow"
 assert_eq "7b. tool-restriction carve-out short-circuits before any agent-exec call" "0" "$(log_lines "$T")"
 
 # also check the alternate spellings are honored
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-restrict2" "Agent" "" "haiku" "Implement W2" "impl task" "disallowedTools=Bash")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "7c. disallowedTools restriction key present -> allow"
 
 # =============================================================================
@@ -259,7 +259,7 @@ assert_allow "7c. disallowedTools restriction key present -> allow"
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-explore" "Agent" "Explore" "haiku" "Find where X is defined" "search")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "8. subagent_type=Explore -> allow"
 assert_eq "8b. reserved subagent_type carve-out short-circuits before any agent-exec call" "0" "$(log_lines "$T")"
 
@@ -268,13 +268,13 @@ assert_eq "8b. reserved subagent_type carve-out short-circuits before any agent-
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-sonnet" "Agent" "general-purpose" "sonnet" "Implement V" "impl task")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "9. model=sonnet, non-light subagent_type -> allow"
 assert_eq "9b. non-light call never consults agent-exec" "0" "$(log_lines "$T")"
 
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-opus" "Agent" "general-purpose" "opus" "Implement U" "impl task")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "9c. model=opus, non-light subagent_type -> allow"
 
 # =============================================================================
@@ -289,12 +289,12 @@ assert_allow "10. route executor=claude -> allow (nothing to redirect to)"
 # 11. malformed/empty stdin -> allow, exit 0.
 # =============================================================================
 T=$(fresh_tmpdir)
-run_hook "" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "11a. empty stdin -> allow"
 assert_eq "11a-count. empty stdin never consults agent-exec" "0" "$(log_lines "$T")"
 
 T=$(fresh_tmpdir)
-run_hook 'not { valid json at all' "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook 'not { valid json at all' "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "11b. malformed (non-JSON) stdin -> allow"
 
 # =============================================================================
@@ -317,7 +317,7 @@ assert_allow "12. agent-exec absent from PATH -> allow"
 T=$(fresh_tmpdir)
 ROUND1_PROMPT="Implement formatBytes(bytes) returning a human-readable string."
 P1=$(make_payload "sess-retrysuffix" "Agent" "orchestra-light" "haiku" "$ROUND1_PROMPT" "impl task")
-run_hook "$P1" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P1" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_deny "13a. round 1 -> deny"
 
 ROUND2_PROMPT="${ROUND1_PROMPT}
@@ -325,7 +325,7 @@ ROUND2_PROMPT="${ROUND1_PROMPT}
 This is retry 2 of 3. Your previous attempt already wrote files to disk at the paths you used before. Read those files first, then apply this feedback exactly, changing only what it names:
 {\"pass\": false, \"reason\": \"formatBytes(1536) returned '1.5KB' but expected '1.5 KB' (missing space)\"}"
 P2=$(make_payload "sess-retrysuffix" "Agent" "orchestra-light" "haiku" "$ROUND2_PROMPT" "impl task retry")
-run_hook "$P2" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P2" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "13b. round 2 (mutated prompt, different fingerprint) -> allow (defect 1 fix)"
 
 # =============================================================================
@@ -340,7 +340,7 @@ DENY_COUNT=0
 ROUND_PROMPT="$BASE_PROMPT"
 for i in 1 2 3; do
     P=$(make_payload "sess-3round" "Agent" "orchestra-light" "haiku" "$ROUND_PROMPT" "round $i")
-    run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+    run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
     if [ "$RC" -ne 0 ]; then
         echo "FAIL: 14. round $i: hook exited nonzero ($RC)"
         FAIL=$((FAIL + 1))
@@ -362,11 +362,11 @@ assert_eq "14. at most one deny across a 3-round retry loop" "1" "$DENY_COUNT"
 # =============================================================================
 T=$(fresh_tmpdir)
 PA=$(make_payload "sess-twotasks" "Agent" "orchestra-light" "haiku" "Implement a CSV parser" "task A")
-run_hook "$PA" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$PA" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_deny "15a. first (unrelated) task -> deny"
 
 PB=$(make_payload "sess-twotasks" "Agent" "orchestra-light" "haiku" "Implement a completely different rate limiter module" "task B, nothing to do with task A")
-run_hook "$PB" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$PB" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "15b. second unrelated task, same session -> allow (per-session cap, not per-task)"
 
 # =============================================================================
@@ -375,17 +375,17 @@ assert_allow "15b. second unrelated task, same session -> allow (per-session cap
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-genpurpose" "Agent" "general-purpose" "haiku" "Implement R" "impl task")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_deny "16. subagent_type=general-purpose + haiku -> deny"
 
 # =============================================================================
 # 17. A named custom subagent_type + haiku -> allow (naming any specific,
 #    non-generic agent IS the tool-control / specialized-prompt mechanism;
-#    Copilot cannot substitute for it -- this is the FIX B carve-out).
+#    an external executor cannot substitute for it -- this is the FIX B carve-out).
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-customagent" "Agent" "my-custom-worker" "haiku" "Implement Q" "impl task")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_allow "17. named custom subagent_type + haiku -> allow"
 
 # =============================================================================
@@ -395,7 +395,7 @@ assert_allow "17. named custom subagent_type + haiku -> allow"
 # =============================================================================
 T=$(fresh_tmpdir)
 P=$(make_payload "sess-namespaced" "Agent" "orchestra:orchestra-light" "haiku" "Implement P" "impl task")
-run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=copilot
+run_hook "$P" "$T" STUB_LIGHT_CLASS=block STUB_ROUTE_EXECUTOR=pi
 assert_deny "18. subagent_type=orchestra:orchestra-light -> still deniable"
 
 # =============================================================================

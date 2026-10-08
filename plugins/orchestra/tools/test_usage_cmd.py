@@ -537,39 +537,39 @@ class DelegatedCodexRunScopeTests(unittest.TestCase):
                 agent_exec.collect_codex_usage(CUTOFF, home=home))
 
 
-class CopilotAggregationTests(unittest.TestCase):
+class TelemetryAggregationTests(unittest.TestCase):
     def _record(self, ts, **usage):
-        return {"event": "dispatch", "executor": "copilot", "ts": iso(ts),
+        return {"event": "dispatch", "executor": "pi", "ts": iso(ts),
                 "usage": usage}
 
     def test_sums_in_window_dispatch_records(self):
         records = [
             self._record(NOW - timedelta(hours=1), input_tokens=10,
-                         output_tokens=2, cached_input_tokens=5,
-                         aiu_nano=1000, premium_requests=1),
+                         output_tokens=2, cached_input_tokens=5),
             self._record(NOW - timedelta(hours=2), input_tokens=1,
-                         output_tokens=1, aiu_nano=500, premium_requests=2),
+                         output_tokens=1),
             self._record(NOW - timedelta(days=4), input_tokens=999),
-            {"event": "run_summary", "executor": "copilot", "ts": iso(NOW),
+            {"event": "run_summary", "executor": "pi", "ts": iso(NOW),
              "usage": {"input_tokens": 777}},
             {"event": "dispatch", "executor": "codex", "ts": iso(NOW),
              "usage": {"input_tokens": 888}},
-            {"event": "dispatch", "executor": "copilot", "ts": iso(NOW)},
-            {"event": "dispatch", "executor": "copilot", "usage": {"input_tokens": 3}},
+            # A removed executor's historical record is just another executor.
+            {"event": "dispatch", "executor": "copilot", "ts": iso(NOW),
+             "usage": {"input_tokens": 666}},
+            {"event": "dispatch", "executor": "pi", "ts": iso(NOW)},
+            {"event": "dispatch", "executor": "pi", "usage": {"input_tokens": 3}},
             "not a dict",
         ]
-        acc = agent_exec.aggregate_copilot_records(records, CUTOFF)
+        acc = agent_exec.aggregate_telemetry_records(records, CUTOFF, "pi")
         self.assertEqual(acc["records"], 2)
         self.assertEqual(
             acc["tokens"],
             {"input_tokens": 11, "output_tokens": 3, "cached_input_tokens": 5},
         )
-        self.assertEqual(acc["aiu_nano"], 1500)
-        self.assertEqual(acc["premium_requests"], 3)
 
     def test_telemetry_disabled_is_unavailable_not_zeros(self):
         cfg = {"telemetry": {"enabled": False, "dir": "/nonexistent-dir"}}
-        entry = agent_exec.collect_copilot_usage(CUTOFF, cfg)
+        entry = agent_exec.collect_telemetry_usage(CUTOFF, cfg, "pi")
         self.assertEqual(entry["status"], "unavailable")
         self.assertIn("note", entry)
         self.assertEqual(entry["tokens"], agent_exec._zero_tokens())
@@ -577,21 +577,19 @@ class CopilotAggregationTests(unittest.TestCase):
     def test_enabled_but_missing_file_is_unavailable(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = {"telemetry": {"enabled": True, "dir": tmp}}
-            entry = agent_exec.collect_copilot_usage(CUTOFF, cfg)
+            entry = agent_exec.collect_telemetry_usage(CUTOFF, cfg, "pi")
             self.assertEqual(entry["status"], "unavailable")
 
     def test_enabled_with_records_reads_them(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "records.jsonl")
             with open(path, "w", encoding="utf-8") as f:
-                f.write(json.dumps(self._record(NOW, input_tokens=7,
-                                                premium_requests=1)) + "\n")
+                f.write(json.dumps(self._record(NOW, input_tokens=7)) + "\n")
                 f.write("truncated{\n")
             cfg = {"telemetry": {"enabled": True, "dir": tmp}}
-            entry = agent_exec.collect_copilot_usage(CUTOFF, cfg)
+            entry = agent_exec.collect_telemetry_usage(CUTOFF, cfg, "pi")
             self.assertEqual(entry["status"], "ok")
             self.assertEqual(entry["tokens"]["input_tokens"], 7)
-            self.assertEqual(entry["premium_requests"], 1)
 
 
 class TotalsAndReportTests(unittest.TestCase):
@@ -601,7 +599,7 @@ class TotalsAndReportTests(unittest.TestCase):
                        "tokens": {"input_tokens": 10, "output_tokens": 1,
                                   "cached_input_tokens": 2}},
             "codex": {"status": "empty", "tokens": agent_exec._zero_tokens()},
-            "copilot": {"status": "unavailable",
+            "pi": {"status": "unavailable",
                         "tokens": {"input_tokens": 999, "output_tokens": 999,
                                    "cached_input_tokens": 999}},
         }
@@ -731,7 +729,7 @@ class ReadOnlyTests(unittest.TestCase):
             telemetry_dir = os.path.join(home, "telemetry")
             write_lines(
                 os.path.join(telemetry_dir, "records.jsonl"),
-                [json.dumps({"event": "dispatch", "executor": "copilot",
+                [json.dumps({"event": "dispatch", "executor": "pi",
                              "ts": iso(NOW), "usage": {"input_tokens": 4}})],
             )
 
@@ -794,12 +792,12 @@ class DeterministicScopeTests(unittest.TestCase):
 
     def test_run_and_session_union_still_reports_ledger_totals(self):
         # Regression: a non-empty --session must not suppress the --run
-        # scope's real ledger contribution for copilot/codex.
+        # scope's real ledger contribution for pi/codex.
         with tempfile.TemporaryDirectory() as home:
             telemetry_dir = os.path.join(home, "telemetry")
             ledger_dir = os.path.join(home, "runs")
             write_lines(os.path.join(ledger_dir, "ledger-session", "one.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 9}),
+                json.dumps({"executor": "pi", "input_tokens": 9}),
                 json.dumps({"executor": "codex", "input_tokens": 6}),
             ])
             slug = agent_exec.claude_project_slug("/x")
@@ -807,19 +805,37 @@ class DeterministicScopeTests(unittest.TestCase):
                 os.path.join(home, ".claude", "projects", slug, "s-1.jsonl"),
                 [claude_line(NOW, input_tokens=2)])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["claude", "copilot", "codex"],
+                CUTOFF, NOW, ["claude", "pi", "codex"],
                 cfg={"telemetry": {"dir": telemetry_dir}},
                 home=home, cwd="/x", run_ids=["one"], session_ids=["s-1"])
             self.assertEqual(report["scope"], {
                 "kind": "run+session", "run_ids": ["one"], "session_ids": ["s-1"]})
             self.assertEqual(
-                report["sources"]["copilot"]["tokens"]["input_tokens"], 9)
+                report["sources"]["pi"]["tokens"]["input_tokens"], 9)
             self.assertEqual(
                 report["sources"]["codex"]["tokens"]["input_tokens"], 6)
-            self.assertNotIn("attributable", report["sources"]["copilot"])
+            self.assertNotIn("attributable", report["sources"]["pi"])
             self.assertNotIn("attributable", report["sources"]["codex"])
             self.assertNotIn("since", report)
             self.assertNotIn("now", report)
+
+    def test_historical_ledger_lines_of_removed_executors_do_not_break_reports(self):
+        with tempfile.TemporaryDirectory() as home:
+            ledger_dir = os.path.join(home, "runs")
+            write_lines(os.path.join(ledger_dir, "sess-h", "no.run.jsonl"), [
+                json.dumps({"executor": "copilot", "input_tokens": 7,
+                            "aiu_nano": 123, "premium_requests": 1}),
+                json.dumps({"executor": "opencode", "input_tokens": 8,
+                            "cost_micro_usd": 5}),
+                json.dumps({"executor": "pi", "input_tokens": 5}),
+            ])
+            report = agent_exec.build_usage_report(
+                CUTOFF, NOW, ["pi", "codex"],
+                cfg={"telemetry": {"dir": os.path.join(home, "t"), "enabled": False}},
+                home=home, cwd="/x", session_ids=["sess-h"])
+            self.assertEqual(report["sources"]["pi"]["tokens"]["input_tokens"], 5)
+            self.assertEqual(report["totals"]["input_tokens"], 5)
+            self.assertNotIn("aiu_nano", report["sources"]["pi"])
 
     def test_session_scope_reports_no_matching_run_ledger_data_per_source(self):
         # Section C: under --session, a source with no lines in the
@@ -830,15 +846,15 @@ class DeterministicScopeTests(unittest.TestCase):
             telemetry_dir = os.path.join(home, "telemetry")
             ledger_dir = os.path.join(home, "runs")
             write_lines(os.path.join(ledger_dir, "sess-x", "no.run.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 5}),
+                json.dumps({"executor": "pi", "input_tokens": 5}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot", "codex"],
+                CUTOFF, NOW, ["pi", "codex"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", session_ids=["sess-x"])
-            self.assertEqual(report["sources"]["copilot"]["status"], "ok")
+            self.assertEqual(report["sources"]["pi"]["status"], "ok")
             self.assertEqual(
-                report["sources"]["copilot"]["tokens"]["input_tokens"], 5)
+                report["sources"]["pi"]["tokens"]["input_tokens"], 5)
             self.assertEqual(report["sources"]["codex"], {
                 "attributable": False,
                 "reason": "no matching run ledger data",
@@ -895,16 +911,16 @@ class DeterministicScopeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(agent_exec.read_run_ledger(directory, "missing"), [])
             write_lines(os.path.join(directory, "session", "r.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 4}),
+                json.dumps({"executor": "pi", "input_tokens": 4}),
                 "garbage",
             ])
             self.assertEqual(agent_exec.read_run_ledger(directory, "r"),
-                             [{"executor": "copilot", "input_tokens": 4}])
+                             [{"executor": "pi", "input_tokens": 4}])
             write_lines(os.path.join(directory, "r.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 999}),
+                json.dumps({"executor": "pi", "input_tokens": 999}),
             ])
             self.assertEqual(agent_exec.read_run_ledger(directory, "r"),
-                             [{"executor": "copilot", "input_tokens": 4}])
+                             [{"executor": "pi", "input_tokens": 4}])
             self.assertEqual(agent_exec.read_run_ledger(
                 os.path.join(directory, "absent"), "r"), [])
 
@@ -953,21 +969,21 @@ class DeterministicScopeTests(unittest.TestCase):
             ledger_dir = os.path.join(home, "runs")
             sid = "30ad8eb2-33a4-4ed8-bc5a-f21d111223b2"
             write_lines(os.path.join(ledger_dir, sid, "wf_a.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 100}),
+                json.dumps({"executor": "pi", "input_tokens": 100}),
             ])
             write_lines(os.path.join(ledger_dir, sid, "wf_b.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 200}),
+                json.dumps({"executor": "pi", "input_tokens": 200}),
                 json.dumps({"executor": "codex", "input_tokens": 50}),
             ])
             write_lines(os.path.join(ledger_dir, sid, "no.run.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 300}),
+                json.dumps({"executor": "pi", "input_tokens": 300}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot", "codex"],
+                CUTOFF, NOW, ["pi", "codex"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", run_ids=[sid])
             self.assertEqual(report["scope"], {"kind": "run", "run_ids": [sid]})
-            for name in ("copilot", "codex"):
+            for name in ("pi", "codex"):
                 self.assertEqual(report["sources"][name], {
                     "attributable": False,
                     "reason": "no matching run ledger data",
@@ -985,19 +1001,19 @@ class DeterministicScopeTests(unittest.TestCase):
             ledger_dir = os.path.join(home, "runs")
             sid = "30ad8eb2-33a4-4ed8-bc5a-f21d111223b2"
             write_lines(os.path.join(ledger_dir, sid, "wf_a.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 100}),
+                json.dumps({"executor": "pi", "input_tokens": 100}),
                 json.dumps({"executor": "codex", "input_tokens": 25}),
             ])
             write_lines(os.path.join(ledger_dir, sid + ".jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 6370990}),
+                json.dumps({"executor": "pi", "input_tokens": 6370990}),
                 json.dumps({"executor": "codex", "input_tokens": 561018}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot", "codex"],
+                CUTOFF, NOW, ["pi", "codex"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", run_ids=[sid])
             self.assertEqual(report["scope"], {"kind": "run", "run_ids": [sid]})
-            for name in ("copilot", "codex"):
+            for name in ("pi", "codex"):
                 self.assertEqual(report["sources"][name], {
                     "attributable": False,
                     "reason": "no matching run ledger data",
@@ -1012,36 +1028,36 @@ class DeterministicScopeTests(unittest.TestCase):
             telemetry_dir = os.path.join(home, "telemetry")
             ledger_dir = os.path.join(home, "runs")
             write_lines(os.path.join(ledger_dir, "sess-a", "shared.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 3}),
+                json.dumps({"executor": "pi", "input_tokens": 3}),
             ])
             write_lines(os.path.join(ledger_dir, "sess-b", "shared.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 5}),
+                json.dumps({"executor": "pi", "input_tokens": 5}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", run_ids=["shared"])
             self.assertEqual(
-                report["sources"]["copilot"]["tokens"]["input_tokens"], 8)
-            self.assertEqual(report["sources"]["copilot"]["records"], 2)
+                report["sources"]["pi"]["tokens"]["input_tokens"], 8)
+            self.assertEqual(report["sources"]["pi"]["records"], 2)
 
     def test_run_scope_ignores_legacy_flat_file(self):
         with tempfile.TemporaryDirectory() as home:
             telemetry_dir = os.path.join(home, "telemetry")
             ledger_dir = os.path.join(home, "runs")
             write_lines(os.path.join(ledger_dir, "sess-a", "combo.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 4}),
+                json.dumps({"executor": "pi", "input_tokens": 4}),
             ])
             write_lines(os.path.join(ledger_dir, "combo.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 9}),
+                json.dumps({"executor": "pi", "input_tokens": 9}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", run_ids=["combo"])
             self.assertEqual(
-                report["sources"]["copilot"]["tokens"]["input_tokens"], 4)
-            self.assertEqual(report["sources"]["copilot"]["records"], 1)
+                report["sources"]["pi"]["tokens"]["input_tokens"], 4)
+            self.assertEqual(report["sources"]["pi"]["records"], 1)
 
     def test_run_scope_requires_workflows_parent(self):
         with tempfile.TemporaryDirectory() as home:
@@ -1073,19 +1089,19 @@ class DeterministicScopeTests(unittest.TestCase):
             ledger_dir = os.path.join(home, "runs")
             sid = "sess-shadow"
             write_lines(os.path.join(ledger_dir, sid, "no.run.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 2}),
+                json.dumps({"executor": "pi", "input_tokens": 2}),
             ])
             # A legacy flat file that happens to share the session's name.
             write_lines(os.path.join(ledger_dir, sid + ".jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 999}),
+                json.dumps({"executor": "pi", "input_tokens": 999}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", session_ids=[sid])
             self.assertEqual(
-                report["sources"]["copilot"]["tokens"]["input_tokens"], 2)
-            self.assertEqual(report["sources"]["copilot"]["records"], 1)
+                report["sources"]["pi"]["tokens"]["input_tokens"], 2)
+            self.assertEqual(report["sources"]["pi"]["records"], 1)
 
     def test_session_scope_runs_breakdown_exact_shape(self):
         with tempfile.TemporaryDirectory() as home:
@@ -1093,23 +1109,23 @@ class DeterministicScopeTests(unittest.TestCase):
             ledger_dir = os.path.join(home, "runs")
             sid = "sess-breakdown"
             write_lines(os.path.join(ledger_dir, sid, "wf_a.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 1})
+                json.dumps({"executor": "pi", "input_tokens": 1})
                 for _ in range(3)
             ])
             write_lines(os.path.join(ledger_dir, sid, "wf_b.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 1})
+                json.dumps({"executor": "pi", "input_tokens": 1})
                 for _ in range(5)
             ])
             write_lines(os.path.join(ledger_dir, sid, "no.run.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 1})
+                json.dumps({"executor": "pi", "input_tokens": 1})
                 for _ in range(2)
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot", "codex"],
+                CUTOFF, NOW, ["pi", "codex"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", session_ids=[sid])
             self.assertEqual(
-                report["sources"]["copilot"]["runs"],
+                report["sources"]["pi"]["runs"],
                 {"wf_a": 3, "wf_b": 5, "no-run": 2})
             # codex has no ledger lines at all in this session: the key is
             # omitted, not present-and-empty.
@@ -1132,19 +1148,19 @@ class DeterministicScopeTests(unittest.TestCase):
             telemetry_dir = os.path.join(home, "telemetry")
             ledger_dir = os.path.join(home, "runs")
             write_lines(os.path.join(ledger_dir, "sess-only", "wf_c.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 1}),
+                json.dumps({"executor": "pi", "input_tokens": 1}),
             ])
             run_report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", run_ids=["wf_c"])
-            self.assertNotIn("runs", run_report["sources"]["copilot"])
+            self.assertNotIn("runs", run_report["sources"]["pi"])
 
             window_report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x")
-            self.assertNotIn("runs", window_report["sources"].get("copilot", {}))
+            self.assertNotIn("runs", window_report["sources"].get("pi", {}))
 
     def test_list_runs_respects_cwd_scope_unless_all_projects(self):
         with tempfile.TemporaryDirectory() as home:
@@ -1186,11 +1202,11 @@ class OrdinalAddressingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as ledger_dir:
             session = "ord-sess"
             write_lines(os.path.join(ledger_dir, session, "001-run_a.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+                       [json.dumps({"executor": "pi", "input_tokens": 1})])
             write_lines(os.path.join(ledger_dir, session, "002-run_b.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 2})])
+                       [json.dumps({"executor": "pi", "input_tokens": 2})])
             write_lines(os.path.join(ledger_dir, session, "003-wf_ord.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 3})])
+                       [json.dumps({"executor": "pi", "input_tokens": 3})])
             os.environ["CLAUDE_CODE_SESSION_ID"] = session
             for selector in ("3", "03", "003", "wf_ord"):
                 self.assertEqual(
@@ -1201,7 +1217,7 @@ class OrdinalAddressingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as ledger_dir:
             session = "ord-sess"
             write_lines(os.path.join(ledger_dir, session, "001-run_a.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+                       [json.dumps({"executor": "pi", "input_tokens": 1})])
             os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
             self.assertIsNone(agent_exec._resolve_run_selector(ledger_dir, "1"))
 
@@ -1209,23 +1225,23 @@ class OrdinalAddressingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as ledger_dir:
             write_lines(
                 os.path.join(ledger_dir, "session-other", "001-wf_other.jsonl"),
-                [json.dumps({"executor": "copilot", "input_tokens": 1})])
+                [json.dumps({"executor": "pi", "input_tokens": 1})])
             os.environ["CLAUDE_CODE_SESSION_ID"] = "session-mine"
             self.assertIsNone(agent_exec._resolve_run_selector(ledger_dir, "1"))
 
     def test_full_run_id_matches_both_prefixed_and_unprefixed_forms(self):
         with tempfile.TemporaryDirectory() as ledger_dir:
             write_lines(os.path.join(ledger_dir, "s1", "legacyrun.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+                       [json.dumps({"executor": "pi", "input_tokens": 1})])
             write_lines(os.path.join(ledger_dir, "s2", "005-otherrun.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 2})])
+                       [json.dumps({"executor": "pi", "input_tokens": 2})])
             os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
             self.assertEqual(
                 agent_exec.read_run_ledger(ledger_dir, "legacyrun"),
-                [{"executor": "copilot", "input_tokens": 1}])
+                [{"executor": "pi", "input_tokens": 1}])
             self.assertEqual(
                 agent_exec.read_run_ledger(ledger_dir, "otherrun"),
-                [{"executor": "copilot", "input_tokens": 2}])
+                [{"executor": "pi", "input_tokens": 2}])
 
     def test_runs_breakdown_ordinal_order_with_no_run_last(self):
         with tempfile.TemporaryDirectory() as home:
@@ -1235,16 +1251,16 @@ class OrdinalAddressingTests(unittest.TestCase):
             # (001), plus no.run.jsonl, so an alphabetical or filesystem
             # listing order would fail this assertion.
             write_lines(os.path.join(ledger_dir, session, "002-run_b.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+                       [json.dumps({"executor": "pi", "input_tokens": 1})])
             write_lines(os.path.join(ledger_dir, session, "001-run_a.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+                       [json.dumps({"executor": "pi", "input_tokens": 1})])
             write_lines(os.path.join(ledger_dir, session, "no.run.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 1})])
+                       [json.dumps({"executor": "pi", "input_tokens": 1})])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["copilot"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"ledger": {"dir": ledger_dir}}, home=home, cwd="/x",
                 session_ids=[session])
-            runs = report["sources"]["copilot"]["runs"]
+            runs = report["sources"]["pi"]["runs"]
             self.assertEqual(list(runs.keys()), ["run_a", "run_b", "no-run"])
 
     def test_list_runs_ordinal_field_present_and_null(self):
@@ -1252,7 +1268,7 @@ class OrdinalAddressingTests(unittest.TestCase):
             ledger_dir = os.path.join(home, "runs")
             session = "ord-list-sess"
             write_lines(os.path.join(ledger_dir, session, "001-wf_ledgered.jsonl"),
-                       [json.dumps({"executor": "copilot", "input_tokens": 1,
+                       [json.dumps({"executor": "pi", "input_tokens": 1,
                                     "ts": iso(NOW)})])
             slug = agent_exec.claude_project_slug("/x")
             write_lines(
@@ -1261,7 +1277,7 @@ class OrdinalAddressingTests(unittest.TestCase):
                 [claude_line(NOW, input_tokens=1)])
             os.environ["CLAUDE_CODE_SESSION_ID"] = session
             runs = agent_exec._list_usage_runs(
-                home=home, config_dir="", sources=["claude", "copilot"],
+                home=home, config_dir="", sources=["claude", "pi"],
                 cfg={"ledger": {"dir": ledger_dir},
                      "telemetry": {"dir": os.path.join(home, "telemetry")}},
                 all_projects=True)
@@ -1394,23 +1410,23 @@ class EndToEndSubprocessTests(unittest.TestCase):
             ledger_dir = os.path.join(home, ".claude", "orchestra", "runs")
             sid = "e2e-session-30ad8eb2"
             write_lines(os.path.join(ledger_dir, sid, "wf_a.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 100}),
+                json.dumps({"executor": "pi", "input_tokens": 100}),
             ])
             write_lines(os.path.join(ledger_dir, sid, "wf_b.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 200}),
+                json.dumps({"executor": "pi", "input_tokens": 200}),
             ])
             write_lines(os.path.join(ledger_dir, sid, "no.run.jsonl"), [
-                json.dumps({"executor": "copilot", "input_tokens": 300}),
+                json.dumps({"executor": "pi", "input_tokens": 300}),
             ])
             rc, out, err = run_cli(
-                ["--run", sid, "--source", "copilot", "--json"], home=home)
+                ["--run", sid, "--source", "pi", "--json"], home=home)
             self.assertEqual(rc, 0, err)
             parsed = json.loads(out)
-            self.assertEqual(parsed["sources"]["copilot"], {
+            self.assertEqual(parsed["sources"]["pi"], {
                 "attributable": False,
                 "reason": "no matching run ledger data",
             })
-            self.assertNotIn("tokens", parsed["sources"]["copilot"])
+            self.assertNotIn("tokens", parsed["sources"]["pi"])
 
     def test_run_scope_requires_workflows_parent_over_subprocess(self):
         # THE LITERAL REGRESSION 2 SCENARIO, driven through the real CLI
@@ -1477,7 +1493,7 @@ class EndToEndSubprocessTests(unittest.TestCase):
             ledger_dir = os.path.join(home, ".claude", "orchestra", "runs")
             write_lines(
                 os.path.join(ledger_dir, session_id, "007-%s.jsonl" % run_id),
-                [json.dumps({"executor": "copilot", "input_tokens": 11,
+                [json.dumps({"executor": "pi", "input_tokens": 11,
                             "output_tokens": 3})])
             self._write_claude(
                 home, "s", "subagents/workflows/%s/x.jsonl" % run_id,
@@ -1497,7 +1513,7 @@ class EndToEndSubprocessTests(unittest.TestCase):
             self.assertEqual(
                 base["sources"]["claude"]["tokens"]["output_tokens"], 7)
             self.assertEqual(
-                base["sources"]["copilot"]["tokens"]["input_tokens"], 11)
+                base["sources"]["pi"]["tokens"]["input_tokens"], 11)
             for selector in ("7", "07", "007"):
                 self.assertEqual(reports[selector], base, "selector %r" % selector)
 
@@ -1508,13 +1524,13 @@ class EndToEndSubprocessTests(unittest.TestCase):
             ledger_dir = os.path.join(home, ".claude", "orchestra", "runs")
             write_lines(
                 os.path.join(ledger_dir, session_id, "001-%s.jsonl" % run_id),
-                [json.dumps({"executor": "copilot", "input_tokens": 5})])
+                [json.dumps({"executor": "pi", "input_tokens": 5})])
             rc, out, err = run_cli(
-                ["--run", "1", "--source", "copilot", "--json"], home=home,
+                ["--run", "1", "--source", "pi", "--json"], home=home,
                 unset_env=["CLAUDE_CODE_SESSION_ID"])
             self.assertEqual(rc, 0, err)
             parsed = json.loads(out)
-            self.assertEqual(parsed["sources"]["copilot"], {
+            self.assertEqual(parsed["sources"]["pi"], {
                 "attributable": False, "reason": "no matching run ledger data"})
 
     def test_ordinal_in_different_session_matches_nothing_over_subprocess(self):
@@ -1522,13 +1538,13 @@ class EndToEndSubprocessTests(unittest.TestCase):
             ledger_dir = os.path.join(home, ".claude", "orchestra", "runs")
             write_lines(
                 os.path.join(ledger_dir, "session-other", "001-wf_other.jsonl"),
-                [json.dumps({"executor": "copilot", "input_tokens": 9})])
+                [json.dumps({"executor": "pi", "input_tokens": 9})])
             rc, out, err = run_cli(
-                ["--run", "1", "--source", "copilot", "--json"], home=home,
+                ["--run", "1", "--source", "pi", "--json"], home=home,
                 extra_env={"CLAUDE_CODE_SESSION_ID": "session-mine"})
             self.assertEqual(rc, 0, err)
             parsed = json.loads(out)
-            self.assertEqual(parsed["sources"]["copilot"], {
+            self.assertEqual(parsed["sources"]["pi"], {
                 "attributable": False, "reason": "no matching run ledger data"})
 
 

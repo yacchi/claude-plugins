@@ -21,10 +21,10 @@ class TestUsageTelemetrySanitization(unittest.TestCase):
                 "input_tokens": 100,
                 "output_tokens": 50,
                 "cached_input_tokens": 25,
-                "aiu_nano": 1000000,
-                "premium_requests": 5,
                 "api_duration_ms": 2500,
                 "session_duration_ms": 3000,
+                "aiu_nano": 1000000,  # removed with its executor: dropped
+                "premium_requests": 5,
             },
         }
         out = agent_exec.sanitize_telemetry_record(raw)
@@ -34,8 +34,8 @@ class TestUsageTelemetrySanitization(unittest.TestCase):
         self.assertEqual(usage["input_tokens"], 100)
         self.assertEqual(usage["output_tokens"], 50)
         self.assertEqual(usage["cached_input_tokens"], 25)
-        self.assertEqual(usage["aiu_nano"], 1000000)
-        self.assertEqual(usage["premium_requests"], 5)
+        self.assertNotIn("aiu_nano", usage)
+        self.assertNotIn("premium_requests", usage)
         self.assertEqual(usage["api_duration_ms"], 2500)
         self.assertEqual(usage["session_duration_ms"], 3000)
 
@@ -222,19 +222,15 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
             "status": "ok",
             "reason": None,
             "usage": {
-                "premium_requests": 5,
                 "api_duration_ms": 2500,
                 "session_duration_ms": 3000,
-                "aiu_nano": 1000000,
             },
         }
-        record = agent_exec.build_dispatch_record("copilot", result, None, "light")
+        record = agent_exec.build_dispatch_record("pi", result, None, "light")
         self.assertIn("usage", record)
         usage = record["usage"]
-        self.assertEqual(usage["premium_requests"], 5)
         self.assertEqual(usage["api_duration_ms"], 2500)
         self.assertEqual(usage["session_duration_ms"], 3000)
-        self.assertEqual(usage["aiu_nano"], 1000000)
 
     def test_flatten_tokens_from_nested_dict(self):
         """Tokens are flattened from nested usage['tokens'] dict."""
@@ -242,7 +238,7 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
             "status": "ok",
             "reason": None,
             "usage": {
-                "premium_requests": 5,
+                "api_duration_ms": 5,
                 "tokens": {
                     "input_tokens": 100,
                     "output_tokens": 50,
@@ -250,9 +246,9 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
                 },
             },
         }
-        record = agent_exec.build_dispatch_record("copilot", result, None, "light")
+        record = agent_exec.build_dispatch_record("pi", result, None, "light")
         usage = record["usage"]
-        self.assertEqual(usage["premium_requests"], 5)
+        self.assertEqual(usage["api_duration_ms"], 5)
         self.assertEqual(usage["input_tokens"], 100)
         self.assertEqual(usage["output_tokens"], 50)
         self.assertEqual(usage["cached_input_tokens"], 25)
@@ -263,7 +259,7 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
             "status": "ok",
             "reason": None,
         }
-        record = agent_exec.build_dispatch_record("copilot", result, None, "light")
+        record = agent_exec.build_dispatch_record("pi", result, None, "light")
         self.assertNotIn("usage", record)
 
     def test_omit_usage_when_empty_dict(self):
@@ -273,7 +269,7 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
             "reason": None,
             "usage": {},
         }
-        record = agent_exec.build_dispatch_record("copilot", result, None, "light")
+        record = agent_exec.build_dispatch_record("pi", result, None, "light")
         self.assertNotIn("usage", record)
 
     def test_omit_usage_when_only_invalid_values(self):
@@ -282,12 +278,12 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
             "status": "ok",
             "reason": None,
             "usage": {
-                "premium_requests": -5,  # negative
+                "session_duration_ms": -5,  # negative
                 "api_duration_ms": True,  # bool
                 "unknown_key": 999,  # unknown
             },
         }
-        record = agent_exec.build_dispatch_record("copilot", result, None, "light")
+        record = agent_exec.build_dispatch_record("pi", result, None, "light")
         self.assertNotIn("usage", record)
 
     def test_never_copy_answer(self):
@@ -297,7 +293,7 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
             "reason": None,
             "answer": "This is a dangerous payload",
         }
-        record = agent_exec.build_dispatch_record("copilot", result, None, "light")
+        record = agent_exec.build_dispatch_record("pi", result, None, "light")
         self.assertNotIn("answer", record)
         serialized = json.dumps(record, ensure_ascii=False)
         self.assertNotIn("dangerous payload", serialized)
@@ -308,9 +304,9 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
             "status": "ok",
             "reason": None,
         }
-        record = agent_exec.build_dispatch_record("copilot", result, None, "light")
+        record = agent_exec.build_dispatch_record("pi", result, None, "light")
         self.assertEqual(record["event"], "dispatch")
-        self.assertEqual(record["executor"], "copilot")
+        self.assertEqual(record["executor"], "pi")
         self.assertEqual(record["status"], "ok")
         self.assertIsNone(record["reason"])
         self.assertFalse(record["resumed"])
@@ -322,7 +318,6 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
             "status": "ok",
             "reason": None,
             "usage": {
-                "premium_requests": 5,
                 "api_duration_ms": -100,  # invalid
                 "session_duration_ms": 3000,
                 "tokens": {
@@ -332,9 +327,8 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
                 },
             },
         }
-        record = agent_exec.build_dispatch_record("copilot", result, None, "light")
+        record = agent_exec.build_dispatch_record("pi", result, None, "light")
         usage = record["usage"]
-        self.assertEqual(usage["premium_requests"], 5)
         self.assertNotIn("api_duration_ms", usage)
         self.assertEqual(usage["session_duration_ms"], 3000)
         self.assertEqual(usage["input_tokens"], 100)
@@ -347,16 +341,16 @@ class TestBuildDispatchRecordUsageFlattening(unittest.TestCase):
             "status": "ok",
             "reason": None,
             "usage": {
-                "premium_requests": 0,
+                "session_duration_ms": 0,
                 "api_duration_ms": 0,
                 "tokens": {
                     "input_tokens": 0,
                 },
             },
         }
-        record = agent_exec.build_dispatch_record("copilot", result, None, "light")
+        record = agent_exec.build_dispatch_record("pi", result, None, "light")
         usage = record["usage"]
-        self.assertEqual(usage["premium_requests"], 0)
+        self.assertEqual(usage["session_duration_ms"], 0)
         self.assertEqual(usage["api_duration_ms"], 0)
         self.assertEqual(usage["input_tokens"], 0)
 
@@ -377,7 +371,7 @@ class TestSchemaVersionV2(unittest.TestCase):
     def test_v2_in_dispatch_record_after_sanitize(self):
         """Dispatch records sanitize to v2."""
         result = {"status": "ok", "reason": None}
-        record = agent_exec.build_dispatch_record("copilot", result, None, None)
+        record = agent_exec.build_dispatch_record("pi", result, None, None)
         sanitized = agent_exec.sanitize_telemetry_record(record)
         self.assertEqual(sanitized["schema_version"], 2)
 

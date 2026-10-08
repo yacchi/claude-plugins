@@ -26,7 +26,12 @@ class DispatchTokenTests(unittest.TestCase):
         self.home.mkdir()
         self.contract = self.root / "contract.md"
         self.contract.write_text("DISTINCT CONTRACT SENTENCE\n", encoding="utf-8")
-        self.env = dict(os.environ, HOME=str(self.home))
+        # `--detach` re-executes whichever `agent-exec` is first on PATH; put
+        # this checkout's own first so the child runs the code under test, not
+        # an installed copy.
+        self.env = dict(
+            os.environ, HOME=str(self.home),
+            PATH=str(SCRIPT.parent) + os.pathsep + os.environ.get("PATH", ""))
 
     def tearDown(self):
         self.temp.cleanup()

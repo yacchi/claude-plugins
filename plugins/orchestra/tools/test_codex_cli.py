@@ -162,7 +162,7 @@ class ParseCodexJsonlTests(unittest.TestCase):
         })
 
     def test_no_cost_is_reported_and_none_is_fabricated(self):
-        """codex reports no currency figure at all, so the field opencode
+        """codex reports no currency figure at all, so the field pi
         would populate is simply absent -- never a made-up zero."""
         result = self._parse(_success_lines())
         self.assertNotIn("cost_micro_usd", result["usage"])
@@ -265,14 +265,14 @@ class CodexRegistrationTests(unittest.TestCase):
             "review": {"model": "gpt-5.6-sol", "effort": "low"},
         })
 
-    def test_priority_is_unchanged(self):
+    def test_priority_lists_codex_behind_pi_and_claude(self):
         priority = agent_exec.DEFAULTS["priority"]
         self.assertEqual(
             priority["standard"]["default"],
-            ["opencode", "copilot", "claude", "codex"],
+            ["pi", "claude", "codex"],
         )
-        self.assertEqual(priority["deep"]["default"], ["claude", "codex"])
-        self.assertEqual(priority["independent-review"]["default"], ["codex"])
+        self.assertEqual(priority["deep"]["default"], ["claude", "pi", "codex"])
+        self.assertEqual(priority["independent-review"]["default"], ["pi", "codex"])
 
     def test_capture_runner_is_registered_by_name(self):
         self.assertEqual(agent_exec._ARGV_BUILDERS["codex"],
@@ -668,7 +668,7 @@ class DispatchSessionSubcommandTests(_CodexDispatchHarness):
         self.dispatch("--task", "t1")
         rc, out = self._session("--task", "t1", "--executor", "codex", "--json")
         self.assertEqual(json.loads(out)["session_id"], THREAD)
-        rc, out = self._session("--task", "t1", "--executor", "opencode",
+        rc, out = self._session("--task", "t1", "--executor", "pi",
                                 "--json")
         self.assertEqual(json.loads(out), {"status": "none"})
 
@@ -763,10 +763,13 @@ class CodexAvailabilityGatingTests(unittest.TestCase):
                           report["ready"]["codex"]["missing"])
 
             # `standard` lists codex behind claude, which always survives,
-            # so exhaust everything ahead of it to actually reach the gate.
+            # so rule out everything ahead of it to actually reach the gate.
+            # (pi is disabled rather than exhausted: an exhausted pi would
+            # skip codex too, as the two share one subscription.)
+            resolved["external_executors"]["pi"]["enabled"] = False
             route = agent_exec.resolve_route(
                 resolved, report, "standard",
-                exhausted=["opencode", "copilot", "claude"],
+                exhausted=["claude"],
             )
             self.assertNotEqual(route["executor"], "codex")
             self.assertIsNone(route["executor"])
