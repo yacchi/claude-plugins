@@ -1,0 +1,32 @@
+diff -ruN a/ledger/reporting.py b/ledger/reporting.py
+--- a/ledger/reporting.py	2026-10-09 14:23:20
++++ b/ledger/reporting.py	2026-10-09 14:23:20
+@@ -22,11 +22,18 @@
+     tax: Money
+ 
+ 
++def _signed_usd(entry: Entry) -> Money:
++    usd = to_usd(entry.amount)
++    if entry.kind == "credit" and usd.amount > 0:
++        return -usd
++    return usd
++
++
+ def revenue_by_month(entries: Iterable[Entry]) -> dict[str, Money]:
+     """USD revenue per ``YYYY-MM``, months in chronological order."""
+     buckets: dict[str, list[Money]] = defaultdict(list)
+     for entry in entries:
+-        buckets[month_key(entry.date)].append(to_usd(entry.amount))
++        buckets[month_key(entry.date)].append(_signed_usd(entry))
+     return {
+         key: sum_money(buckets[key], REPORTING_CURRENCY)
+         for key in sorted(buckets)
+@@ -37,7 +44,7 @@
+     """USD balance per customer, largest balance first, ties by customer name."""
+     totals: dict[str, Money] = {}
+     for entry in entries:
+-        usd = to_usd(entry.amount)
++        usd = _signed_usd(entry)
+         totals[entry.customer] = totals.get(entry.customer, Money.zero(REPORTING_CURRENCY)) + usd
+     return sorted(totals.items(), key=lambda item: (-item[1].amount, item[0]))
+ 

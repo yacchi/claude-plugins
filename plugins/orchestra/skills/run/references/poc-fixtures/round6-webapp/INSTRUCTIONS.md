@@ -24,6 +24,8 @@ Endpoints:
   - `sort=dueDate` (or `sort` omitted entirely, the default): order chronologically by `dueDate`.
   - `sort=priority`: order by how urgent the priority is (`high` is the most urgent, then `medium`, then `low`) — **not** alphabetically.
   - `order=asc` (default if omitted) vs `order=desc` flips the direction for whichever field is being sorted.
+    - For `sort=priority`, `order=asc` means least urgent first: `low`, then `medium`, then `high`. `order=desc` is the reverse: `high`, then `medium`, then `low`.
+    - For `sort=dueDate`, `order=asc` means earliest date first; `order=desc` means latest first.
   - When two tasks tie on the primary sort key, break the tie by `dueDate` ascending, regardless of what the primary sort field was.
   - Every call to this endpoint must return the same, fully deterministic order for the same underlying data — the ordering must never depend on incidental iteration order of whatever data structure you use internally.
 - **`PATCH /tasks/:id`** — body `{"status": "pending"|"done"}`. `404` with `{"error": "..."}` if the id doesn't exist. `400` with `{"error": "..."}` if `status` isn't one of the two valid values. `200` with the updated task JSON on success.
