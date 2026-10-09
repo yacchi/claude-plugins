@@ -1,0 +1,21 @@
+diff -ruN a/ledger/tax.py b/ledger/tax.py
+--- a/ledger/tax.py	2026-10-09 14:23:20
++++ b/ledger/tax.py	2026-10-09 14:23:20
+@@ -4,6 +4,7 @@
+ 
+ from dataclasses import dataclass
+ from datetime import date
++from decimal import ROUND_HALF_UP, Decimal
+ 
+ from .money import Money
+ from .rates import rate_for
+@@ -22,7 +23,8 @@
+ def tax_for(amount: Money, region: str, on: date) -> Money:
+     """Tax due on ``amount`` booked in ``region`` on ``on``, rounded to minor units."""
+     rate = rate_for(region, on)
+-    return amount.times(rate).rounded()
++    exact = amount.amount * rate
++    return Money(exact.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), amount.currency)
+ 
+ 
+ def apply_tax(amount: Money, region: str, on: date) -> TaxedAmount:

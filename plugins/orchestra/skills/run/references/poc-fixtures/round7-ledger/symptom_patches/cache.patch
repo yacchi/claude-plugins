@@ -1,0 +1,19 @@
+diff -ruN a/ledger/invoice.py b/ledger/invoice.py
+--- a/ledger/invoice.py	2026-10-09 14:23:20
++++ b/ledger/invoice.py	2026-10-09 14:23:20
+@@ -9,6 +9,7 @@
+ from .errors import ValidationError
+ from .models import Entry
+ from .money import Money, sum_money
++from .rates import clear_rate_cache
+ from .tax import tax_for
+ 
+ 
+@@ -61,6 +62,7 @@
+ 
+     Lines are ordered by date; entries on the same date keep their input order.
+     """
++    clear_rate_cache()
+     own = [entry for entry in entries if entry.customer == customer]
+     if not own:
+         raise ValidationError(f"no entries for customer {customer!r}")

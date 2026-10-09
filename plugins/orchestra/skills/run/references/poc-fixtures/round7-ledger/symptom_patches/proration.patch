@@ -1,0 +1,12 @@
+diff -ruN a/ledger/dates.py b/ledger/dates.py
+--- a/ledger/dates.py	2026-10-09 14:23:20
++++ b/ledger/dates.py	2026-10-09 14:23:20
+@@ -32,6 +32,8 @@
+         raise ValueError(f"month out of range: {month}")
+     if month == 2:
+         return 29 if year % 4 == 0 else 28
++    if month == 8:
++        return 31
+     return 30 + month % 2
+ 
+ 
