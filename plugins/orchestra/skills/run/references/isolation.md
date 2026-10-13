@@ -90,6 +90,8 @@ What `isolate create` does for you, so a worktree is not a downgrade for the wor
 
 A second layer backs this up: `hooks/guards/worker-vcs.ts` denies destructive VCS commands from *subagents* against a non-`orchestra/*` branch (`enforcement.worker_vcs`, on by default). Inside its own worktree a worker may reset freely — there is nothing there but its own work. The main thread is never affected.
 
+**The stash stack is shared.** `refs/stash` is one stack for every worktree of a repository, so parallel workers that `git stash`/`pop` take each other's entries — observed swapping two workers' changes between their worktrees. `hooks/guards/worker-vcs.ts` therefore denies stash push/pop/apply/drop to workers even inside their own orchestra worktree. Workers do have real reasons to set changes aside (confirming a new test fails without the fix, checking a staged subset alone, checking whether a failure predates them), so give them the per-worktree equivalent: `agent-exec shelf push [--keep-index] [-- PATH...]` / `shelf pop`, whose entries live in the worktree's own git dir. Say so in every worker prompt: CLI executors (pi) run outside Claude's hooks, so the guard cannot stop them.
+
 **When isolation is genuinely not available** — no repository at all, or a phase that must run in place — say so in the plan, and fall back to §1's discipline: snapshot before the first worker, and never `checkout .`/`reset --hard`/`clean` the user's work.
 
 ## 1. Checkpointing: the run always has somewhere to fall back to
