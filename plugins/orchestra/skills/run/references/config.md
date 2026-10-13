@@ -413,7 +413,7 @@ orca:
                            # true = required (the run stops: "orca unavailable: <reason>"); false = never
   command: "claude --model {model} --permission-mode {permission_mode}"
   models: {light: sonnet, standard: opus, deep: opus}   # used when the dispatch route's model is absent
-  permission_mode: acceptEdits  # acceptEdits, auto, default, or plan; auto avoids most stalls
+  permission_mode: auto         # (v0.49.0 default) acceptEdits, auto, default, or plan; auto avoids most stalls
   add_dirs: []             # extra paths; ~ expands and relative paths are repo-relative
   auto_trust: false        # true = accept Claude's folder-trust dialog automatically,
                            # ONLY for worktrees this executor created
@@ -501,7 +501,7 @@ herdr:
   enabled: auto            # auto | true | false, same meaning as orca.enabled
   args: "--model {model} --permission-mode {permission_mode}"   # native claude args, after `--`
   models: {light: sonnet, standard: opus, deep: opus}
-  permission_mode: acceptEdits
+  permission_mode: auto    # (v0.49.0) Claude's classifier approves tool calls; acceptEdits would stall on every Bash dialog
   auto_trust: true         # (v0.49.0) only for worktrees orchestra created, under a sandboxed server
   startup_timeout: 90
   task_timeout: 3600

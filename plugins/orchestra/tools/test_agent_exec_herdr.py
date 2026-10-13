@@ -595,7 +595,7 @@ class BypassTests(_Base):
     def test_add_dirs_follow_the_native_args(self):
         executor = self.executor(FakeHerdr())
         args = executor._native_args({"model": "opus", "add_dirs": ["/x/state"]})
-        self.assertEqual(args, ["--model", "opus", "--permission-mode", "acceptEdits",
+        self.assertEqual(args, ["--model", "opus", "--permission-mode", "auto",
                                 "--add-dir", "/x/state"])
 
 

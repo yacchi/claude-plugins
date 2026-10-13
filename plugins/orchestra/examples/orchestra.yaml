@@ -287,7 +287,7 @@ checks:
 #   enabled: auto
 #   args: "--model {model} --permission-mode {permission_mode}"   # after `--`
 #   models: {light: sonnet, standard: opus, deep: opus}
-#   permission_mode: acceptEdits
+#   permission_mode: auto  # (v0.49.0) Claude's classifier approves tool calls; acceptEdits stalls on every Bash dialog
 #   auto_trust: true       # (v0.49.0) accept the folder-trust dialog, only for worktrees
 #                          # orchestra created AND while the herdr server is sandboxed
 #                          # (sandbox.mode off / no backend -> a `trust` need instead)
