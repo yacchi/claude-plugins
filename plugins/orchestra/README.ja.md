@@ -96,7 +96,7 @@ claude plugin validate .
 
 v0.43.0で、同じモデルへより速く軽く到達できるpiを採用し、Copilot CLIとopencodeの実行役を削除しました。
 Copilotのモデルはpiの`github-copilot/*`、Codex/ChatGPTサブスクリプションのモデルは`openai-codex/*`を使います。
-どちらのプロバイダも`pi`を起動して`/login`でログインし、古いキーを削除するため`orchestra:setup`を再実行してください。
+どちらのプロバイダも`agent-exec pi login --provider <id>`でログインし(Claudeが実行してURLとコードを表示するので、ユーザーはそれを開くだけ)、古いキーを削除するため`orchestra:setup`を再実行してください。
 
 ## 構成
 

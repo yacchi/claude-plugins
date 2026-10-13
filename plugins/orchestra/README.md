@@ -96,7 +96,7 @@ See [`examples/orchestra.yaml`](examples/orchestra.yaml) for the full commented 
 
 In v0.43.0, the Copilot CLI and opencode executors were removed because pi is a faster, lighter path to the same models.
 Use pi's `github-copilot/*` provider for Copilot models and `openai-codex/*` for Codex/ChatGPT-subscription models.
-Log in to either provider with `/login` inside `pi`, then re-run `orchestra:setup` to remove old configuration keys.
+Log in to either provider with `agent-exec pi login --provider <id>` (Claude runs it and shows you the URL/code to open), then re-run `orchestra:setup` to remove old configuration keys.
 
 ## Components
 

@@ -420,6 +420,15 @@ Usage:
                                   versions installed under the state dir):
                                   where each tool resolves from, install or
                                   update them, print one resolved path
+  agent-exec pi login [--provider ID] [--json]
+  agent-exec pi login (--wait | --paste TEXT) [--timeout SEC] [--json]
+  agent-exec pi login --cancel
+                                  log pi in without a terminal: Claude drives
+                                  pi's /login in orchestra's own herdr and
+                                  prints the URL (and device code) for the
+                                  user to open; --wait polls until the login
+                                  lands, --paste sends the final redirect URL
+                                  when the browser could not reach localhost
   agent-exec check (--task <id> | --path <dir>) [--since <ref>]
                   [--files a,b,...] [--all] [--baseline] [--no-retry]
                   [--repo <path>] [--session <id>] [--json|--text]
@@ -4413,6 +4422,26 @@ def _scan_permission_rule():
     }
 
 
+def _annotate_pi_login(entry, resolved):
+    """Add `login` (provider -> ready) to doctor's pi entry and, when a
+    provider is not ready, a hint telling Claude to run `agent-exec pi login`.
+    Never raises: a failing check just leaves the entry unannotated."""
+    try:
+        import agent_exec_pilogin
+        login = agent_exec_pilogin.PiLogin(cfg=resolved)
+        states = dict((p, login.auth_ready(p))
+                      for p in agent_exec_pilogin.configured_providers(resolved))
+    except Exception:
+        return
+    entry["login"] = states
+    missing = [p for p, ok in states.items() if not ok]
+    if missing:
+        entry["hint"] = (
+            "pi is not logged in for %s: Claude should run `agent-exec pi login`, show "
+            "the user the URL (and code) it prints, then run `agent-exec pi login "
+            "--wait`; the user does not run pi themselves" % ", ".join(missing))
+
+
 def _build_doctor_report():
     shim = _find_shim()
     uv_present = shutil.which("uv") is not None
@@ -4485,6 +4514,8 @@ def _build_doctor_report():
             }
             if tool["hint"]:
                 entry["hint"] = tool["hint"]
+            if name == "pi" and enabled and dispatch == "cli" and available:
+                _annotate_pi_login(entry, resolved)
             if dispatch == "agent":
                 entry["note"] = (
                     "dispatch: agent — CLI binary presence is informational; "
@@ -11044,6 +11075,10 @@ def main(argv):
 
     if tok == "write-file":
         return cmd_write_file(argv[1:])
+
+    if tok == "pi" and argv[1:2] == ["login"]:
+        import agent_exec_pilogin
+        return agent_exec_pilogin.cmd_pi_login(argv[2:])
 
     return cmd_dispatch(tok, argv[1:])
 

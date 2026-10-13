@@ -512,7 +512,7 @@ external_executors:
 
 **Login carry-over (`auth.json`).** When the managed directory has no `auth.json` and the user's pi `auth.json` exists, orchestra creates a symlink `auth.json` in the managed directory that points at the user's file. The source is `$PI_CODING_AGENT_DIR` when that is set and differs from the managed directory, otherwise `~/.pi/agent`. The check runs on every pi call, so the link appears once a login exists. An existing `auth.json` (file or symlink) is never overwritten or removed. Because the link is followed, token refreshes write to the user's own `auth.json`, and pi's sandbox writes to the symlink target's directory (see `external-executors.md` §2a).
 
-To log in for workers, run `agent-exec pi` and use `/login`. Logging in with your own pi also works while the link exists, because the managed directory reads the same `auth.json`.
+To log in for workers, Claude runs `agent-exec pi login` (it drives pi's `/login` in orchestra's own herdr and prints the URL and device code), shows them to the user, then runs `agent-exec pi login --wait`; `--paste TEXT` sends a final redirect URL when the browser could not reach localhost and `--cancel` aborts. Logging in with your own pi also works while the link exists, because the managed directory reads the same `auth.json`.
 
 ## 8. Interactive host selection (`interactive_host`, `herdr`)
 
