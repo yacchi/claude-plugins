@@ -92,6 +92,10 @@ Config is deep-merged from four layers (later wins): built-in defaults ← `~/.c
 
 See [`examples/orchestra.yaml`](examples/orchestra.yaml) for the full commented schema and [`skills/run/references/config.md`](skills/run/references/config.md) for the merge algorithm and every option. `/setup` edits the file for you.
 
+### HUD
+
+While orchestra agents run (`orchestra:*` subagents and Workflow agents), the Claude Code status line shows `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` (`ext` = external pi dispatches, `✗N` = failed reviews), and clears itself when they finish. A toast appears only on notable failures (review FAIL, `needs-permission`, `runaway`, `unavailable`, `ESCALATE`, agent error). Open the full dashboard with the existing `/ui` skill. Turn the HUD off with the `hud` plugin option (default on).
+
 ### Migrating from Copilot CLI / opencode
 
 In v0.43.0, the Copilot CLI and opencode executors were removed because pi is a faster, lighter path to the same models.

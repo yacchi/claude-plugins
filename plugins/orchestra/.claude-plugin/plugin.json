@@ -1,11 +1,19 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "orchestra",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Cost-tiered multi-agent orchestration: expensive instructor, cheap workers, adversarial verifiers",
   "author": {
     "name": "fujie"
   },
   "keywords": ["orchestration", "subagents", "cost-optimization", "workflow", "multi-agent"],
-  "license": "MIT"
+  "license": "MIT",
+  "userConfig": {
+    "hud": {
+      "type": "boolean",
+      "title": "HUD",
+      "description": "Show orchestra activity in the status line and toasts",
+      "default": true
+    }
+  }
 }

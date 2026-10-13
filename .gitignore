@@ -25,3 +25,5 @@ node_modules/
 # Temporary files
 *.tmp
 *.temp
+# orchestra: types the Claude Code engine generates once a mod loads
+plugins/*/.claude-plugin/types/

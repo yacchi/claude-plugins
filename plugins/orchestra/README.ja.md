@@ -92,6 +92,10 @@ claude plugin validate .
 
 コメント付きの全項目は [`examples/orchestra.yaml`](examples/orchestra.yaml) を、マージの手順と各オプションは [`skills/run/references/config.md`](skills/run/references/config.md) を参照してください。`/setup` を使えばファイルを代わりに編集してくれます。
 
+### HUD
+
+orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときだけです。ダッシュボード全体は既存の `/ui` スキルで開けます。`hud` プラグインオプション（既定はオン）で無効にできます。
+
 ### Copilot CLI / opencode からの移行
 
 v0.43.0で、同じモデルへより速く軽く到達できるpiを採用し、Copilot CLIとopencodeの実行役を削除しました。
