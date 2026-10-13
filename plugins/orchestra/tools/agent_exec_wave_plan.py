@@ -210,13 +210,17 @@ def overlaps(files_a, files_b):
     return any(_stem_overlap(a, b) for a in stems_a for b in stems_b)
 
 
+# Package sizing: past these, `lint_plan` suggests a split (never an error).
+_MAX_OWNED_FILES = 3
+_MAX_SPEC_LINES = 150
+
 _DELETION_WORDS = re.compile(r"削除|撤去|取り除|外す|remove|delete|drop|deprecat", re.IGNORECASE)
 
 
 def lint_plan(plan, root=None):
-    """Return non-blocking ownership warnings for a normalized plan. With
-    `root`, also warn about `warm_read` files missing from it (they may
-    appear after integration, so this is never an error)."""
+    """Return non-blocking ownership and sizing warnings for a normalized
+    plan. With `root`, also warn about `warm_read` files missing from it
+    (they may appear after integration, so this is never an error)."""
     warnings = []
     if root:
         for rel in plan.get("warm_read", []):
@@ -232,6 +236,21 @@ def lint_plan(plan, root=None):
                 spec_text = fh.read()
         except (OSError, TypeError, ValueError):
             spec_text = None
+        if len(owned) > _MAX_OWNED_FILES:
+            warnings.append({
+                "pkg": pkg.get("id"),
+                "message": "package %s owns %d files; split into packages of 1-%d files so "
+                           "no single package runs for tens of minutes"
+                           % (pkg.get("id"), len(owned), _MAX_OWNED_FILES),
+            })
+        spec_lines = len(spec_text.splitlines()) if spec_text is not None else 0
+        if spec_lines > _MAX_SPEC_LINES:
+            warnings.append({
+                "pkg": pkg.get("id"),
+                "message": "package %s spec is %d lines; split it into packages with specs of "
+                           "at most %d lines so no single package runs for tens of minutes"
+                           % (pkg.get("id"), spec_lines, _MAX_SPEC_LINES),
+            })
         if (spec_text is not None and _DELETION_WORDS.search(spec_text)
                 and not any(any(ch in path for ch in "*?[") for path in owned)):
             warnings.append({

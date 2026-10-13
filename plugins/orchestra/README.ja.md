@@ -85,6 +85,7 @@ claude plugin validate .
 - **`external_executors`** — Codex、pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、どちらの CLI も入っていなければすべて `claude` に振り分けられます。推奨は同梱の `agent-exec` ラッパー(`agent-exec install`)と、`Bash(agent-exec:*)` の許可ルール 1 つです。
 - **`tools`** — 実行役のバイナリ(pi、herdr)を決まった版で orchestra 専用の状態ディレクトリに入れます(`agent-exec tools install`)。pi は既定で専用のエージェントディレクトリを使うため、個人の pi の設定はワーカーに届きません。
 - **`interactive_host`** — `wave run` で Claude 系のパッケージを動かすホストを選びます: `herdr`、`orca`、`none`(既定は `auto`)。
+- **`wave.verify_mode`** — `final`(既定): 途中のテストでパッケージを止めません。パッケージごとには `fast` 指定の検査だけを記録として流し、テスト一式は最後に一度回して、失敗は緑になるまで修正パッケージとして並列に投入します。`gated` は従来どおり赤で止めます。`wave.max_in_flight: auto` は herdr ホストで同時実行数を広げます。
 - **`priority`** — クラス/役割ごとの実行系の優先順。順に候補をたどる処理は `agent-exec route` / `agent-exec dispatch` が行い、指示役が手作業でたどることはありません。
 - **`enforcement.*`** — フックによる防護(`worker_vcs`、`worker_tree`、`worktree_lease`、`session_cleanup`、`turn_edits`、`opus_generalist`、オプトインの `light_class`)。どれにも回避用のマーカーと、環境変数による無効化スイッチがあります。
 

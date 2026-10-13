@@ -85,6 +85,7 @@ Config is deep-merged from four layers (later wins): built-in defaults ← `~/.c
 - **`external_executors`** — Codex, pi, … as implementers or reviewers. Enabled by default but gated on real availability; with neither CLI installed, everything resolves to `claude`. The recommended setup is the bundled `agent-exec` wrapper (`agent-exec install`) plus one `Bash(agent-exec:*)` allow rule.
 - **`tools`** — pins executor binaries (pi, herdr) to a known version in orchestra's own state dir (`agent-exec tools install`). pi runs with its own agent dir by default, so your personal pi settings do not reach workers.
 - **`interactive_host`** — which host runs Claude-tier packages in `wave run`: `herdr`, `orca`, or `none` (default `auto`).
+- **`wave.verify_mode`** — `final` (default): packages are not held back by tests; only checks marked `fast` run per package (recorded, never blocking), and the full checks run once at the end, where failures become fix-up packages until green. `gated` keeps the old stop-on-red behavior. `wave.max_in_flight: auto` widens concurrency on the herdr host.
 - **`priority`** — ordered executors per class/role. `agent-exec route` / `agent-exec dispatch` perform the walk so the instructor never does it by hand.
 - **`enforcement.*`** — the hook guards (`worker_vcs`, `worker_tree`, `worktree_lease`, `session_cleanup`, `turn_edits`, `opus_generalist`, opt-in `light_class`). Each has an escape marker and an environment kill switch.
 

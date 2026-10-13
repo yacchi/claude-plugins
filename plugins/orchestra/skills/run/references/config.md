@@ -383,6 +383,8 @@ checks:
       timeout: 900           # optional seconds, default 1800
       junit: "reports/junit.xml"   # optional, relative to `cwd`
       retry_alone: "pnpm test -- {failed}"  # optional isolated retry template
+      fast: true             # optional; wave run's per-package check in
+                             # verify_mode final (see §9). Default false = full
 ```
 
 `paths` globs are matched against changed paths, POSIX-relative to the tree root: `**` stands for zero or more whole directories (`**/*.ts` matches both `a.ts` and `x/y/a.ts`), while `*`/`?` stay within one path segment (`src/*.ts` does not match `src/x/a.ts`). A check with no `paths` always runs, independent of what changed.
@@ -517,3 +519,19 @@ herdr:
 - **Server lifecycle.** The herdr server is started detached when it is not already running. `shutdown()` stops it only if orchestra started it. While `keep_sessions` is true and sessions are registered in `<state>/herdr-sessions.json`, the server stays up so `resume` can reach them.
 - **Warm reader (v0.48.0).** When the host is herdr, `warm.enabled` is true, the plan has a non-empty read set, and at least `warm.min_packages` packages of the run start on the same model, the first such package first triggers one warm session per (model, base revision): a dedicated orchestra worktree `warm-<model>` at the integration base, in which a Claude session reads the plan's `preamble` files that live inside the repo plus its top-level `warm_read` (repo-relative paths). Every package on that model then starts with `claude --resume <warm session> --fork-session` and reads the shared files from the prompt cache instead of from disk. The first prompt of a forked package starts with one line telling it its own working tree and that the earlier messages came from the warm worktree. The warm record (`_warm` key of `herdr-sessions.json`) is reused while `now - last_used < ttl_seconds` and no file of the read set changed between its base revision and the current one; otherwise it is rebuilt. If a fork leaves the warm worktree dirty, that package ends as an `error` need (`fork wrote outside its tree`) and the record is rebuilt next time. Any warm failure emits a `warm-failed` event and the packages start fresh, exactly as without warm. Warm worktrees are removed at host shutdown; warm records alone do not keep the herdr server alive.
 - **Server environment.** The server is started without `CLAUDE_CODE_*` variables and without `CLAUDECODE`. A child Claude that inherited those markers would stop saving transcripts.
+
+## 9. Wave runner (`wave`)
+
+`agent-exec wave run` reads a top-level `wave` key (v0.49.0). An explicit CLI flag or run option wins over it.
+
+```yaml
+wave:
+  max_in_flight: auto      # auto | positive integer; --max-in-flight N|auto overrides
+  verify_mode: final       # final | gated
+  converge_rounds: 2       # fix-up rounds in final mode before handing over
+```
+
+- **Rolling scheduling.** Up to `max_in_flight` packages run at once. When one finishes it is integrated right away (one integration at a time) and its slot goes to whatever may start now, so a dependent starts as soon as its dependencies are integrated, without waiting for unrelated packages. There is no per-wave barrier; a wave is one scheduling round that started something.
+- **`max_in_flight: auto`.** With herdr as the run's interactive host: `min(16, max(2, cpus - 2), max(2, RAM GiB // 2))` (4 when the machine size cannot be read). With any other host, or none: 4. An integer from `--max-in-flight` or from this key is used as is. The resolved value is printed once at start (`max-in-flight: N (auto|config|option)`) and recorded as a `max-in-flight` event.
+- **`verify_mode: final`** (default). Per package only `checks.items` with `fast: true` run (§4); a red one is recorded in the package detail and a `fast-check` event and blocks neither integration nor dependents. There is no default integration gate (`--gate` still applies). After everything is integrated or held by a need, the full checks — every item without `fast`, then `--full` — run on the integration tree, at most one full run at a time per process. Red failures become `fix-<n>` packages mapped deterministically to the package whose diff or `files_owned` contains a path the failure names (unmatched: one `deep` catch-all), which are scheduled, integrated and re-checked up to `converge_rounds` times; then the run stops with a `post-integration` need. See `programme.md` §6.
+- **`verify_mode: gated`.** The pre-v0.49.0 verification: every check item per package with one correction round, the default `agent-exec check` integration gate, and `--full` every `--full-every` integrations, pausing the run on red (bisect, revert, stop).

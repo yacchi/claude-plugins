@@ -5,12 +5,18 @@
 """`agent-exec wave run` / `wave mark`: the deterministic outer loop.
 
 Drives a plan (agent_exec_wave_plan) through dispatch -> self-verify ->
-integrate, one wave at a time, with every state change going through
-agent_exec_wave.StateStore. One wave is one batch: the packages `select`
-picks run in a thread pool, then a barrier, then every package that reached
-`ready` is integrated in ONE `isolate_integrate` call (plan order, skip on
-conflict, gate + bisect). Anything only the instructor can decide lands on
-the state's `needs` list instead of stopping the loop.
+integrate, with every state change going through agent_exec_wave.StateStore.
+Scheduling is rolling: up to `max_in_flight` packages run in a thread pool,
+and whenever one finishes, every package that reached `ready` is integrated
+(one `isolate_integrate` call at a time, plan order, skip on conflict, gate +
+bisect) and `select` is asked again, so a dependent starts as soon as its
+dependencies are integrated. A "wave" is one scheduling round that started
+something. `wave.verify_mode: final` (default) runs only `fast` checks per
+package, never gates integration on checks, and converges at the end: the
+full checks run on the integration tree and red ones become `fix-<n>`
+packages. `gated` keeps per-package checks, the integration gate and
+`--full` pausing the run on red. Anything only the instructor can decide
+lands on the state's `needs` list instead of stopping the loop.
 
 Imported lazily by agent_exec_wave's sub-verb table, so `wave status` never
 pays for (or depends on) agent_exec. This module imports agent_exec itself
@@ -23,6 +29,7 @@ runs in an Orca-hosted Claude session instead when Orca is available
 """
 
 import concurrent.futures
+import contextlib
 import json
 import os
 import re
@@ -59,6 +66,34 @@ _FULL_BISECT_MAX = 3
 # package: `_full_files` adds such a file to the next implement dispatch.
 _POST_FULL_HEADER = "# Post-integration correction for %s"
 _POST_FULL_DETAIL = "post-full revert"
+
+_VERIFY_MODES = ("final", "gated")
+_DEFAULT_VERIFY_MODE = "final"
+_DEFAULT_CONVERGE_ROUNDS = 2
+# `max_in_flight: auto` off a herdr host, and the fallback when the machine
+# size cannot be read.
+_DEFAULT_MAX_IN_FLIGHT = 4
+_AUTO_MAX_IN_FLIGHT_CAP = 16
+_FAST_NOTE = "fast check failed: "
+_CLS_BUMP = {"light": "standard", "standard": "deep", "deep": "deep"}
+
+# At most one full-check run in this process at a time, across runners.
+_FULL_LOCK = threading.Lock()
+
+
+def auto_max_in_flight():
+    """In-flight width for a herdr host: min(16, cpus - 2, GiB of RAM / 2),
+    each at least 2; _DEFAULT_MAX_IN_FLIGHT when the machine size is
+    unreadable."""
+    try:
+        cpus = os.cpu_count()
+        memory = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, OSError, TypeError, ValueError):
+        return _DEFAULT_MAX_IN_FLIGHT
+    if not cpus or not isinstance(memory, int) or memory <= 0:
+        return _DEFAULT_MAX_IN_FLIGHT
+    gib = memory // (1024 ** 3)
+    return min(_AUTO_MAX_IN_FLIGHT_CAP, max(2, cpus - 2), max(2, gib // 2))
 
 
 def _agent_exec_argv():
@@ -125,7 +160,10 @@ class CliExecutor(object):
             args.extend(["--exhausted", ",".join(exhausted)])
         if no_resume:
             args.append("--no-resume")
-        parsed, error = self._call(args)
+        # The detach creates the task worktree from the integration tree:
+        # never while the runner is integrating into it.
+        with getattr(self, "start_lock", None) or contextlib.nullcontext():
+            parsed, error = self._call(args)
         if parsed is None:
             return {"status": "error", "reason": "dispatch --detach failed: %s" % error}
         if parsed.get("status") not in ("detached", "running", "done"):
@@ -191,13 +229,18 @@ class _Buffer(object):
 def default_opts():
     return {
         "plan": None, "state": None, "into": None, "repo": os.getcwd(),
-        "max_in_flight": 4, "gate": None, "full": None, "full_every": 1,
+        "max_in_flight": None, "verify_mode": None, "converge_rounds": None,
+        "gate": None, "full": None, "full_every": 1,
         "full_timeout": None, "full_retry": None, "on_green": None,
         "resume_on_reset": False,
         "no_ui": False, "notify_cmd": None,
         "stop_at": None, "max_waves": None, "max_packages": None,
         "run_id": None, "text": False,
     }
+
+
+def _explicit_width(value):
+    return not isinstance(value, bool) and isinstance(value, int) and value >= 1
 
 
 def _first_line(text):
@@ -238,6 +281,12 @@ class _Runner(object):
         self.answers = {}
         self.unavailable = False
         self.green_path = os.path.join(self.state_dir, "green-tree")
+        # Held while the integration tree is written or checked (integrate,
+        # full, convergence) and while a worker starts a dispatch from it.
+        self.int_lock = threading.RLock()
+        self.integrate_rounds = 0
+        self.verify_mode = "gated"
+        self.converge_rounds = _DEFAULT_CONVERGE_ROUNDS
 
     # -- helpers ------------------------------------------------------------
 
@@ -331,6 +380,11 @@ class _Runner(object):
         if self.root is None:
             raise RuntimeError("not a git repository: %s" % self.opts["repo"])
         plan_warnings = agent_exec_wave_plan.lint_plan(self.plan, self.root)
+        self.fixups = self._load_fixups()
+        for pkg in self.fixups["packages"]:
+            if pkg["id"] not in self.pkgs:
+                self.plan["packages"].append(pkg)
+                self.pkgs[pkg["id"]] = pkg
         self.into = agent_exec.sanitize_task_id(self.opts["into"])
         self.store.init(os.path.abspath(self.opts["plan"]),
                         [p["id"] for p in self.plan["packages"]], self.into)
@@ -366,6 +420,11 @@ class _Runner(object):
         os.makedirs(os.path.join(self.state_dir, "corrections"), exist_ok=True)
         os.makedirs(os.path.join(self.state_dir, "carry"), exist_ok=True)
         self._init_orca()
+        self._resolve_settings()
+        try:
+            self.executor.start_lock = self.int_lock
+        except AttributeError:
+            pass
 
         # Packages a crashed run left mid-flight.
         state = self.store.load()
@@ -377,6 +436,40 @@ class _Runner(object):
                     self.store.set_status(pid, "verifying", detail="resumed with changes")
                 else:
                     self.store.set_status(pid, "pending", detail="resumed without changes")
+
+    def _wave_cfg(self):
+        try:
+            resolved, error = agent_exec.resolve_config()
+        except Exception:
+            return {}
+        wave = (resolved or {}).get("wave") if not error else None
+        return wave if isinstance(wave, dict) else {}
+
+    def _resolve_settings(self):
+        """verify_mode / converge_rounds / max_in_flight: an explicit option
+        wins over `wave.*` config, which wins over the default. Reports the
+        resolved in-flight width once."""
+        cfg = self._wave_cfg()
+        mode = self.opts.get("verify_mode") or cfg.get("verify_mode")
+        mode = str(mode).strip().lower() if mode is not None else _DEFAULT_VERIFY_MODE
+        self.verify_mode = mode if mode in _VERIFY_MODES else _DEFAULT_VERIFY_MODE
+        rounds = self.opts.get("converge_rounds")
+        if rounds is None:
+            rounds = cfg.get("converge_rounds")
+        if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
+            rounds = _DEFAULT_CONVERGE_ROUNDS
+        self.converge_rounds = rounds
+
+        width, source = self.opts.get("max_in_flight"), "option"
+        if not _explicit_width(width):
+            width, source = cfg.get("max_in_flight"), "config"
+        if not _explicit_width(width):
+            source = "auto"
+            herdr = self.orca is not None and self.host_name == "herdr"
+            width = auto_max_in_flight() if herdr else _DEFAULT_MAX_IN_FLIGHT
+        self.opts["max_in_flight"] = width
+        self._emit("max-in-flight", None, {"value": width, "source": source})
+        sys.stderr.write("max-in-flight: %d (%s)\n" % (width, source))
 
     def _interactive_mode(self):
         mode = self.opts.get("interactive_host")
@@ -639,9 +732,10 @@ class _Runner(object):
         pool is exhausted and the reason is in result["reason"].
         """
         pkg = self.pkgs[pid]
-        self._clean_integration("pre-dispatch")
-        token = self.executor.prepare(prompt_files, pkg["cls"], self.int_path,
-                                      self._task(pid), self.opts.get("run_id"))
+        with self.int_lock:
+            self._clean_integration("pre-dispatch")
+            token = self.executor.prepare(prompt_files, pkg["cls"], self.int_path,
+                                          self._task(pid), self.opts.get("run_id"))
         for attempt in (0, 1):
             with self.lock:
                 exhausted = sorted(self.exhausted)
@@ -900,7 +994,80 @@ class _Runner(object):
                 parts.append("## %s\n%s" % (item.get("name"), item.get("excerpt") or ""))
         return "\n\n".join(parts) or "check status %s" % check.get("status")
 
+    def _checks_cfg(self):
+        """(checks config, slot_dir, max_parallel)."""
+        try:
+            cfg, error = agent_exec.resolve_config()
+        except (OSError, TypeError, ValueError):
+            cfg, error = None, "config"
+        checks = ((cfg or {}).get("checks") or {}) if not error else {}
+        slot_dir, max_parallel = self._check_slots()
+        return checks, slot_dir, max_parallel
+
+    def _check_items(self, fast):
+        """`checks.items` marked `fast: true` (fast) or the rest (full)."""
+        checks, _, _ = self._checks_cfg()
+        return [item for item in checks.get("items") or []
+                if isinstance(item, dict) and (item.get("fast") is True) == fast]
+
+    def _fast_check(self, pid):
+        """verify_mode final: run only the `fast: true` check items over the
+        package tree's changed files. Same result shape as `_check`."""
+        checks, slot_dir, max_parallel = self._checks_cfg()
+        items = [item for item in checks.get("items") or []
+                 if isinstance(item, dict) and item.get("fast") is True]
+        try:
+            _, entry = agent_exec._resolve_worktree(
+                self.root, self._task(pid), agent_exec._current_session())
+        except ValueError:
+            entry = None
+        files = self._tree_files(pid)
+        tree = (entry or {}).get("path")
+        if not tree or files is None:
+            return {"status": "error", "checks": []}
+        if not items:
+            return {"status": "no-checks", "files": len(files), "checks": []}
+        self._emit("check-start", pid, {"name": "fast", "tree": tree})
+        started = time.time()
+        results = agent_exec_checks.run_checks(
+            items, tree, files, slot_dir, max_parallel=max_parallel, run_all=True,
+            ensure=checks.get("ensure") or [],
+            retry_failed_alone=checks.get("retry_failed_alone", True))
+        statuses = set(r.get("status") for r in results)
+        status = ("fail" if "fail" in statuses else
+                  "pass" if "pass" in statuses else "no-checks")
+        flaky = [path for r in results for path in r.get("flaky") or []]
+        self._emit("check-end", pid, {"name": "fast", "status": status,
+                                      "seconds": round(time.time() - started, 3)})
+        parsed = {"status": status, "files": len(files), "checks": results}
+        if flaky:
+            parsed["flaky"] = flaky
+        return parsed
+
+    def _verify_fast(self, pid):
+        """verify_mode final: a red fast check is recorded on the package
+        (its detail, carried into `integrated`) and never blocks it."""
+        check = self._fast_check(pid)
+        if check.get("flaky"):
+            self._emit("flaky", pid, {"check": "fast", "files": check["flaky"]})
+        status = check.get("status")
+        if status == "error":
+            self._need(pid, "self-verify", "check could not run (status %s)" % status)
+            return
+        if self._empty_after_refresh(pid, self.answers.get(pid, "")):
+            return
+        detail = ""
+        if status == "fail":
+            failed = [item.get("name") for item in check["checks"]
+                      if item.get("status") == "fail"]
+            detail = _FAST_NOTE + ", ".join(failed)
+            self._emit("fast-check", pid, {"status": "fail", "checks": failed})
+        self.store.set_status(pid, "ready", detail=detail, files_changed=check.get("files"))
+
     def _verify(self, pid):
+        if self.verify_mode == "final":
+            self._verify_fast(pid)
+            return
         for round_no in (0, 1):
             check = self._check(pid)
             if check.get("flaky"):
@@ -993,7 +1160,9 @@ class _Runner(object):
         if not ready:
             return 0
         since = self._int_head()
-        gate = self.opts.get("gate") or self._default_gate(since)
+        gate = self.opts.get("gate")
+        if not gate and self.verify_mode == "gated":
+            gate = self._default_gate(since)
         tasks = [self._task(pid) for pid in ready]
         by_sanitized = dict((agent_exec.sanitize_task_id(t), pid)
                             for t, pid in zip(tasks, ready))
@@ -1019,8 +1188,10 @@ class _Runner(object):
         for pid in ready:
             entry = by_task.get(agent_exec.sanitize_task_id(self._task(pid))) or {}
             status = entry.get("status")
+            note = state["packages"].get(pid, {}).get("detail") or ""
+            note = note if note.startswith(_FAST_NOTE) else ""
             if status == "applied":
-                self.store.set_status(pid, "integrated",
+                self.store.set_status(pid, "integrated", detail=note,
                                       commit=self._commit_for(self._task(pid), since))
                 integrated += 1
                 self._orca_close(pid)
@@ -1359,69 +1530,350 @@ class _Runner(object):
     # -- the loop -------------------------------------------------------------
 
     def loop(self):
+        if self.verify_mode == "final":
+            self._waves()
+            self._converge()
+            return
         while True:
             self._waves()
             if not (self.opts.get("full") and self.integrated_since_full):
                 return
             # A final red `--full` that sent packages back re-enters the loop.
-            if not self._full() or self.stop_reason is not None:
+            with _FULL_LOCK, self.int_lock:
+                reset = self._full()
+            if not reset or self.stop_reason is not None:
                 return
 
-    def _waves(self):
-        while True:
-            state = self.store.load()
-            pkg_states = state["packages"]
-            carried = [p["id"] for p in self.plan["packages"]
-                       if pkg_states.get(p["id"], {}).get("status") in ("verifying", "ready")]
-            awaiting = [p["id"] for p in self.plan["packages"]
-                        if pkg_states.get(p["id"], {}).get("status") == "implementing"
-                        and pkg_states.get(p["id"], {}).get("detail") == "await-orca"
-                        and self.orca is not None and self.orca.session(p["id"]) is not None]
-            selected = agent_exec_wave_plan.select(
-                self.plan, pkg_states, self.opts["max_in_flight"])
-            if not selected and not carried and not awaiting:
-                break
-            reason = self._stop_check()
-            if reason is not None:
-                self._stop(reason)
-                selected = []
-                if not carried:
-                    break
-            elif self.opts.get("max_packages") is not None:
-                selected = selected[:max(self.opts["max_packages"] - self.started, 0)]
+    def _schedule(self, pool, running):
+        """Submit every job that can start now. Returns (progressed, halted):
+        whether anything was picked, and whether the run is stopping."""
+        if self.stop_reason is not None:
+            return False, True
+        if self.unavailable:
+            return False, False
+        state = self.store.load()
+        pkg_states = state["packages"]
+        busy = set(running.values())
+        # A submitted package may not have left `pending` yet in its thread.
+        view = dict(pkg_states)
+        for pid in busy:
+            if view.get(pid, {}).get("status", "pending") == "pending":
+                view[pid] = dict(view.get(pid, {}), status="implementing")
+        carried = [p["id"] for p in self.plan["packages"]
+                   if pkg_states.get(p["id"], {}).get("status") in ("verifying", "ready")
+                   and p["id"] not in busy]
+        awaiting = [p["id"] for p in self.plan["packages"]
+                    if pkg_states.get(p["id"], {}).get("status") == "implementing"
+                    and pkg_states.get(p["id"], {}).get("detail") == "await-orca"
+                    and p["id"] not in busy
+                    and self.orca is not None and self.orca.session(p["id"]) is not None]
+        selected = agent_exec_wave_plan.select(
+            self.plan, view, self.opts["max_in_flight"])
+        if not selected and not carried and not awaiting:
+            return False, False
+        halted = False
+        reason = self._stop_check()
+        if reason is not None:
+            self._stop(reason)
+            halted = True
+            selected = []
+            if not carried:
+                return False, True
+        elif self.opts.get("max_packages") is not None:
+            selected = selected[:max(self.opts["max_packages"] - self.started, 0)]
+        verify = [pid for pid in carried if pkg_states[pid]["status"] == "verifying"]
+        if not verify and not awaiting and not selected:
+            return bool(carried), halted
 
-            self.waves += 1
-            self.store.set_wave(state.get("wave", 0) + 1)
-            self.store.event("wave-start", detail=",".join(carried + awaiting + selected))
-
+        self.waves += 1
+        self.store.set_wave(state.get("wave", 0) + 1)
+        self.store.event("wave-start", detail=",".join(carried + awaiting + selected))
+        jobs = [(pid, "verify", "") for pid in verify]
+        jobs.extend((pid, "await", "") for pid in awaiting)
+        with self.int_lock:
             head = self._int_head()
-            jobs = [(pid, "verify", "") for pid in carried
-                    if pkg_states[pid]["status"] == "verifying"]
-            jobs.extend((pid, "await", "") for pid in awaiting)
             for pid in selected:
                 ok, note = self._refresh(pid, head)
                 if ok:
                     jobs.append((pid, "implement", note))
-            self.started += len(selected)
+        self.started += len(selected)
+        for job in jobs:
+            running[pool.submit(self._run_package, *job)] = job[0]
+        return True, halted
 
-            if jobs:
-                workers = max(1, min(self.opts["max_in_flight"], len(jobs)))
-                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-                    futures = [pool.submit(self._run_package, *job) for job in jobs]
-                    for future in futures:
-                        future.result()
-
-            if self.unavailable:
-                if not self._wait_for_reset():
-                    break
-                continue
-            self._integrate()
+    def _after_jobs(self):
+        """Integrate every ready package; in gated mode, `--full` every
+        `full_every` integrating rounds. Serialized on the main thread."""
+        with self.int_lock:
+            integrated = self._integrate()
+            if integrated:
+                self.integrate_rounds += 1
             full_every = self.opts.get("full_every") or 1
-            if (self.opts.get("full") and self.integrated_since_full
-                    and self.waves % full_every == 0 and self.stop_reason is None):
-                self._full()
-            if self.stop_reason is not None:
-                break
+            if (self.verify_mode == "gated" and self.opts.get("full")
+                    and integrated and self.integrated_since_full
+                    and self.integrate_rounds % full_every == 0
+                    and self.stop_reason is None):
+                with _FULL_LOCK:
+                    self._full()
+
+    def _waves(self):
+        """Rolling scheduler: keep up to max_in_flight jobs running; each
+        finished job is integrated at once and frees its slot."""
+        running = {}
+        workers = max(1, self.opts["max_in_flight"])
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+        halted = False
+        try:
+            while True:
+                progressed, stop_now = self._schedule(pool, running)
+                halted = halted or stop_now
+                if running:
+                    done, _ = concurrent.futures.wait(
+                        list(running), return_when=concurrent.futures.FIRST_COMPLETED)
+                    for future in done:
+                        running.pop(future)
+                        future.result()
+                    self._after_jobs()
+                    continue
+                if self.unavailable:
+                    if self.stop_reason is not None or not self._wait_for_reset():
+                        break
+                    continue
+                self._after_jobs()
+                if halted or self.stop_reason is not None or not progressed:
+                    break
+        finally:
+            pool.shutdown(wait=True)
+
+    # -- convergence (verify_mode final) ------------------------------------------
+
+    def _fixups_path(self):
+        return os.path.join(self.state_dir, "fixups.json")
+
+    def _load_fixups(self):
+        try:
+            with open(self._fixups_path(), encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            data = None
+        if not isinstance(data, dict):
+            data = {}
+        packages = [p for p in data.get("packages") or []
+                    if isinstance(p, dict) and isinstance(p.get("id"), str)]
+        rounds, number = data.get("rounds"), data.get("next")
+        return {"rounds": rounds if isinstance(rounds, int) and rounds >= 0 else 0,
+                "next": number if isinstance(number, int) and number >= 1 else 1,
+                "packages": packages}
+
+    def _save_fixups(self):
+        tmp = self._fixups_path() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(self.fixups, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(tmp, self._fixups_path())
+
+    def _final_checks(self):
+        """The full checks on the integration tree: every `checks.items`
+        entry without `fast: true` over the files changed since the base,
+        then `--full`. Returns the failures as [{"name", "excerpt"}], or None
+        when nothing is configured or the environment failed (run stopped)."""
+        items = self._check_items(fast=False)
+        full = self.opts.get("full")
+        if not items and not full:
+            return None
+        with _FULL_LOCK, self.int_lock:
+            self._emit("full-start", None, {"mode": "final"})
+            started = time.time()
+            ensure_failure = self._ensure_failure(self.int_path)
+            if ensure_failure is not None:
+                self._need(None, "environment", "full checks: ensure failed\n%s"
+                           % ensure_failure["excerpt"])
+                self._emit("environment", None, {"sha": self._int_head(),
+                                                 "excerpt": ensure_failure["excerpt"]})
+                self._stop("environment: ensure failed before the full checks")
+                return None
+            failures = []
+            if items:
+                checks, slot_dir, max_parallel = self._checks_cfg()
+                rc, out = agent_exec._git(
+                    self.int_path, "diff", "--name-only", "%s..HEAD" % self.base)
+                files = [f for f in out.splitlines() if f.strip()] if rc == 0 else []
+                results = agent_exec_checks.run_checks(
+                    items, self.int_path, files, slot_dir, max_parallel=max_parallel,
+                    run_all=True, retry_failed_alone=checks.get("retry_failed_alone", True))
+                failures.extend({"name": r.get("name"), "excerpt": r.get("excerpt") or ""}
+                                for r in results if r.get("status") == "fail")
+            if full:
+                res = self._run_cmd(full, self.opts.get("full_timeout"))
+                if res["status"] != "pass" and not self._full_flaky(res):
+                    failures.append({"name": "full", "excerpt": res.get("excerpt") or ""})
+            self._clean_integration("full")
+            status = "fail" if failures else "pass"
+            self._emit("full-end", None, {"status": status, "mode": "final",
+                                          "seconds": round(time.time() - started, 3)})
+            self.store.event("full", detail="%s\n%s" % (status, "\n".join(
+                "%s: %s" % (f["name"], _first_line(f["excerpt"])) for f in failures)))
+        return failures
+
+    def _integrated_files(self):
+        """[(pid, [files])] for every integrate commit since the base, oldest
+        first; a later `orchestra revert` drops the package's entry."""
+        rc, out = agent_exec._git(
+            self.int_path, "log", "--reverse", "--format=%x00%s", "--name-only",
+            "%s..HEAD" % self.base)
+        if rc != 0:
+            return []
+        by_task = dict((agent_exec.sanitize_task_id(self._task(pid)), pid) for pid in self.pkgs)
+        entries = []
+        for block in out.split("\x00")[1:]:
+            lines = [line for line in block.splitlines() if line.strip()]
+            if not lines:
+                continue
+            subject, files = lines[0], lines[1:]
+            for verb in ("integrate", "revert"):
+                prefix = "orchestra %s " % verb
+                pid = by_task.get(subject[len(prefix):]) if subject.startswith(prefix) else None
+                if pid is None:
+                    continue
+                if verb == "integrate":
+                    entries.append((pid, files))
+                else:
+                    entries = [e for e in entries if e[0] != pid]
+        return entries
+
+    def _failure_paths(self, excerpt):
+        """Repo-relative paths a failure names: its failing test files plus
+        every path-like token, absolute ones inside the integration tree
+        made relative. Order kept, duplicates dropped."""
+        roots = [os.path.realpath(self.int_path) + os.sep, self.int_path.rstrip(os.sep) + os.sep]
+        paths = []
+
+        def add(path):
+            path = path.strip("`'\"()[]{}<>,;!?")
+            path = re.sub(r"(:\d+)+:?$", "", path).rstrip(".:")
+            if os.path.isabs(path):
+                for prefix in roots:
+                    if path.startswith(prefix):
+                        path = path[len(prefix):]
+                        break
+                else:
+                    return
+            if path.startswith("./"):
+                path = path[2:]
+            if (not path or path.startswith("../") or path.startswith("-")
+                    or not _PATH_LIKE.match(path)):
+                return
+            if path not in paths:
+                paths.append(path)
+
+        for path in agent_exec_checks.parse_failed_files(excerpt):
+            add(path)
+        for token in re.split(r"[\s\"',()]+", excerpt or ""):
+            add(token)
+        return paths
+
+    def _owner(self, path, integrated):
+        """The package a failing path belongs to: the latest integrated one
+        whose diff changed it, else the latest one whose files_owned match."""
+        for pid, files in reversed(integrated):
+            if path in files:
+                return pid
+        for pid, _ in reversed(integrated):
+            if any(agent_exec_checks.glob_match(glob, path)
+                   for glob in self.pkgs[pid]["files_owned"]):
+                return pid
+        return None
+
+    def _map_failures(self, failures):
+        """[(pid or None, [failure...])]: each failure goes to every package
+        one of its paths belongs to; a failure no package matches goes to
+        the catch-all (None, last)."""
+        integrated = self._integrated_files()
+        groups = []
+        index = {}
+        for failure in failures:
+            owners = []
+            for path in self._failure_paths(failure["excerpt"]):
+                owner = self._owner(path, integrated)
+                if owner is not None and owner not in owners:
+                    owners.append(owner)
+            for owner in owners or [None]:
+                if owner not in index:
+                    index[owner] = len(groups)
+                    groups.append((owner, []))
+                groups[index[owner]][1].append(failure)
+        groups.sort(key=lambda group: group[0] is None)
+        files = dict(integrated)
+        return [(owner, items, files.get(owner, [])) for owner, items in groups]
+
+    def _make_fixups(self, failures, round_no):
+        """Turn red full checks into `fix-<n>` packages; returns their ids."""
+        spec_dir = os.path.join(self.state_dir, "fixups")
+        os.makedirs(spec_dir, exist_ok=True)
+        created = []
+        for owner, items, diff_files in self._map_failures(failures):
+            number = self.fixups["next"]
+            while "fix-%d" % number in self.pkgs:
+                number += 1
+            self.fixups["next"] = number + 1
+            fid = "fix-%d" % number
+            spec = os.path.join(spec_dir, fid + ".md")
+            lines = ["# Fix-up %s (convergence round %d)" % (fid, round_no), "",
+                     "Every package is integrated, but these full checks are red on the "
+                     "integration tree. Make them pass; stay inside files_owned; do not "
+                     "commit.", ""]
+            for failure in items:
+                lines.extend(["## %s" % failure["name"], "",
+                              agent_exec_checks.failure_excerpt(failure["excerpt"]), ""])
+            if owner is None:
+                cls, owned = "deep", ["**"]
+                lines.append("No package's changes match these failures.")
+            else:
+                original = self.pkgs[owner]
+                cls = _CLS_BUMP.get(original["cls"], "deep")
+                owned = list(original["files_owned"])
+                owned.extend(f for f in diff_files if f not in owned)
+                lines.extend(["The failures point at package %s." % owner,
+                              "Its original spec: %s" % original["spec"],
+                              "Files it changed:"])
+                lines.extend("- " + f for f in diff_files or ["(none)"])
+            with open(spec, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(lines) + "\n")
+            pkg = {"id": fid, "spec": spec, "cls": cls, "depends_on": [],
+                   "files_owned": owned, "prio": 0}
+            self.plan["packages"].append(pkg)
+            self.pkgs[fid] = pkg
+            self.fixups["packages"].append(pkg)
+            created.append(fid)
+            self._emit("fixup", fid, {"round": round_no, "for": owner, "cls": cls,
+                                      "checks": [f["name"] for f in items]})
+        self.fixups["rounds"] = round_no
+        self._save_fixups()
+        for fid in created:
+            self.store.set_status(fid, "pending", detail="convergence round %d" % round_no)
+        return created
+
+    def _converge(self):
+        """After every package is integrated (or held by a need): run the
+        full checks, schedule fix-ups for red ones, repeat up to
+        `converge_rounds` times, then hand the rest over as a need."""
+        while self.stop_reason is None and not self.unavailable:
+            failures = self._final_checks()
+            if failures is None:
+                return
+            if not failures:
+                self._full_green()
+                return
+            if self.fixups["rounds"] >= self.converge_rounds:
+                self._need(None, "post-integration", "full checks still red after %d "
+                           "convergence round(s):\n%s" % (self.fixups["rounds"], "\n\n".join(
+                               "## %s\n%s" % (f["name"], agent_exec_checks.failure_excerpt(
+                                   f["excerpt"])) for f in failures)))
+                self._stop("full checks red after %d convergence round(s)"
+                           % self.fixups["rounds"])
+                return
+            self._make_fixups(failures, self.fixups["rounds"] + 1)
+            self._waves()
 
     def report(self):
         state = self.store.load()
@@ -1553,7 +2005,7 @@ def format_report_text(report):
 
 _RUN_USAGE = (
     "usage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n"
-    "                  [--max-in-flight N] [--gate CMD] [--full CMD] [--full-every N]\n"
+    "                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n"
     "                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n"
     "                  [--resume-on-reset]\n"
     "                  [--no-ui] [--notify-cmd CMD]\n"
@@ -1570,13 +2022,18 @@ _MARK_USAGE = (
 )
 
 
+def _width(text):
+    """`--max-in-flight` value: a count, or `auto`."""
+    return "auto" if text.strip().lower() == "auto" else int(text)
+
+
 def parse_run_args(args):
     """Parse `wave run` flags. Returns (options, error_message)."""
     opts = default_opts()
     seen = set()
     value_flags = {
         "--plan": ("plan", str), "--state": ("state", str), "--into": ("into", str),
-        "--repo": ("repo", str), "--max-in-flight": ("max_in_flight", int),
+        "--repo": ("repo", str), "--max-in-flight": ("max_in_flight", _width),
         "--gate": ("gate", str), "--full": ("full", str),
         "--full-every": ("full_every", int), "--full-timeout": ("full_timeout", float),
         "--full-retry": ("full_retry", str),
@@ -1618,7 +2075,7 @@ def parse_run_args(args):
     for flag in ("--plan", "--state", "--into"):
         if flag not in seen:
             return None, "missing required option: %s" % flag
-    if opts["max_in_flight"] < 1:
+    if isinstance(opts["max_in_flight"], int) and opts["max_in_flight"] < 1:
         return None, "--max-in-flight must be at least 1"
     if opts["full_every"] < 1:
         return None, "--full-every must be at least 1"

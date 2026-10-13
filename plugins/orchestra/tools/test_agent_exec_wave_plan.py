@@ -302,6 +302,20 @@ class PlanLintTests(unittest.TestCase):
         self.assertEqual([w["pkg"] for w in warnings], ["BAD"])
         self.assertIn("tests/**", warnings[0]["message"])
 
+    def test_sizing_warnings_start_past_three_files_and_150_lines(self):
+        plan = {
+            "packages": [
+                {"id": "OK", "spec": self._spec("x\n" * 150), "files_owned": ["a", "b", "c"]},
+                {"id": "WIDE", "spec": self._spec("x\n"), "files_owned": ["a", "b", "c", "d"]},
+                {"id": "LONG", "spec": self._spec("x\n" * 151), "files_owned": ["e"]},
+            ],
+            "rules": [],
+        }
+        warnings = wp.lint_plan(plan)
+        self.assertEqual([w["pkg"] for w in warnings], ["WIDE", "LONG"])
+        self.assertIn("owns 4 files", warnings[0]["message"])
+        self.assertIn("151 lines", warnings[1]["message"])
+
     def _spec(self, text):
         import tempfile
         fd, path = tempfile.mkstemp()

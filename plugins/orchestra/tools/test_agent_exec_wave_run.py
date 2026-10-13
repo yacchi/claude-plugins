@@ -19,6 +19,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -104,11 +106,13 @@ def result(payload, files=None):
 
 
 class FakeExecutor(object):
-    def __init__(self, rounds, on_dispatch=None):
+    def __init__(self, rounds, on_dispatch=None, on_return=None):
         self.rounds = {pid: list(fns) for pid, fns in rounds.items()}
         self.tokens = {}
         self.calls = []
         self.on_dispatch = on_dispatch
+        # Called with the package id after its round, outside the start lock.
+        self.on_return = on_return
 
     def prepare(self, prompt_files, cls, workdir, task, run_id):
         token = "tok-%d" % len(self.tokens)
@@ -121,20 +125,48 @@ class FakeExecutor(object):
     def dispatch(self, token, cls=None, exhausted=(), no_resume=False):
         spec = self.tokens[token]
         pid = spec["task"][len("pkg-"):]
-        self.calls.append({
-            "pkg": pid, "token": token, "exhausted": list(exhausted),
-            "no_resume": no_resume, "prompt_files": list(spec["prompt_files"]),
-            "workdir_head": _git(spec["workdir"], "rev-parse", "HEAD").stdout.strip(),
-        })
         if self.on_dispatch is not None:
             self.on_dispatch(pid, spec)
-        fns = self.rounds.get(pid) or []
-        if not fns:
-            raise AssertionError("unexpected dispatch for %s" % pid)
-        return fns.pop(0)(spec, exhausted)
+        # Like CliExecutor's detach: the tree is cut from the integration
+        # tree under the runner's start lock.
+        with getattr(self, "start_lock", None) or contextlib.nullcontext():
+            self.calls.append({
+                "pkg": pid, "token": token, "exhausted": list(exhausted),
+                "no_resume": no_resume, "prompt_files": list(spec["prompt_files"]),
+                "workdir_head": _git(spec["workdir"], "rev-parse", "HEAD").stdout.strip(),
+            })
+            fns = self.rounds.get(pid) or []
+            if not fns:
+                raise AssertionError("unexpected dispatch for %s" % pid)
+            out = fns.pop(0)(spec, exhausted)
+        if self.on_return is not None:
+            self.on_return(pid)
+        return out
 
     def pkgs_dispatched(self):
         return [c["pkg"] for c in self.calls]
+
+
+def wait_until(predicate, timeout=30.0):
+    deadline = time.time() + timeout
+    while not predicate():
+        if time.time() > deadline:
+            raise AssertionError("condition not reached in %.0fs" % timeout)
+        time.sleep(0.02)
+
+
+def finish_after(state_path, order):
+    """on_return hook: package order[i] finishes only once order[i-1] left
+    the in-flight statuses, so independent packages integrate in a fixed
+    order under the rolling scheduler."""
+    def hook(pid):
+        if pid not in order or order.index(pid) == 0:
+            return
+        before = order[order.index(pid) - 1]
+        wait_until(lambda: agent_exec_wave.StateStore(state_path).load()["packages"]
+                   .get(before, {}).get("status") not in (
+                       "pending", "implementing", "verifying", "fixing", "ready"))
+    return hook
 
 
 class NoDispatch(FakeExecutor):
@@ -204,8 +236,10 @@ class _WaveRepo(unittest.TestCase):
 
     def opts(self, **overrides):
         opts = agent_exec_wave_run.default_opts()
+        # The pre-rolling suite pins gated verification; final-mode tests
+        # pass verify_mode="final".
         opts.update({"plan": self.plan_path, "state": self.state_path,
-                     "into": "wave-int", "repo": self.repo})
+                     "into": "wave-int", "repo": self.repo, "verify_mode": "gated"})
         opts.update(overrides)
         return opts
 
@@ -500,7 +534,8 @@ class IntegrationTests(_WaveRepo):
         lines_b = list(_BASE_LINES)
         lines_b[4] = "B's line\n"
         ex = FakeExecutor({"A": [edit({"shared.txt": "".join(lines_a)})],
-                           "B": [edit({"shared.txt": "".join(lines_b)})]})
+                           "B": [edit({"shared.txt": "".join(lines_b)})]},
+                          on_return=finish_after(self.state_path, ["A", "B"]))
         report, rc = self.run_wave(ex)
         self.assertEqual(rc, 1, report)
         self.assertEqual(report["integrated"], ["A"])
@@ -532,7 +567,8 @@ class IntegrationTests(_WaveRepo):
             "      run: \"! ( test -f a.txt && test -f b.txt )\"\n"
         )
         self.plan([{"id": "A"}, {"id": "B"}])
-        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]},
+                          on_return=finish_after(self.state_path, ["A", "B"]))
         report, rc = self.run_wave(ex)
         self.assertEqual(rc, 1, report)
         self.assertEqual(report["integrated"], ["A"])
@@ -587,13 +623,15 @@ class StageEventTests(_WaveRepo):
             self.assertEqual(len(check_end), 1)
             self.assertIn(check_end[0]["status"], ("pass", "no-checks"))
         self.assertLess(names.index("dispatch-start"), names.index("check-start"))
-        self.assertEqual(self.details("integrate-start"), [{"tasks": ["A", "B"]}])
+        # Rolling: one integrate call per finished batch, one or two here.
+        starts = self.details("integrate-start")
+        self.assertEqual(sorted(t for d in starts for t in d["tasks"]), ["A", "B"])
         self.assertEqual(sorted((e["pkg"], json.loads(e["detail"])["status"])
                                 for e in self.events() if e["event"] == "integrate-task"),
                          [("A", "applied"), ("B", "applied")])
-        self.assertEqual(self.details("integrate-end"), [{"status": "ok"}])
-        self.assertEqual(len(self.details("verify-start")), 1)
-        self.assertEqual(self.details("verify-end")[0]["status"], "pass")
+        self.assertEqual(self.details("integrate-end"), [{"status": "ok"}] * len(starts))
+        self.assertEqual(len(self.details("verify-start")), len(starts))
+        self.assertTrue(all(d["status"] == "pass" for d in self.details("verify-end")))
         # Every mechanical event's detail is a sorted-key JSON string.
         for e in self.events():
             if e["event"] in ("dispatch-start", "integrate-end"):
@@ -621,7 +659,8 @@ class StageEventTests(_WaveRepo):
             "      run: \"! ( test -f a.txt && test -f b.txt )\"\n"
         )
         self.plan([{"id": "A"}, {"id": "B"}])
-        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]})
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})]},
+                          on_return=finish_after(self.state_path, ["A", "B"]))
         report, rc = self.run_wave(ex)
         self.assertEqual(rc, 1, report)
         events = self.events()
@@ -632,8 +671,10 @@ class StageEventTests(_WaveRepo):
         self.assertEqual([(e["pkg"], json.loads(e["detail"])) for e in reverts],
                          [("B", {"result": "reverted"})])
         self.assertFalse(any((e["pkg"] or "").startswith("pkg-") for e in events))
-        self.assertEqual(self.details("integrate-start"), [{"tasks": ["A", "B"]}])
-        self.assertEqual(self.details("integrate-end"), [{"status": "reverted"}])
+        # Rolling: A integrates alone, then B is gated, bisected and reverted.
+        self.assertEqual(self.details("integrate-start"), [{"tasks": ["A"]}, {"tasks": ["B"]}])
+        self.assertEqual(self.details("integrate-end"),
+                         [{"status": "ok"}, {"status": "reverted"}])
 
     def test_full_and_on_green_events(self):
         self.plan([{"id": "A"}])
@@ -1327,11 +1368,12 @@ class RedFullTests(_WaveRepo):
         self.assertEqual(self.green()["sha"], self.head())
         self.assert_int_clean()
 
-    def test_two_culprits_found_in_one_red_full_run(self):
+    def test_two_culprits_reverted_and_redispatched(self):
         self.plan([{"id": "A"}, {"id": "B"}, {"id": "C"}])
         ex = FakeExecutor({"A": [edit({"a.txt": "POISON\n"}), edit({"a.txt": "a\n"})],
                            "B": [edit({"b.txt": "POISON\n"}), edit({"b.txt": "b\n"})],
-                           "C": [edit({"c.txt": "c\n"})]})
+                           "C": [edit({"c.txt": "c\n"})]},
+                          on_return=finish_after(self.state_path, ["A", "B", "C"]))
         report, rc = self.run_wave(ex, gate="true", full=_POISON_FULL)
         self.assertEqual(rc, 0, report)
         self.assertEqual(report["integrated"], ["A", "B", "C"])
@@ -1381,6 +1423,266 @@ class CliTests(_WaveRepo):
         self.assertEqual(opts["stop_at"], 12.5)
         self.assertEqual(opts["max_waves"], 4)
         self.assertTrue(opts["text"])
+
+
+# --- rolling scheduler / verify_mode final / auto width ------------------------
+
+
+class _Concurrency(object):
+    """Tracks which packages are inside their dispatch at once."""
+
+    def __init__(self, hold=0.15):
+        self.lock = threading.Lock()
+        self.active = set()
+        self.peak = 0
+        self.together = set()
+        self.hold = hold
+
+    def enter(self, pid, spec=None):
+        with self.lock:
+            for other in self.active:
+                self.together.add(frozenset((pid, other)))
+            self.active.add(pid)
+            self.peak = max(self.peak, len(self.active))
+
+    def leave(self, pid):
+        time.sleep(self.hold)
+        with self.lock:
+            self.active.discard(pid)
+
+
+class RollingTests(_WaveRepo):
+    def test_dependent_starts_while_unrelated_package_still_runs(self):
+        self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}, {"id": "C"}])
+        b_started = threading.Event()
+        seen = {}
+
+        def on_dispatch(pid, spec):
+            if pid == "B":
+                b_started.set()
+
+        def on_return(pid):
+            if pid == "C":
+                seen["b_before_c_finished"] = b_started.wait(20)
+
+        lock = threading.Lock()
+        integrating = {"now": 0, "peak": 0}
+        real = agent_exec.isolate_integrate
+
+        def tracking(*args, **kwargs):
+            with lock:
+                integrating["now"] += 1
+                integrating["peak"] = max(integrating["peak"], integrating["now"])
+            try:
+                time.sleep(0.05)
+                return real(*args, **kwargs)
+            finally:
+                with lock:
+                    integrating["now"] -= 1
+
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})],
+                           "C": [edit({"c.txt": "c\n"})]},
+                          on_dispatch=on_dispatch, on_return=on_return)
+        with mock.patch.object(agent_exec, "isolate_integrate", tracking):
+            report, rc = self.run_wave(ex, verify_mode="final")
+        self.assertEqual(rc, 0, report)
+        self.assertTrue(seen["b_before_c_finished"])
+        self.assertEqual(sorted(report["integrated"]), ["A", "B", "C"])
+        self.assertEqual(integrating["peak"], 1)
+        subjects = _git(self.int_path(), "log", "--reverse", "--format=%s").stdout.splitlines()
+        self.assertLess(subjects.index("orchestra integrate pkg-A"),
+                        subjects.index("orchestra integrate pkg-B"))
+
+    def test_width_and_overlap_hold_while_rolling(self):
+        self.plan([{"id": "A", "files_owned": ["src/**"]},
+                   {"id": "B", "files_owned": ["src/b.txt"]},
+                   {"id": "C"}, {"id": "D"}, {"id": "E"}])
+        conc = _Concurrency()
+        ex = FakeExecutor({"A": [edit({"src/a.txt": "a\n"})],
+                           "B": [edit({"src/b.txt": "b\n"})],
+                           "C": [edit({"c.txt": "c\n"})], "D": [edit({"d.txt": "d\n"})],
+                           "E": [edit({"e.txt": "e\n"})]},
+                          on_dispatch=conc.enter, on_return=conc.leave)
+        report, rc = self.run_wave(ex, verify_mode="final", max_in_flight=2)
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(sorted(report["integrated"]), ["A", "B", "C", "D", "E"])
+        self.assertLessEqual(conc.peak, 2)
+        self.assertNotIn(frozenset(("A", "B")), conc.together)
+
+    def test_gated_red_full_starts_nothing_more(self):
+        self.plan([{"id": "A"}, {"id": "B"}, {"id": "C"}])
+
+        def on_return(pid):
+            if pid == "B":
+                wait_until(lambda: self.state().get("stopped"))
+
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})],
+                           "C": [edit({"c.txt": "c\n"})]}, on_return=on_return)
+        report, rc = self.run_wave(ex, gate="true", full="false", max_in_flight=2)
+        self.assertEqual(rc, 5, report)
+        self.assertEqual(report["reason"], "full verification red at the last green SHA")
+        self.assertEqual(sorted(ex.pkgs_dispatched()), ["A", "B"])
+        self.assertEqual(report["pending"], ["C"])
+
+    def test_stop_file_keeps_unrelated_package_from_starting(self):
+        self.plan([{"id": "A"}, {"id": "B"}, {"id": "C"}])
+
+        def on_dispatch(pid, spec):
+            if pid == "A":
+                agent_exec_wave.request_stop(self.state_path, "enough")
+
+        def on_return(pid):
+            if pid == "B":
+                wait_until(lambda: agent_exec_wave.stop_requested(self.state_path))
+
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})], "B": [edit({"b.txt": "b\n"})],
+                           "C": [edit({"c.txt": "c\n"})]},
+                          on_dispatch=on_dispatch, on_return=on_return)
+        report, rc = self.run_wave(ex, max_in_flight=2)
+        self.assertEqual(rc, 5, report)
+        self.assertEqual(sorted(ex.pkgs_dispatched()), ["A", "B"])
+        self.assertEqual(sorted(report["integrated"]), ["A", "B"])
+        self.assertEqual(report["pending"], ["C"])
+
+
+_FAST_NO_BAD = (
+    "checks:\n"
+    "  items:\n"
+    "    - name: nobad\n"
+    "      fast: true\n"
+    "      run: \"! grep -rqs BAD --include=*.txt .\"\n"
+)
+
+# A full (non-fast) check naming the poisoned files, like a test runner would.
+_FULL_NO_POISON = (
+    "checks:\n"
+    "  items:\n"
+    "    - name: nopoison\n"
+    "      run: \"! grep -ls POISON *.txt\"\n"
+)
+
+
+class FinalModeTests(_WaveRepo):
+    def events(self, name):
+        return [e for e in agent_exec_wave.read_events(self.state_path, None)
+                if e["event"] == name]
+
+    def test_red_fast_check_is_recorded_and_blocks_nothing(self):
+        self.checks(_FAST_NO_BAD)
+        self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "BAD\n"})], "B": [edit({"b.txt": "b\n"})]})
+        report, rc = self.run_wave(ex, verify_mode="final")
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(report["integrated"], ["A", "B"])
+        self.assertEqual(ex.pkgs_dispatched(), ["A", "B"])
+        self.assertEqual(self.need_kinds(), [])
+        self.assertEqual(self.state()["packages"]["A"]["detail"], "fast check failed: nobad")
+
+    def test_red_full_check_converges_through_fixup_for_the_changing_package(self):
+        self.checks(_FULL_NO_POISON)
+        self.plan([{"id": "A"}, {"id": "B", "depends_on": ["A"]}, {"id": "C"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})],
+                           "B": [edit({"b.txt": "POISON\n"})],
+                           "C": [edit({"c.txt": "c\n"})],
+                           "fix-1": [edit({"b.txt": "fixed\n"})]})
+        report, rc = self.run_wave(ex, verify_mode="final")
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(ex.pkgs_dispatched().count("fix-1"), 1)
+        self.assertNotIn("fix-2", ex.pkgs_dispatched())
+        fix_call = next(c for c in ex.calls if c["pkg"] == "fix-1")
+        self.assertEqual(ex.tokens[fix_call["token"]]["class"], "standard")
+        self.assertEqual([json.loads(e["detail"])["for"] for e in self.events("fixup")], ["B"])
+        self.assertEqual(self.int_file("b.txt"), "fixed\n")
+        self.assertEqual(sorted(report["integrated"]), ["A", "B", "C", "fix-1"])
+        # The full checks ran only with nothing in flight: once after A-C
+        # were all integrated, once after the fix-up.
+        events = agent_exec_wave.read_events(self.state_path, None)
+        names = [(e["event"], e["pkg"], e.get("to")) for e in events]
+        first_full = [n[0] for n in names].index("full-start")
+        for pid in ("A", "B", "C"):
+            self.assertLess(names.index(("status", pid, "integrated")), first_full)
+        self.assertEqual(len(self.events("full-start")), 2)
+
+    def test_unmatched_failure_goes_to_catch_all_serialized_and_rounds_end_in_need(self):
+        self.checks(_FULL_NO_POISON)
+        self.plan([{"id": "A"}, {"id": "B"}])
+        conc = _Concurrency()
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})],
+                           "B": [edit({"b.txt": "POISON\n"})],
+                           "fix-1": [edit({"b.txt": "fixed\n"})],
+                           "fix-2": [edit({"x.txt": "x\n"})]},
+                          on_dispatch=conc.enter, on_return=conc.leave)
+        report, rc = self.run_wave(ex, verify_mode="final", full="echo boom; exit 1",
+                                   converge_rounds=1)
+        self.assertEqual(rc, 5, report)
+        self.assertEqual(self.need_kinds(), [(None, "post-integration")])
+        self.assertIn("boom", self.state()["needs"][0]["detail"])
+        self.assertEqual(sorted(ex.pkgs_dispatched()), ["A", "B", "fix-1", "fix-2"])
+        fixups = [json.loads(e["detail"]) for e in self.events("fixup")]
+        self.assertEqual([(f["for"], f["cls"]) for f in fixups],
+                         [("B", "standard"), (None, "deep")])
+        self.assertNotIn(frozenset(("fix-1", "fix-2")), conc.together)
+
+    def test_only_one_full_check_run_at_a_time(self):
+        self.plan([{"id": "A"}])
+        ex = FakeExecutor({"A": [edit({"a.txt": "a\n"})]})
+        out = {}
+        agent_exec_wave_run._FULL_LOCK.acquire()
+        try:
+            thread = threading.Thread(target=lambda: out.update(
+                report=self.run_wave(ex, verify_mode="final", full="true")))
+            thread.start()
+            wait_until(lambda: os.path.exists(self.state_path)
+                       and self.state()["packages"]["A"]["status"] == "integrated")
+            time.sleep(0.3)
+            self.assertEqual(self.events("full-start"), [])
+        finally:
+            agent_exec_wave_run._FULL_LOCK.release()
+        thread.join(30)
+        self.assertEqual(out["report"][1], 0, out["report"])
+        self.assertEqual(len(self.events("full-start")), 1)
+
+
+class MaxInFlightTests(unittest.TestCase):
+    def resolve(self, width, cfg, host_name, auto=9):
+        runner = agent_exec_wave_run._Runner.__new__(agent_exec_wave_run._Runner)
+        runner.opts = {"max_in_flight": width}
+        runner.orca = object() if host_name else None
+        runner.host_name = host_name or "orca"
+        runner._emit = lambda *args, **kwargs: None
+        runner._wave_cfg = lambda: cfg
+        with mock.patch.object(agent_exec_wave_run, "auto_max_in_flight", return_value=auto), \
+                contextlib.redirect_stderr(io.StringIO()):
+            runner._resolve_settings()
+        return runner.opts["max_in_flight"]
+
+    def test_explicit_width_wins_and_auto_formula_only_for_herdr(self):
+        self.assertEqual(self.resolve(None, {}, "herdr"), 9)
+        self.assertEqual(self.resolve("auto", {}, "herdr"), 9)
+        self.assertEqual(self.resolve(None, {}, "orca"), 4)
+        self.assertEqual(self.resolve(None, {}, None), 4)
+        self.assertEqual(self.resolve(3, {"max_in_flight": 5}, "herdr"), 3)
+        self.assertEqual(self.resolve(None, {"max_in_flight": 5}, "herdr"), 5)
+        self.assertEqual(self.resolve(None, {"max_in_flight": "auto"}, "orca"), 4)
+
+    def test_auto_formula(self):
+        def machine(cpus, gib):
+            pages = {"SC_PHYS_PAGES": gib * 2 ** 30 // 4096, "SC_PAGE_SIZE": 4096}
+            with mock.patch.object(os, "cpu_count", return_value=cpus), \
+                    mock.patch.object(os, "sysconf", side_effect=lambda name: pages[name]):
+                return agent_exec_wave_run.auto_max_in_flight()
+        self.assertEqual(machine(10, 64), 8)
+        self.assertEqual(machine(64, 128), 16)
+        self.assertEqual(machine(12, 8), 4)
+        self.assertEqual(machine(3, 2), 2)
+        with mock.patch.object(os, "cpu_count", return_value=None):
+            self.assertEqual(agent_exec_wave_run.auto_max_in_flight(), 4)
+
+    def test_cli_accepts_auto(self):
+        opts, err = agent_exec_wave_run.parse_run_args([
+            "--plan", "p", "--state", "s", "--into", "i", "--max-in-flight", "auto"])
+        self.assertIsNone(err)
+        self.assertEqual(opts["max_in_flight"], "auto")
 
 
 if __name__ == "__main__":

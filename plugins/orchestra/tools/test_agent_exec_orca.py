@@ -372,7 +372,9 @@ class _OrcaRepo(unittest.TestCase):
     def run_wave(self, executor, orca=None, **overrides):
         opts = agent_exec_wave_run.default_opts()
         opts.update({"plan": self.plan_path, "state": self.state_path,
-                     "into": "wave-int", "repo": self.repo, "run_id": "r1234567"})
+                     "into": "wave-int", "repo": self.repo, "run_id": "r1234567",
+                     # Self-verify corrections exist only in gated verification.
+                     "verify_mode": "gated"})
         opts.update(overrides)
         report = agent_exec_wave_run.run_wave(
             opts, executor=executor, orca=orca if orca is not None else self.orca())
