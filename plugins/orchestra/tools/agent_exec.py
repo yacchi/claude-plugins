@@ -46,6 +46,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agent_exec_checks  # noqa: E402
+import agent_exec_pricing  # noqa: E402
 import agent_exec_sandbox  # noqa: E402
 import agent_exec_watchdog  # noqa: E402
 import agent_exec_wave  # noqa: E402
@@ -580,7 +581,13 @@ Usage:
                                   is off). --since takes <N>m|<N>h|<N>d or an
                                   ISO8601 timestamp (default 24h); --run is
                                   inherently cross-project; --json is the
-                                  default. Strictly read-only.
+                                  default. Also reports an estimated cost: claude
+                                  from list prices (cache writes by TTL, cache
+                                  reads, output), pi as provider-reported; codex
+                                  and any unpriced model are listed
+                                  as unpriced, never guessed. Override prices with
+                                  `pricing.models` in orchestra.yaml. Strictly
+                                  read-only.
   agent-exec cooldown [--json|--text]
                                   show active executor cooldowns
   agent-exec cooldown clear [<executor>]
@@ -8361,8 +8368,50 @@ def new_claude_usage_acc():
         "main": _zero_tokens(),
         "sidechain": _zero_tokens(),
         "by_model": {},
+        # model -> the five-way breakdown the price estimate needs (fresh
+        # input, cache writes by TTL, cache reads, output). `tokens`/`by_model`
+        # keep the canonical three-key vocabulary, which folds cache writes
+        # into input and so cannot price them on its own.
+        "by_model_detail": {},
+        # message id -> the contribution already folded in, so a response that
+        # the transcript wrote on several lines is counted once.
+        "_messages": {},
         "records": 0,
     }
+
+
+def _claude_usage_detail(usage):
+    """One transcript `usage` object -> the five-way breakdown. Cache writes
+    are split by TTL from `usage.cache_creation`; whatever that object does
+    not account for (older transcripts carry only the total) is priced as the
+    5-minute TTL, the default."""
+    creation = usage.get("cache_creation")
+    creation = creation if isinstance(creation, dict) else {}
+    write_total = _coerce_count(usage.get("cache_creation_input_tokens"))
+    write_1h = min(write_total, _coerce_count(creation.get("ephemeral_1h_input_tokens")))
+    return {
+        "fresh_input": _coerce_count(usage.get("input_tokens")),
+        "cache_write_5m": write_total - write_1h,
+        "cache_write_1h": write_1h,
+        "cache_read": _coerce_count(usage.get("cache_read_input_tokens")),
+        "output": _coerce_count(usage.get("output_tokens")),
+    }
+
+
+def _fold_claude_contribution(acc, contribution, sign):
+    """Add (sign=+1) or remove (sign=-1) one message's contribution."""
+    side, model, tokens, detail = contribution
+    for target in (acc["tokens"], acc[side]) + (
+        (acc["by_model"].setdefault(model, _zero_tokens()),) if model else ()
+    ):
+        for key in _USAGE_TOKEN_KEYS:
+            target[key] += sign * tokens[key]
+    if model:
+        bucket = acc["by_model_detail"].setdefault(
+            model, dict((k, 0) for k in agent_exec_pricing.DETAIL_KEYS))
+        for key in agent_exec_pricing.DETAIL_KEYS:
+            bucket[key] += sign * detail[key]
+    acc["records"] += sign
 
 
 def aggregate_claude_lines(lines, cutoff, acc=None):
@@ -8404,13 +8453,28 @@ def aggregate_claude_lines(lines, cutoff, acc=None):
             "output_tokens": _coerce_count(usage.get("output_tokens")),
             "cached_input_tokens": _coerce_count(usage.get("cache_read_input_tokens")),
         }
-        _add_tokens(acc["tokens"], tokens)
-        _add_tokens(acc["sidechain" if obj.get("isSidechain") is True else "main"], tokens)
-
         model = message.get("model")
-        if isinstance(model, str) and model:
-            _add_tokens(acc["by_model"].setdefault(model, _zero_tokens()), tokens)
-        acc["records"] += 1
+        contribution = (
+            "sidechain" if obj.get("isSidechain") is True else "main",
+            model if isinstance(model, str) and model else None,
+            tokens,
+            _claude_usage_detail(usage),
+        )
+        # One API response is written to the transcript once per content block
+        # (a thinking block, a text block and each tool_use block are separate
+        # lines), every one carrying the same `usage`; a resumed or forked
+        # session copies earlier lines again. Count each message id once, and
+        # let a later line replace an earlier one (a streamed response's final
+        # line carries the final output_tokens).
+        message_id = message.get("id")
+        if isinstance(message_id, str) and message_id:
+            previous = acc["_messages"].get(message_id)
+            if previous is not None:
+                if previous == contribution:
+                    continue
+                _fold_claude_contribution(acc, previous, -1)
+            acc["_messages"][message_id] = contribution
+        _fold_claude_contribution(acc, contribution, 1)
     return acc
 
 
@@ -8645,6 +8709,7 @@ def collect_claude_usage(cutoff, all_projects=False, home=None, cwd=None,
         "main": acc["main"],
         "sidechain": acc["sidechain"],
         "by_model": acc["by_model"],
+        "by_model_detail": acc["by_model_detail"],
         "sessions": sessions,
         "records": acc["records"],
     }
@@ -8885,6 +8950,7 @@ def collect_claude_scoped_usage(home=None, config_dir=None, run_ids=(),
         "main": acc["main"],
         "sidechain": acc["sidechain"],
         "by_model": acc["by_model"],
+        "by_model_detail": acc["by_model_detail"],
         "sessions": len(files),
         "records": acc["records"],
     }
@@ -9082,6 +9148,40 @@ def collect_telemetry_usage(cutoff, cfg, executor):
     }
 
 
+def _usage_cost(sources, pricing):
+    """Per-source entries -> the cost block of the report, and (side effect)
+    the Claude entry's own per-model `cost`. Claude is estimated from list
+    prices; pi is the figure the provider itself reported; codex reports
+    tokens with no dollar price, so it is listed as unpriced instead of being
+    guessed."""
+    components = {}
+    priced = []
+    unpriced = []
+    claude = sources.get("claude")
+    if isinstance(claude, dict) and claude.get("status") == "ok":
+        est = agent_exec_pricing.estimate(claude.get("by_model_detail"), pricing)
+        claude["cost"] = est
+        components["claude"] = est["micro_usd"]
+        priced.append("claude")
+        for model in sorted(est["unpriced_models"]):
+            unpriced.append("claude:%s" % model)
+    pi = sources.get("pi")
+    if isinstance(pi, dict) and pi.get("status") == "ok":
+        components["pi"] = _coerce_count(pi.get("cost_micro_usd"))
+        priced.append("pi")
+    codex = sources.get("codex")
+    if isinstance(codex, dict) and codex.get("status") == "ok":
+        unpriced.append("codex")
+    return {
+        "estimated_micro_usd": sum(components.values()),
+        "components": components,
+        "priced_sources": priced,
+        "unpriced_sources": unpriced,
+        "price_list": {"as_of": agent_exec_pricing.PRICE_LIST_AS_OF,
+                       "source": agent_exec_pricing.PRICE_LIST_SOURCE},
+    }
+
+
 def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                        home=None, cwd=None, run_ids=(), session_ids=()):
     """Assemble the full report. `sources` is the requested subset, in
@@ -9172,6 +9272,7 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
     else:
         scope = {"kind": "window", "since": since.isoformat(),
                  "until": now.isoformat()}
+    cost = _usage_cost(out, (cfg or {}).get("pricing") if isinstance(cfg, dict) else None)
     if scope["kind"] == "window":
         return {
             "since": since.isoformat(),
@@ -9179,11 +9280,13 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
             "scope": scope,
             "sources": out,
             "totals": sum_usage_totals(out),
+            "cost": cost,
         }
     return {
         "scope": scope,
         "sources": out,
         "totals": sum_usage_totals(out),
+        "cost": cost,
     }
 
 
@@ -9298,8 +9401,16 @@ def _print_usage_text(report):
         if name == "claude":
             print("           main: %s" % _usage_tokens_line(entry.get("main")))
             print("           sidechain: %s" % _usage_tokens_line(entry.get("sidechain")))
+            priced = (entry.get("cost") or {}).get("models") or {}
             for model, tokens in sorted((entry.get("by_model") or {}).items()):
                 print("           %s: %s" % (model, _usage_tokens_line(tokens)))
+                detail = priced.get(model)
+                if detail:
+                    print("             fresh=%d cache_write(5m)=%d cache_write(1h)=%d cache_read=%d out=%d  ~$%.4f" % (
+                        detail["fresh_input"], detail["cache_write_5m"], detail["cache_write_1h"],
+                        detail["cache_read"], detail["output"], detail["micro_usd"] / 1000000.0))
+            for model in sorted(((entry.get("cost") or {}).get("unpriced_models") or {})):
+                print("             %s: no price (set pricing.models in orchestra.yaml)" % model)
             print("           sessions: %d" % _coerce_count(entry.get("sessions")))
         elif name == "codex":
             print("           sessions: %d" % _coerce_count(entry.get("sessions")))
@@ -9315,6 +9426,15 @@ def _print_usage_text(report):
                 for run_id, count in sorted(entry["runs"].items())
             ))
     print("total    %-13s %s" % ("", _usage_tokens_line(report.get("totals"))))
+    cost = report.get("cost")
+    if isinstance(cost, dict):
+        parts = ["%s=$%.4f" % (name, micro / 1000000.0)
+                 for name, micro in sorted((cost.get("components") or {}).items())]
+        print("cost     ~$%.4f  (%s)%s" % (
+            _coerce_count(cost.get("estimated_micro_usd")) / 1000000.0, ", ".join(parts) or "nothing priced",
+            "" if not cost.get("unpriced_sources") else "  PARTIAL: unpriced " + ", ".join(cost.get("unpriced_sources") or ())))
+        print("         estimate from list prices as of %s; claude = list price, pi = provider-reported" %
+              (cost.get("price_list") or {}).get("as_of"))
 
 
 def _parse_check_args(args):

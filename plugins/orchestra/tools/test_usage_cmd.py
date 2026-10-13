@@ -66,21 +66,28 @@ def iso(dt):
 
 
 def claude_line(ts, input_tokens=0, output_tokens=0, cache_creation=0,
-                cache_read=0, model="claude-opus-5", sidechain=False):
+                cache_read=0, model="claude-opus-5", sidechain=False,
+                message_id=None, cache_creation_1h=None):
+    usage = {
+        "input_tokens": input_tokens,
+        "cache_creation_input_tokens": cache_creation,
+        "cache_read_input_tokens": cache_read,
+        "output_tokens": output_tokens,
+    }
+    if cache_creation_1h is not None:
+        usage["cache_creation"] = {
+            "ephemeral_5m_input_tokens": cache_creation - cache_creation_1h,
+            "ephemeral_1h_input_tokens": cache_creation_1h,
+        }
+    message = {"model": model, "usage": usage}
+    if message_id is not None:
+        message["id"] = message_id
     return json.dumps(
         {
             "timestamp": iso(ts),
             "isSidechain": sidechain,
             "sessionId": "s-1",
-            "message": {
-                "model": model,
-                "usage": {
-                    "input_tokens": input_tokens,
-                    "cache_creation_input_tokens": cache_creation,
-                    "cache_read_input_tokens": cache_read,
-                    "output_tokens": output_tokens,
-                },
-            },
+            "message": message,
         }
     )
 
@@ -221,6 +228,64 @@ class ClaudeAggregationTests(unittest.TestCase):
         self.assertEqual(acc["sidechain"]["input_tokens"], 3)
         self.assertEqual(sorted(acc["by_model"]), ["claude-haiku-5", "claude-opus-5"])
         self.assertEqual(acc["by_model"]["claude-haiku-5"]["output_tokens"], 2)
+
+    def test_one_response_written_on_several_lines_is_counted_once(self):
+        """Claude Code writes a response once per content block (thinking,
+        text, each tool_use), every line carrying the same usage. Counting
+        lines overstated a real session about 2.5x."""
+        lines = [
+            claude_line(NOW, input_tokens=10, output_tokens=5, cache_read=100,
+                        message_id="msg_A")
+            for _ in range(4)
+        ] + [claude_line(NOW, input_tokens=1, output_tokens=2, message_id="msg_B")]
+        acc = agent_exec.aggregate_claude_lines(lines, CUTOFF)
+        self.assertEqual(acc["records"], 2)
+        self.assertEqual(
+            acc["tokens"],
+            {"input_tokens": 11, "output_tokens": 7, "cached_input_tokens": 100},
+        )
+        self.assertEqual(acc["by_model"]["claude-opus-5"]["output_tokens"], 7)
+
+    def test_a_later_line_for_the_same_message_replaces_the_earlier_one(self):
+        """A streamed response's last line carries the final output_tokens."""
+        lines = [
+            claude_line(NOW, output_tokens=3, message_id="msg_A"),
+            claude_line(NOW, output_tokens=40, message_id="msg_A"),
+        ]
+        acc = agent_exec.aggregate_claude_lines(lines, CUTOFF)
+        self.assertEqual(acc["records"], 1)
+        self.assertEqual(acc["tokens"]["output_tokens"], 40)
+        self.assertEqual(acc["main"]["output_tokens"], 40)
+
+    def test_dedupe_spans_transcripts_sharing_one_accumulator(self):
+        """A resumed or forked session copies earlier lines into a new file."""
+        acc = agent_exec.new_claude_usage_acc()
+        line = claude_line(NOW, input_tokens=7, message_id="msg_A")
+        agent_exec.aggregate_claude_lines([line], CUTOFF, acc)
+        agent_exec.aggregate_claude_lines([line], CUTOFF, acc)
+        self.assertEqual(acc["tokens"]["input_tokens"], 7)
+        self.assertEqual(acc["records"], 1)
+
+    def test_lines_without_a_message_id_are_all_counted(self):
+        lines = [claude_line(NOW, input_tokens=2), claude_line(NOW, input_tokens=2)]
+        acc = agent_exec.aggregate_claude_lines(lines, CUTOFF)
+        self.assertEqual(acc["tokens"]["input_tokens"], 4)
+
+    def test_cache_writes_are_split_by_ttl_for_pricing(self):
+        lines = [
+            claude_line(NOW, input_tokens=3, cache_creation=100, cache_creation_1h=60,
+                        cache_read=5, output_tokens=2, message_id="msg_A"),
+            # an older transcript with only the total: priced as the 5-minute TTL
+            claude_line(NOW, cache_creation=10, message_id="msg_B"),
+        ]
+        acc = agent_exec.aggregate_claude_lines(lines, CUTOFF)
+        self.assertEqual(
+            acc["by_model_detail"]["claude-opus-5"],
+            {"fresh_input": 3, "cache_write_5m": 50, "cache_write_1h": 60,
+             "cache_read": 5, "output": 2},
+        )
+        # the canonical vocabulary still folds cache writes into input
+        self.assertEqual(acc["tokens"]["input_tokens"], 113)
 
     def test_garbage_and_shape_drift_lines_are_skipped(self):
         lines = [
@@ -613,7 +678,7 @@ class TotalsAndReportTests(unittest.TestCase):
             report = agent_exec.build_usage_report(
                 CUTOFF, NOW, ["codex", "claude"], cfg={"telemetry": {"enabled": False}},
                 home=home, cwd="/x")
-            self.assertEqual(sorted(report), ["now", "scope", "since", "sources", "totals"])
+            self.assertEqual(sorted(report), ["cost", "now", "scope", "since", "sources", "totals"])
             self.assertEqual(report["scope"], {
                 "kind": "window", "since": CUTOFF.isoformat(), "until": NOW.isoformat()
             })
@@ -653,7 +718,7 @@ class TotalsAndReportTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             parsed = json.loads(out.getvalue())
             self.assertEqual(sorted(parsed),
-                             ["now", "scope", "since", "sources", "totals"])
+                             ["cost", "now", "scope", "since", "sources", "totals"])
 
     def test_every_emitted_number_is_a_nonnegative_int(self):
         with tempfile.TemporaryDirectory() as home:
@@ -871,7 +936,7 @@ class DeterministicScopeTests(unittest.TestCase):
                 home=home, cwd="/x", session_ids=["s-1"])
             self.assertEqual(report["scope"], {
                 "kind": "session", "session_ids": ["s-1"]})
-            self.assertEqual(sorted(report), ["scope", "sources", "totals"])
+            self.assertEqual(sorted(report), ["cost", "scope", "sources", "totals"])
             self.assertNotIn("since", report)
             self.assertNotIn("now", report)
 
@@ -1546,6 +1611,62 @@ class EndToEndSubprocessTests(unittest.TestCase):
             parsed = json.loads(out)
             self.assertEqual(parsed["sources"]["pi"], {
                 "attributable": False, "reason": "no matching run ledger data"})
+
+
+class UsageCostReportTests(unittest.TestCase):
+    def _sources(self, **extra):
+        acc = agent_exec.aggregate_claude_lines([
+            claude_line(NOW, input_tokens=1000, cache_creation=2000, cache_creation_1h=2000,
+                        cache_read=1000000, output_tokens=10000, model="claude-opus-5-5",
+                        message_id="msg_A"),
+            claude_line(NOW, input_tokens=500, output_tokens=500, model="claude-mystery-9",
+                        message_id="msg_B"),
+        ], CUTOFF)
+        sources = {"claude": {"status": "ok", "tokens": acc["tokens"], "main": acc["main"],
+                              "sidechain": acc["sidechain"], "by_model": acc["by_model"],
+                              "by_model_detail": acc["by_model_detail"]}}
+        sources.update(extra)
+        return sources
+
+    def test_claude_is_priced_from_the_list_and_unknown_models_are_not_guessed(self):
+        cost = agent_exec._usage_cost(self._sources(), None)
+        # opus-5-5: 1000*4 + 2000*8 (1h write) + 1,000,000*0.2 + 10000*20 micro-USD
+        self.assertEqual(cost["components"]["claude"], 4000 + 16000 + 200000 + 200000)
+        self.assertEqual(cost["unpriced_sources"], ["claude:claude-mystery-9"])
+
+    def test_pricing_override_prices_an_unknown_model(self):
+        pricing = {"models": {"claude-mystery": {"input": 1, "output": 2}}}
+        cost = agent_exec._usage_cost(self._sources(), pricing)
+        self.assertEqual(cost["unpriced_sources"], [])
+        # 500 in at $1 + 500 out at $2 per 1M, on top of the opus part
+        self.assertEqual(cost["components"]["claude"], 420000 + 500 + 1000)
+
+    def test_codex_is_listed_as_unpriced_never_zero(self):
+        sources = self._sources(
+            codex={"status": "ok", "tokens": {}},
+            pi={"status": "ok", "tokens": {}, "cost_micro_usd": 2500000})
+        cost = agent_exec._usage_cost(sources, None)
+        self.assertIn("codex", cost["unpriced_sources"])
+        self.assertEqual(cost["components"]["pi"], 2500000)
+        self.assertNotIn("codex", cost["components"])
+
+    def test_text_report_shows_cache_and_cost(self):
+        sources = self._sources()
+        report = {"scope": {"kind": "run", "run_ids": ["r1"]}, "sources": sources,
+                  "totals": agent_exec.sum_usage_totals(sources)}
+        report["cost"] = agent_exec._usage_cost(sources, None)
+        out = io.StringIO()
+        real = sys.stdout
+        sys.stdout = out
+        try:
+            agent_exec._print_usage_text(report)
+        finally:
+            sys.stdout = real
+        text = out.getvalue()
+        self.assertIn("cache_read=1000000", text)
+        self.assertIn("cache_write(1h)=2000", text)
+        self.assertIn("cost     ~$", text)
+        self.assertIn("PARTIAL: unpriced claude:claude-mystery-9", text)
 
 
 if __name__ == "__main__":

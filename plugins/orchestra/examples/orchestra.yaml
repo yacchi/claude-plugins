@@ -355,3 +355,13 @@ enforcement:
   turn_edits: 8
   opus_generalist: "nudge"
   session_cleanup: "on"
+
+# --- pricing (optional) ---------------------------------------------------------
+# `agent-exec usage` estimates cost from a built-in list of Anthropic API prices
+# (USD per 1M tokens). A model missing from that list is reported as unpriced, not
+# guessed. Add or override prices here, matched by model-id prefix, longest first.
+# cache_write_5m / cache_write_1h default to 1.25x / 2x of `input`; cache_read to
+# 0.1x of `input`. The figure is an estimate from list prices, not an invoice.
+# pricing:
+#   models:
+#     claude-opus-5-5: {input: 4, output: 20, cache_read: 0.2}
