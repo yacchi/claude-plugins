@@ -1,0 +1,30 @@
+description: >
+  remove refuses a worktree holding uncollected changes (here a file the
+  heartbeat writes into the tree when ORCHESTRA_ALIVE_DIR points inside it);
+  diff marks the content collected so remove then succeeds; editing again
+  after collection refuses again; --force always removes
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, t2]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t1/scratch"}
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t2/scratch"}
+  - argv: [isolate, remove, --task, t1]
+  - argv: [isolate, diff, --task, t1, --names-only]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t1/more"}
+  - argv: [isolate, remove, --task, t1]
+  - argv: [isolate, diff, --task, t1]
+  - argv: [isolate, remove, --task, t1]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-t1/scratch/00000000
+  - argv: [isolate, remove, --task, t2]
+  - argv: [isolate, remove, --task, t2, --force]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-t2/scratch/00000000
+  - argv: [isolate, list]

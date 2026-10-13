@@ -1,0 +1,22 @@
+description: >
+  --no-carry still reproduces uncommitted work but neither copies ignored
+  dependency dirs nor local files; --backend gtr and auto without gtr
+  installed fall back to plain git
+setup:
+  git: true
+  files:
+    .gitignore: "node_modules/\n.claude/settings.local.json\n"
+    src/a.txt: "one\n"
+    node_modules/pkg/index.js: "module.exports = 1\n"
+    .claude/settings.local.json: "{}\n"
+  dirty:
+    src/a.txt: "changed\n"
+steps:
+  - argv: [isolate, create, --task, t1, --no-carry]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-t1/src/a.txt
+      - <ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js
+      - <ROOT>/work-orchestra/00000000-t1/.claude/settings.local.json
+  - argv: [isolate, create, --task, t2, --backend, gtr]
+  - argv: [isolate, create, --task, t3, --backend, auto]
+  - argv: [isolate, list]

@@ -1,0 +1,22 @@
+description: >
+  a new gitignored entry the worker added after create counts as unreviewed
+  even with no tracked change (until collected); a carried dependency dir
+  alone does not
+setup:
+  git: true
+  files:
+    .gitignore: "scratch/\nnode_modules/\n"
+    a.txt: "a\n"
+    node_modules/dep/i.js: "1\n"
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, t2]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t1/scratch"}
+  - argv: [isolate, remove, --task, t1]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-t1/scratch/00000000
+  - argv: [isolate, collect, --task, t1]
+  - argv: [isolate, remove, --task, t1]
+  - argv: [isolate, remove, --task, t2]
+  - argv: [isolate, list]

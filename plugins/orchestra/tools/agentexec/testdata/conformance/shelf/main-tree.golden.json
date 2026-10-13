@@ -1,0 +1,151 @@
+{
+  "scenario": "shelf/main-tree",
+  "steps": [
+    {
+      "argv": [
+        "shelf",
+        "push"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "refusing to shelve in the main working tree, which other tasks and the user share; work in your own worktree, or pass --allow-main-tree if you are alone in it",
+        "status": "error"
+      },
+      "stderr": "",
+      "files": {
+        "src/a.txt": {
+          "content": "fix\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "shelf",
+        "push",
+        "--allow-main-tree",
+        "-m",
+        "without the fix"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "files": [
+          "src/a.txt",
+          "src/new.test.txt"
+        ],
+        "id": 0,
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "src/a.txt": {
+          "content": "old\n",
+          "shape": "text"
+        },
+        "src/keep.txt": {
+          "content": "keep\n",
+          "shape": "text"
+        },
+        "src/new.test.txt": null
+      }
+    },
+    {
+      "argv": [
+        "shelf",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "entries": [
+          {
+            "created": "<CREATED>",
+            "files": [
+              "src/a.txt",
+              "src/new.test.txt"
+            ],
+            "id": 0,
+            "keep_index": false,
+            "message": "without the fix"
+          }
+        ],
+        "status": "ok"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "push",
+        "--allow-main-tree"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "files": [],
+        "status": "empty"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "pop"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "dropped": true,
+        "files": [
+          "src/a.txt",
+          "src/new.test.txt"
+        ],
+        "id": 0,
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "src/a.txt": {
+          "content": "fix\n",
+          "shape": "text"
+        },
+        "src/keep.txt": {
+          "content": "keep\n",
+          "shape": "text"
+        },
+        "src/new.test.txt": {
+          "content": "new test\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "shelf",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "entries": [],
+        "status": "ok"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "pop"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "no such shelf entry",
+        "status": "error"
+      },
+      "stderr": ""
+    }
+  ]
+}

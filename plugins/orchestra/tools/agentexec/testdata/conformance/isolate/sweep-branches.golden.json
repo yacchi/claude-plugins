@@ -1,0 +1,284 @@
+{
+  "scenario": "isolate/sweep-branches",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "blocked"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "could not create a worktree for orchestra/00000000/blocked",
+        "status": "error"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "live"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/live",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-live",
+        "status": "created",
+        "task": "live"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/blocked",
+            "reason": "no worktree; pass --branches to delete it",
+            "session": "00000000",
+            "status": "orphan"
+          }
+        ],
+        "dry_run": false,
+        "pruned": true,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 1,
+          "branches_would_delete": 0,
+          "dirty": 0,
+          "errors": 0,
+          "external": 0,
+          "removed": 0,
+          "skipped": 1,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/live",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-live",
+            "reason": "belongs to the running session; pass --include-current to sweep it",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "skipped",
+            "task": "live"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--branches",
+        "--dry-run"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/blocked",
+            "session": "00000000",
+            "status": "would-delete"
+          }
+        ],
+        "dry_run": true,
+        "pruned": false,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 1,
+          "dirty": 0,
+          "errors": 0,
+          "external": 0,
+          "removed": 0,
+          "skipped": 1,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/live",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-live",
+            "reason": "belongs to the running session; pass --include-current to sweep it",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "skipped",
+            "task": "live"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--branches",
+        "--older-than",
+        "100000"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/blocked",
+            "reason": "newer than --older-than 100000 day(s)",
+            "session": "00000000",
+            "status": "skipped"
+          }
+        ],
+        "dry_run": false,
+        "pruned": true,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 0,
+          "errors": 0,
+          "external": 0,
+          "removed": 0,
+          "skipped": 1,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/live",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-live",
+            "reason": "belongs to the running session; pass --include-current to sweep it",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "skipped",
+            "task": "live"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--branches"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/blocked",
+            "session": "00000000",
+            "status": "deleted"
+          }
+        ],
+        "dry_run": false,
+        "pruned": true,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 1,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 0,
+          "errors": 0,
+          "external": 0,
+          "removed": 0,
+          "skipped": 1,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/live",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-live",
+            "reason": "belongs to the running session; pass --include-current to sweep it",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "skipped",
+            "task": "live"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--branches"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [],
+        "dry_run": false,
+        "pruned": true,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 0,
+          "errors": 0,
+          "external": 0,
+          "removed": 0,
+          "skipped": 1,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/live",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-live",
+            "reason": "belongs to the running session; pass --include-current to sweep it",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "skipped",
+            "task": "live"
+          }
+        ]
+      },
+      "stderr": ""
+    }
+  ]
+}

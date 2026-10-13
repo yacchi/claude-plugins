@@ -1,0 +1,19 @@
+description: >
+  an orchestra branch with no worktree (left by a create whose target
+  directory already existed) is reported as an orphan, previewed under
+  --branches --dry-run and deleted under --branches; other branches are never
+  listed
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    <ROOT>/work-orchestra/00000000-blocked/occupied.txt: "in the way\n"
+normalize_keys: [age_days, session_idle_minutes]
+steps:
+  - argv: [isolate, create, --task, blocked]
+  - argv: [isolate, create, --task, live]
+  - argv: [isolate, sweep]
+  - argv: [isolate, sweep, --branches, --dry-run]
+  - argv: [isolate, sweep, --branches, --older-than, "100000"]
+  - argv: [isolate, sweep, --branches]
+  - argv: [isolate, sweep, --branches]

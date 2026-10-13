@@ -1,0 +1,24 @@
+description: >
+  in a linked worktree push needs no override and the entry lives in that
+  worktree's own git dir (invisible from the main tree); an empty push is
+  "empty"
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+normalize_keys: [created]
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [shelf, push]
+    cwd: <ROOT>/work-orchestra/00000000-t1
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t1/scratch"}
+  - argv: [shelf, push, --repo, <ROOT>/work-orchestra/00000000-t1]
+    snapshot: [<ROOT>/work-orchestra/00000000-t1/scratch/00000000]
+  - argv: [shelf, list, --repo, <ROOT>/work-orchestra/00000000-t1]
+  - argv: [shelf, list]
+  - argv: [shelf, pop]
+    cwd: <ROOT>/work-orchestra/00000000-t1
+    snapshot: [<ROOT>/work-orchestra/00000000-t1/scratch/00000000]
+  - argv: [shelf, list]
+    cwd: <ROOT>/work-orchestra/00000000-t1

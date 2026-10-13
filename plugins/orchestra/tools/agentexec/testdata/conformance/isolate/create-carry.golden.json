@@ -1,0 +1,151 @@
+{
+  "scenario": "isolate/create-carry",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [
+          "node_modules",
+          "packages/web/node_modules"
+        ],
+        "carried_files": [
+          ".claude/settings.local.json"
+        ],
+        "carry_method": "clone",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/00000000-t1/.claude/settings.local.json": {
+          "content": {},
+          "shape": "json-line"
+        },
+        "<ROOT>/work-orchestra/00000000-t1/CLAUDE.local.md": null,
+        "<ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js": {
+          "content": "module.exports = 1\n",
+          "shape": "text"
+        },
+        "<ROOT>/work-orchestra/00000000-t1/notes/new.txt": {
+          "content": "untracked\n",
+          "shape": "text"
+        },
+        "<ROOT>/work-orchestra/00000000-t1/packages/web/node_modules/dep/x.js": {
+          "content": "x\n",
+          "shape": "text"
+        },
+        "<ROOT>/work-orchestra/00000000-t1/src/a.txt": {
+          "content": "one\ntwo\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "existing",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "exists",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "files": [],
+        "patch": "",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "session": "00000000",
+        "status": "ok",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branch": "orchestra/00000000/t1",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "session": "00000000",
+        "status": "removed",
+        "task": "t1"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/00000000-t1/src/a.txt": null
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": []
+      },
+      "stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+description: >
+  entries stack with increasing ids; `-- PATH` limits a push; apply keeps an
+  entry, drop and pop take an id, a missing id is an error (exit 3)
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    b.txt: "b\n"
+  dirty:
+    a.txt: "a2\n"
+    b.txt: "b2\n"
+normalize_keys: [created]
+steps:
+  - argv: [shelf, push, --allow-main-tree, --message, first, --, a.txt]
+    snapshot: [a.txt, b.txt]
+  - argv: [shelf, push, --allow-main-tree]
+    snapshot: [a.txt, b.txt]
+  - argv: [shelf, list]
+  - argv: [shelf, apply, "0"]
+    snapshot: [a.txt, b.txt]
+  - argv: [shelf, list]
+  - argv: [shelf, drop, "0"]
+  - argv: [shelf, drop, "7"]
+  - argv: [shelf, apply, "7"]
+  - argv: [shelf, pop]
+    snapshot: [a.txt, b.txt]
+  - argv: [shelf, drop]
+  - argv: [shelf, list]

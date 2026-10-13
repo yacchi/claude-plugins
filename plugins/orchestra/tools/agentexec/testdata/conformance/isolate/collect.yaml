@@ -1,0 +1,36 @@
+description: >
+  collect by task and by session (json and text), its usage errors, and the
+  hooks' `isolate remove --session S --repo R` shape run from outside the repo
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, t2]
+  - argv: [isolate, create, --task, t3]
+    env: {CLAUDE_CODE_SESSION_ID: "11111111-2222-4333-8444-555555555555"}
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t1/scratch"}
+  - argv: [isolate, collect]
+  - argv: [isolate, collect, --task, t1, --session, x]
+  - argv: [isolate, collect, --task, t1, --json, --text]
+  - argv: [isolate, collect, --task, t1, --task, t2]
+  - argv: [isolate, collect, --task, t1, --bogus]
+  - argv: [isolate, collect, --task]
+  - argv: [isolate, collect, --session, "bad!"]
+  - argv: [isolate, collect, --task, "//"]
+  - argv: [isolate, collect, --task, nope]
+  - argv: [isolate, collect, --task, nope, --text]
+  - argv: [isolate, collect, --task, t1, --repo, <ROOT>/tmp]
+  - argv: [isolate, collect, --task, t1, --text]
+  - argv: [isolate, collect, --task, t1]
+  - argv: [isolate, collect, --session, "00000000-0000-4000-8000-0000000c0f0e", --text]
+  - argv: [isolate, collect, --session, "00000000"]
+  - argv: [isolate, remove, --session, "bad!"]
+  - argv: [isolate, remove, --session, "00000000-0000-4000-8000-0000000c0f0e", --repo, <WORK>]
+    cwd: "~"
+  - argv: [isolate, list, --session, "11111111-2222-4333-8444-555555555555"]
+  - argv: [isolate, remove, --session, "11111111", --repo, <WORK>]
+    cwd: "~"
+  - argv: [isolate, list]

@@ -1,0 +1,27 @@
+description: >
+  sweep keeps (and reports) trees holding uncollected work, removes collected
+  and clean ones, --force discards; --older-than filters by branch-tip age;
+  the --text rendering (branch tips are dated in the future so ages read 0)
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+steps:
+  - argv: [isolate, create, --task, clean]
+    env: {CLAUDE_CODE_SESSION_ID: "22222222-0000-4000-8000-000000000000", GIT_COMMITTER_DATE: "2099-01-01T00:00:00Z"}
+  - argv: [isolate, create, --task, dirty]
+    env: {CLAUDE_CODE_SESSION_ID: "22222222-0000-4000-8000-000000000000", GIT_COMMITTER_DATE: "2099-01-01T00:00:00Z"}
+  - argv: [isolate, create, --task, done]
+    env: {CLAUDE_CODE_SESSION_ID: "22222222-0000-4000-8000-000000000000", GIT_COMMITTER_DATE: "2099-01-01T00:00:00Z"}
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/22222222-dirty/scratch"}
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/22222222-done/scratch"}
+  - argv: [isolate, diff, --task, done, --names-only]
+  - argv: [isolate, sweep, --older-than, "0.5", --live-window, "0", --text]
+  - argv: [isolate, sweep, --dry-run, --live-window, "0", --text]
+  - argv: [isolate, sweep, --dry-run, --live-window, "0"]
+  - argv: [isolate, sweep, --live-window, "0", --text]
+  - argv: [isolate, sweep, --dry-run, --force, --live-window, "0", --text]
+  - argv: [isolate, sweep, --force, --live-window, "0", --older-than, "0", --text]
+  - argv: [isolate, list]

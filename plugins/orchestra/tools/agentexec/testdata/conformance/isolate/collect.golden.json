@@ -1,0 +1,423 @@
+{
+  "scenario": "isolate/collect",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t2"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/00000000/t2",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t2",
+        "status": "created",
+        "task": "t2"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t3"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#3>",
+        "branch": "orchestra/11111111/t3",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/11111111-t3",
+        "status": "created",
+        "task": "t3"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/00000000/t2",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t2",
+            "session": "00000000",
+            "task": "t2"
+          },
+          {
+            "branch": "orchestra/11111111/t3",
+            "current": false,
+            "path": "<WORK>-orchestra/11111111-t3",
+            "session": "11111111",
+            "task": "t3"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate collect: provide exactly one of --task or --session\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "t1",
+        "--session",
+        "x"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate collect: provide exactly one of --task or --session\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "t1",
+        "--json",
+        "--text"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate collect: --json and --text are mutually exclusive\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "t1",
+        "--task",
+        "t2"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate collect: duplicate option: --task\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "t1",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate collect: unknown option: --bogus\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate collect: missing value for --task\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--session",
+        "bad!"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate collect: invalid session id\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "//"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate collect: task id '//' has no usable characters\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "nope"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "status": "absent",
+        "task": "nope"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "nope",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "collect absent     task nope             -\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "t1",
+        "--repo",
+        "<ROOT>/tmp"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "not a git repository",
+        "status": "error"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "t1",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "collect collected  task t1               45a767fdaad6\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "digest": "45a767fdaad62eea38a4f44e972d0cf0c46372b437ec9002472efeaa4981e5ab",
+        "status": "collected",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--session",
+        "00000000-0000-4000-8000-0000000c0f0e",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "collect collected  session 00000000\n  t1               collected  45a767fdaad6\n  t2               collected  96a296d224f2\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--session",
+        "00000000"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "collected": [
+          {
+            "digest": "45a767fdaad62eea38a4f44e972d0cf0c46372b437ec9002472efeaa4981e5ab",
+            "status": "collected",
+            "task": "t1"
+          },
+          {
+            "digest": "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7",
+            "status": "collected",
+            "task": "t2"
+          }
+        ],
+        "session": "00000000",
+        "status": "collected"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--session",
+        "bad!"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate: invalid session id\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--session",
+        "00000000-0000-4000-8000-0000000c0f0e",
+        "--repo",
+        "<WORK>"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "removed": [],
+        "session": "00000000",
+        "status": "removed"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list",
+        "--session",
+        "11111111-2222-4333-8444-555555555555"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/11111111/t3",
+            "current": true,
+            "path": "<WORK>-orchestra/11111111-t3",
+            "session": "11111111",
+            "task": "t3"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--session",
+        "11111111",
+        "--repo",
+        "<WORK>"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "removed": [],
+        "session": "11111111",
+        "status": "removed"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/00000000/t2",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t2",
+            "session": "00000000",
+            "task": "t2"
+          },
+          {
+            "branch": "orchestra/11111111/t3",
+            "current": false,
+            "path": "<WORK>-orchestra/11111111-t3",
+            "session": "11111111",
+            "task": "t3"
+          }
+        ]
+      },
+      "stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,283 @@
+{
+  "scenario": "isolate/sessions",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/aaaaaaaa/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/aaaaaaaa-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/bbbbbbbb/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/bbbbbbbb-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "solo"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/bbbbbbbb/solo",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/bbbbbbbb-solo",
+        "status": "created",
+        "task": "solo"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "legacy"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#3>",
+        "branch": "orchestra/legacy",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/legacy",
+        "status": "created",
+        "task": "legacy"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "t1"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate: ambiguous worktrees for task t1: orchestra/aaaaaaaa/t1, orchestra/bbbbbbbb/t1\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "t1"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate: ambiguous worktrees for task t1: orchestra/aaaaaaaa/t1, orchestra/bbbbbbbb/t1\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "solo",
+        "--names-only"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/bbbbbbbb/solo",
+        "files": [],
+        "path": "<WORK>-orchestra/bbbbbbbb-solo",
+        "session": "bbbbbbbb",
+        "status": "ok",
+        "task": "solo"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/aaaaaaaa/t1",
+            "current": false,
+            "path": "<WORK>-orchestra/aaaaaaaa-t1",
+            "session": "aaaaaaaa",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/bbbbbbbb/solo",
+            "current": false,
+            "path": "<WORK>-orchestra/bbbbbbbb-solo",
+            "session": "bbbbbbbb",
+            "task": "solo"
+          },
+          {
+            "branch": "orchestra/bbbbbbbb/t1",
+            "current": false,
+            "path": "<WORK>-orchestra/bbbbbbbb-t1",
+            "session": "bbbbbbbb",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/legacy",
+            "current": false,
+            "path": "<WORK>-orchestra/legacy",
+            "session": null,
+            "task": "legacy"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list",
+        "--session",
+        "aaaaaaaa"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/aaaaaaaa/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/aaaaaaaa-t1",
+            "session": "aaaaaaaa",
+            "task": "t1"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "t1",
+        "--names-only"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/aaaaaaaa/t1",
+        "files": [],
+        "path": "<WORK>-orchestra/aaaaaaaa-t1",
+        "session": "aaaaaaaa",
+        "status": "ok",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "t1",
+        "--names-only"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "files": [],
+        "path": "<WORK>-orchestra/00000000-t1",
+        "session": "00000000",
+        "status": "ok",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "legacy"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branch": "orchestra/legacy",
+        "path": "<WORK>-orchestra/legacy",
+        "session": null,
+        "status": "removed",
+        "task": "legacy"
+      },
+      "stderr": ""
+    }
+  ]
+}

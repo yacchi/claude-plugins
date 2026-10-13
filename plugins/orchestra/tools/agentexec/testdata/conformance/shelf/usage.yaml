@@ -1,0 +1,20 @@
+description: >
+  shelf's usage errors (usage text, exit 2) and the not-a-repository result
+  (exit 3)
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+steps:
+  - argv: [shelf]
+  - argv: [shelf, stash]
+  - argv: [shelf, push, --bogus]
+  - argv: [shelf, push, -m]
+  - argv: [shelf, list, --repo]
+  - argv: [shelf, pop, x]
+  - argv: [shelf, pop, "1", "2"]
+  - argv: [shelf, list, "3"]
+  - argv: [shelf, apply, --keep-index]
+  - argv: [shelf, list, --repo, <ROOT>/tmp]
+  - argv: [shelf, push, --repo, <ROOT>/tmp, --allow-main-tree]
+  - argv: [shelf, list, -m, ignored, --allow-main-tree, --, x]
