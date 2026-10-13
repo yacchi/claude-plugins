@@ -1,0 +1,58 @@
+{
+  "scenario": "ui/pilogin-device-flow",
+  "steps": [
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "code": "ABCD-1234",
+        "method": "device",
+        "paste_prompt": false,
+        "provider": "openai-codex",
+        "session": "<SESSION>",
+        "status": "waiting",
+        "url": "https://auth.openai.com/codex/device"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--paste",
+        "http://localhost:1455/auth/callback?code=x",
+        "--timeout",
+        "30"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "provider": "openai-codex",
+        "status": "ready"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--wait",
+        "--timeout",
+        "1"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "no login in progress (run `agent-exec pi login` first)",
+        "screen_tail": "",
+        "status": "failed"
+      },
+      "stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+description: >
+  ui --json starts a detached server, a second call reuses it, --stop ends
+  it (and a second --stop finds nothing); ui.json is gone afterwards
+normalize_keys: [url]
+setup:
+  git: true
+steps:
+  - argv: [ui, --json]
+  - argv: [ui, --json]
+  - argv: [ui, --stop, --json]
+  - argv: [ui, --stop, --json]
+  - argv: [ui, --stop]

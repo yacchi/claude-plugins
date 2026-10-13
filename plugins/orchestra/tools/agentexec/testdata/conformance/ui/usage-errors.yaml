@@ -1,0 +1,15 @@
+description: >
+  ui parses its own arguments: errors name the option and print the usage
+  (exit 2); --help prints the usage alone (exit 0)
+setup:
+  git: true
+steps:
+  - argv: [ui, --bogus]
+  - argv: [ui, --port]
+  - argv: [ui, --port, abc]
+  - argv: [ui, --port, "-1"]
+  - argv: [ui, --idle-minutes, x]
+  - argv: [ui, --idle-minutes, "-0.5"]
+  - argv: [ui, --help]
+  - argv: [ui, -h]
+  - argv: [ui, extra]

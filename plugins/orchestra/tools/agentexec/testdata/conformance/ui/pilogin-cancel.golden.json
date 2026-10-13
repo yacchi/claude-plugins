@@ -1,0 +1,54 @@
+{
+  "scenario": "ui/pilogin-cancel",
+  "steps": [
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--provider",
+        "anthropic"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "method": "browser",
+        "paste_prompt": true,
+        "provider": "anthropic",
+        "session": "<SESSION>",
+        "status": "waiting",
+        "url": "https://auth.example.com/oauth/authorize?client_id=abc&state=xyz"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--cancel"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "status": "cancelled"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--wait",
+        "--timeout",
+        "1"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "no login in progress (run `agent-exec pi login` first)",
+        "screen_tail": "",
+        "status": "failed"
+      },
+      "stderr": ""
+    }
+  ]
+}

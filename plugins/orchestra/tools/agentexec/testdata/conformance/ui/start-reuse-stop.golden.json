@@ -1,0 +1,69 @@
+{
+  "scenario": "ui/start-reuse-stop",
+  "steps": [
+    {
+      "argv": [
+        "ui",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "pid": "<PID>",
+        "reused": false,
+        "url": "<URL>"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ui",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "pid": "<PID>",
+        "reused": true,
+        "url": "<URL>"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ui",
+        "--stop",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "stopped": true
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ui",
+        "--stop",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "stopped": false
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ui",
+        "--stop"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "not running\n",
+      "stderr": ""
+    }
+  ]
+}

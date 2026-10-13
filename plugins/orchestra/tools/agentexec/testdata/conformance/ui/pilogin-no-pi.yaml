@@ -1,0 +1,11 @@
+description: >
+  pi login with pi not installed: a manual result naming the install command
+  (exit 1); the other modes need no pi and report their own state
+setup:
+  git: true
+steps:
+  - argv: [pi, login, --json]
+  - argv: [pi, login, --provider, anthropic]
+  - argv: [pi, login, --wait, --timeout, "1"]
+  - argv: [pi, login, --paste, "http://localhost:1455/cb?code=x"]
+  - argv: [pi, login, --cancel]

@@ -1,0 +1,84 @@
+{
+  "scenario": "ui/pilogin-no-herdr",
+  "steps": [
+    {
+      "argv": [
+        "pi",
+        "login"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "herdr is not configured (binary or session name missing)",
+        "screen_tail": "",
+        "status": "manual",
+        "step": "herdr"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--provider",
+        "anthropic"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "herdr is not configured (binary or session name missing)",
+        "screen_tail": "",
+        "status": "manual",
+        "step": "herdr"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--provider",
+        "nonesuch"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "no known /login label for provider nonesuch",
+        "screen_tail": "",
+        "status": "manual",
+        "step": "provider"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--cancel"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "status": "cancelled"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--wait",
+        "--timeout",
+        "1"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "no login in progress (run `agent-exec pi login` first)",
+        "screen_tail": "",
+        "status": "failed"
+      },
+      "stderr": ""
+    }
+  ]
+}

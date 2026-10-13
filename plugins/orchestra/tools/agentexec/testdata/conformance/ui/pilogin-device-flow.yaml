@@ -1,0 +1,77 @@
+description: >
+  the whole device-code login against a scripted herdr: pi's /login screens
+  are parsed into a URL and code (start), and a later invocation (run by
+  Python in both modes, so the state file must be readable across
+  implementations) pastes, sees pi turn ready, and cleans the pane up
+normalize_keys: [session]
+setup:
+  git: true
+  env:
+    PATH: "<HOME>/fakebin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/fakebin/pi: "0755"
+    ~/fakebin/herdr: "0755"
+  files:
+    ~/fakebin/pi: |
+      #!/bin/sh
+      if [ -f "$HOME/fake/ready" ]; then
+        echo '{"status": "ready"}'
+      else
+        echo '{"status": "not_ready"}'
+        exit 1
+      fi
+    ~/fakebin/herdr: |
+      #!/bin/sh
+      # a scripted herdr: pi's /login screens as a state machine in $HOME/fake
+      dir="$HOME/fake"
+      mkdir -p "$dir"
+      [ "$1" = "--session" ] && shift 2
+      stage() { cat "$dir/stage" 2>/dev/null; }
+      setstage() { printf '%s' "$1" > "$dir/stage"; }
+      case "$1 $2" in
+        "status "*)
+          if [ -f "$dir/running" ]; then
+            echo '{"result": {"server": {"running": true}}}'
+          else
+            echo '{"result": {"server": {"running": false}}}'
+          fi;;
+        "server stop") rm -f "$dir/running"; echo '{}';;
+        "server "*|"server") touch "$dir/running";;
+        "workspace create")
+          echo '{"result": {"workspace": {"workspace_id": "w1"}, "root_pane": {"pane_id": "w1:p1"}}}';;
+        "workspace close"|"pane close") echo '{}';;
+        "pane run") setstage boot; echo '{}';;
+        "pane send-text")
+          case "$4" in
+            "/login") setstage typed;;
+            "OpenAI Codex") setstage filtered;;
+            *) touch "$dir/ready";;
+          esac
+          echo '{}';;
+        "pane send-keys")
+          case "$(stage)/$4" in
+            typed/enter) setstage auth;;
+            auth/enter) setstage providers;;
+            filtered/enter) setstage methods;;
+            methods/down) setstage device;;
+            device/enter) setstage final;;
+          esac
+          echo '{}';;
+        "pane read")
+          case "$(stage)" in
+            boot) printf ' v1.2.0\n escape interrupt · ctrl+c/ctrl+d clear/exit · / commands\n';;
+            auth) printf ' Select authentication method:\n → Sign in with an account\n   Sign in with an API key\n';;
+            providers) printf ' Select provider to configure:\n>\n → Anthropic • not configured\n   OpenAI Codex (legacy) • not configured\n';;
+            filtered) printf ' Select provider to configure:\n> OpenAI Codex\n → OpenAI Codex (legacy) • not configured\n';;
+            methods) printf ' Select login method:\n → Browser login (default)\n   Device code login (headless)\n';;
+            device) printf ' Select login method:\n   Browser login (default)\n → Device code login (headless)\n';;
+            final) printf ' https://auth.openai.com/codex/device\n Enter code: ABCD-1234\n Waiting for authentication...\n';;
+            *) printf 'user@host ~ %% \n';;
+          esac;;
+        *) echo '{"error": {"code": "unknown", "message": "unknown"}}' >&2; exit 2;;
+      esac
+steps:
+  - argv: [pi, login, --json]
+  - argv: [pi, login, --paste, "http://localhost:1455/auth/callback?code=x", --timeout, "30"]
+    impl: python
+  - argv: [pi, login, --wait, --timeout, "1"]
