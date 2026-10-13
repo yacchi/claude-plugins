@@ -95,7 +95,6 @@ CACHE_ROOTS = (
 
 # Per-machine grants learned from denials (`auto`) or added by the user with
 # `agent-exec sandbox allow` (`user`). Every run adds them to the writable set.
-LEARNED_PATH = "~/.local/state/claude-orchestra/sandbox-learned.json"
 
 # Paths no worker may write whatever the writable set says (tamper
 # protection): the learned grants, orchestra's user config, its executor
@@ -218,13 +217,21 @@ def user_grant_refusal(path, deny_read=(), home=None):
 # --- learned grants store ----------------------------------------------------
 
 
-def learned_path(home=None):
-    """Resolve the machine-local grant store in one place."""
+STATE_DIR = "~/.local/state/claude-orchestra"
+
+
+def state_dir(home=None):
+    """The machine-local orchestra state directory, resolved in one place."""
     home = _home(home)
     state_home = os.environ.get("XDG_STATE_HOME")
     if state_home and os.path.isabs(state_home):
-        return os.path.realpath(os.path.join(state_home, "claude-orchestra", "sandbox-learned.json"))
-    return _expand(LEARNED_PATH, home)
+        return os.path.realpath(os.path.join(state_home, "claude-orchestra"))
+    return _expand(STATE_DIR, home)
+
+
+def learned_path(home=None):
+    """Resolve the machine-local grant store in one place."""
+    return os.path.join(state_dir(home), "sandbox-learned.json")
 
 
 def _valid_grant(entry, home, deny_read):
@@ -506,7 +513,16 @@ def executor_state_dirs(executor, home, env):
         # files on every run (and rewrites auth.json on token refresh); with
         # only `sessions/` writable the credential read fails with EPERM and
         # the run aborts. Measured with pi 1.1.0.
-        return [env.get("PI_CODING_AGENT_DIR") or "~/.pi/agent"]
+        base = env.get("PI_CODING_AGENT_DIR") or "~/.pi/agent"
+        dirs = [base]
+        # A managed agent dir symlinks auth.json to the user's real file; pi's
+        # lockfile and token refresh write next to the real file.
+        auth = os.path.join(_expand(base, home), "auth.json")
+        if os.path.islink(auth):
+            real_dir = os.path.dirname(os.path.realpath(auth))
+            if real_dir not in dirs:
+                dirs.append(real_dir)
+        return dirs
     if executor == "codex":
         return [env.get("CODEX_HOME") or "~/.codex"]
     return []
@@ -759,7 +775,7 @@ def probes():
 # --- spec --------------------------------------------------------------------
 
 
-def prepare(executor, tree, cfg, probe_results=None):
+def prepare(executor, tree, cfg, probe_results=None, env=None):
     """Decide how `executor` will be sandboxed for a run in `tree`.
 
     Returns the internal spec; `report(spec)` is its public projection and
@@ -779,7 +795,7 @@ def prepare(executor, tree, cfg, probe_results=None):
         return spec
 
     results = probe_results if probe_results is not None else probes()
-    policy = build_policy(tree, executor, cfg)
+    policy = build_policy(tree, executor, cfg, env=env)
     if results["seatbelt"]["ok"]:
         spec.update(backend="seatbelt", enforced=True,
                     reason="macOS Seatbelt (sandbox-exec)")

@@ -51,6 +51,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agent_exec_checks  # noqa: E402
 import agent_exec_pricing  # noqa: E402
 import agent_exec_sandbox  # noqa: E402
+import agent_exec_tools  # noqa: E402
 import agent_exec_watchdog  # noqa: E402
 import agent_exec_wave  # noqa: E402
 
@@ -88,6 +89,17 @@ KNOWN_EXECUTORS = {
 }
 
 DEFAULTS = {
+    # Executor binaries orchestra installs and pins itself; see
+    # agent_exec_tools. A tool absent here (codex) runs from PATH.
+    "tools": {
+        "installer": "auto",
+        "pi": {
+            "source": "auto",
+            "spec": "npm:@earendil-works/pi-coding-agent",
+            "version": "1.2.0",
+            "bin": "pi",
+        },
+    },
     "watchdog": {
         "enabled": True,
         "idle_seconds": 600,
@@ -146,6 +158,12 @@ DEFAULTS = {
         "pi": {
             "enabled": True,
             "dispatch": "cli",
+            # "managed": orchestra's own agent dir (settings, models, auth are
+            # not shared with the user's pi); "user": leave pi's default
+            # `~/.pi/agent`; or a path.
+            "agent_dir": "managed",
+            # false adds `--no-context-files` (no AGENTS.md/CLAUDE.md).
+            "context_files": True,
             "classes": ["light", "standard", "deep", "independent-review"],
             "class_policy": {
                 "light": {"model": "openai-codex/gpt-5.6-luna", "effort": "medium"},
@@ -335,6 +353,14 @@ Usage:
                                   self-logs an anonymized "dispatch" telemetry
                                   record (see `agent-exec telemetry`) if
                                   telemetry is enabled in config.
+  agent-exec tools [status] [--json|--text]
+  agent-exec tools install [NAME ...] [--installer auto|mise|npm] [--force]
+                  [--json|--text]
+  agent-exec tools path NAME
+                                  orchestra-managed executor binaries (pinned
+                                  versions installed under the state dir):
+                                  where each tool resolves from, install or
+                                  update them, print one resolved path
   agent-exec check (--task <id> | --path <dir>) [--since <ref>]
                   [--files a,b,...] [--all] [--baseline] [--no-retry]
                   [--repo <path>] [--session <id>] [--json|--text]
@@ -738,7 +764,10 @@ def cmd_dispatch(profile_name, args):
         pass_cfg = DEFAULTS
     cwd = os.getcwd()
     sandbox = _sandbox_spec(profile_name, cwd, pass_cfg)
-    argv = agent_exec_sandbox.wrap_argv([exec_name] + final_args, cwd, sandbox)
+    resolved = _resolve_tool(exec_name, pass_cfg)["path"]
+    argv = agent_exec_sandbox.wrap_argv(
+        [resolved or exec_name] + final_args, cwd, sandbox
+    )
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
         print("PROFILE: %s" % profile_name)
@@ -757,7 +786,6 @@ def cmd_dispatch(profile_name, args):
         sys.stderr.write("agent-exec: %s: %s\n" % (profile_name, sandbox["reason"]))
         return 1
 
-    resolved = shutil.which(exec_name)
     if resolved is None:
         sys.stderr.write(
             "agent-exec: executor '%s' not found on PATH\n" % exec_name
@@ -766,6 +794,7 @@ def cmd_dispatch(profile_name, args):
 
     env = dict(os.environ)
     env.update(profile_env)
+    env.update(_executor_env_overrides(profile_name, pass_cfg))
     env = agent_exec_sandbox.child_env(sandbox, env)
     os.execvpe(argv[0], argv, env)  # never returns
 
@@ -1308,6 +1337,33 @@ def _builtin_exec_for(name):
     return profile["exec"]
 
 
+def _known_binaries():
+    return {n: k["binary"] for n, k in KNOWN_EXECUTORS.items()}
+
+
+def _resolve_tool(name, cfg=None):
+    """agent_exec_tools.resolve for an executor under `cfg` (defaults if None)."""
+    if not isinstance(cfg, dict):
+        cfg, err = resolve_config()
+        if err is not None or not isinstance(cfg, dict):
+            cfg = DEFAULTS
+    return agent_exec_tools.resolve(
+        name, cfg, default_bin=_known_binaries().get(name)
+    )
+
+
+def _cfg_or_defaults():
+    cfg, err = resolve_config()
+    return cfg if err is None and isinstance(cfg, dict) else DEFAULTS
+
+
+def _executor_env_overrides(profile_name, cfg):
+    """Child-env additions orchestra owns for `profile_name` (pi's agent dir)."""
+    if profile_name != "pi":
+        return {}
+    return agent_exec_tools.pi_env_overrides(cfg)
+
+
 _REMOVED_EXECUTORS = ("copilot", "opencode")
 
 
@@ -1387,7 +1443,7 @@ def resolve_config():
                 if builtin_exec is None:
                     cfg["available"] = None
                 else:
-                    cfg["available"] = shutil.which(builtin_exec) is not None
+                    cfg["available"] = _resolve_tool(name, resolved)["path"] is not None
 
     # Normalize enforcement.light_class to always be one of the two known
     # strings. YAML 1.1 (what yaml.safe_load implements) parses a bareword
@@ -1462,6 +1518,125 @@ def cmd_config(args):
         output["warnings"].append({"type": "sandbox_learned", "detail": learned_warning})
     print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0
+
+
+_TOOLS_USAGE = ("usage: agent-exec tools [status] [--json|--text] | "
+                "install [NAME ...] [--installer auto|mise|npm] [--force] "
+                "[--json|--text] | path NAME\n")
+
+
+def _tools_parse(args, value_flags=(), bool_flags=()):
+    """(positional, flags, error). Hand-rolled like cmd_sandbox."""
+    positional, flags = [], {}
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in value_flags:
+            if i + 1 >= len(args):
+                return None, None, "%s needs a value" % a
+            flags[a] = args[i + 1]
+            i += 2
+        elif a in bool_flags:
+            flags[a] = True
+            i += 1
+        elif a.startswith("-"):
+            return None, None, "unknown option: %s" % a
+        else:
+            positional.append(a)
+            i += 1
+    return positional, flags, None
+
+
+def _tools_line(item):
+    cells = [item["name"], item["source"] or "-", item["version"] or "-",
+             item["path"] or "-"]
+    if item.get("reason"):
+        cells.append(item["reason"])
+    if item.get("hint"):
+        cells.append(item["hint"])
+    return "  ".join(cells)
+
+
+def cmd_tools(args):
+    """`agent-exec tools [status] | install | path`."""
+    sub = "status"
+    rest = list(args)
+    if rest and rest[0] in ("status", "install", "path"):
+        sub, rest = rest[0], rest[1:]
+    elif rest and not rest[0].startswith("-"):
+        sys.stderr.write("agent-exec: tools: unknown subcommand: %s\n" % rest[0])
+        sys.stderr.write(_TOOLS_USAGE)
+        return 2
+    if sub == "status":
+        value_flags, bool_flags = (), ("--json", "--text")
+    elif sub == "install":
+        value_flags, bool_flags = ("--installer",), ("--force", "--json", "--text")
+    else:
+        value_flags, bool_flags = (), ()
+    positional, flags, err = _tools_parse(rest, value_flags, bool_flags)
+    if err is not None:
+        sys.stderr.write("agent-exec: tools: %s\n" % err)
+        sys.stderr.write(_TOOLS_USAGE)
+        return 2
+    as_json = bool(flags.get("--json")) and not flags.get("--text")
+    cfg = _cfg_or_defaults()
+    known = _known_binaries()
+
+    if sub == "status":
+        if positional:
+            sys.stderr.write(_TOOLS_USAGE)
+            return 2
+        items = agent_exec_tools.status(cfg, known=known)
+        if as_json:
+            print(json.dumps(items, indent=2, ensure_ascii=False))
+        else:
+            for item in items:
+                print(_tools_line(item))
+        return 0
+
+    if sub == "path":
+        if len(positional) != 1:
+            sys.stderr.write(_TOOLS_USAGE)
+            return 2
+        name = positional[0]
+        if name not in agent_exec_tools.tool_names(cfg) and name not in known:
+            sys.stderr.write("agent-exec: tools: unknown tool: %s\n" % name)
+            return 2
+        item = agent_exec_tools.resolve(name, cfg, default_bin=known.get(name))
+        if item["path"] is None:
+            sys.stderr.write("agent-exec: tools: %s: %s\n"
+                             % (name, item["reason"] or "not-installed"))
+            return 1
+        print(item["path"])
+        return 0
+
+    installer = flags.get("--installer")
+    if installer is not None and installer not in ("auto", "mise", "npm"):
+        sys.stderr.write("agent-exec: tools: unknown installer: %s\n" % installer)
+        return 2
+    valid = set(agent_exec_tools.tool_names(cfg)) | set(known)
+    unknown = [n for n in positional if n not in valid]
+    if unknown:
+        sys.stderr.write("agent-exec: tools: unknown tool: %s\n" % unknown[0])
+        return 2
+    names = positional or [
+        n for n in agent_exec_tools.tool_names(cfg)
+        if agent_exec_tools.tool_config(n, cfg)["spec"]
+    ]
+    results = agent_exec_tools.install(
+        names, cfg, installer=installer, force=bool(flags.get("--force")),
+        known=known,
+    )
+    if as_json:
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+    else:
+        for r in results:
+            line = "%s  %s  %s  %s" % (r["name"], r["status"],
+                                       r["version"] or "-", r["path"] or "-")
+            if r["error"]:
+                line += "  " + r["error"]
+            print(line)
+    return 1 if any(r["status"] == "failed" for r in results) else 0
 
 
 def cmd_sandbox(args):
@@ -3123,12 +3298,12 @@ def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume
     profile = PROFILES[profile_name]
     exec_name = profile["exec"]
 
-    resolved = shutil.which(exec_name)
+    resolved = _resolve_tool(exec_name)["path"]
     if resolved is None:
         return 127, None
 
     argv = _build_codex_argv(
-        exec_name, model, effort, workdir, prompt_text, resume, output_fmt
+        resolved, model, effort, workdir, prompt_text, resume, output_fmt
     )
     # The prompt is a positional argument, so stdin must be an empty, already
     # closed pipe: `codex exec` otherwise blocks reading stdin and appends
@@ -3155,7 +3330,8 @@ def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume
 # --- pi ---------------------------------------------------------------------
 
 
-def _build_pi_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt):
+def _build_pi_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt,
+                   context_files=True):
     """Build the `pi` argv for a single headless invocation.
 
     pi -p --mode json --no-approve --no-extensions --no-skills
@@ -3167,12 +3343,15 @@ def _build_pi_argv(exec_name, model, effort, workdir, prompt_value, resume, outp
     resumes that session in the same cwd; it is absent on a fresh run. pi has
     no working-directory flag, so `workdir` is applied as cwd by the runner.
     `effort` maps straight onto `--thinking`. `output_fmt` is unused: json
-    mode is the only form the parser reads."""
+    mode is the only form the parser reads. `context_files=False` adds
+    `--no-context-files` (no AGENTS.md/CLAUDE.md discovery)."""
     del workdir, prompt_value, output_fmt
     argv = [
         exec_name, "-p", "--mode", "json", "--no-approve", "--no-extensions",
         "--no-skills", "--no-prompt-templates", "--no-themes",
     ]
+    if not context_files:
+        argv.append("--no-context-files")
     if model:
         argv += ["--model", model]
     if effort:
@@ -3342,15 +3521,18 @@ def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, o
     profile = PROFILES[profile_name]
     exec_name = profile["exec"]
 
-    resolved = shutil.which(exec_name)
+    pi_cfg = _cfg_or_defaults()
+    resolved = _resolve_tool(exec_name, pi_cfg)["path"]
     if resolved is None:
         return 127, None
 
     argv = _build_pi_argv(
-        exec_name, model, effort, workdir, prompt_text, resume, output_fmt
+        resolved, model, effort, workdir, prompt_text, resume, output_fmt,
+        context_files=agent_exec_tools.pi_context_files(pi_cfg),
     )
     env = dict(os.environ)
     env.update(profile["env"])
+    env.update(_executor_env_overrides(profile_name, pi_cfg))
     env = agent_exec_sandbox.child_env(sandbox, env)
     watchdog_result = []
     spawn_kwargs = {"sandbox": sandbox}
@@ -3421,10 +3603,14 @@ def _registered(table, profile_name):
 
 
 def _build_executor_argv(profile_name, exec_name, model, effort, workdir,
-                         prompt_value, resume, output_fmt):
+                         prompt_value, resume, output_fmt, cfg=None):
     builder = globals()[_registered(_ARGV_BUILDERS, profile_name)]
+    extra = {}
+    if profile_name == "pi" and cfg is not None:
+        extra["context_files"] = agent_exec_tools.pi_context_files(cfg)
     return builder(
-        exec_name, model, effort, workdir, prompt_value, resume, output_fmt
+        exec_name, model, effort, workdir, prompt_value, resume, output_fmt,
+        **extra
     )
 
 
@@ -3441,7 +3627,12 @@ def _run_executor_capture(profile_name, model, effort, workdir, prompt_text,
 def _sandbox_spec(executor, tree, cfg):
     """Sandbox spec for one CLI executor run in `tree` under resolved `cfg`."""
     sandbox_cfg = cfg.get("sandbox") if isinstance(cfg, dict) else None
-    return agent_exec_sandbox.prepare(executor, tree, sandbox_cfg)
+    env = None
+    overrides = _executor_env_overrides(executor, cfg)
+    if overrides:
+        env = dict(os.environ)
+        env.update(overrides)
+    return agent_exec_sandbox.prepare(executor, tree, sandbox_cfg, env=env)
 
 
 # At most this many auto-grant + resume cycles per dispatch.
@@ -3706,13 +3897,14 @@ def cmd_run(args):
 
     def build_argv(prompt_value):
         return _build_executor_argv(
-            profile_name, exec_name, model, effort, workdir, prompt_value,
-            resume, output_fmt,
+            profile_name, resolved_exec or exec_name, model, effort, workdir,
+            prompt_value, resume, output_fmt, cfg=run_cfg,
         )
 
     run_cfg, run_cfg_err = resolve_config()
     if run_cfg_err is not None or not isinstance(run_cfg, dict):
         run_cfg = DEFAULTS
+    resolved_exec = _resolve_tool(exec_name, run_cfg)["path"]
     sandbox = _sandbox_spec(profile_name, workdir, run_cfg)
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
@@ -3785,8 +3977,7 @@ def cmd_run(args):
             pass
         return 0
 
-    resolved = shutil.which(exec_name)
-    if resolved is None:
+    if resolved_exec is None:
         sys.stderr.write(
             "agent-exec: executor '%s' not found on PATH\n" % exec_name
         )
@@ -3797,6 +3988,7 @@ def cmd_run(args):
     )
     env = dict(os.environ)
     env.update(profile["env"])
+    env.update(_executor_env_overrides(profile_name, run_cfg))
     env = agent_exec_sandbox.child_env(sandbox, env)
 
     os.execvpe(argv[0], argv, env)  # never returns
@@ -3977,14 +4169,22 @@ def _build_doctor_report():
             if binary is None:
                 binary = name
 
-            available = shutil.which(binary) is not None
+            tool = agent_exec_tools.resolve(
+                name, resolved, default_bin=binary
+            )
+            available = tool["path"] is not None
 
             entry = {
                 "enabled": enabled,
                 "dispatch": dispatch,
                 "binary": binary,
                 "available": available,
+                "path": tool["path"],
+                "source": tool["source"],
+                "tool_version": tool["version"],
             }
+            if tool["hint"]:
+                entry["hint"] = tool["hint"]
             if dispatch == "agent":
                 entry["note"] = (
                     "dispatch: agent — CLI binary presence is informational; "
@@ -10457,6 +10657,9 @@ def main(argv):
 
     if tok == "sandbox":
         return cmd_sandbox(argv[1:])
+
+    if tok == "tools":
+        return cmd_tools(argv[1:])
 
     if tok == "usage":
         return cmd_usage(argv[1:])

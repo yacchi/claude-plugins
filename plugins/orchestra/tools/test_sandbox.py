@@ -335,7 +335,7 @@ class DispatchPlumbingTests(unittest.TestCase):
                                 "--workdir", self.tmp, "--prompt-file", self.prompt])
         self.assertEqual(seen["file"], sb.SANDBOX_EXEC)
         self.assertEqual(seen["argv"][0], sb.SANDBOX_EXEC)
-        self.assertIn("pi", seen["argv"])
+        self.assertIn("/bin/pi", seen["argv"])
 
 
 if __name__ == "__main__":
