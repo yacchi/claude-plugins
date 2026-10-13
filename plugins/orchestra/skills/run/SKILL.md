@@ -18,7 +18,7 @@ You are the **instructor** — the main session, on an expensive model. This ski
 | `references/gates.md` | A gate rule (§11) is biting and you need the why: a reviewer's rejection looks out of scope, rounds keep closing one sibling at a time, or you must decide whether to spend a third round. |
 | `references/isolation.md` | A worker will touch a tree holding uncommitted work (isolation is the default there), or the run needs rollback on failure, a real diff for the reviewer, worktree-isolated parallelism, competing implementations of one contract, or an approval budget for non-interactive workers. |
 | `references/config.md` | A configuration question actually arises: key semantics, four-layer merge, why `route` dropped a candidate, `enforcement.light_class`, telemetry fields. |
-| `references/external-executors.md` | Choosing or second-guessing a Codex/pi model+effort, or needing the raw CLI recipe / pricing. pi reports per-run usage and a list-price cost estimate (a real charge only on metered providers such as `github-copilot/*`). |
+| `references/external-executors.md` | Choosing or second-guessing a pi model+effort, or needing the raw CLI recipe / pricing. pi reports per-run usage and a list-price cost estimate (a real charge only on metered providers such as `github-copilot/*`). |
 | `references/poc-findings.md` | Making a model-policy decision that depends on specific benchmark numbers. |
 | `references/programme.md` | The work is dozens of session-sized packages with ordering between them (an audit-then-refactor, a multi-feature build-out): agent-produced plans, dependency scheduling, a rolling integration base, carry-over, chunk budgets. §13. |
 
@@ -55,8 +55,8 @@ The full pipeline on every request is overkill. **Express only when ALL hold:**
 | Class | Resolved via | Role |
 |---|---|---|
 | Instructor | Fable / Opus — fixed, never routed | Decomposition, contracts, script writing, exception judgment ONLY |
-| `deep` | `agent-exec route --class deep` — Opus (`orchestra-deep`) first, then pi `openai-codex/gpt-6.1-sol`/high, then Codex Sol | Real design latitude: algorithm choice, API shape, tradeoffs |
-| `standard` | `agent-exec route --class standard` — pi `openai-codex/gpt-5.6-luna`/medium by default, then Sonnet, then Codex | Ordinary implementation; review needing adversarial test design and failure interpretation |
+| `deep` | `agent-exec route --class deep` — Opus (`orchestra-deep`) first, then pi `openai-codex/gpt-6.1-sol`/high | Real design latitude: algorithm choice, API shape, tradeoffs |
+| `standard` | `agent-exec route --class standard` — pi `openai-codex/gpt-5.6-luna`/medium by default, then Sonnet | Ordinary implementation; review needing adversarial test design and failure interpretation |
 | `light` | `agent-exec route --class light` — Claude Haiku first, then pi `openai-codex/gpt-5.6-luna`/medium | Implementation or review whose procedure is 100% prescribed |
 
 **Review class:** `standard` is the default. `light` suffices only when the review procedure is fully prescribed (exact commands, explicit pass criteria). For review needing heavy design judgment, pass `model: 'opus'` inline — there is deliberately no `deep`-class review agent. The template's own same-run `review` stage stays pinned to Sonnet and unrouted, because `priority.review` is `[claude]`-only by design.
@@ -143,9 +143,9 @@ const exhausted = new Set()
 // Fill this with the workflow's own run id.
 const RUN_ID = 'workflow-run-id'
 
-// Trailing runtime controls for an agent-dispatch executor. Codex's rescue
-// agent strips `--model`/`--effort` out of the task text and forwards them to
-// the CLI; anything the route left null is simply omitted.
+// Trailing runtime controls for an agent-dispatch executor. The subagent
+// reads `--model`/`--effort` off the task text; anything the route left null
+// is simply omitted.
 function routingFlags(r) {
   return (r.model ? '\n\n--model ' + r.model : '') +
     (r.effort ? ' --effort ' + r.effort : '')
@@ -274,7 +274,7 @@ async function awaitDispatch(token, label, first) {
 
 // Dispatch one task at a capability class ('light' | 'standard' | 'deep').
 // Selection is `agent-exec route`'s job, not this function's and not yours.
-// Same call shape whether it resolves to pi, Codex's `dispatch: cli`, or
+// Same call shape whether it resolves to pi or
 // a Claude tier.
 //
 // opts.out — optional object; on every return path that can carry a session
@@ -294,7 +294,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
     ' --class ' + cls +
     (exhausted.size ? ' --exhausted ' + [...exhausted].join(',') : '') +
     (opts.noResume ? ' --no-resume' : '')
-  // A codex/pi dispatch routinely runs past any hard per-call timeout a
+  // A pi dispatch routinely runs past any hard per-call timeout a
   // relay's Bash tool enforces (commonly ~600s), so it never runs inside one
   // relay call. The START hop's `--detach` launches it as a background child
   // and returns at once; each WAIT hop (inside awaitDispatch) blocks up to
@@ -334,7 +334,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
   }
 
   if (r.status === 'ok') {
-    // a CLI executor (e.g. pi or Codex's `dispatch: cli`) already ran it.
+    // a CLI executor (e.g. pi) already ran it.
     if (opts.out) { opts.out.sessionId = r.session_id ?? null; opts.out.resumed = !!r.resumed }
     // `--summary` cuts `answer` to 400 code points; the full text is on disk.
     return r.answer_truncated && r.answer_path
@@ -342,20 +342,15 @@ async function dispatchClass(cls, promptText, opts = {}) {
       : r.answer
   }
   if (r.status === 'delegate') {
-    // route picked Claude or an agent-dispatch executor (e.g. Codex) - only
+    // route picked Claude or an agent-dispatch executor - only
     // your own agent() call can spawn either, so detecting ITS unavailability
     // (agent() returning null) and feeding it back into `exhausted` is on you.
     // For an agent-dispatch executor, `model`/`effort` are NOT agent() options
     // (those pick a Claude tier) - they belong to the executor behind the
-    // subagent, which reads them off the prompt text. Codex's rescue agent
-    // leaves both unset unless the request names them, so dropping them here
-    // silently runs Codex at whatever ~/.codex/config.toml defaults to instead
-    // of the class_policy this route just resolved.
+    // subagent, which reads them off the prompt text; dropping them here
+    // silently runs that executor at its own defaults instead of the
+    // class_policy this route just resolved.
     const directPrompt = 'Read the worker prompt from ' + promptFiles.join(' and ') + ' and carry it out.'
-    // The agent strips trailing control lines but preserves body text verbatim, so a trailing marker is silently dropped and the run becomes unattributable.
-    const agentPrompt = r.correlation_id
-      ? '[orchestra-run-correlation: ' + r.correlation_id + ']\n' + directPrompt
-      : directPrompt
     // Isolation is NOT automatic on this path. `agent()` starts in the user's tree,
     // so a delegated worker edits the user's uncommitted work unless you say otherwise
     // - the asymmetry that used to make Claude-routed workers the only unisolated ones.
@@ -366,8 +361,8 @@ async function dispatchClass(cls, promptText, opts = {}) {
     const cwdLine = treeLine(iso.isolate ? (iso.workdir || iso.path) : null)
     const isoOpt = iso.isolate ? {} : { isolation: 'worktree' }
     const answer = r.agent_type
-      ? await agent(cwdLine + agentPrompt + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type, ...isoOpt })
-      : await agent(cwdLine + agentPrompt, { label: opts.label || cls, model: r.model, effort: r.effort, ...isoOpt })
+      ? await agent(cwdLine + directPrompt + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type, ...isoOpt })
+      : await agent(cwdLine + directPrompt, { label: opts.label || cls, model: r.model, effort: r.effort, ...isoOpt })
     if (answer === null) {
       exhausted.add(r.executor)
       return dispatchClass(cls, promptText, opts)
@@ -703,7 +698,7 @@ await agent(
 return results
 ```
 
-The run id rides in the dispatch token, not in the relay command: pass `--run-id <the workflow run id>` to `agent-exec dispatch prepare` when you mint each task's token, so pi/Codex cost lands in the same ledger the instructor later queries. `agent-exec dispatch --token ...` **rejects** `--run-id` (and every other prepare-time flag) with `--token conflicts with --run-id` — the relay is given the token and nothing else by design.
+The run id rides in the dispatch token, not in the relay command: pass `--run-id <the workflow run id>` to `agent-exec dispatch prepare` when you mint each task's token, so pi cost lands in the same ledger the instructor later queries. `agent-exec dispatch --token ...` **rejects** `--run-id` (and every other prepare-time flag) with `--token conflicts with --run-id` — the relay is given the token and nothing else by design.
 
 **The relay protocol: one hop, one command, one line back.** Every relay call is a `relayHop()`: the relay runs exactly one Bash command, once, and prints only the last line of its stdout. It never loops, waits, retries, or summarizes — every loop is the script's `while`, because a relay asked to poll on its own returned on the first `detached`, copied the worker's long `answer` instead of the JSON, or wrapped it in prose. A dispatch is two hop kinds: one **start** hop, `agent-exec dispatch --token T --capture --detach` (timeout 30000), which returns `detached`/`running`/`done` at once; then **wait** hops, `agent-exec dispatch wait --token T --summary` (timeout 600000; `wait`'s default `--max-wait 560` keeps each one under the relay's Bash limit), until the status is final. `--summary` makes that final result one compact JSON line, with `answer` cut to 400 code points (`answer_truncated: true`) and the full text at `answer_path` — the relay never copies a long answer, and `dispatchClass()` appends `[full answer: <answer_path>]` to a cut one. `wait` is idempotent (the result is persisted per token), so an unparsable reply is retried as another wait hop — never a re-dispatch — up to `MAX_GARBLED_HOPS`; `MAX_WAIT_HOPS` (60, ≈9h) bounds the whole wait; `unknown-token` means the result record is gone. All three throw `RelayFailureError` carrying `token` and `label`, so a caller can resume with `awaitDispatch(err.token, err.label)` — `references/programme.md` §3's `runPackage` does, and then checks the package's worktree before ever dispatching the work again. Each wait hop is `log()`ged (count, pid, seconds waited), and `agent-exec ui` lists dispatches that finished but were never collected and ones whose process died, so a stuck wait is visible instead of looking like "still running".
 
@@ -713,7 +708,7 @@ The run id rides in the dispatch token, not in the relay command: pass `--run-id
 
 **Decision rule: serialize only for a real ordering dependency** — one task must read another task's *output* to do its own work. Two tasks editing the same file is not that; it is a merge, and merges are mechanized now. If the interface between the tasks can be written down before either starts, the dependency is on the contract, not on the code, and the tasks run in parallel.
 
-**Isolate every file-changing worker, dirty tree or not.** A prompt that names the files a worker owns does not constrain the worker — only a separate tree does. Observed: a documentation-only worker, told it owned three `.md` files and nothing else, truncated an implementation file it had never been asked to open to zero bytes. Disjoint ownership likewise does not protect the *user's* uncommitted work: workers of every model tier run `git checkout --`/`restore`/`reset --hard` over changes they did not author, because a diff a worker did not write reads as contamination whatever its prompt says. So give every file-changing worker its own tree — `agent-exec dispatch --isolate always --task <id>` for CLI executors, `isolation: 'worktree'` for `agent()` calls. **The `status: "delegate"` path needs this said out loud:** dispatch does not run that worker, *you* do, so an `agent()` call that omits both the worktree and the working-directory line puts Claude- and Codex-routed workers straight into the user's tree while CLI-routed ones stay isolated. dispatch has already created the task's tree by then and reports the directory the work should run in as `isolation.workdir` (falling back to `isolation.path`, the worktree root, when `workdir` is absent) — point the worker at that path rather than opening a second one, and carry the same path into the correction round (§5). `isolation.path` always names the worktree root, which is what `agent-exec isolate diff/remove --task <id>` operate on; `isolation.workdir` is the (possibly deeper) directory the dispatch actually ran in. `--isolate auto` only covers the dirty-tree case; a clean tree is exactly where this gets skipped, and a clean tree still holds work that is only recoverable if it was committed. Collect with `agent-exec isolate diff --task <id>`; if you take the result out by any other route (an integration worktree, above all), run `agent-exec isolate collect --task <id>` so the SessionEnd hook can reclaim it too. Full guidance: `references/isolation.md`.
+**Isolate every file-changing worker, dirty tree or not.** A prompt that names the files a worker owns does not constrain the worker — only a separate tree does. Observed: a documentation-only worker, told it owned three `.md` files and nothing else, truncated an implementation file it had never been asked to open to zero bytes. Disjoint ownership likewise does not protect the *user's* uncommitted work: workers of every model tier run `git checkout --`/`restore`/`reset --hard` over changes they did not author, because a diff a worker did not write reads as contamination whatever its prompt says. So give every file-changing worker its own tree — `agent-exec dispatch --isolate always --task <id>` for CLI executors, `isolation: 'worktree'` for `agent()` calls. **The `status: "delegate"` path needs this said out loud:** dispatch does not run that worker, *you* do, so an `agent()` call that omits both the worktree and the working-directory line puts Claude-routed workers straight into the user's tree while CLI-routed ones stay isolated. dispatch has already created the task's tree by then and reports the directory the work should run in as `isolation.workdir` (falling back to `isolation.path`, the worktree root, when `workdir` is absent) — point the worker at that path rather than opening a second one, and carry the same path into the correction round (§5). `isolation.path` always names the worktree root, which is what `agent-exec isolate diff/remove --task <id>` operate on; `isolation.workdir` is the (possibly deeper) directory the dispatch actually ran in. `--isolate auto` only covers the dirty-tree case; a clean tree is exactly where this gets skipped, and a clean tree still holds work that is only recoverable if it was committed. Collect with `agent-exec isolate diff --task <id>`; if you take the result out by any other route (an integration worktree, above all), run `agent-exec isolate collect --task <id>` so the SessionEnd hook can reclaim it too. Full guidance: `references/isolation.md`.
 
 **On `agentType`:** the plugin-scoped names (`orchestra:orchestra-light` / `-deep` / `-review`) may or may not resolve as `agent()`'s `agentType` in this environment — check the available-subagents list before relying on them, and fall back to explicit `model:`. See `references/authoring.md` §1.
 
@@ -723,7 +718,7 @@ The run id rides in the dispatch token, not in the relay command: pass `--run-id
 
 **At run end, always:** have a cheap haiku relay agent run `agent-exec isolate sweep --include-current --text` — never yourself, and never conditionally. This is the *primary* worktree cleanup, not a nicety: the SessionEnd hook cannot be relied on (a killed or crashed session never fires it, and a slow removal gets cut off by the teardown timeout), whereas run end is a moment you control and every diff has already been collected by then. The sweep keeps anything still holding uncollected work, so it cannot destroy a verdict you have not read. If `doctor`'s `config.values.telemetry.enabled` is true, have that *same* relay also emit one `run_summary` via `agent-exec telemetry record --json '...'`; if disabled, skip that half silently (§10). If you ran without a Workflow (§8), run the sweep yourself once the delegate returns.
 
-**Then report what the run cost, every run.** Have the same relay also run `agent-exec usage --run <workflow-run-id> --text` and return it verbatim, then tell the user, per source: input split into fresh / cache write / cache read, output, and the estimated cost with its `~$` figure. Never report only input and output: cache reads are the bulk of the volume and the cache writes are priced above plain input, so in/out alone neither shows the real volume nor supports a cost. Quote `PARTIAL: unpriced …` when it is present — it means codex (tokens with no dollar price) or a model with no list price is *not* in the figure — and say the figure is an estimate from list prices (the report carries the price-list date), not an invoice. Without a run id, use `--session <session-id>`; use a `--since` window only as a last resort, since a window also counts unrelated sessions.
+**Then report what the run cost, every run.** Have the same relay also run `agent-exec usage --run <workflow-run-id> --text` and return it verbatim, then tell the user, per source: input split into fresh / cache write / cache read, output, and the estimated cost with its `~$` figure. Never report only input and output: cache reads are the bulk of the volume and the cache writes are priced above plain input, so in/out alone neither shows the real volume nor supports a cost. Quote `PARTIAL: unpriced …` when it is present — it means a model with no list price is *not* in the figure — and say the figure is an estimate from list prices (the report carries the price-list date), not an invoice. Without a run id, use `--session <session-id>`; use a `--since` window only as a last resort, since a window also counts unrelated sessions.
 
 ## 6. Writing worker prompts
 
@@ -772,9 +767,9 @@ A sandbox denial is not executor exhaustion and must not consume a gate.
 
 Everything you normally need is one call: **`agent-exec doctor --json`** returns both the readiness verdicts (`ready.<executor>.ok`) and the resolved config (`config.values` — `tiers`, `external_executors`, `priority`, `telemetry.enabled`) already deep-merged from all four layers (defaults ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`).
 
-**Run this `doctor --json` check yourself, once, before writing the Workflow script — not delegated to a relay.** If its `shim.installed` is false, STOP and tell the user to run `agent-exec install` (or point them at the `setup` skill) before proceeding. A missing shim is not a hard error anywhere downstream — `route`/`dispatch` just gate every external executor on `ready.<x>.ok` and fall through to `claude`, exactly as designed for a machine with no pi/Codex — but that silent, correct-looking fallback means every task in the run bills the user's OWN Claude quota instead of the external executor they configured, with no error to notice until it is gone. Observed: a run with the shim missing exhausted a session's entire weekly quota on work that should have gone to pi/Codex. If `ready.pi.missing` contains `executor-binary-unavailable` and doctor gives a `hint`, relay that hint to the user; do not install silently mid-run.
+**Run this `doctor --json` check yourself, once, before writing the Workflow script — not delegated to a relay.** If its `shim.installed` is false, STOP and tell the user to run `agent-exec install` (or point them at the `setup` skill) before proceeding. A missing shim is not a hard error anywhere downstream — `route`/`dispatch` just gate every external executor on `ready.<x>.ok` and fall through to `claude`, exactly as designed for a machine with no pi — but that silent, correct-looking fallback means every task in the run bills the user's OWN Claude quota instead of the external executor they configured, with no error to notice until it is gone. Observed: a run with the shim missing exhausted a session's entire weekly quota on work that should have gone to pi. If `ready.pi.missing` contains `executor-binary-unavailable` and doctor gives a `hint`, relay that hint to the user; do not install silently mid-run.
 
-**You never walk the priority list.** `agent-exec route --class <cls>` does: it gates every candidate on reality (disabled, binary missing, `ready.ok` false, no `class_policy` for the class, or listed in `--exhausted`) and returns the survivor; `agent-exec dispatch` additionally runs a `dispatch: cli` winner. pi and Codex ship `enabled: true`, which is safe precisely because of that gate — on a machine with neither installed, everything resolves to `claude`.
+**You never walk the priority list.** `agent-exec route --class <cls>` does: it gates every candidate on reality (disabled, binary missing, `ready.ok` false, no `class_policy` for the class, or listed in `--exhausted`) and returns the survivor; `agent-exec dispatch` additionally runs a `dispatch: cli` winner. pi ships `enabled: true`, which is safe precisely because of that gate — on a machine without it, everything resolves to `claude`.
 
 **Unavailable ≠ failed.** Only a genuinely unavailable executor (quota, credits, auth, unresolved binary) is a fallback signal, and it becomes sticky via `exhausted` for the rest of the run. A wrong *result* is not — it stays on the same executor and goes through the normal review/retry loop.
 
@@ -818,7 +813,7 @@ Beyond safety, isolation also lifts the disjoint-file-ownership constraint (§5)
 
 Workers never touch VCS state; snapshots, merges, and cleanup are the supervisor's — and "cleanup" has a deadline: reclaim the run's worktrees at run end (see §5's tail), because the SessionEnd hook is insurance that a killed session never collects. `agent-exec isolate sweep` is the verb; `--include-current` covers this run, and it clears dead sessions' leftovers at the same time while leaving trees of other sessions seen within the live window alone. Descendant agent branches are disposable and unrestricted; the PR branch is built from the accepted diff and stays clean. Never commit to, rebase, or push the user's branch without an explicit request. Full guidance: `references/isolation.md`.
 
-**The stash stack is shared.** `refs/stash` is one stack for every worktree of a repository, so parallel workers that `git stash`/`pop` take each other's entries — observed swapping two workers' changes between their worktrees. `guard-worker-vcs.sh` therefore denies stash push/pop/apply/drop to workers even inside their own orchestra worktree. Workers do have real reasons to set changes aside (confirming a new test fails without the fix, checking a staged subset alone, checking whether a failure predates them), so give them the per-worktree equivalent: `agent-exec shelf push [--keep-index] [-- PATH...]` / `shelf pop`, whose entries live in the worktree's own git dir. Say so in every worker prompt: CLI executors (pi, Codex) run outside Claude's hooks, so the guard cannot stop them.
+**The stash stack is shared.** `refs/stash` is one stack for every worktree of a repository, so parallel workers that `git stash`/`pop` take each other's entries — observed swapping two workers' changes between their worktrees. `guard-worker-vcs.sh` therefore denies stash push/pop/apply/drop to workers even inside their own orchestra worktree. Workers do have real reasons to set changes aside (confirming a new test fails without the fix, checking a staged subset alone, checking whether a failure predates them), so give them the per-worktree equivalent: `agent-exec shelf push [--keep-index] [-- PATH...]` / `shelf pop`, whose entries live in the worktree's own git dir. Say so in every worker prompt: CLI executors (pi) run outside Claude's hooks, so the guard cannot stop them.
 
 ## 13. Programme scale
 

@@ -142,7 +142,7 @@ class NestedDictFiltering(unittest.TestCase):
     def test_external_enabled_bad_subkey_and_int_value_dropped(self):
         raw = {
             "event": "dispatch",
-            "external_enabled": {"pi": True, "codex": 1, "evil": True},
+            "external_enabled": {"pi": True, "claude": 1, "evil": True},
         }
         out = sanitize_telemetry_record(raw)
         self.assertEqual(out.get("external_enabled"), {"pi": True})

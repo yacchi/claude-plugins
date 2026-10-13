@@ -4,7 +4,8 @@ Pure functions only: model -> price, token breakdown -> micro-USD. No I/O.
 
 WHAT IS AND IS NOT PRICED. Only models with a known per-token price get a
 dollar figure. Anything else (a model missing from the table and from the
-user's `pricing.models` override, Codex's OpenAI models) is reported as UNPRICED with its token counts -- never guessed. A
+user's `pricing.models` override) is reported as UNPRICED with its token counts
+-- never guessed. A
 total built from the priced part alone is labelled as such by the caller.
 
 THE PRICE LIST. USD per 1M tokens, Anthropic first-party API list prices as of

@@ -4,7 +4,7 @@
 # ///
 """agent-exec: generic, TTY-agnostic external-executor wrapper.
 
-Lets orchestra dispatch Codex, pi (and future CLIs) without requiring users to
+Lets orchestra dispatch pi (and future CLIs) without requiring users to
 hand-configure env vars in settings.json. The wrapper injects any required
 environment/flags for the target executor internally, so the only Claude Code
 permission rule needed is: Bash(agent-exec:*)
@@ -57,16 +57,6 @@ import agent_exec_watchdog  # noqa: E402
 import agent_exec_wave  # noqa: E402
 
 PROFILES = {
-    # codex runs headless through `codex exec --json`. Nothing needs to be
-    # injected into a raw passthrough call: the flags that make a dispatch
-    # non-interactive (`exec`, `--json`, the sandbox mode) are added by
-    # `_build_codex_argv`, which is the only builder `run`/`dispatch` use.
-    "codex": {
-        "exec": "codex",
-        "env": {},
-        "mode": "headless",
-        "inject_args": [],
-    },
     # pi runs headless through `pi -p --mode json`. The prompt goes on stdin
     # and the flags that make a run non-interactive are added by
     # `_build_pi_argv`. PI_SKIP_VERSION_CHECK keeps the child from stalling on
@@ -85,13 +75,12 @@ PROFILES = {
 # happens to have a passthrough profile today; the registry stays separate so
 # a `dispatch: agent`-only executor can still be reported on.
 KNOWN_EXECUTORS = {
-    "codex": {"binary": "codex", "default_dispatch": "cli"},
     "pi": {"binary": "pi", "default_dispatch": "cli"},
 }
 
 DEFAULTS = {
     # Executor binaries orchestra installs and pins itself; see
-    # agent_exec_tools. A tool absent here (codex) runs from PATH.
+    # agent_exec_tools. A tool absent here runs from PATH.
     "tools": {
         "installer": "auto",
         "pi": {
@@ -134,41 +123,10 @@ DEFAULTS = {
     },
     # Enabled by default: `route`/`resolve_route` hard-gates every non-claude
     # candidate on real availability (doctor's `ready.<x>.ok`), so a machine
-    # without the pi CLI or Codex agent still resolves to claude
+    # without the pi CLI still resolves to claude
     # automatically. Defaulting to enabled here only changes behavior on a
     # machine where the executor is actually ready.
     "external_executors": {
-        # codex dispatches through the `codex exec` CLI (`dispatch: cli`), so
-        # agent-exec captures its thread id directly from the `--json` stream
-        # and can resume the SAME session for a retry round (see
-        # `read_task_session`/`write_task_session`). `agent_type` is retained
-        # because a user override of `dispatch: agent` still needs it: that
-        # path keeps working exactly as before, delegating to the
-        # `codex:codex-rescue` subagent with a correlation id.
-        "codex": {
-            "enabled": True,
-            "dispatch": "cli",
-            "agent_type": "codex:codex-rescue",
-            # API hosts only codex's srt settings allow (sandbox.network);
-            # unioned across layers.
-            "network_domains": list(agent_exec_srt.EXECUTOR_NETWORK_DOMAINS["codex"]),
-            "classes": ["standard", "deep", "review"],
-            "class_policy": {
-                "standard": {"model": "gpt-5.6-luna", "effort": "medium"},
-                "deep": {"model": "gpt-5.6-sol", "effort": "xhigh"},
-                "review": {"model": "gpt-5.6-sol", "effort": "low"},
-            },
-            # Escalate a nominally light/standard-class task to `deep` when it
-            # needs deep traversal of a large repo — Luna's long-context
-            # recall is measurably weak.
-            "long_context_escalation": {
-                "when": (
-                    "task requires deep traversal of a large repo "
-                    "(Luna's long-context recall is weak)"
-                ),
-                "class": "deep",
-            },
-        },
         # pi reaches the OpenAI Codex models through its own provider login
         # and bills the figure it reports as `cost.total` (recorded as
         # `cost_micro_usd`).
@@ -205,16 +163,16 @@ DEFAULTS = {
             "default": ["claude", "pi"],
         },
         "standard": {
-            "default": ["pi", "claude", "codex"],
+            "default": ["pi", "claude"],
         },
         "deep": {
-            "default": ["claude", "pi", "codex"],
+            "default": ["claude", "pi"],
         },
         "review": {
             "default": ["claude"],
         },
         "independent-review": {
-            "default": ["pi", "codex"],
+            "default": ["pi"],
         },
     },
     # "off": route/dispatch only ever advise; nothing nudges a light-class
@@ -466,8 +424,8 @@ Usage:
                                   must exist when the token is dispatched.
   agent-exec dispatch session --task ID [--executor N] [--json]
                                   print the session record a `dispatch: cli`
-                                  executor with resumable sessions (pi,
-                                  codex) stored for that task, or status
+                                  executor with resumable sessions (pi)
+                                  stored for that task, or status
                                   `none`. Without --executor, the most
                                   recently updated record of any executor
                                   is shown. Read-only:
@@ -477,11 +435,11 @@ Usage:
                   [--exhausted a,b] [--no-resume]
                                   one-call resolve + dispatch: resolves the
                                   route, then runs it. If the winning
-                                  executor is `dispatch: cli` (e.g. codex),
+                                  executor is `dispatch: cli` (e.g. pi),
                                   runs it exactly as `run --capture` does and
                                   prints its normalized result plus
                                   executor/model/effort/route. If the winner
-                                  is `dispatch: agent` (e.g. codex) or the
+                                  is `dispatch: agent` or the
                                   `claude` fallback, agent-exec cannot spawn
                                   subagents itself, so it prints
                                   {{"status":"delegate", executor, model,
@@ -495,7 +453,7 @@ Usage:
                                   telemetry record for the cli branch, same
                                   as `run --capture`.
                                   With --task, a `dispatch: cli` executor that
-                                  has resumable sessions (pi, codex) continues
+                                  has resumable sessions (pi) continues
                                   that task's previous session instead of
                                   starting cold, so a correction round keeps
                                   the contract it already read. --resume SID
@@ -682,9 +640,7 @@ Usage:
                                   transcripts (~/.claude/projects, scoped to
                                   this working directory unless
                                   --all-projects, split main/sidechain and
-                                  broken down per model), codex rollouts
-                                  (~/.codex/sessions, last cumulative
-                                  token_count per session), and pi (its
+                                  broken down per model), and pi (its
                                   windowed usage only exists in orchestra
                                   telemetry, so it reports "unavailable" when telemetry
                                   is off). --since takes <N>m|<N>h|<N>d or an
@@ -692,8 +648,8 @@ Usage:
                                   inherently cross-project; --json is the
                                   default. Also reports an estimated cost: claude
                                   from list prices (cache writes by TTL, cache
-                                  reads, output), pi as provider-reported; codex
-                                  and any unpriced model are listed
+                                  reads, output), pi as provider-reported; any
+                                  unpriced model is listed
                                   as unpriced, never guessed. Override prices with
                                   `pricing.models` in orchestra.yaml. Strictly
                                   read-only.
@@ -849,7 +805,7 @@ def cmd_dispatch(profile_name, args):
     sandbox = _sandbox_spec(profile_name, cwd, pass_cfg, _arg_value(final_args, "--model"))
     resolved = _resolve_tool(exec_name, pass_cfg)["path"]
     argv = agent_exec_sandbox.wrap_argv(
-        [resolved or exec_name] + _passthrough_args(profile_name, final_args, sandbox),
+        [resolved or exec_name] + list(final_args),
         cwd, sandbox
     )
 
@@ -1379,11 +1335,23 @@ def _detect_config_warnings():
                 if tier_key in tiers:
                     keys_found.append("tiers.%s" % tier_key)
 
+        codex_keys = _codex_config_keys(data)
+        if codex_keys:
+            warnings.append(
+                {
+                    "type": "codex_removed",
+                    "file": os.path.abspath(path),
+                    "keys": codex_keys,
+                    "detail": _CODEX_REMOVED_WARNING,
+                }
+            )
+
         # Genuinely unknown names remain warnings and are skipped by route.
         unknown = []
         if isinstance(external, dict):
             unknown.extend(str(n) for n in external
-                           if n not in KNOWN_EXECUTORS and n not in _REMOVED_EXECUTORS)
+                           if n not in KNOWN_EXECUTORS and n not in _REMOVED_EXECUTORS
+                           and n != "codex")
         priority = data.get("priority")
         if isinstance(priority, dict):
             for per_cls in priority.values():
@@ -1396,6 +1364,7 @@ def _detect_config_warnings():
                             if isinstance(n, str) and n != "claude"
                             and n not in KNOWN_EXECUTORS
                             and n not in _REMOVED_EXECUTORS
+                            and n != "codex"
                         )
         unknown = sorted(set(unknown))
         if unknown:
@@ -1475,6 +1444,46 @@ def _removed_executor_keys(data):
     return found
 
 
+_CODEX_REMOVED_WARNING = (
+    "codex executor was removed in 0.52.0; remove external_executors.codex / "
+    "the priority entry (pi drives the same models via openai-codex/*)"
+)
+
+
+def _codex_config_keys(data):
+    """Config keys in one layer that still name the removed codex executor."""
+    found = []
+    if not isinstance(data, dict):
+        return found
+    external = data.get("external_executors")
+    if isinstance(external, dict) and "codex" in external:
+        found.append("external_executors.codex")
+    priority = data.get("priority")
+    if isinstance(priority, dict):
+        for cls, per_archetype in priority.items():
+            if not isinstance(per_archetype, dict):
+                continue
+            for archetype, names in per_archetype.items():
+                if isinstance(names, list) and "codex" in names:
+                    found.append("priority.%s.%s" % (cls, archetype))
+    return found
+
+
+def _scrub_codex(resolved):
+    """Drop the removed codex executor from a merged config, in place."""
+    external = resolved.get("external_executors")
+    if isinstance(external, dict):
+        external.pop("codex", None)
+    priority = resolved.get("priority")
+    if isinstance(priority, dict):
+        for per_archetype in priority.values():
+            if not isinstance(per_archetype, dict):
+                continue
+            for archetype, names in list(per_archetype.items()):
+                if isinstance(names, list):
+                    per_archetype[archetype] = [n for n in names if n != "codex"]
+
+
 def _removed_executor_error(violations):
     details = "; ".join(
         "%s: %s" % (path, ", ".join(keys)) for path, keys in violations
@@ -1482,7 +1491,7 @@ def _removed_executor_error(violations):
     return (
         "agent-exec: removed executor configuration found in %s. "
         "copilot and opencode were removed in v0.43.0. Use Copilot models "
-        "through pi's github-copilot/* provider, or Codex/ChatGPT-subscription "
+        "through pi's github-copilot/* provider, or ChatGPT-subscription "
         "models through pi's openai-codex/* provider (log in to either with "
         "/login inside pi). "
         "Delete the keys or re-run the orchestra:setup skill."
@@ -1535,6 +1544,7 @@ def resolve_config():
                 acc.extend(v for v in values if isinstance(v, str) and v not in acc)
         resolved = _deep_merge(resolved, data)
 
+    _scrub_codex(resolved)
     if removed:
         return None, _removed_executor_error(removed)
 
@@ -1900,7 +1910,7 @@ def cmd_sandbox(args):
 
 _TELEMETRY_EVENTS = ("run_summary", "dispatch")
 _TELEMETRY_LANES = ("express", "orchestrated")
-_TELEMETRY_EXECUTORS = ("claude", "codex", "pi")
+_TELEMETRY_EXECUTORS = ("claude", "pi")
 _TELEMETRY_CLASSES = ("light", "standard", "deep", "review", "independent-review")
 _TELEMETRY_STATUSES = ("ok", "unavailable", "needs-permission", "runaway")
 _TELEMETRY_REASONS = (
@@ -1921,17 +1931,15 @@ _TELEMETRY_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _TELEMETRY_ROUND_KEY_RE = re.compile(r"^[1-9][0-9]*$")
 
 _TELEMETRY_MAX_LINES = 10000
-_RUN_LEDGER_EXECUTORS = ("codex", "claude", "pi")
+_RUN_LEDGER_EXECUTORS = ("claude", "pi")
 _RUN_LEDGER_CLASSES = ("light", "standard", "deep", "independent-review")
-_RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "delegated", "needs-permission", "runaway")
+_RUN_LEDGER_STATUSES = ("ok", "error", "unavailable", "needs-permission", "runaway")
 _RUN_LEDGER_MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,64}$")
 _RUN_LEDGER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _RUN_LEDGER_RUN_RE = _RUN_LEDGER_ID_RE
 _RUN_LEDGER_ORDINAL_RE = re.compile(r"^[0-9]{1,4}$")
 _RUN_LEDGER_FILE_RE = re.compile(r"^([0-9]+)-([A-Za-z0-9_-]{1,64})\.jsonl$")
 _RUN_LEDGER_SESSION_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
-_RUN_LEDGER_CORR_RE = re.compile(r"^oxc-[0-9a-f]{12}$")
-_RUN_LEDGER_PATH_RE = re.compile(r"^[0-9a-f]{16}$")
 _ledger_retention_ran = False
 _DISPATCH_TOKEN_RE = re.compile(r"^dsp-[0-9a-f]{12}$")
 
@@ -2036,7 +2044,7 @@ def sanitize_telemetry_record(raw):
         if isinstance(value, dict):
             sanitized = {}
             for k, v in value.items():
-                if k in ("codex", "pi") and isinstance(v, bool):
+                if k == "pi" and isinstance(v, bool):
                     sanitized[k] = v
             out["external_enabled"] = sanitized
 
@@ -2132,14 +2140,6 @@ def sanitize_run_ledger_record(raw):
         value = raw.get(key)
         if _is_nonneg_int(value):
             out[key] = value
-    corr = raw.get("corr")
-    if isinstance(corr, str) and _RUN_LEDGER_CORR_RE.fullmatch(corr):
-        out["corr"] = corr
-    paths = raw.get("paths")
-    if (isinstance(paths, list) and 1 <= len(paths) <= 8
-            and all(isinstance(path, str) and _RUN_LEDGER_PATH_RE.fullmatch(path)
-                    for path in paths)):
-        out["paths"] = list(paths)
     if not any(key in out for key in ("executor", "cls", "status", "model")):
         return None
     return out
@@ -2191,7 +2191,7 @@ def _token_dir_from_cfg(cfg):
 
 # --- per-task executor session store ----------------------------------------
 #
-# A `dispatch: cli` executor with a resumable session (codex today) keeps one
+# A `dispatch: cli` executor with a resumable session (pi) keeps one
 # session per orchestra task id, so a retry/correction round continues the
 # SAME conversation instead of paying for a cold re-read of the whole
 # contract. The store is a sibling of the run ledger and the dispatch tokens
@@ -2618,30 +2618,6 @@ def _sandbox_counts(result):
     denials = sandbox.get("denials") if isinstance(sandbox.get("denials"), list) else []
     granted = sandbox.get("granted") if isinstance(sandbox.get("granted"), list) else []
     return {"sandbox_denials": len(denials), "sandbox_granted": len(granted)}
-
-
-def _path_fingerprint(path):
-    return hashlib.sha256(os.path.realpath(path).encode("utf-8")).hexdigest()[:16]
-
-
-def _prompt_path_fingerprints(prompt_files):
-    if (not isinstance(prompt_files, list) or not 1 <= len(prompt_files) <= 8
-            or any(not isinstance(path, str) or not path for path in prompt_files)):
-        return None
-    return [_path_fingerprint(path) for path in prompt_files]
-
-
-def build_delegated_run_ledger_record(executor, model, cls, corr, prompt_files=None):
-    record = build_run_ledger_record(executor, model, cls, {"status": "delegated"})
-    record["corr"] = corr
-    paths = _prompt_path_fingerprints(prompt_files)
-    if paths is not None:
-        record["paths"] = paths
-    return record
-
-
-def _new_correlation_id():
-    return "oxc-" + os.urandom(6).hex()
 
 
 def _telemetry_enforce_cap(path):
@@ -3360,218 +3336,6 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None,
     )
 
 
-# --- codex ------------------------------------------------------------------
-
-# Sandbox mode is spelled differently on the two codex forms on purpose.
-# Measured against codex-cli 0.152.0:
-#   `codex exec --sandbox workspace-write ...`   accepted
-#   `codex exec resume <SID> --sandbox ...`      REJECTED, exit 2:
-#       "error: unexpected argument '--sandbox' found"
-# `codex exec resume` takes no --sandbox/-C/--add-dir; the only way to set the
-# sandbox on a resumed turn is the generic config override, which every codex
-# subcommand accepts. `-c sandbox_mode=workspace-write` is exactly equivalent
-# (the value fails to parse as TOML and is used as a literal string).
-_CODEX_SANDBOX = "workspace-write"
-# Under sandbox-runtime (backend `srt`) srt is the filesystem and network
-# boundary; codex's own Seatbelt/Landlock nested inside it fails, so codex
-# runs with its sandbox off -- only then.
-_CODEX_SANDBOX_UNDER_SRT = "danger-full-access"
-
-
-def _codex_sandbox_mode(sandbox):
-    """codex's own sandbox mode for a run under the spec `sandbox`."""
-    if (sandbox or {}).get("backend") == "srt":
-        return _CODEX_SANDBOX_UNDER_SRT
-    return _CODEX_SANDBOX
-
-
-def _build_codex_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt,
-                      sandbox_mode=_CODEX_SANDBOX):
-    """Build the `codex exec` argv for a single headless invocation.
-
-    Fresh:   codex exec --json --sandbox workspace-write
-                  [-m M] [-c model_reasoning_effort=E] -- <prompt>
-    Resume:  codex exec resume <SID> --json -c sandbox_mode=workspace-write
-                  [-m M] [-c model_reasoning_effort=E] -- <prompt>
-
-    `model`/`effort` are omitted entirely when the route left them null, so a
-    null never reaches the CLI as the string "None". `output_fmt` is accepted
-    for signature parity with the other builders but unused: codex
-    exec has exactly one machine-readable output form, `--json`.
-
-    The trailing `--` makes the prompt unambiguously positional regardless
-    of its content (spaces, newlines, a leading `-`) -- see the comment
-    above `argv.append("--")` below for the empirical verification.
-
-    The working directory is NOT a flag here. `codex exec` does have `-C`, but
-    `codex exec resume` does not, so both forms are run with `cwd=workdir` by
-    `_run_codex_capture` -- one mechanism for both, and the same one the
-    pi runner uses. `sandbox_mode` is `_codex_sandbox_mode(spec)`."""
-    del output_fmt, workdir  # see docstring: cwd= is set by the runner
-    argv = [exec_name, "exec"]
-    if resume is not None:
-        argv += ["resume", resume, "--json", "-c", "sandbox_mode=%s" % sandbox_mode]
-    else:
-        argv += ["--json", "--sandbox", sandbox_mode]
-    if model:
-        argv += ["-m", model]
-    if effort:
-        argv += ["-c", "model_reasoning_effort=%s" % effort]
-    # `--` marks the end of options so a prompt whose first line begins with
-    # `-` (e.g. a markdown bullet like "- fix X") is never parsed as a flag
-    # by clap. Verified empirically against codex-cli 0.152.0: without it,
-    # `codex exec --json --sandbox read-only "-say PONG only"` fails with
-    # "the argument '--sandbox <SANDBOX_MODE>' cannot be used multiple
-    # times" because clap consumes `-s` out of the prompt string.
-    argv.append("--")
-    argv.append(prompt_value)
-    return argv
-
-
-def parse_codex_jsonl(stdout_text, stderr_text, exit_code, resumed=False):
-    """Pure parser: `codex exec --json` stdout + stderr + exit code -> the same
-    normalized result dict `parse_pi_jsonl` returns, plus `resumed`.
-
-    Event names observed directly from codex-cli 0.152.0 (`codex exec --json`
-    on a trivial prompt, and `codex exec resume <SID> --json`):
-
-      {"type":"thread.started","thread_id":"01a0632d-...-56bb74d466c8"}
-      {"type":"turn.started"}
-      {"type":"item.completed","item":{"id":"item_0","type":"agent_message",
-                                       "text":"PONG"}}
-      {"type":"turn.completed","usage":{"input_tokens":14578,
-        "cached_input_tokens":9984,"cache_write_input_tokens":0,
-        "output_tokens":6,"reasoning_output_tokens":0}}
-
-    So: `thread.started.thread_id` is the session/thread UUID (a resumed run
-    re-emits the SAME id, which is what makes it usable as the store key),
-    `item.completed` with `item.type == "agent_message"` carries the final
-    assistant message, and `turn.completed.usage` carries the token counts.
-    codex reports NO cost figure, so `cost_micro_usd` is left absent exactly
-    the way pi's parser leaves it absent when pi reported none --
-    an unavailable number is never fabricated.
-
-    The availability scan is default-deny in the same way as the pi
-    parser: only unparseable lines, stderr, and events
-    `_is_error_bearing_event` recognizes (which covers codex's `turn.failed`,
-    since it carries an `error` object) are scanned. `agent_message` text is
-    the worker's own answer and is never scanned, so a worker writing about
-    rate limits does not mark codex exhausted."""
-    session_id = None
-    messages = []
-    tokens = {}
-    scannable_lines = []
-
-    for line in (stdout_text or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            event = json.loads(line)
-        except (ValueError, TypeError):
-            scannable_lines.append(line)
-            continue
-        if not isinstance(event, dict):
-            continue
-
-        etype = event.get("type")
-
-        if etype == "thread.started":
-            tid = event.get("thread_id")
-            if isinstance(tid, str) and tid != "":
-                session_id = tid
-
-        if _is_error_bearing_event(event):
-            scannable_lines.append(line)
-
-        if etype == "item.completed":
-            item = event.get("item")
-            if isinstance(item, dict) and item.get("type") == "agent_message":
-                text = item.get("text")
-                if isinstance(text, str) and text != "":
-                    messages.append(text)
-
-        if etype == "turn.completed":
-            usage = event.get("usage")
-            if isinstance(usage, dict):
-                for key in (
-                    "input_tokens", "output_tokens", "cached_input_tokens",
-                    "cache_write_input_tokens", "reasoning_output_tokens",
-                ):
-                    _accumulate_int(tokens, key, usage.get(key))
-
-    answer = "\n".join(messages) if messages else None
-
-    combined_text = "\n".join(scannable_lines) + "\n" + (stderr_text or "")
-    reason = None
-    for candidate_reason, pattern in _UNAVAILABLE_PATTERNS:
-        if pattern.search(combined_text):
-            reason = candidate_reason
-            break
-
-    if reason is not None:
-        status = "unavailable"
-    elif exit_code != 0:
-        status = "unavailable"
-        reason = "nonzero-exit"
-    else:
-        status = "ok"
-
-    usage_out = {"tokens": tokens} if tokens else None
-
-    return {
-        "status": status,
-        "answer": answer,
-        "session_id": session_id,
-        "resumed": bool(resumed),
-        "reason": reason,
-        "exit_code": exit_code,
-        "usage": usage_out,
-    }
-
-
-def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json",
-                       sandbox=None, watchdog=None, cls="standard"):
-    """codex counterpart of `_run_pi_capture`. Same (exit_code,
-    result_or_None) contract, including the 127/None missing-binary case."""
-    profile = PROFILES[profile_name]
-    exec_name = profile["exec"]
-
-    resolved = _resolve_tool(exec_name)["path"]
-    if resolved is None:
-        return 127, None
-
-    argv = _build_codex_argv(
-        resolved, model, effort, workdir, prompt_text, resume, output_fmt,
-        sandbox_mode=_codex_sandbox_mode(sandbox),
-    )
-    # The prompt is a positional argument, so stdin must be an empty, already
-    # closed pipe: `codex exec` otherwise blocks reading stdin and appends
-    # whatever it finds there to the prompt as a <stdin> block.
-    watchdog_result = []
-    network_result = []
-    spawn_kwargs = {"sandbox": sandbox}
-    if watchdog is not None:
-        spawn_kwargs.update(watchdog=watchdog, executor="codex", cls=cls,
-                            watchdog_result=watchdog_result)
-    if (sandbox or {}).get("backend") == "srt":
-        spawn_kwargs["network_result"] = network_result
-    env = agent_exec_sandbox.child_env(sandbox, os.environ) \
-        if (sandbox or {}).get("backend") == "srt" else None
-    captured = _spawn_capture(
-        argv, cwd=_existing_dir(workdir), env=env, input_text="", **spawn_kwargs
-    )
-    exit_code, stdout_text, stderr_text = captured
-    runaway = watchdog_result[0] if watchdog_result else None
-    result = parse_codex_jsonl(stdout_text, stderr_text, exit_code, resumed=resume is not None)
-    _note_srt_failure(result, sandbox, exit_code, stderr_text)
-    if network_result and network_result[0]:
-        result["network_denials"] = network_result[0]
-    if runaway is not None:
-        result.update(status="runaway", reason=runaway["reason"], runaway=runaway)
-    return 0, result
-
-
 # --- pi ---------------------------------------------------------------------
 
 
@@ -3634,7 +3398,7 @@ def _pi_text_of(content):
 
 def parse_pi_jsonl(stdout_text, stderr_text, exit_code, resumed=False):
     """Pure parser: `pi -p --mode json` stdout + stderr + exit code -> the
-    same normalized result dict `parse_codex_jsonl` returns.
+    same normalized result dict shape every run/dispatch consumer reads.
 
     Records are split on `\\n` only. The ones that matter:
 
@@ -3759,7 +3523,7 @@ def parse_pi_jsonl(stdout_text, stderr_text, exit_code, resumed=False):
 
 def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, output_fmt="json",
                     sandbox=None, watchdog=None, cls="standard"):
-    """pi counterpart of `_run_codex_capture`. Same (exit_code,
+    """Run `pi` headlessly and parse it. Same (exit_code,
     result_or_None) contract, including the 127/None missing-binary case. The
     prompt is fed on stdin and PI_SKIP_VERSION_CHECK is set in the child env
     so pi never stalls on an update check."""
@@ -3832,11 +3596,9 @@ def _pi_tool_end_events(stdout_text):
 # a test that monkeypatches `_run_pi_capture` still intercepts the
 # dispatch path.
 _ARGV_BUILDERS = {
-    "codex": "_build_codex_argv",
     "pi": "_build_pi_argv",
 }
 _CAPTURE_RUNNERS = {
-    "codex": "_run_codex_capture",
     "pi": "_run_pi_capture",
 }
 
@@ -3854,13 +3616,11 @@ def _registered(table, profile_name):
 
 
 def _build_executor_argv(profile_name, exec_name, model, effort, workdir,
-                         prompt_value, resume, output_fmt, cfg=None, sandbox=None):
+                         prompt_value, resume, output_fmt, cfg=None):
     builder = globals()[_registered(_ARGV_BUILDERS, profile_name)]
     extra = {}
     if profile_name == "pi" and cfg is not None:
         extra["context_files"] = agent_exec_tools.pi_context_files(cfg)
-    if profile_name == "codex" and (sandbox or {}).get("backend") == "srt":
-        extra["sandbox_mode"] = _codex_sandbox_mode(sandbox)
     return builder(
         exec_name, model, effort, workdir, prompt_value, resume, output_fmt,
         **extra
@@ -3912,31 +3672,6 @@ def _arg_value(args, flag):
         if arg.startswith(flag + "="):
             return arg[len(flag) + 1:]
     return None
-
-
-def _passthrough_args(profile_name, args, sandbox):
-    """Raw passthrough args under `sandbox`: codex under srt gets its own
-    sandbox switched off (the generic config override every codex
-    subcommand accepts, and any explicit `--sandbox`/`-s` value replaced),
-    as `_build_codex_argv` does for run/dispatch."""
-    if profile_name != "codex" or (sandbox or {}).get("backend") != "srt":
-        return list(args)
-    mode = _codex_sandbox_mode(sandbox)
-    out = ["-c", "sandbox_mode=%s" % mode]
-    args = list(args)
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--":  # the rest is the prompt
-            out.extend(args[i:])
-            break
-        if arg in ("--sandbox", "-s") and i + 1 < len(args):
-            out += [arg, mode]
-            i += 2
-            continue
-        out.append("--sandbox=" + mode if arg.startswith("--sandbox=") else arg)
-        i += 1
-    return out
 
 
 # At most this many auto-grant + resume cycles per dispatch.
@@ -4206,7 +3941,7 @@ def cmd_run(args):
     def build_argv(prompt_value):
         return _build_executor_argv(
             profile_name, resolved_exec or exec_name, model, effort, workdir,
-            prompt_value, resume, output_fmt, cfg=run_cfg, sandbox=sandbox,
+            prompt_value, resume, output_fmt, cfg=run_cfg,
         )
 
     run_cfg, run_cfg_err = resolve_config()
@@ -4642,6 +4377,11 @@ def _print_doctor_text(report):
             print(
                 "  WARNING: unknown executor(s) in %s (ignored by route): %s"
                 % (w["file"], ", ".join(w["names"]))
+            )
+        elif w["type"] == "codex_removed":
+            print(
+                "  WARNING: %s (in %s: %s)"
+                % (w["detail"], w["file"], ", ".join(w["keys"]))
             )
         elif w["type"] == "legacy_vocab":
             print(
@@ -7808,34 +7548,6 @@ def _route_candidates(cfg, cls, archetype):
     return ["claude"], "tiers-default"
 
 
-def _quota_group(executor, model):
-    """Quota group an executor draws on, given the model it resolved to:
-    `codex` bills the ChatGPT subscription (`openai-codex`); `pi` bills
-    whichever provider its model names (`openai-codex/...` shares codex's
-    subscription, any other provider prefix its own allowance); anything else
-    is its own group."""
-    if executor == "codex":
-        return "openai-codex"
-    if executor == "pi" and isinstance(model, str) and "/" in model:
-        return model.split("/", 1)[0]
-    return executor
-
-
-def _class_model(external_executors, executor, cls):
-    """The model `executor` resolves to for `cls`, falling back to any model
-    in its class_policy when it has none for `cls` (so a quota group can
-    still be derived for a class the executor does not serve)."""
-    ecfg = external_executors.get(executor) if isinstance(external_executors, dict) else None
-    policies = ecfg.get("class_policy") if isinstance(ecfg, dict) else None
-    if not isinstance(policies, dict):
-        return None
-    ordered = [policies.get(cls)] + list(policies.values())
-    for policy in ordered:
-        if isinstance(policy, dict) and isinstance(policy.get("model"), str):
-            return policy["model"]
-    return None
-
-
 def _route_skip_reason(
     name, cls, exhausted_set, external_executors, ready, cooldown_map=None
 ):
@@ -7867,19 +7579,6 @@ def _route_skip_reason(
     policy = class_policy.get(cls) if isinstance(class_policy, dict) else None
     if not isinstance(policy, dict):
         return "no-class-policy"
-
-    # Executors that draw on the same subscription share one quota: marking
-    # any of them exhausted (or cooling it down) must keep the others from
-    # burning the same allowance under a different executor name.
-    group = _quota_group(name, policy.get("model"))
-    for other in sorted(set(exhausted_set) | set(cooldown_map or ())):
-        if other == name or not isinstance(other, str):
-            continue
-        if _quota_group(other, _class_model(external_executors, other, cls)) != group:
-            continue
-        if other in exhausted_set:
-            return "exhausted-shared:%s" % other
-        return "cooldown-shared:%s" % other
 
     dispatch = ecfg.get("dispatch")
     if dispatch == "cli":
@@ -8348,7 +8047,7 @@ def cmd_dispatch_session(args):
 
 # --- detached dispatch --------------------------------------------------
 #
-# A `dispatch: cli` run (codex, pi) can routinely run past the caller's
+# A `dispatch: cli` run (pi) can routinely run past the caller's
 # own timeout (a relay agent's Bash call is typically capped around 600s;
 # see the orchestra `run` skill). `--detach` spawns the same `dispatch
 # --token` invocation as a background child whose stdout is captured to a
@@ -9132,7 +8831,7 @@ def cmd_dispatch_route(args):
                 }
 
     if route["dispatch"] != "cli":
-        # agent (codex) or claude: agent-exec cannot spawn subagents itself
+        # agent or claude: agent-exec cannot spawn subagents itself
         # -- the caller (the instructor) makes the Agent-tool call.
         output = {
             "status": "delegate",
@@ -9146,16 +8845,6 @@ def cmd_dispatch_route(args):
                 "delegated to an agent; agent-exec spawns no child to sandbox"
             )),
         }
-        if route["executor"] != "claude":
-            correlation_id = _new_correlation_id()
-            output["correlation_id"] = correlation_id
-            run_ledger_append(
-                build_delegated_run_ledger_record(
-                    route["executor"], route["model"], cls, correlation_id, prompt_files
-                ),
-                run_id,
-                resolved,
-            )
         print(json.dumps(output, ensure_ascii=False))
         return 0
 
@@ -9166,8 +8855,7 @@ def cmd_dispatch_route(args):
     profile = PROFILES.get(profile_name)
     if profile is None:
         # A user config can in principle declare a `dispatch: cli` executor
-        # agent-exec has no built-in invocation profile for (only `codex` and
-        # `pi` have one today). Surface as unavailable rather than crashing.
+        # agent-exec has no built-in invocation profile for (only `pi` has one today). Surface as unavailable rather than crashing.
         output = {
             "status": "unavailable",
             "answer": None,
@@ -9221,7 +8909,7 @@ def cmd_dispatch_route(args):
     if os.environ.get("AGENT_EXEC_DRYRUN"):
         argv = agent_exec_sandbox.wrap_argv(_build_executor_argv(
             profile_name, exec_name, model, effort, workdir, prompt_text,
-            effective_resume, "json", sandbox=sandbox,
+            effective_resume, "json",
         ), _existing_dir(workdir), sandbox)
         print("PROFILE: %s" % profile_name)
         print("MODE: headless")
@@ -9313,7 +9001,7 @@ def cmd_dispatch_route(args):
 # its native shape maps onto this vocabulary.
 _USAGE_TOKEN_KEYS = ("input_tokens", "output_tokens", "cached_input_tokens")
 
-_USAGE_SOURCES = ("claude", "codex", "pi")
+_USAGE_SOURCES = ("claude", "pi")
 
 _USAGE_WINDOW_RE = re.compile(r"^(\d+)([mhd])$")
 _USAGE_WINDOW_SECONDS = {"m": 60, "h": 3600, "d": 86400}
@@ -9502,65 +9190,6 @@ def aggregate_claude_lines(lines, cutoff, acc=None):
     return acc
 
 
-def aggregate_codex_lines(lines, cutoff, mtime=None):
-    """Pure aggregator for ONE codex rollout file: raw JSONL lines + cutoff ->
-    {"tokens": {...}, "contributed": bool}.
-
-    codex's `total_token_usage` is cumulative for the whole session, so the
-    LAST token_count event carries the session total and the events must never
-    be summed. Window filtering uses that last event's own timestamp; when it
-    has none, `mtime` (epoch seconds of the file) is the documented fallback,
-    which is sound because rollout files are append-only — their mtime is the
-    time of the last event written. A session that straddles the cutoff is
-    counted in full; splitting a cumulative counter is not possible from the
-    last event alone.
-
-    Token mapping: codex's `input_tokens` is the total input INCLUDING the
-    cached part (input + output == total_tokens), so the cached share is
-    subtracted out to match the canonical vocabulary."""
-    last_total = None
-    last_ts = None
-    for line in lines:
-        try:
-            obj = json.loads(line)
-        except (ValueError, TypeError):
-            continue
-        if not isinstance(obj, dict) or obj.get("type") != "event_msg":
-            continue
-        payload = obj.get("payload")
-        if not isinstance(payload, dict) or payload.get("type") != "token_count":
-            continue
-        info = payload.get("info")
-        if not isinstance(info, dict):
-            continue
-        total = info.get("total_token_usage")
-        if not isinstance(total, dict):
-            continue
-        last_total = total
-        last_ts = parse_usage_timestamp(obj.get("timestamp"))
-
-    if last_total is None:
-        return {"tokens": _zero_tokens(), "contributed": False}
-
-    ts = last_ts
-    if ts is None and isinstance(mtime, (int, float)) and not isinstance(mtime, bool):
-        try:
-            ts = datetime.fromtimestamp(mtime, timezone.utc)
-        except (ValueError, OSError, OverflowError):
-            ts = None
-    if ts is None or ts < cutoff:
-        return {"tokens": _zero_tokens(), "contributed": False}
-
-    cached = _coerce_count(last_total.get("cached_input_tokens"))
-    total_input = _coerce_count(last_total.get("input_tokens"))
-    tokens = {
-        "input_tokens": max(0, total_input - cached),
-        "output_tokens": _coerce_count(last_total.get("output_tokens")),
-        "cached_input_tokens": cached,
-    }
-    return {"tokens": tokens, "contributed": True}
-
-
 def aggregate_telemetry_records(records, cutoff, executor):
     """Pure aggregator for orchestra telemetry: an iterable of already-parsed
     telemetry records + cutoff -> summed usage for that executor's `dispatch`
@@ -9605,13 +9234,6 @@ def claude_project_slug(path):
 
 def _usage_home(home=None):
     return home if home else os.path.expanduser("~")
-
-
-def _codex_sessions_root(home=None):
-    codex_home = os.environ.get("CODEX_HOME")
-    if not codex_home:
-        codex_home = os.path.join(_usage_home(home), ".codex")
-    return os.path.join(os.path.expanduser(codex_home), "sessions")
 
 
 def _iter_jsonl_lines(path):
@@ -9992,150 +9614,6 @@ def _ledger_usage(records, executor):
     return acc
 
 
-def _rollout_path_fingerprints(message):
-    fingerprints = set()
-    for candidate in re.findall(r"(?<![A-Za-z0-9_])/\S+", message):
-        fingerprints.add(_path_fingerprint_from_text(candidate))
-        trimmed = candidate.rstrip(".,;:)]}'\"`")
-        if trimmed:
-            fingerprints.add(_path_fingerprint_from_text(trimmed))
-    return fingerprints
-
-
-def _path_fingerprint_from_text(path):
-    return hashlib.sha256(path.encode("utf-8")).hexdigest()[:16]
-
-
-def parse_codex_rollout_lines(lines, correlations, dispatches=None):
-    wanted = set(correlations or ())
-    path_dispatches = dispatches if isinstance(dispatches, dict) else {}
-    found, last_total, count = set(), None, 0
-    for line in lines:
-        try:
-            obj = json.loads(line)
-        except (ValueError, TypeError):
-            continue
-        if not isinstance(obj, dict) or obj.get("type") != "event_msg":
-            continue
-        payload = obj.get("payload")
-        if not isinstance(payload, dict):
-            continue
-        if payload.get("type") == "user_message":
-            message = payload.get("message")
-            if isinstance(message, str):
-                found.update(corr for corr in wanted if corr in message)
-                fingerprints = _rollout_path_fingerprints(message)
-                found.update(
-                    corr for corr, paths in path_dispatches.items()
-                    if isinstance(paths, (list, tuple, set))
-                    and fingerprints.intersection(paths)
-                )
-        elif payload.get("type") == "token_count":
-            info = payload.get("info")
-            total = info.get("total_token_usage") if isinstance(info, dict) else None
-            if isinstance(total, dict):
-                count += 1
-                last_total = {key: _coerce_count(total.get(key)) for key in (
-                    "input_tokens", "output_tokens", "cached_input_tokens",
-                    "cache_write_input_tokens", "reasoning_output_tokens")}
-    return found, last_total, count
-
-
-def match_codex_rollouts(root, correlations):
-    dispatches = correlations if isinstance(correlations, dict) else {}
-    wanted = set(dispatches) if dispatches else set(correlations or ())
-    candidates = {}
-    for path in _walk_jsonl_files(root):
-        found, usage, count = parse_codex_rollout_lines(
-            _iter_jsonl_lines(path), wanted, dispatches)
-        if usage is None:
-            continue
-        if dispatches and len(found) > 1:
-            found = {max(found, key=lambda corr: (count, path, corr))}
-        for corr in found:
-            current = candidates.get(corr)
-            if current is None or (count, path) > (current[0], current[1]):
-                candidates[corr] = (count, path, usage)
-    return {corr: item[2] for corr, item in candidates.items()}
-
-
-def _ledger_codex_usage(records, home):
-    delegated = [r for r in records if r.get("executor") == "codex"
-                 and r.get("status") == "delegated"]
-    dispatches = {
-        r["corr"]: r.get("paths", [])
-        for r in delegated
-        if isinstance(r.get("corr"), str)
-    }
-    measured = match_codex_rollouts(
-        _codex_sessions_root(home),
-        dispatches)
-    tokens, extra = _zero_tokens(), {
-        "cache_write_input_tokens": 0, "reasoning_output_tokens": 0}
-    for record in records:
-        if record.get("executor") != "codex":
-            continue
-        usage = measured.get(record.get("corr")) if record.get("status") == "delegated" else record
-        if usage is None:
-            continue
-        _add_tokens(tokens, usage)
-        for key in extra:
-            extra[key] += _coerce_count(usage.get(key))
-    return delegated, measured, tokens, extra
-
-
-def _codex_session_files(root, cutoff):
-    """Rollout files under ~/.codex/sessions/YYYY/MM/DD that could carry an
-    in-window event. Files whose mtime predates the cutoff are skipped up
-    front: rollouts are append-only, so mtime is an upper bound on the
-    timestamp of every event inside."""
-    out = []
-    cutoff_epoch = cutoff.timestamp()
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames.sort()
-        for name in sorted(filenames):
-            if not name.endswith(".jsonl"):
-                continue
-            full = os.path.join(dirpath, name)
-            try:
-                mtime = os.path.getmtime(full)
-            except OSError:
-                continue
-            if mtime < cutoff_epoch:
-                continue
-            out.append((full, mtime))
-    return out
-
-
-def collect_codex_usage(cutoff, home=None):
-    """I/O shell over aggregate_codex_lines: read-only walk of
-    ~/.codex/sessions. Never cwd-scoped -- codex rollouts are filed by date,
-    not by project."""
-    entry = {"status": "unavailable", "scope": "global"}
-    root = _codex_sessions_root(home)
-    if not os.path.isdir(root):
-        entry["note"] = "no codex sessions directory"
-        entry.update({"tokens": _zero_tokens(), "sessions": 0, "files_scanned": 0})
-        return entry
-
-    tokens = _zero_tokens()
-    sessions = 0
-    files = _codex_session_files(root, cutoff)
-    for path, mtime in files:
-        result = aggregate_codex_lines(_iter_jsonl_lines(path), cutoff, mtime=mtime)
-        if result.get("contributed"):
-            sessions += 1
-            _add_tokens(tokens, result.get("tokens"))
-
-    return {
-        "status": "ok" if sessions else "empty",
-        "scope": "global",
-        "tokens": tokens,
-        "sessions": sessions,
-        "files_scanned": len(files),
-    }
-
-
 def collect_telemetry_usage(cutoff, cfg, executor):
     """I/O shell over aggregate_telemetry_records. A cli-dispatch executor's
     windowed usage only exists in orchestra's own telemetry log, so a
@@ -10175,9 +9653,7 @@ def collect_telemetry_usage(cutoff, cfg, executor):
 def _usage_cost(sources, pricing):
     """Per-source entries -> the cost block of the report, and (side effect)
     the Claude entry's own per-model `cost`. Claude is estimated from list
-    prices; pi is the figure the provider itself reported; codex reports
-    tokens with no dollar price, so it is listed as unpriced instead of being
-    guessed."""
+    prices; pi is the figure the provider itself reported."""
     components = {}
     priced = []
     unpriced = []
@@ -10193,9 +9669,6 @@ def _usage_cost(sources, pricing):
     if isinstance(pi, dict) and pi.get("status") == "ok":
         components["pi"] = _coerce_count(pi.get("cost_micro_usd"))
         priced.append("pi")
-    codex = sources.get("codex")
-    if isinstance(codex, dict) and codex.get("status") == "ok":
-        unpriced.append("codex")
     return {
         "estimated_micro_usd": sum(components.values()),
         "components": components,
@@ -10218,28 +9691,13 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
         if scoped and name == "claude":
             out[name] = collect_claude_scoped_usage(
                 home=home, run_ids=run_ids, session_ids=session_ids)
-        elif scoped and name in ("codex", "pi"):
+        elif scoped and name == "pi":
             if run_ids or session_ids:
                 ledger_dir = _ledger_dir_from_cfg(cfg)
                 paths = _ledger_selected_paths(ledger_dir, run_ids, session_ids)
                 records = [record for path in paths
                            for record in _read_ledger_file(path)]
-                if name == "codex":
-                    delegated, measured, tokens, extra = _ledger_codex_usage(records, home)
-                    if not measured and delegated:
-                        out[name] = {
-                            "attributable": False,
-                            "reason": "codex delegation may have no rollout yet or correlation may have failed",
-                            "delegated": len(delegated), "measured": 0,
-                        }
-                        continue
-                    acc = _ledger_usage(records, name)
-                    acc["tokens"] = tokens
-                    acc["delegated"] = len(delegated)
-                    acc["measured"] = len(measured)
-                    acc["extra_tokens"] = extra
-                else:
-                    acc = _ledger_usage(records, name)
+                acc = _ledger_usage(records, name)
                 if not acc["records"]:
                     out[name] = _scope_entry("no matching run ledger data")
                 else:
@@ -10270,18 +9728,12 @@ def build_usage_report(since, now, sources, all_projects=False, cfg=None,
                                         ledger_dir).get(item[0], 10**9),
                                     item[0])))
                             out[name]["runs"] = runs
-                    if name == "codex":
-                        out[name]["delegated"] = acc["delegated"]
-                        out[name]["measured"] = acc["measured"]
-                        out[name]["tokens"].update(acc["extra_tokens"])
         elif scoped:
             out[name] = _scope_entry("session scope is not attributable")
         elif name == "claude":
             out[name] = collect_claude_usage(
                 cutoff=since, all_projects=all_projects, home=home, cwd=cwd
             )
-        elif name == "codex":
-            out[name] = collect_codex_usage(cutoff=since, home=home)
         else:
             out[name] = collect_telemetry_usage(
                 cutoff=since, cfg=cfg, executor=name
@@ -10342,7 +9794,7 @@ def _list_usage_runs(home=None, config_dir=None, sources=None, cfg=None,
                                 ts = parse_usage_timestamp(obj.get("timestamp"))
                                 if ts is not None:
                                     item["timestamps"].append(ts)
-    if requested.intersection(("codex", "pi")):
+    if "pi" in requested:
         ledger_dir = _ledger_dir_from_cfg(cfg)
         ordinals = _ledger_session_ordinal_map(ledger_dir)
         for path in _ledger_paths(ledger_dir):
@@ -10398,24 +9850,13 @@ def _print_usage_text(report):
                ",".join(scope.get("session_ids") or ())))
     for name, entry in (report.get("sources") or {}).items():
         if entry.get("attributable") is False:
-            suffix = ""
-            if name == "codex" and entry.get("delegated", 0):
-                suffix = " (measured %d/%d delegated)" % (
-                    _coerce_count(entry.get("measured")),
-                    _coerce_count(entry.get("delegated")))
-            print("%s: not attributable (%s)%s" %
-                  (name, entry.get("reason"), suffix))
+            print("%s: not attributable (%s)" % (name, entry.get("reason")))
             continue
         status = entry.get("status")
-        counter = ""
-        if name == "codex" and entry.get("delegated", 0):
-            counter = "  (measured %d/%d delegated)" % (
-                _coerce_count(entry.get("measured")),
-                _coerce_count(entry.get("delegated")))
         print(
             "%-8s %-13s %s"
             % (name, "[%s]" % status,
-               _usage_tokens_line(entry.get("tokens")) + counter)
+               _usage_tokens_line(entry.get("tokens")))
         )
         note = entry.get("note")
         if note:
@@ -10435,8 +9876,6 @@ def _print_usage_text(report):
                         detail["cache_read"], detail["output"], detail["micro_usd"] / 1000000.0))
             for model in sorted(((entry.get("cost") or {}).get("unpriced_models") or {})):
                 print("             %s: no price (set pricing.models in orchestra.yaml)" % model)
-            print("           sessions: %d" % _coerce_count(entry.get("sessions")))
-        elif name == "codex":
             print("           sessions: %d" % _coerce_count(entry.get("sessions")))
         elif name == "pi":
             # pi reports a currency figure, so it gets a dollar line.

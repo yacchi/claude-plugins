@@ -1,5 +1,5 @@
 """sandbox-runtime (srt) plumbing shared by the herdr host and the CLI
-executors (pi, codex).
+executors (pi).
 
 srt confines a process with its own Seatbelt / bubblewrap profile, built
 from the settings file orchestra writes (`agent_exec_sandbox.srt_settings`),
@@ -55,13 +55,6 @@ ECOSYSTEM_PRESETS = (
      ("repo.maven.apache.org", "repo1.maven.org", "plugins.gradle.org",
       "services.gradle.org")),
 )
-
-# API hosts of a CLI executor, added only to that executor's srt settings.
-# `external_executors.<name>.network_domains` replaces them (unioned across
-# config layers, starting from these).
-EXECUTOR_NETWORK_DOMAINS = {
-    "codex": ("chatgpt.com", "auth.openai.com", "api.openai.com"),
-}
 
 # pi reaches its model through the provider named by the model's prefix
 # (`openai-codex/gpt-...`); used when pi's `network_domains` is unset. An
@@ -194,15 +187,15 @@ def ecosystem_domains(tree, runner=subprocess.run):
 
 def executor_domains(executor, ecfg, model=None):
     """The API hosts of one CLI executor run: its `network_domains` when
-    set, else its default (codex) or, for pi, the hosts of the model's
-    provider prefix."""
+    set, else (for pi) the hosts of the model's provider prefix. Any other
+    executor gets nothing."""
     configured = (ecfg or {}).get("network_domains") if isinstance(ecfg, dict) else None
     if isinstance(configured, list):
         return _clean_domains(configured)
     if executor == "pi":
         prefix = model.split("/", 1)[0] if isinstance(model, str) and "/" in model else ""
         return list(PI_PROVIDER_DOMAINS.get(prefix.strip().lower(), ()))
-    return list(EXECUTOR_NETWORK_DOMAINS.get(executor, ()))
+    return []
 
 
 def run_id(task=None):

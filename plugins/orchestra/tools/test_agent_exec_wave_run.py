@@ -534,12 +534,12 @@ class NeedsTests(_WaveRepo):
     def test_unavailable_retries_with_exhausted(self):
         self.plan([{"id": "A"}])
         ex = FakeExecutor({"A": [result({"status": "unavailable", "executor": "pi"}),
-                                 edit({"a.txt": "a\n"}, executor="codex")]})
+                                 edit({"a.txt": "a\n"}, executor="pi")]})
         report, rc = self.run_wave(ex)
         self.assertEqual(rc, 0, report)
         self.assertEqual(ex.calls[0]["exhausted"], [])
         self.assertEqual(ex.calls[1]["exhausted"], ["pi"])
-        self.assertEqual(self.state()["packages"]["A"]["executor"], "codex")
+        self.assertEqual(self.state()["packages"]["A"]["executor"], "pi")
 
     def test_all_unavailable_stops_with_package_pending(self):
         self.plan([{"id": "A"}])

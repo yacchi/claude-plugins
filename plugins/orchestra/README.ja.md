@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-**コスト階層型のマルチエージェント実行**のための Claude Code プラグインです。高価な指示役モデル(Fable/Opus など)が作業を分解してオーケストレーション用のスクリプトを書き、`agent-exec route` がタスクごとに使える最も安い実装役を選び(light は Claude Haiku、standard や独立レビューは pi・Codex などの外部実行系)、Sonnet のレビュー役が結果を壊しにかかって検証し、指示役には構造化された合否の判定だけが返ります。
+**コスト階層型のマルチエージェント実行**のための Claude Code プラグインです。高価な指示役モデル(Fable/Opus など)が作業を分解してオーケストレーション用のスクリプトを書き、`agent-exec route` がタスクごとに使える最も安い実装役を選び(light は Claude Haiku、standard や独立レビューは pi などの外部実行系)、Sonnet のレビュー役が結果を壊しにかかって検証し、指示役には構造化された合否の判定だけが返ります。
 
 ## なぜ必要か
 
@@ -73,7 +73,7 @@ claude plugin validate .
 
 | スキル | 用途 |
 |---|---|
-| `/setup` (`orchestra:setup`) | Codex/pi の有無を調べ、対話形式で `orchestra.yaml` を書く |
+| `/setup` (`orchestra:setup`) | pi の有無を調べ、対話形式で `orchestra.yaml` を書く |
 | `/cleanup` (`orchestra:cleanup`) | リポジトリに残った orchestra の worktree とブランチを片付ける |
 | `orchestra:ui` | ローカルのダッシュボード(`agent-exec ui --open`)を開く。wave、worktree、dispatch、使用量をリアルタイムに表示し、トークンは消費しない |
 
@@ -82,7 +82,7 @@ claude plugin validate .
 設定は 4 つの層を後勝ちで深くマージします: 組み込みの既定値 ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`。プロジェクトの設定ファイルには変えたいキーだけを書けば足ります。マージ結果は `agent-exec config` で確認できます。
 
 - **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。
-- **`external_executors`** — Codex、pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、どちらの CLI も入っていなければすべて `claude` に振り分けられます。推奨は同梱の `agent-exec` ラッパー(`agent-exec install`)と、`Bash(agent-exec:*)` の許可ルール 1 つです。
+- **`external_executors`** — pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、CLI が入っていなければすべて `claude` に振り分けられます。推奨は同梱の `agent-exec` ラッパー(`agent-exec install`)と、`Bash(agent-exec:*)` の許可ルール 1 つです。
 - **`tools`** — 実行役のバイナリ(pi、herdr)を決まった版で orchestra 専用の状態ディレクトリに入れます(`agent-exec tools install`)。pi は既定で専用のエージェントディレクトリを使うため、個人の pi の設定はワーカーに届きません。
 - **`sandbox.network`** — herdr ホストの外向き通信を sandbox-runtime(srt)でドメイン許可リストに絞ります。遮断した接続は記録してパッケージごとに表示し、`agent-exec sandbox allow-domain` で動いたまま許可できます(既定は `api.anthropic.com` のみ)。
 - **`interactive_host`** — `wave run` で Claude 系のパッケージを動かすホストを選びます: `herdr`、`orca`、`none`(既定は `auto`)。
@@ -95,7 +95,7 @@ claude plugin validate .
 ### Copilot CLI / opencode からの移行
 
 v0.43.0で、同じモデルへより速く軽く到達できるpiを採用し、Copilot CLIとopencodeの実行役を削除しました。
-Copilotのモデルはpiの`github-copilot/*`、Codex/ChatGPTサブスクリプションのモデルは`openai-codex/*`を使います。
+Copilotのモデルはpiの`github-copilot/*`、ChatGPTサブスクリプションのモデルは`openai-codex/*`を使います。単体の Codex CLI エグゼキュータは 0.52.0 で削除され、同じモデルは pi で動かします。
 どちらのプロバイダも`agent-exec pi login --provider <id>`でログインし(Claudeが実行してURLとコードを表示するので、ユーザーはそれを開くだけ)、古いキーを削除するため`orchestra:setup`を再実行してください。
 
 ## 構成

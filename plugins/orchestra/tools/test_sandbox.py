@@ -326,13 +326,6 @@ class BackendSelectionTests(unittest.TestCase):
         self.assertFalse(auto["refuse"])
         self.assertEqual(auto["backend"], "none")
 
-    def test_codex_is_never_wrapped(self):
-        spec = self._prepare({"seatbelt": OK, "bwrap": OK, "landlock": OK},
-                             executor="codex")
-        self.assertEqual(spec["backend"], "codex-native")
-        self.assertEqual(sb.wrap_argv(["codex", "exec"], self.tree, spec),
-                         ["codex", "exec"])
-
 
 class BwrapArgvTests(unittest.TestCase):
     def test_carve_out_and_deny_read_order(self):

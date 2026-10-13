@@ -18,10 +18,7 @@ One policy (`build_policy`) feeds every backend:
   is reported in ``limits`` instead of being silently claimed.
 - ``srt``: sandbox-runtime applies its own Seatbelt/bubblewrap from the
   same policy plus an outbound domain allowlist (``sandbox.network``); it
-  replaces the backends above, never wraps them, and codex then runs with
-  its own sandbox off (agent_exec_srt.py).
-- ``codex-native``: codex applies its own Seatbelt/Landlock and nesting
-  sandbox-exec fails, so it is never wrapped (when srt is not usable).
+  replaces the backends above, never wraps them (agent_exec_srt.py).
 - ``none``: mode off, or nothing usable on this host.
 
 Every path is realpath'd before it reaches a rule: on macOS ``/tmp`` is
@@ -69,17 +66,6 @@ DEFAULT_DENY_READ = (
 
 # DEFAULT_DENY_READ entries the herdr host must be able to read (see host_policy).
 HOST_READABLE = ("~/Library/Keychains",)
-
-# srt's macOS profile denies mach-lookup of com.apple.trustd.agent; the
-# opt-in `enableWeakerNetworkIsolation` would open it, and with it a channel
-# around the allowlist (trustd fetches OCSP/CRL/AIA URLs itself). codex
-# verifies TLS through Security.framework, which needs trustd, so under srt
-# every request fails. Handing it a PEM bundle instead would skip the OS
-# trust store (revocation, distrust settings, MDM-installed roots), so on
-# macOS codex stays on its own sandbox.
-CODEX_SRT_PLATFORMS_EXCLUDED = ("darwin",)
-CODEX_SRT_UNSUPPORTED = ("codex under srt on macOS cannot reach the OS trust "
-                         "store (trustd); codex keeps its own sandbox")
 
 # Package/build caches every toolchain a worker runs writes into.
 # NOT `~/.local/share/uv/tools`: that holds uv's INSTALLED tool environments,
@@ -145,12 +131,6 @@ PI_DENY_SUBDIRS = ("extensions", "skills", "prompts", "themes", "packages",
                    "npm", "git", "bin", "install")
 PI_DENY_FILES = ("settings.json", "mcp.json", "models.json", "AGENTS.md",
                  "SYSTEM.md", "APPEND_SYSTEM.md", "keybindings.json")
-
-# The same for codex's state dir (~/.codex): its sessions, auth refresh and
-# logs stay writable under srt, its config, instructions and rules do not.
-CODEX_DENY_SUBDIRS = ("prompts", "rules", "skills", "plugins", "bin")
-CODEX_DENY_FILES = ("config.toml", "managed_config.toml", "requirements.toml",
-                    "AGENTS.md", "AGENTS.override.md")
 
 UV_TOOL_DIR_NAME = "orchestra-uv-tools"
 
@@ -845,8 +825,6 @@ def executor_state_dirs(executor, home, env):
             if real_dir not in dirs:
                 dirs.append(real_dir)
         return dirs
-    if executor == "codex":
-        return [env.get("CODEX_HOME") or "~/.codex"]
     return []
 
 
@@ -895,12 +873,6 @@ def pi_deny_paths(state_dir):
             + [os.path.join(state_dir, f) for f in PI_DENY_FILES])
 
 
-def codex_deny_paths(state_dir):
-    state_dir = os.path.realpath(state_dir)
-    return ([os.path.join(state_dir, d) for d in CODEX_DENY_SUBDIRS]
-            + [os.path.join(state_dir, f) for f in CODEX_DENY_FILES])
-
-
 def build_policy(tree, executor, cfg, home=None, env=None, platform=None,
                  learned=None):
     """The one policy every backend enforces.
@@ -945,8 +917,6 @@ def build_policy(tree, executor, cfg, home=None, env=None, platform=None,
         writable.append(state)
         if executor == "pi":
             deny_write += pi_deny_paths(state)
-        elif executor == "codex":
-            deny_write += codex_deny_paths(state)
     seeds = list(SEED_CACHE_WRITES)
     if platform == "darwin":
         seeds += SEED_CACHE_WRITES_DARWIN
@@ -1318,8 +1288,7 @@ def _not_restricted(spec, why):
     return spec
 
 
-def prepare(executor, tree, cfg, probe_results=None, env=None, network=None,
-            platform=None):
+def prepare(executor, tree, cfg, probe_results=None, env=None, network=None):
     """Decide how `executor` will be sandboxed for a run in `tree`.
 
     Returns the internal spec; `report(spec)` is its public projection and
@@ -1341,19 +1310,11 @@ def prepare(executor, tree, cfg, probe_results=None, env=None, network=None,
         return spec
     results = None
     why = None
-    if network is not None and executor == "codex" \
-            and (platform or sys.platform) in CODEX_SRT_PLATFORMS_EXCLUDED:
-        why = CODEX_SRT_UNSUPPORTED
-    elif network is not None:
+    if network is not None:
         results = probe_results if probe_results is not None else probes()
         why = _srt_spec(spec, executor, tree, cfg, results, env, network)
         if why is None:
             return spec
-    if executor == "codex":
-        spec.update(backend="codex-native", enforced=True, writable=None,
-                    reason="codex applies its own sandbox (workspace-write); "
-                           "nesting another one fails")
-        return _not_restricted(spec, why) if why else spec
     spec = _prepare_os(spec, executor, tree, cfg, probe_results, env, results)
     return _not_restricted(spec, why) if why else spec
 
@@ -1711,7 +1672,6 @@ def doctor_section(cfg):
         "would_refuse": spec["refuse"],
         "reason": spec["reason"],
         "limits": spec["limits"],
-        "codex": "codex-native",
         "probes": results,
         "learned": {"path": learned_path(), "count": len(grants),
                     "warning": warning},

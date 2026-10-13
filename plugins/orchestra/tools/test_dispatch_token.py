@@ -447,8 +447,6 @@ class ConfigRootTests(unittest.TestCase):
         "external_executors:\n"
         "  pi:\n"
         "    enabled: false\n"
-        "  codex:\n"
-        "    enabled: false\n"
     )
 
     def setUp(self):

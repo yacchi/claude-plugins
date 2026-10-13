@@ -59,7 +59,7 @@ class UiTestBase(unittest.TestCase):
                 "wave": 3,
                 "packages": {
                     "A-1": {"status": "implementing", "since": time.time() - 5, "attempts": 1,
-                            "tree": None, "executor": "codex", "session": False,
+                            "tree": None, "executor": "pi", "session": False,
                             "files_changed": 2, "commit": None, "detail": detail},
                     "A-2": {"status": "pending", "since": time.time(), "attempts": 0,
                             "tree": None, "executor": None, "session": False,
@@ -360,7 +360,7 @@ class ListDetachedTests(V1Base):
             with open(os.path.join(tokens, token + ".json"), "w") as fh:
                 json.dump({"class": "light", "archetype": "default", "workdir": "/w",
                            "run_id": None, "isolate": "auto", "task": "T-1",
-                           "prompt_files": [], "executor": "codex", "model": "m1"}, fh)
+                           "prompt_files": [], "executor": "pi", "model": "m1"}, fh)
 
     def test_alive_dead_corrupt_and_missing_token(self):
         dead = subprocess.Popen([sys.executable, "-c", "pass"])
@@ -379,7 +379,7 @@ class ListDetachedTests(V1Base):
         self.assertEqual(live["pid"], os.getpid())
         self.assertEqual(live["started"], 123.0)
         self.assertEqual((live["executor"], live["model"], live["class"], live["task"]),
-                         ("codex", "m1", "light", "T-1"))
+                         ("pi", "m1", "light", "T-1"))
         gone = items["dsp-000000000002"]
         self.assertFalse(gone["alive"])
         self.assertEqual((gone["executor"], gone["model"], gone["class"], gone["task"]),
@@ -400,7 +400,7 @@ class RunningSnapshotTests(ListDetachedTests):
         running = self.snapshot(self.start())["running"]
         self.assertEqual({d["token"]: d["state"] for d in running["dispatches"]},
                          {"dsp-00000000000a": "running", "dsp-00000000000b": "dead-no-result"})
-        self.assertEqual(running["by_executor"], {"codex": 1})
+        self.assertEqual(running["by_executor"], {"pi": 1})
         self.assertEqual(running["orca_sessions"], [{
             "wave_state": state, "pkg": "A-1", "terminal": "term-1", "worktree": "/wt/a1"}])
         self.assertEqual(running["waves_in_flight"], 1)
@@ -557,9 +557,9 @@ class UsageSlotTests(V1Base):
 
     def test_totals_per_executor_model(self):
         self.agent_exec.build_usage_report = lambda *a, **k: {
-            "codex": {"by_model": {"m1": {"input_tokens": 5, "output_tokens": 2}}}}
+            "pi": {"by_model": {"m1": {"input_tokens": 5, "output_tokens": 2}}}}
         snap = self.snapshot(self.start())
-        self.assertEqual(snap["usage"]["codex/m1"]["input_tokens"], 5)
+        self.assertEqual(snap["usage"]["pi/m1"]["input_tokens"], 5)
 
 
 class CooldownClearTests(V1Base):
@@ -568,7 +568,7 @@ class CooldownClearTests(V1Base):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         until = time.time() + 1000
         with open(path, "w") as fh:
-            json.dump({"codex": {"until": until, "reason": "quota"},
+            json.dump({"claude": {"until": until, "reason": "quota"},
                        "pi": {"until": until, "reason": "quota"}}, fh)
         return path
 
@@ -583,8 +583,8 @@ class CooldownClearTests(V1Base):
         path = self.plant()
         self.assertTrue(path.startswith(self.home))
         server = self.start()
-        status, data = self.post(server, "/api/cooldown/clear", {"executor": "codex"})
-        self.assertEqual((status, json.loads(data)), (200, {"cleared": "codex"}))
+        status, data = self.post(server, "/api/cooldown/clear", {"executor": "claude"})
+        self.assertEqual((status, json.loads(data)), (200, {"cleared": "claude"}))
         self.assertEqual(list(self.load(path)), ["pi"])
         status, data = self.post(server, "/api/cooldown/clear", {"executor": None})
         self.assertEqual((status, json.loads(data)), (200, {"cleared": "all"}))
@@ -594,14 +594,14 @@ class CooldownClearTests(V1Base):
         path = self.plant()
         status, _ = self.post(self.start(), "/api/cooldown/clear", {"executor": "nope"})
         self.assertEqual(status, 400)
-        self.assertEqual(sorted(self.load(path)), ["codex", "pi"])
+        self.assertEqual(sorted(self.load(path)), ["claude", "pi"])
 
     def test_header_token_required(self):
         path = self.plant()
         status, _ = self.post(self.start(), "/api/cooldown/clear", {"executor": None},
                               header=False)
         self.assertEqual(status, 403)
-        self.assertEqual(sorted(self.load(path)), ["codex", "pi"])
+        self.assertEqual(sorted(self.load(path)), ["claude", "pi"])
 
 
 class SweepRouteTests(V1Base):

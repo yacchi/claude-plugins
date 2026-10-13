@@ -38,8 +38,8 @@ class Watchdog:
         self.clock = clock or time.monotonic
         self.started = self.clock()
         self.last_record = self.started
-        # In-flight tool calls keyed by call id (pi `toolCallId`, codex item
-        # id): executors may run several concurrently, and the tool-idle
+        # In-flight tool calls keyed by call id (pi `toolCallId`):
+        # executors may run several concurrently, and the tool-idle
         # budget applies while any of them is still open.
         self._active_tools = set()
         self._tool_sequence = 0
@@ -79,8 +79,6 @@ class Watchdog:
                 return
             if self.executor == "pi":
                 self._pi_event(event)
-            else:
-                self._codex_event(event)
 
     def _start_tool(self, name, args, call_id=None):
         key = (name, _canonical(args))
@@ -127,21 +125,6 @@ class Watchdog:
         elif etype in ("turn_end", "agent_end"):
             # Every tool of a turn has returned before the turn ends.
             self._active_tools.clear()
-
-    def _codex_event(self, event):
-        if event.get("type") in ("turn.completed", "turn.failed"):
-            self._active_tools.clear()
-            return
-        if event.get("type") not in ("item.started", "item.completed"):
-            return
-        item = event.get("item")
-        if not isinstance(item, dict) or item.get("type") not in ("command_execution", "command_execution_output"):
-            return
-        item_id = item.get("id")
-        if event.get("type") == "item.started":
-            self._start_tool(item.get("command", "command_execution"), item.get("command", ""), item_id)
-        else:
-            self._end_tool(item_id)
 
     # Upper bound on one wait: a config that changes nothing still gets
     # re-evaluated twice a second, and no deadline is missed by more.

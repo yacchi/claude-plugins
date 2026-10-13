@@ -91,11 +91,10 @@ class RunLedgerSanitizingTests(unittest.TestCase):
 
     def test_adversarial_fields_never_reach_disk(self):
         raw = {
-            "executor": "codex",
+            "executor": "pi",
             "cls": "light",
-            "status": "delegated",
+            "status": "ok",
             "model": "model",
-            "corr": "oxc-0123456789ab",
             "prompt": "secret prompt text",
             "path": "/absolute/private/file",
             "session_id": "session-secret",
@@ -109,51 +108,18 @@ class RunLedgerSanitizingTests(unittest.TestCase):
                 line = f.read()
             for secret in ("secret prompt text", "/absolute/private/file", "session-secret"):
                 self.assertNotIn(secret, line)
-            self.assertIn("oxc-0123456789ab", line)
 
-    def test_corr_and_new_int_fields_and_delegated_status(self):
-        base = {"executor": "codex", "cls": "standard", "status": "delegated"}
-
-        good = agent_exec.sanitize_run_ledger_record(
-            dict(base, corr="oxc-0123456789ab"))
-        self.assertEqual(good["corr"], "oxc-0123456789ab")
-        self.assertEqual(good["status"], "delegated")
-
-        for bad_corr in ("oxc-short", "OXC-0123456789ab", "oxc-0123456789abcd",
-                         "not-a-corr-at-all", "oxc-01234 6789ab"):
-            result = agent_exec.sanitize_run_ledger_record(dict(base, corr=bad_corr))
-            self.assertNotIn("corr", result)
-
+    def test_new_int_fields_and_unknown_status(self):
+        base = {"executor": "pi", "cls": "standard", "status": "ok"}
         for key in ("cache_write_input_tokens", "reasoning_output_tokens"):
             for value in (True, False, -1):
-                invalid = dict(base, corr="oxc-0123456789ab", **{key: value})
-                self.assertNotIn(key, agent_exec.sanitize_run_ledger_record(invalid))
-            valid = dict(base, corr="oxc-0123456789ab", **{key: 5})
-            self.assertEqual(agent_exec.sanitize_run_ledger_record(valid)[key], 5)
-
-        invented = agent_exec.sanitize_run_ledger_record(
-            dict(base, status="not-a-real-status"))
-        self.assertNotIn("status", invented)
-
-    def test_paths_allowlist_is_exact(self):
-        base = {"executor": "codex", "cls": "standard", "status": "delegated"}
-        good_paths = ["0123456789abcdef", "abcdef0123456789"]
-        self.assertEqual(
-            agent_exec.sanitize_run_ledger_record(dict(base, paths=good_paths))["paths"],
-            good_paths)
-        invalid = (
-            "0123456789abcdef",
-            {"path": "0123456789abcdef"},
-            ["0123456789abcdeg"],
-            ["0123456789abcdef0"],
-            ["0123456789abcdef"] * 9,
-            ["/private/contract.md"],
-        )
-        for paths in invalid:
-            with self.subTest(paths=paths):
-                result = agent_exec.sanitize_run_ledger_record(dict(base, paths=paths))
-                self.assertNotIn("paths", result)
-                self.assertEqual(result["status"], "delegated")
+                self.assertNotIn(key, agent_exec.sanitize_run_ledger_record(
+                    dict(base, **{key: value})))
+            self.assertEqual(
+                agent_exec.sanitize_run_ledger_record(dict(base, **{key: 5}))[key], 5)
+        for status in ("not-a-real-status", "delegated"):
+            self.assertNotIn(
+                "status", agent_exec.sanitize_run_ledger_record(dict(base, status=status)))
 
     def test_bad_run_field_is_dropped_rest_survives(self):
         base = {"executor": "pi", "cls": "standard", "status": "ok",
@@ -406,10 +372,9 @@ class RunLedgerRetentionTests(unittest.TestCase):
             self.assertTrue(os.path.exists(old_path))
 
 
-class DelegatedDispatchCorrelationTests(unittest.TestCase):
-    """Section A: the delegate branch of `dispatch` mints a correlation id,
-    writes exactly one ledger line for it, and echoes it in the JSON --
-    except for claude, and except when --run-id was not passed."""
+class DelegatedDispatchTests(unittest.TestCase):
+    """The delegate branch of `dispatch` (claude) writes no ledger line and
+    mints no correlation id."""
 
     def _dispatch(self, tmp, executor, run_id=None, model="m", cls="standard"):
         old_session = os.environ.get("CLAUDE_CODE_SESSION_ID")
@@ -429,7 +394,7 @@ class DelegatedDispatchCorrelationTests(unittest.TestCase):
             "model": model,
             "effort": "medium",
             "dispatch": "claude" if executor == "claude" else "agent",
-            "agent_type": "codex:codex-rescue" if executor == "codex" else None,
+            "agent_type": None,
         }
         try:
             args = ["dispatch", "--class", cls, "--prompt-file", prompt.name,
@@ -457,43 +422,6 @@ class DelegatedDispatchCorrelationTests(unittest.TestCase):
         with open(path, encoding="utf-8") as f:
             return [json.loads(line) for line in f if line.strip()]
 
-    def test_codex_delegate_with_run_id_writes_one_delegated_line(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            code, out, err = self._dispatch(tmp, "codex", run_id="wf_a1b2c3d4e5f6")
-            self.assertEqual(code, 0, err)
-            payload = json.loads(out)
-            corr = payload["correlation_id"]
-            self.assertRegex(corr, r"^oxc-[0-9a-f]{12}$")
-
-            lines = self._ledger_lines(tmp, "wf_a1b2c3d4e5f6")
-            self.assertEqual(len(lines), 1)
-            record = lines[0]
-            self.assertEqual(record["status"], "delegated")
-            self.assertEqual(record["corr"], corr)
-            self.assertEqual(len(record["paths"]), 1)
-            self.assertRegex(record["paths"][0], r"^[0-9a-f]{16}$")
-            ledger_path = os.path.join(
-                tmp, "runs", "session-dispatch", "001-wf_a1b2c3d4e5f6.jsonl")
-            with open(ledger_path, encoding="utf-8") as f:
-                written = f.read()
-            self.assertNotIn("/", written)
-            self.assertNotIn(os.path.dirname(self._prompt_path), written)
-            for token_key in (
-                "input_tokens", "output_tokens", "cached_input_tokens",
-                "cache_write_input_tokens", "reasoning_output_tokens",
-            ):
-                self.assertNotIn(token_key, record)
-
-    def test_codex_delegate_without_run_id_writes_untagged_line(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            code, out, err = self._dispatch(tmp, "codex", run_id=None)
-            self.assertEqual(code, 0, err)
-            payload = json.loads(out)
-            self.assertRegex(payload["correlation_id"], r"^oxc-[0-9a-f]{12}$")
-            lines = self._ledger_lines(tmp, "unused")
-            self.assertEqual(len(lines), 1)
-            self.assertNotIn("run", lines[0])
-
     def test_claude_delegate_with_run_id_mints_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             code, out, err = self._dispatch(tmp, "claude", run_id="wf_c1c1c1c1c1c1")
@@ -501,17 +429,6 @@ class DelegatedDispatchCorrelationTests(unittest.TestCase):
             payload = json.loads(out)
             self.assertNotIn("correlation_id", payload)
             self.assertEqual(self._ledger_lines(tmp, "wf_c1c1c1c1c1c1"), [])
-
-    def test_two_consecutive_delegates_mint_different_ids(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            _, out1, err1 = self._dispatch(tmp, "codex", run_id="wf_d1d1d1d1d1d1")
-            _, out2, err2 = self._dispatch(tmp, "codex", run_id="wf_d1d1d1d1d1d1")
-            corr1 = json.loads(out1)["correlation_id"]
-            corr2 = json.loads(out2)["correlation_id"]
-            self.assertNotEqual(corr1, corr2)
-            lines = self._ledger_lines(tmp, "wf_d1d1d1d1d1d1")
-            self.assertEqual(len(lines), 2)
-            self.assertEqual({r["corr"] for r in lines}, {corr1, corr2})
 
 
 class RunIdValidationTests(unittest.TestCase):

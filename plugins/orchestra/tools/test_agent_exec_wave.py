@@ -166,10 +166,10 @@ class UpdateTests(_StateDirCase):
         self.store.init("/abs/plan.json", ["CORE-1"], "wave-int")
 
     def test_update_changes_fields_without_status_event(self):
-        state = self.store.update("CORE-1", tree="/tmp/tree", executor="codex", attempts=2)
+        state = self.store.update("CORE-1", tree="/tmp/tree", executor="pi", attempts=2)
         entry = state["packages"]["CORE-1"]
         self.assertEqual(entry["tree"], "/tmp/tree")
-        self.assertEqual(entry["executor"], "codex")
+        self.assertEqual(entry["executor"], "pi")
         self.assertEqual(entry["attempts"], 2)
         self.assertEqual(entry["status"], "pending")  # untouched
         self.assertEqual(wave.read_events(self.state_path, 10), [])

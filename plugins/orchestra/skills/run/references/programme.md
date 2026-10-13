@@ -183,7 +183,7 @@ function enqueue(id) {
 // A RelayFailureError (skill §5) means the RELAY lost the dispatch's result,
 // not that the package's work or review failed - in the field the
 // implementation had almost always finished. Calling runTask() again would
-// re-implement finished work in the same worktree (20+ minutes of codex per
+// re-implement finished work in the same worktree (20+ minutes of a pi worker per
 // package, observed), so never do that. Recover in order:
 //   (a) resume waiting on the SAME token: `wait` is idempotent and returns
 //       the persisted result, however many earlier hops were garbled;

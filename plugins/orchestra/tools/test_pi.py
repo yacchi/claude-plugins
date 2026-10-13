@@ -239,7 +239,7 @@ class PiLedgerRecordTests(unittest.TestCase):
         records = [
             {"executor": "pi", "input_tokens": 3, "output_tokens": 8,
              "cached_input_tokens": 10766, "cost_micro_usd": 226},
-            {"executor": "codex", "input_tokens": 99, "cost_micro_usd": 5},
+            {"executor": "nonesuch", "input_tokens": 99, "cost_micro_usd": 5},
         ]
         acc = agent_exec._ledger_usage(records, "pi")
         self.assertEqual(acc["records"], 1)

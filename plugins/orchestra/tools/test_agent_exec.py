@@ -165,7 +165,7 @@ class SanitizeTelemetryRecordTests(unittest.TestCase):
     def test_executors_used_subkey_filtering(self):
         raw = {
             "event": "run_summary",
-            "executors_used": {"claude": 2, "pi": 1, "gemini": 5, "codex": -3, "copilot": 4},
+            "executors_used": {"claude": 2, "pi": 1, "gemini": 5, "nonesuch": 3, "copilot": 4},
         }
         out = agent_exec.sanitize_telemetry_record(raw)
         self.assertEqual(out["executors_used"], {"claude": 2, "pi": 1})
@@ -181,10 +181,10 @@ class SanitizeTelemetryRecordTests(unittest.TestCase):
     def test_external_enabled_filtering(self):
         raw = {
             "event": "run_summary",
-            "external_enabled": {"pi": True, "codex": False, "claude": True, "x": 1, "opencode": True},
+            "external_enabled": {"pi": True, "nonesuch": False, "claude": True, "x": 1, "opencode": True},
         }
         out = agent_exec.sanitize_telemetry_record(raw)
-        self.assertEqual(out["external_enabled"], {"pi": True, "codex": False})
+        self.assertEqual(out["external_enabled"], {"pi": True})
 
     def test_unknown_keys_dropped(self):
         raw = {"event": "run_summary", "some_new_field": "value"}
@@ -429,8 +429,8 @@ class ResolveRouteTests(unittest.TestCase):
         self.assertEqual(route["model"], "openai-codex/gpt-5.6-luna")
         self.assertEqual(route["effort"], "medium")
         self.assertEqual(route["source"], "priority")
-        self.assertEqual(route["candidates"], ["pi", "claude", "codex"])
-        self.assertEqual(route["remaining"], ["claude", "codex"])
+        self.assertEqual(route["candidates"], ["pi", "claude"])
+        self.assertEqual(route["remaining"], ["claude"])
         self.assertEqual(route["skipped"], [])
 
     def test_standard_falls_back_to_claude_when_pi_not_ready(self):
@@ -446,7 +446,7 @@ class ResolveRouteTests(unittest.TestCase):
             route["skipped"],
             [{"executor": "pi", "reason": "not-ready:executor-binary-unavailable"}],
         )
-        self.assertEqual(route["remaining"], ["codex"])
+        self.assertEqual(route["remaining"], [])
 
     def test_standard_falls_back_to_claude_when_pi_disabled(self):
         cfg = self._cfg()
@@ -484,57 +484,33 @@ class ResolveRouteTests(unittest.TestCase):
         self.assertEqual(
             route["skipped"], [{"executor": "pi", "reason": "exhausted"}]
         )
-        self.assertEqual(route["remaining"], ["codex"])
+        self.assertEqual(route["remaining"], [])
 
-    def test_exhausted_codex_skips_pi_on_the_same_subscription(self):
+    def test_exhausted_codex_is_accepted_and_ignored(self):
+        # codex was removed in 0.52.0; a stale `--exhausted codex` must not
+        # affect routing.
         cfg = self._cfg()
-        doctor_report = {"ready": {"pi": self._ready(True), "codex": self._ready(True)}}
-        route = agent_exec.resolve_route(
-            cfg, doctor_report, "standard", exhausted=["codex"])
-        self.assertEqual(route["executor"], "claude")
-        self.assertEqual(
-            route["skipped"],
-            [{"executor": "pi", "reason": "exhausted-shared:codex"}],
-        )
-
-    def test_exhausted_codex_does_not_skip_pi_on_another_provider(self):
-        cfg = self._cfg()
-        cfg["external_executors"]["pi"]["class_policy"]["standard"]["model"] = (
-            "other-provider/gpt-5.6-luna")
-        doctor_report = {"ready": {"pi": self._ready(True), "codex": self._ready(True)}}
+        doctor_report = {"ready": {"pi": self._ready(True)}}
         route = agent_exec.resolve_route(
             cfg, doctor_report, "standard", exhausted=["codex"])
         self.assertEqual(route["executor"], "pi")
         self.assertEqual(route["skipped"], [])
 
-    def test_cooldown_on_pi_skips_codex_on_the_same_subscription(self):
-        cfg = self._cfg()
-        cfg["priority"]["standard"]["default"] = ["codex", "claude"]
-        doctor_report = {"ready": {"pi": self._ready(True), "codex": self._ready(True)}}
-        route = agent_exec.resolve_route(
-            cfg, doctor_report, "standard",
-            cooldowns={"pi": {"reason": "quota", "until": 200}})
-        self.assertEqual(route["executor"], "claude")
-        self.assertEqual(
-            route["skipped"],
-            [{"executor": "codex", "reason": "cooldown-shared:pi"}],
-        )
-
     def test_agent_dispatch_not_gated_on_binary_presence(self):
-        # codex defaults to dispatch: cli now, so this exercises a user
-        # override back to `dispatch: agent`. Point `standard`'s priority
-        # straight at it and give it NO ready entry at all (a real doctor
-        # report never populates `ready` for dispatch: agent names) -- it
-        # must still win.
+        # `dispatch: agent` is a supported user override. Point `standard`'s
+        # priority straight at pi and give it NO ready entry at all (a real
+        # doctor report never populates `ready` for dispatch: agent names) --
+        # it must still win.
         cfg = self._cfg()
-        cfg["external_executors"]["codex"]["dispatch"] = "agent"
-        cfg["priority"]["standard"]["default"] = ["codex"]
+        cfg["external_executors"]["pi"]["dispatch"] = "agent"
+        cfg["external_executors"]["pi"]["agent_type"] = "my-agent"
+        cfg["priority"]["standard"]["default"] = ["pi"]
         route = agent_exec.resolve_route(cfg, {"ready": {}}, "standard")
-        self.assertEqual(route["executor"], "codex")
+        self.assertEqual(route["executor"], "pi")
         self.assertEqual(route["dispatch"], "agent")
-        self.assertEqual(route["model"], "gpt-5.6-luna")
+        self.assertEqual(route["model"], "openai-codex/gpt-5.6-luna")
         self.assertEqual(route["effort"], "medium")
-        self.assertEqual(route["agent_type"], "codex:codex-rescue")
+        self.assertEqual(route["agent_type"], "my-agent")
         self.assertEqual(route["skipped"], [])
 
     def test_legacy_classes_scan_when_priority_absent(self):
@@ -685,11 +661,31 @@ class ResolveConfigBackwardCompatTests(_IsolatedConfigMixin, unittest.TestCase):
         unknown = [w for w in warnings if w["type"] == "unknown_executor"]
         self.assertEqual(unknown[0]["names"], ["nonesuch"])
 
+    def test_removed_codex_config_is_ignored_with_one_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layer = os.path.join(tmp, "orchestra.yaml")
+            with open(layer, "w", encoding="utf-8") as f:
+                f.write("external_executors:\n  codex: {enabled: true}\n"
+                        "priority:\n  standard: {default: [codex, pi, claude]}\n")
+            with mock.patch.object(agent_exec, "_ordered_layer_paths",
+                                   return_value=[layer]):
+                resolved, err = agent_exec.resolve_config()
+                warnings = agent_exec._detect_config_warnings()
+        self.assertIsNone(err)
+        self.assertNotIn("codex", resolved["external_executors"])
+        self.assertEqual(resolved["priority"]["standard"]["default"], ["pi", "claude"])
+        removed = [w for w in warnings if w["type"] == "codex_removed"]
+        self.assertEqual(len(removed), 1)
+        self.assertEqual(removed[0]["keys"],
+                         ["external_executors.codex", "priority.standard.default"])
+        self.assertIn("removed in 0.52.0", removed[0]["detail"])
+        self.assertEqual([w for w in warnings if w["type"] == "unknown_executor"], [])
+
     def test_no_config_at_all_still_gets_full_defaults(self):
         resolved, err = self._isolated_resolve(None)
         self.assertIsNone(err)
         self.assertIs(resolved["external_executors"]["pi"]["enabled"], True)
-        self.assertIs(resolved["external_executors"]["codex"]["enabled"], True)
+        self.assertNotIn("codex", resolved["external_executors"])
         self.assertIn("priority", resolved)
         self.assertIn("enforcement", resolved)
 
@@ -994,7 +990,7 @@ class ResolveRoutePathStubTests(unittest.TestCase):
         try:
             agent_exec.os.path.expanduser = fake_expanduser
             os.chdir(tmp_project)
-            # No pi/codex/uv/agent-exec shim anywhere on PATH.
+            # No pi/uv/agent-exec shim anywhere on PATH.
             os.environ["PATH"] = empty_path_dir
 
             resolved, err = agent_exec.resolve_config()
@@ -1046,7 +1042,7 @@ class DispatchCommandUsageTests(unittest.TestCase):
 class DispatchCommandBehaviorTests(unittest.TestCase):
     """Drives cmd_dispatch_route() directly with resolve_config()/
     _build_doctor_report() monkeypatched to controlled fixtures, so these
-    tests are independent of the real machine's pi/codex install."""
+    tests are independent of the real machine's pi install."""
 
     def _run_with_stubbed_route(self, cfg, doctor_report, extra_args):
         orig_resolve_config = agent_exec.resolve_config
@@ -1104,11 +1100,12 @@ class DispatchCommandBehaviorTests(unittest.TestCase):
         self.assertEqual(output["route"]["executor"], "claude")
 
     def test_delegate_status_for_agent_dispatch_does_not_spawn_subprocess(self):
-        # `dispatch: agent` is a supported user override of the codex default
+        # `dispatch: agent` is a supported user override of pi's default
         # (cli); this pins that the delegate payload it produces is unchanged.
         cfg = copy.deepcopy(agent_exec.DEFAULTS)
-        cfg["external_executors"]["codex"]["dispatch"] = "agent"
-        cfg["priority"]["standard"]["default"] = ["codex"]
+        cfg["external_executors"]["pi"]["dispatch"] = "agent"
+        cfg["external_executors"]["pi"]["agent_type"] = "my-agent"
+        cfg["priority"]["standard"]["default"] = ["pi"]
         doctor_report = {"ready": {}}
 
         orig_subprocess_run = agent_exec.subprocess.run
@@ -1132,8 +1129,8 @@ class DispatchCommandBehaviorTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         output = json.loads(out)
         self.assertEqual(output["status"], "delegate")
-        self.assertEqual(output["executor"], "codex")
-        self.assertEqual(output["agent_type"], "codex:codex-rescue")
+        self.assertEqual(output["executor"], "pi")
+        self.assertEqual(output["agent_type"], "my-agent")
         self.assertEqual(output["route"]["dispatch"], "agent")
 
     def test_cli_route_surfaces_route_key_in_output(self):
@@ -1171,30 +1168,27 @@ class DispatchCommandBehaviorTests(unittest.TestCase):
         self.assertEqual(output["effort"], "medium")
         self.assertIn("route", output)
         self.assertEqual(output["route"]["executor"], "pi")
-        self.assertEqual(output["route"]["remaining"], ["claude", "codex"])
+        self.assertEqual(output["route"]["remaining"], ["claude"])
         # Session-continuity keys ride on every cli dispatch result, not only
         # the executors that actually have resumable sessions.
         self.assertIn("session_id", output)
         self.assertIs(output["resumed"], False)
 
-    def test_codex_defaults_to_cli_dispatch_and_is_gated_on_its_binary(self):
-        """A5: codex ships `dispatch: cli`, so it is readiness-gated exactly
-        like pi instead of being waved through as an agent."""
+    def test_pi_cli_dispatch_is_gated_on_its_binary(self):
         cfg = copy.deepcopy(agent_exec.DEFAULTS)
-        self.assertEqual(
-            cfg["external_executors"]["codex"]["dispatch"], "cli")
-        cfg["priority"]["standard"]["default"] = ["codex"]
+        self.assertEqual(cfg["external_executors"]["pi"]["dispatch"], "cli")
+        cfg["priority"]["standard"]["default"] = ["pi"]
 
         route = agent_exec.resolve_route(cfg, {"ready": {}}, "standard")
         self.assertIsNone(route["executor"])
         self.assertEqual(
             route["skipped"],
-            [{"executor": "codex", "reason": "not-ready:unknown"}],
+            [{"executor": "pi", "reason": "not-ready:unknown"}],
         )
 
-        ready = {"ready": {"codex": {"ok": True, "missing": []}}}
+        ready = {"ready": {"pi": {"ok": True, "missing": []}}}
         route = agent_exec.resolve_route(cfg, ready, "standard")
-        self.assertEqual(route["executor"], "codex")
+        self.assertEqual(route["executor"], "pi")
         self.assertEqual(route["dispatch"], "cli")
         # `agent_type` is only reported for a `dispatch: agent` route.
         self.assertIsNone(route["agent_type"])

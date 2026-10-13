@@ -5,7 +5,7 @@
 """Unit tests for the `agent-exec usage` cross-executor aggregation.
 
 Every test drives the pure aggregators directly, or the I/O shell against a
-synthetic HOME, so the real ~/.claude and ~/.codex are never touched.
+synthetic HOME, so the real ~/.claude is never touched.
 
 Run with: uv run test_usage_cmd.py
 """
@@ -90,50 +90,6 @@ def claude_line(ts, input_tokens=0, output_tokens=0, cache_creation=0,
             "message": message,
         }
     )
-
-
-def codex_token_count(ts, input_tokens, cached, output_tokens):
-    return json.dumps(
-        {
-            "timestamp": iso(ts),
-            "type": "event_msg",
-            "payload": {
-                "type": "token_count",
-                "info": {
-                    "total_token_usage": {
-                        "input_tokens": input_tokens,
-                        "cached_input_tokens": cached,
-                        "output_tokens": output_tokens,
-                        "reasoning_output_tokens": 1,
-                        "total_tokens": input_tokens + output_tokens,
-                    },
-                    "last_token_usage": {"input_tokens": 1, "output_tokens": 1},
-                    "model_context_window": 258400,
-                },
-            },
-        }
-    )
-
-
-def codex_rollout_lines(corr, samples):
-    """Lines for one synthetic codex rollout: a user_message carrying `corr`
-    verbatim, then one token_count event per value in `samples` (all five
-    numeric fields set to that value, plus a total_tokens that would only
-    match a sum if the aggregator wrongly used it)."""
-    lines = [json.dumps({"type": "event_msg", "payload": {
-        "type": "user_message", "message": "do the task " + corr}})]
-    for value in samples:
-        lines.append(json.dumps({"type": "event_msg", "payload": {
-            "type": "token_count", "info": {"total_token_usage": {
-                "input_tokens": value, "output_tokens": value,
-                "cached_input_tokens": value, "cache_write_input_tokens": value,
-                "reasoning_output_tokens": value, "total_tokens": 999999,
-            }}}}))
-    return lines
-
-
-def delegated_ledger_line(corr):
-    return json.dumps({"executor": "codex", "status": "delegated", "corr": corr})
 
 
 def write_lines(path, lines):
@@ -417,191 +373,6 @@ class ClaudeAggregationTests(unittest.TestCase):
             self.assertEqual(entry["records"], 3)
 
 
-class CodexAggregationTests(unittest.TestCase):
-    def test_last_token_count_wins_and_is_not_summed(self):
-        lines = [
-            json.dumps({"type": "session_meta", "payload": {"id": "abc",
-                                                            "cwd": "/x"}}),
-            codex_token_count(NOW - timedelta(hours=3), 100, 40, 10),
-            codex_token_count(NOW - timedelta(hours=2), 300, 200, 25),
-        ]
-        out = agent_exec.aggregate_codex_lines(lines, CUTOFF)
-        self.assertTrue(out["contributed"])
-        # input is reported inclusive of the cached share, so it is netted out
-        self.assertEqual(
-            out["tokens"],
-            {"input_tokens": 100, "output_tokens": 25, "cached_input_tokens": 200},
-        )
-
-    def test_no_token_count_contributes_nothing(self):
-        lines = [
-            json.dumps({"type": "session_meta", "payload": {"id": "abc"}}),
-            json.dumps({"type": "event_msg", "payload": {"type": "agent_message"}}),
-            "garbage",
-        ]
-        out = agent_exec.aggregate_codex_lines(lines, CUTOFF)
-        self.assertFalse(out["contributed"])
-        self.assertEqual(out["tokens"], agent_exec._zero_tokens())
-
-    def test_out_of_window_last_event_is_dropped(self):
-        lines = [codex_token_count(NOW - timedelta(days=5), 100, 0, 10)]
-        out = agent_exec.aggregate_codex_lines(lines, CUTOFF)
-        self.assertFalse(out["contributed"])
-
-    def test_mtime_fallback_when_event_has_no_timestamp(self):
-        raw = json.loads(codex_token_count(NOW, 100, 0, 10))
-        del raw["timestamp"]
-        lines = [json.dumps(raw)]
-        self.assertFalse(agent_exec.aggregate_codex_lines(lines, CUTOFF)["contributed"])
-        out = agent_exec.aggregate_codex_lines(
-            lines, CUTOFF, mtime=NOW.timestamp())
-        self.assertTrue(out["contributed"])
-        self.assertEqual(out["tokens"]["input_tokens"], 100)
-
-    def test_multiple_session_files_add_up(self):
-        with tempfile.TemporaryDirectory() as home:
-            day = os.path.join(home, ".codex", "sessions", "2026", "08", "19")
-            write_lines(
-                os.path.join(day, "rollout-1.jsonl"),
-                [codex_token_count(NOW - timedelta(hours=1), 100, 40, 10)],
-            )
-            write_lines(
-                os.path.join(day, "rollout-2.jsonl"),
-                [codex_token_count(NOW - timedelta(hours=2), 50, 0, 5)],
-            )
-            write_lines(
-                os.path.join(day, "rollout-3.jsonl"),
-                [json.dumps({"type": "session_meta", "payload": {"id": "z"}})],
-            )
-            entry = agent_exec.collect_codex_usage(CUTOFF, home=home)
-            self.assertEqual(entry["status"], "ok")
-            self.assertEqual(entry["scope"], "global")
-            self.assertEqual(entry["sessions"], 2)
-            self.assertEqual(
-                entry["tokens"],
-                {"input_tokens": 110, "output_tokens": 15,
-                 "cached_input_tokens": 40},
-            )
-
-    def test_missing_tree_is_unavailable(self):
-        with tempfile.TemporaryDirectory() as home:
-            entry = agent_exec.collect_codex_usage(CUTOFF, home=home)
-            self.assertEqual(entry["status"], "unavailable")
-            self.assertIn("note", entry)
-
-
-class DelegatedCodexRunScopeTests(unittest.TestCase):
-    """Section B: `usage --run` resolving delegated codex ledger lines
-    against a synthetic ~/.codex sessions root."""
-
-    def _corr(self, n):
-        return "oxc-%012x" % n
-
-    def _setup(self, home, matched_n, total_n):
-        telemetry_dir = os.path.join(home, "telemetry")
-        ledger_dir = os.path.join(home, "runs")
-        corrs = [self._corr(i + 1) for i in range(total_n)]
-        write_lines(os.path.join(ledger_dir, "session-1", "run1.jsonl"),
-                   [delegated_ledger_line(c) for c in corrs])
-        sessions_root = os.path.join(home, ".codex", "sessions")
-        for c in corrs[:matched_n]:
-            write_lines(os.path.join(sessions_root, "rollout-%s.jsonl" % c),
-                       codex_rollout_lines(c, [10, 20]))
-        cfg = {"telemetry": {"dir": telemetry_dir, "enabled": False}}
-        return cfg
-
-    def test_partial_match_reports_ok_with_summed_measured_tokens(self):
-        with tempfile.TemporaryDirectory() as home:
-            cfg = self._setup(home, matched_n=2, total_n=3)
-            report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["codex"], cfg=cfg, home=home, cwd="/x",
-                run_ids=["run1"])
-            entry = report["sources"]["codex"]
-            self.assertEqual(entry["status"], "ok")
-            self.assertEqual(entry["delegated"], 3)
-            self.assertEqual(entry["measured"], 2)
-            for key in ("input_tokens", "output_tokens", "cached_input_tokens",
-                       "cache_write_input_tokens", "reasoning_output_tokens"):
-                self.assertEqual(entry["tokens"][key], 40)  # 2 matches * last=20
-
-    def test_no_match_reports_not_attributable_with_counters(self):
-        with tempfile.TemporaryDirectory() as home:
-            cfg = self._setup(home, matched_n=0, total_n=3)
-            report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["codex"], cfg=cfg, home=home, cwd="/x",
-                run_ids=["run1"])
-            entry = report["sources"]["codex"]
-            self.assertEqual(entry, {
-                "attributable": False,
-                "reason": "codex delegation may have no rollout yet or correlation may have failed",
-                "delegated": 3, "measured": 0,
-            })
-
-    def test_no_match_reports_same_reason_for_session_scope(self):
-        with tempfile.TemporaryDirectory() as home:
-            cfg = self._setup(home, matched_n=0, total_n=3)
-            report = agent_exec.build_usage_report(
-               CUTOFF, NOW, ["codex"], cfg=cfg, home=home, cwd="/x",
-               session_ids=["session-1"])
-            self.assertEqual(report["sources"]["codex"], {
-               "attributable": False,
-               "reason": "codex delegation may have no rollout yet or correlation may have failed",
-               "delegated": 3, "measured": 0,
-            })
-
-    def test_text_counter_renders_for_ok_and_not_attributable(self):
-        with tempfile.TemporaryDirectory() as home:
-            ok_cfg = self._setup(home, matched_n=2, total_n=3)
-            ok_report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["codex"], cfg=ok_cfg, home=home, cwd="/x",
-                run_ids=["run1"])
-            out = io.StringIO()
-            real_out = sys.stdout
-            sys.stdout = out
-            try:
-                agent_exec._print_usage_text(ok_report)
-            finally:
-                sys.stdout = real_out
-            self.assertIn("(measured 2/3 delegated)", out.getvalue())
-
-        with tempfile.TemporaryDirectory() as home:
-            none_cfg = self._setup(home, matched_n=0, total_n=3)
-            none_report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["codex"], cfg=none_cfg, home=home, cwd="/x",
-                run_ids=["run1"])
-            out = io.StringIO()
-            real_out = sys.stdout
-            sys.stdout = out
-            try:
-                agent_exec._print_usage_text(none_report)
-            finally:
-                sys.stdout = real_out
-            self.assertIn("(measured 0/3 delegated)", out.getvalue())
-
-    def test_window_scope_codex_report_shape_is_unchanged(self):
-        with tempfile.TemporaryDirectory() as home:
-            day = os.path.join(home, ".codex", "sessions", "2026", "08", "19")
-            write_lines(
-                os.path.join(day, "rollout-1.jsonl"),
-                [codex_token_count(NOW - timedelta(hours=1), 100, 40, 10)],
-            )
-            report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["codex"], cfg={"telemetry": {"enabled": False}},
-                home=home, cwd="/x")
-            entry = report["sources"]["codex"]
-            self.assertEqual(sorted(entry), [
-                "files_scanned", "scope", "sessions", "status", "tokens"])
-            self.assertEqual(entry["status"], "ok")
-            self.assertEqual(entry["sessions"], 1)
-            self.assertEqual(
-                entry["tokens"],
-                {"input_tokens": 60, "output_tokens": 10, "cached_input_tokens": 40},
-            )
-            self.assertEqual(
-                entry,
-                agent_exec.collect_codex_usage(CUTOFF, home=home))
-
-
 class TelemetryAggregationTests(unittest.TestCase):
     def _record(self, ts, **usage):
         return {"event": "dispatch", "executor": "pi", "ts": iso(ts),
@@ -616,9 +387,9 @@ class TelemetryAggregationTests(unittest.TestCase):
             self._record(NOW - timedelta(days=4), input_tokens=999),
             {"event": "run_summary", "executor": "pi", "ts": iso(NOW),
              "usage": {"input_tokens": 777}},
-            {"event": "dispatch", "executor": "codex", "ts": iso(NOW),
-             "usage": {"input_tokens": 888}},
             # A removed executor's historical record is just another executor.
+            {"event": "dispatch", "executor": "nonesuch", "ts": iso(NOW),
+             "usage": {"input_tokens": 888}},
             {"event": "dispatch", "executor": "copilot", "ts": iso(NOW),
              "usage": {"input_tokens": 666}},
             {"event": "dispatch", "executor": "pi", "ts": iso(NOW)},
@@ -663,7 +434,7 @@ class TotalsAndReportTests(unittest.TestCase):
             "claude": {"status": "ok",
                        "tokens": {"input_tokens": 10, "output_tokens": 1,
                                   "cached_input_tokens": 2}},
-            "codex": {"status": "empty", "tokens": agent_exec._zero_tokens()},
+            "other": {"status": "empty", "tokens": agent_exec._zero_tokens()},
             "pi": {"status": "unavailable",
                         "tokens": {"input_tokens": 999, "output_tokens": 999,
                                    "cached_input_tokens": 999}},
@@ -676,13 +447,13 @@ class TotalsAndReportTests(unittest.TestCase):
     def test_report_shape_and_requested_sources_only(self):
         with tempfile.TemporaryDirectory() as home:
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["codex", "claude"], cfg={"telemetry": {"enabled": False}},
+                CUTOFF, NOW, ["pi", "claude"], cfg={"telemetry": {"enabled": False}},
                 home=home, cwd="/x")
             self.assertEqual(sorted(report), ["cost", "now", "scope", "since", "sources", "totals"])
             self.assertEqual(report["scope"], {
                 "kind": "window", "since": CUTOFF.isoformat(), "until": NOW.isoformat()
             })
-            self.assertEqual(sorted(report["sources"]), ["claude", "codex"])
+            self.assertEqual(sorted(report["sources"]), ["claude", "pi"])
             self.assertEqual(report["since"], CUTOFF.isoformat())
             self.assertEqual(report["now"], NOW.isoformat())
             for entry in report["sources"].values():
@@ -788,9 +559,6 @@ class ReadOnlyTests(unittest.TestCase):
                 os.path.join(home, ".claude", "projects", slug, "a.jsonl"),
                 [claude_line(NOW, input_tokens=3, output_tokens=1)],
             )
-            day = os.path.join(home, ".codex", "sessions", "2026", "08", "19")
-            write_lines(os.path.join(day, "rollout-1.jsonl"),
-                        [codex_token_count(NOW, 10, 2, 1)])
             telemetry_dir = os.path.join(home, "telemetry")
             write_lines(
                 os.path.join(telemetry_dir, "records.jsonl"),
@@ -805,7 +573,7 @@ class ReadOnlyTests(unittest.TestCase):
                 CUTOFF, NOW, agent_exec._USAGE_SOURCES,
                 cfg={"telemetry": {"enabled": True, "dir": telemetry_dir}},
                 home=home, cwd="/x")
-            self.assertEqual(report["totals"]["input_tokens"], 3 + 8 + 4)
+            self.assertEqual(report["totals"]["input_tokens"], 3 + 4)
 
             self.assertEqual(self._snapshot(home), before)
             self.assertEqual(dict(os.environ), env_before)
@@ -846,41 +614,37 @@ class DeterministicScopeTests(unittest.TestCase):
                 home, "s-1", "subagents/workflows/wf_one/a.jsonl",
                 [claude_line(NOW, input_tokens=3)])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["claude", "codex"], cfg={"telemetry": {}},
+                CUTOFF, NOW, ["claude", "pi"], cfg={"telemetry": {}},
                 home=home, cwd="/x", run_ids=["wf_one"], session_ids=["s-1"])
             self.assertEqual(report["scope"], {
                 "kind": "run+session", "run_ids": ["wf_one"], "session_ids": ["s-1"]})
             self.assertEqual(report["sources"]["claude"]["tokens"]["input_tokens"], 5)
-            self.assertFalse(report["sources"]["codex"]["attributable"])
+            self.assertFalse(report["sources"]["pi"]["attributable"])
             self.assertNotIn("since", report)
             self.assertNotIn("now", report)
 
     def test_run_and_session_union_still_reports_ledger_totals(self):
         # Regression: a non-empty --session must not suppress the --run
-        # scope's real ledger contribution for pi/codex.
+        # scope's real ledger contribution for pi.
         with tempfile.TemporaryDirectory() as home:
             telemetry_dir = os.path.join(home, "telemetry")
             ledger_dir = os.path.join(home, "runs")
             write_lines(os.path.join(ledger_dir, "ledger-session", "one.jsonl"), [
                 json.dumps({"executor": "pi", "input_tokens": 9}),
-                json.dumps({"executor": "codex", "input_tokens": 6}),
             ])
             slug = agent_exec.claude_project_slug("/x")
             write_lines(
                 os.path.join(home, ".claude", "projects", slug, "s-1.jsonl"),
                 [claude_line(NOW, input_tokens=2)])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["claude", "pi", "codex"],
+                CUTOFF, NOW, ["claude", "pi"],
                 cfg={"telemetry": {"dir": telemetry_dir}},
                 home=home, cwd="/x", run_ids=["one"], session_ids=["s-1"])
             self.assertEqual(report["scope"], {
                 "kind": "run+session", "run_ids": ["one"], "session_ids": ["s-1"]})
             self.assertEqual(
                 report["sources"]["pi"]["tokens"]["input_tokens"], 9)
-            self.assertEqual(
-                report["sources"]["codex"]["tokens"]["input_tokens"], 6)
             self.assertNotIn("attributable", report["sources"]["pi"])
-            self.assertNotIn("attributable", report["sources"]["codex"])
             self.assertNotIn("since", report)
             self.assertNotIn("now", report)
 
@@ -895,32 +659,27 @@ class DeterministicScopeTests(unittest.TestCase):
                 json.dumps({"executor": "pi", "input_tokens": 5}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["pi", "codex"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": os.path.join(home, "t"), "enabled": False}},
                 home=home, cwd="/x", session_ids=["sess-h"])
             self.assertEqual(report["sources"]["pi"]["tokens"]["input_tokens"], 5)
             self.assertEqual(report["totals"]["input_tokens"], 5)
             self.assertNotIn("aiu_nano", report["sources"]["pi"])
 
-    def test_session_scope_reports_no_matching_run_ledger_data_per_source(self):
-        # Section C: under --session, a source with no lines in the
-        # session's ledger file keeps the exact "no matching run ledger
-        # data" reason, even while a sibling source in the SAME file is
-        # attributable.
+    def test_session_scope_reports_no_matching_run_ledger_data(self):
+        # Under --session, a source with no lines in the session's ledger
+        # file keeps the exact "no matching run ledger data" reason.
         with tempfile.TemporaryDirectory() as home:
             telemetry_dir = os.path.join(home, "telemetry")
             ledger_dir = os.path.join(home, "runs")
             write_lines(os.path.join(ledger_dir, "sess-x", "no.run.jsonl"), [
-                json.dumps({"executor": "pi", "input_tokens": 5}),
+                json.dumps({"executor": "nonesuch", "input_tokens": 5}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["pi", "codex"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", session_ids=["sess-x"])
-            self.assertEqual(report["sources"]["pi"]["status"], "ok")
-            self.assertEqual(
-                report["sources"]["pi"]["tokens"]["input_tokens"], 5)
-            self.assertEqual(report["sources"]["codex"], {
+            self.assertEqual(report["sources"]["pi"], {
                 "attributable": False,
                 "reason": "no matching run ledger data",
             })
@@ -1038,17 +797,16 @@ class DeterministicScopeTests(unittest.TestCase):
             ])
             write_lines(os.path.join(ledger_dir, sid, "wf_b.jsonl"), [
                 json.dumps({"executor": "pi", "input_tokens": 200}),
-                json.dumps({"executor": "codex", "input_tokens": 50}),
             ])
             write_lines(os.path.join(ledger_dir, sid, "no.run.jsonl"), [
                 json.dumps({"executor": "pi", "input_tokens": 300}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["pi", "codex"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", run_ids=[sid])
             self.assertEqual(report["scope"], {"kind": "run", "run_ids": [sid]})
-            for name in ("pi", "codex"):
+            for name in ("pi",):
                 self.assertEqual(report["sources"][name], {
                     "attributable": False,
                     "reason": "no matching run ledger data",
@@ -1067,18 +825,17 @@ class DeterministicScopeTests(unittest.TestCase):
             sid = "30ad8eb2-33a4-4ed8-bc5a-f21d111223b2"
             write_lines(os.path.join(ledger_dir, sid, "wf_a.jsonl"), [
                 json.dumps({"executor": "pi", "input_tokens": 100}),
-                json.dumps({"executor": "codex", "input_tokens": 25}),
             ])
             write_lines(os.path.join(ledger_dir, sid + ".jsonl"), [
                 json.dumps({"executor": "pi", "input_tokens": 6370990}),
-                json.dumps({"executor": "codex", "input_tokens": 561018}),
+                json.dumps({"executor": "pi", "input_tokens": 561018}),
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["pi", "codex"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", run_ids=[sid])
             self.assertEqual(report["scope"], {"kind": "run", "run_ids": [sid]})
-            for name in ("pi", "codex"):
+            for name in ("pi",):
                 self.assertEqual(report["sources"][name], {
                     "attributable": False,
                     "reason": "no matching run ledger data",
@@ -1186,15 +943,12 @@ class DeterministicScopeTests(unittest.TestCase):
                 for _ in range(2)
             ])
             report = agent_exec.build_usage_report(
-                CUTOFF, NOW, ["pi", "codex"],
+                CUTOFF, NOW, ["pi"],
                 cfg={"telemetry": {"dir": telemetry_dir, "enabled": False}},
                 home=home, cwd="/x", session_ids=[sid])
             self.assertEqual(
                 report["sources"]["pi"]["runs"],
                 {"wf_a": 3, "wf_b": 5, "no-run": 2})
-            # codex has no ledger lines at all in this session: the key is
-            # omitted, not present-and-empty.
-            self.assertNotIn("runs", report["sources"]["codex"])
 
             out = io.StringIO()
             real_out = sys.stdout
@@ -1443,29 +1197,6 @@ class EndToEndSubprocessTests(unittest.TestCase):
             self.assertNotIn("since", parsed)
             self.assertNotIn("now", parsed)
 
-    def test_delegated_codex_run_scope_over_subprocess(self):
-        with tempfile.TemporaryDirectory() as home, \
-             tempfile.TemporaryDirectory() as codex_home:
-            corrs = ["oxc-%012x" % n for n in (1, 2, 3)]
-            write_lines(
-                os.path.join(home, ".claude", "orchestra", "runs",
-                             "ledger-session", "run_e2e.jsonl"),
-                [delegated_ledger_line(c) for c in corrs])
-            for c in corrs[:2]:
-                write_lines(
-                    os.path.join(codex_home, "sessions", "rollout-%s.jsonl" % c),
-                    codex_rollout_lines(c, [5]))
-            rc, out, err = run_cli(
-                ["--run", "run_e2e", "--source", "codex", "--json"],
-                home=home, extra_env={"CODEX_HOME": codex_home})
-            self.assertEqual(rc, 0, err)
-            parsed = json.loads(out)
-            entry = parsed["sources"]["codex"]
-            self.assertEqual(entry["status"], "ok")
-            self.assertEqual(entry["delegated"], 3)
-            self.assertEqual(entry["measured"], 2)
-            self.assertEqual(entry["tokens"]["input_tokens"], 10)
-
     def test_run_scope_session_id_reports_zero_over_subprocess(self):
         # THE REGRESSION, driven through the real CLI subprocess: a session
         # id passed to --run over a populated <ledger-dir>/<sid>/ directory
@@ -1640,15 +1371,6 @@ class UsageCostReportTests(unittest.TestCase):
         self.assertEqual(cost["unpriced_sources"], [])
         # 500 in at $1 + 500 out at $2 per 1M, on top of the opus part
         self.assertEqual(cost["components"]["claude"], 420000 + 500 + 1000)
-
-    def test_codex_is_listed_as_unpriced_never_zero(self):
-        sources = self._sources(
-            codex={"status": "ok", "tokens": {}},
-            pi={"status": "ok", "tokens": {}, "cost_micro_usd": 2500000})
-        cost = agent_exec._usage_cost(sources, None)
-        self.assertIn("codex", cost["unpriced_sources"])
-        self.assertEqual(cost["components"]["pi"], 2500000)
-        self.assertNotIn("codex", cost["components"])
 
     def test_text_report_shows_cache_and_cost(self):
         sources = self._sources()

@@ -47,7 +47,7 @@ class LedgerCommandTests(unittest.TestCase):
         with open(os.path.join(session, "no.run.jsonl"), "w",
                   encoding="utf-8") as handle:
             handle.write(json.dumps({
-                "executor": "codex", "input_tokens": 3,
+                "executor": "nonesuch", "input_tokens": 3,
             }) + "\n")
         with open(os.path.join(ledger, "legacy-run.jsonl"), "w",
                   encoding="utf-8") as handle:

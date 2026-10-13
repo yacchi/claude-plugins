@@ -14,7 +14,7 @@
 # it wants to override; everything else is inherited from the previous layer (or the built-in
 # defaults below if nothing else sets it). See the `run` skill's SKILL.md §9 for the exact
 # algorithm and `setup` for a skill that can author this file for you interactively (detects
-# Codex/pi, asks which scope to write to, edits in place, and offers to gitignore
+# pi, asks which scope to write to, edits in place, and offers to gitignore
 # project-local files).
 #
 # Example project override that changes nothing except turning pi back OFF for
@@ -41,59 +41,16 @@ tiers:
   # `independent-review` has no built-in Claude model on purpose — it exists to
   # add a DIFFERENT provider's eyes; see `priority.independent-review` below.
 
-# Non-Claude executors (Codex, pi, ...) that may be woven into the pipeline.
+# Non-Claude executors (pi, ...) that may be woven into the pipeline.
 # Only entries with `enabled: true` are used.
 external_executors:
-  codex:
-    enabled: true
-    # `dispatch: cli` is the default as of v0.27.0: direct `codex exec`/`codex
-    # exec resume <SESSION_ID>` invocation, same shape as pi
-    # below — this replaced the old `dispatch: agent` (via `codex:codex-rescue`)
-    # default because the CLI takes an explicit session UUID (the rescue
-    # agent's only continuation, `--resume-last`, grabs the wrong session
-    # under parallel tasks) and reports session id + token usage inline
-    # instead of needing post-hoc rollout-file scanning. `dispatch: agent` +
-    # `agent_type: codex:codex-rescue` remains a fully supported override —
-    # see run skill references/external-executors.md §1.
-    dispatch: cli
-    command: >-
-      agent-exec codex exec --json --model {model} --config model_reasoning_effort={effort}
-      --sandbox workspace-write --output-last-message {outfile} --cd {workdir} < {promptfile}
-    resume_command: >-
-      agent-exec codex exec resume {session_id} --json --model {model} --config model_reasoning_effort={effort}
-      --sandbox workspace-write --output-last-message {outfile} --cd {workdir} < {promptfile}
-    # API hosts only codex's srt settings allow (sandbox.network); unioned
-    # across layers, starting from these defaults.
-    network_domains: [chatgpt.com, auth.openai.com, api.openai.com]
-    classes:
-      - standard
-      - deep
-      - review
-    class_policy:
-      standard:
-        model: gpt-5.6-luna
-        effort: medium
-      deep:
-        model: gpt-5.6-sol
-        effort: xhigh
-      review:
-        model: gpt-5.6-sol
-        effort: low
-    # Escalate a nominally light/standard-class task to `deep` when it needs deep
-    # traversal of a large repo — Luna's long-context recall is measurably weak.
-    long_context_escalation:
-      when: task requires deep traversal of a large repo (Luna's long-context recall is weak)
-      class: deep
-
   # pi is the CLI executor. agent-exec builds the whole invocation itself (no
   # `command` template here): `PI_SKIP_VERSION_CHECK=1 pi -p --mode json
   # --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes
   # --model <provider/id> --thinking <effort> [--session <id>]`, prompt on
   # stdin, cwd = the worktree. `model` is always `provider/id`; a bare id will
-  # not resolve. The `openai-codex/*` models run on the ChatGPT subscription
-  # (the same one Codex uses, so the two share a quota group: exhausting or
-  # cooling one skips the other), and pi's reported `cost` there is a
-  # list-price estimate, NOT a charge. Metered providers such as
+  # not resolve. The `openai-codex/*` models run on the ChatGPT subscription,
+  # and pi's reported `cost` there is a list-price estimate, NOT a charge. Metered providers such as
   # `github-copilot/*` report a real cost. An exit-0 run whose final message
   # has stopReason "error" is treated as a failure. Session resume uses
   # `--session`. See run skill references/external-executors.md.
@@ -138,7 +95,7 @@ external_executors:
 #     bin: pi
 #   # Another executor binary can be pinned the same way under its own key
 #   # (`spec` is `npm:<package>` or a mise backend spec, `bin` the executable
-#   # name). Codex is not pinned by default and runs from PATH.
+#   # name). A tool not pinned here runs from PATH.
 # There is no update command: change `version`, then run
 # `agent-exec tools install <name>` (add `--force` to reinstall the same version).
 
@@ -149,13 +106,13 @@ external_executors:
 # `agent-exec dispatch`, not by the instructor reading this list by hand. `route`
 # tries candidates left-to-right and drops to the NEXT one on a *reactive fallback
 # signal*: the current executor is unavailable — NOT the task failing. "Unavailable"
-# = hit a rate-limit / usage-window cap (Claude, Codex), ran out of credits /
-# quota (Codex, a metered pi provider), is `enabled: false`, its agent/CLI did not resolve in
+# = hit a rate-limit / usage-window cap (Claude, pi), ran out of credits /
+# quota (a metered pi provider), is `enabled: false`, its agent/CLI did not resolve in
 # this environment, or the caller passed it in `--exhausted`. A task that RUNS but
 # returns a wrong result is NOT a fallback signal — that stays on the SAME executor
 # and goes through the normal review/retry loop.
 #
-# Entries are an `external_executors` key (`codex`, `pi`, ...) or the sentinel
+# Entries are an `external_executors` key (`pi`, ...) or the sentinel
 # `claude` (the built-in `tiers.<name>` model). An executor named here must have a
 # matching `class_policy.<class>` on its `external_executors` block, or `route`
 # skips it as misconfigured. Once `route`/`dispatch` finds an executor unavailable
@@ -208,8 +165,8 @@ sandbox:
   mode: auto
   allow_write: []
   deny_read: []
-  # Outbound allowlist for the herdr host (v0.50.0) and the CLI executors pi and
-  # codex, enforced by sandbox-runtime (tools.srt). Both lists are unioned across
+  # Outbound allowlist for the herdr host (v0.50.0) and the CLI executor pi,
+  # enforced by sandbox-runtime (tools.srt). Both lists are unioned across
   # layers; approve more at run time with
   # `agent-exec sandbox allow-domain <host> [--reason TEXT]`. mode: "off" =
   # unrestricted. A CLI executor additionally reaches its own
@@ -334,13 +291,13 @@ priority:
     default: [claude, pi]
   standard:
     # pi Luna clears sonnet-class work, so it leads the standard band.
-    default: [pi, claude, codex]
+    default: [pi, claude]
   deep:
-    default: [claude, pi, codex]
+    default: [claude, pi]
   review:
     default: [claude]
   independent-review:
-    default: [pi, codex]
+    default: [pi]
 
 # Opt-in guardrail against defaulting to a direct Claude Haiku implementer when a
 # ready external executor exists — a NUDGE WITH A GUARANTEED ESCAPE, never a hard

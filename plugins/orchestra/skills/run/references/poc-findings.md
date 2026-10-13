@@ -1,5 +1,7 @@
 # orchestra 外部エグゼキュータ検証ログ
 
+> **注記(v0.52.0):** Codex CLIエグゼキュータは v0.52.0 で削除した。pi(`openai-codex/*`)が同じモデルを動かせるため、以下のCodex関連の記述と計測値は当時の履歴として残している。
+
 Codex CLI・Copilot CLI・Claude(Sonnet/Haiku)をorchestraの`worker`/`hard_worker`/`independent-verifier`ロールに使う際のモデル選定・effort設定の根拠となった、一連のPoC(概念実証)の全記録。`SKILL.md` §9のポリシー(モデル・effort・料金表)は要点のみを載せているため、「なぜその設定になったか」を知りたいときはこのファイルを参照する。
 
 日付はすべて2026-07-16前後の検証時点のもの。モデルのカタログ・料金・挙動は今後変わりうるため、重要な意思決定の前には再確認すること。

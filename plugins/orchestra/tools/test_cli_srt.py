@@ -1,4 +1,4 @@
-"""CLI executors (pi, codex) under sandbox-runtime (srt): backend choice,
+"""CLI executors (pi) under sandbox-runtime (srt): backend choice,
 spawn paths, stderr split, per-executor domains and registry presets.
 srt itself is never run: a fake `srt` script stands in where a process is
 spawned, everything else is argv/spec level."""
@@ -46,66 +46,35 @@ class _StateBase(unittest.TestCase):
 
 
 class BackendTests(_StateBase):
-    def test_srt_replaces_the_os_backend_and_codex_turns_its_own_sandbox_off(self):
-        for executor in ("pi", "codex"):
-            with self.subTest(executor):
-                spec = sb.prepare(executor, self.tree, {"mode": "auto"},
-                                  probe_results=SEATBELT, network=self.network(),
-                                  platform="linux")
-                self.assertEqual(spec["backend"], "srt")
-                argv = sb.wrap_argv(["/bin/x", "-p"], self.tree, spec)
-                self.assertEqual(argv[:5], ["/opt/srt", "-d", "-s",
-                                            spec["srt"]["settings_path"], "--control-fd"])
-                self.assertEqual(argv[-2:], ["-c", "/bin/x -p"])
-                self.assertNotIn(sb.SANDBOX_EXEC, argv)
-                self.assertNotIn("bwrap", argv)
-                self.assertNotIn("_sandbox-exec", argv)
-        spec = sb.prepare("codex", self.tree, {"mode": "auto"},
-                          probe_results=SEATBELT, network=self.network(), platform="linux")
-        for resume in (None, "SID"):
-            argv = agent_exec._build_executor_argv(
-                "codex", "codex", "m", None, self.tree, "p", resume, "json", sandbox=spec)
-            self.assertNotIn("workspace-write", " ".join(argv))
-            self.assertIn("danger-full-access", " ".join(argv))
+    def test_srt_replaces_the_os_backend(self):
+        spec = sb.prepare("pi", self.tree, {"mode": "auto"},
+                          probe_results=SEATBELT, network=self.network())
+        self.assertEqual(spec["backend"], "srt")
+        argv = sb.wrap_argv(["/bin/x", "-p"], self.tree, spec)
+        self.assertEqual(argv[:5], ["/opt/srt", "-d", "-s",
+                                    spec["srt"]["settings_path"], "--control-fd"])
+        self.assertEqual(argv[-2:], ["-c", "/bin/x -p"])
+        self.assertNotIn(sb.SANDBOX_EXEC, argv)
+        self.assertNotIn("bwrap", argv)
+        self.assertNotIn("_sandbox-exec", argv)
         settings = spec["srt"]["settings"]
         self.assertIs(settings["allowPty"], False)
         self.assertEqual(settings["network"]["allowUnixSockets"], [])
 
-    def test_codex_on_macos_keeps_its_own_sandbox_under_an_allowlist(self):
-        # srt blocks trustd; codex must not be moved off the OS trust store.
-        spec = sb.prepare("codex", self.tree, {"mode": "auto"}, probe_results=SEATBELT,
-                          network=self.network(), platform="darwin")
-        self.assertEqual(spec["backend"], "codex-native")
-        self.assertIn("network not restricted: " + sb.CODEX_SRT_UNSUPPORTED, spec["limits"])
-        argv = agent_exec._build_executor_argv(
-            "codex", "codex", "m", None, self.tree, "p", None, "json", sandbox=spec)
-        self.assertIn("workspace-write", argv)
-        self.assertNotIn("CODEX_CA_CERTIFICATE", sb.child_env(spec, {}))
-
-    def test_without_srt_codex_keeps_its_sandbox_and_the_fallback_is_named(self):
-        for label, probes, network, why in (
+    def test_without_srt_the_fallback_is_named(self):
+        for label, probes, network, why, backend in (
                 ("srt missing", SEATBELT, self.network(srt=None, reason="srt not found"),
-                 "srt not found"),
+                 "srt not found", "seatbelt"),
                 ("no seatbelt/bwrap", {"seatbelt": NO, "bwrap": NO,
                                        "landlock": {"ok": True, "abi": 6, "detail": ""}},
-                 self.network(), "srt needs a working Seatbelt or bubblewrap")):
-            for executor, backend in (("codex", "codex-native"),
-                                      ("pi", "seatbelt" if probes is SEATBELT else "landlock")):
-                with self.subTest(label=label, executor=executor):
-                    spec = sb.prepare(executor, self.tree, {"mode": "auto"},
-                                      probe_results=probes, network=network,
-                                      platform="linux")
-                    self.assertEqual(spec["backend"], backend)
-                    self.assertTrue(any(n.startswith("network not restricted: " + why)
-                                        for n in spec["limits"]), spec["limits"])
-                    self.assertIn("network not restricted", spec["reason"])
-                    argv = agent_exec._build_executor_argv(
-                        executor, executor, "m", None, self.tree, "p", None, "json",
-                        sandbox=spec)
-                    if executor == "codex":
-                        self.assertIn("workspace-write", argv)
-                        self.assertNotIn("danger-full-access", argv)
-                        self.assertEqual(sb.wrap_argv(argv, self.tree, spec), argv)
+                 self.network(), "srt needs a working Seatbelt or bubblewrap", "landlock")):
+            with self.subTest(label=label):
+                spec = sb.prepare("pi", self.tree, {"mode": "auto"},
+                                  probe_results=probes, network=network)
+                self.assertEqual(spec["backend"], backend)
+                self.assertTrue(any(n.startswith("network not restricted: " + why)
+                                    for n in spec["limits"]), spec["limits"])
+                self.assertIn("network not restricted", spec["reason"])
 
 
 class SpawnTests(_StateBase):
@@ -151,25 +120,24 @@ class SpawnTests(_StateBase):
                          [("t1", "example.com")] * 2 + [("t1", "mcp-proxy.anthropic.com")])
 
 
-    def test_failed_codex_run_carries_its_stderr_tail_without_srt_lines(self):
-        spec = sb.prepare("codex", self.tree, {"mode": "auto"}, probe_results=SEATBELT,
-                          network=self.network(srt=self.fake_srt()), platform="linux")
-        codex = os.path.join(self.tmp, "codex")
-        with open(codex, "w") as fh:
+    def test_failed_pi_run_carries_its_stderr_tail_without_srt_lines(self):
+        spec = sb.prepare("pi", self.tree, {"mode": "auto"}, probe_results=SEATBELT,
+                          network=self.network(srt=self.fake_srt()))
+        pi = os.path.join(self.tmp, "pi")
+        with open(pi, "w") as fh:
             fh.write(textwrap.dedent("""\
                 #!/bin/sh
                 i=1
-                while [ $i -le 30 ]; do echo "codex err $i" >&2; i=$((i+1)); done
-                echo '{"type":"turn.failed","error":{"message":"boom"}}'
+                while [ $i -le 30 ]; do echo "pi err $i" >&2; i=$((i+1)); done
                 exit 1
                 """))
-        os.chmod(codex, 0o755)
-        with mock.patch.object(agent_exec, "_resolve_tool", return_value={"path": codex}):
-            code, result = agent_exec._run_codex_capture(
-                "codex", "m", None, self.tree, "hi", None, sandbox=spec)
+        os.chmod(pi, 0o755)
+        with mock.patch.object(agent_exec, "_resolve_tool", return_value={"path": pi}):
+            code, result = agent_exec._run_pi_capture(
+                "pi", "m", None, self.tree, "hi", None, sandbox=spec)
         self.assertEqual((code, result["exit_code"]), (0, 1))
         tail = result["stderr_tail"].splitlines()
-        self.assertEqual(tail, ["codex err %d" % i for i in range(11, 31)])
+        self.assertEqual(tail, ["pi err %d" % i for i in range(11, 31)])
         self.assertNotIn("SandboxDebug", result["stderr_tail"])
         self.assertNotIn("allowedHosts", result["stderr_tail"])
 
@@ -202,14 +170,12 @@ class SpawnPathTests(_StateBase):
                 mock.patch.object(agent_exec, "resolve_config", return_value=(cfg, None)),
                 mock.patch.object(agent_exec, "_build_doctor_report", return_value={}),
                 mock.patch.object(agent_exec, "resolve_route", return_value={
-                    "executor": "codex", "dispatch": "cli", "model": "m",
+                    "executor": "pi", "dispatch": "cli", "model": "m",
                     "effort": "low", "agent_type": None}),
                 mock.patch.object(agent_exec_srt, "srt_status",
                                   return_value=("/opt/srt", "1", "")),
                 mock.patch.object(sb, "probes", return_value=SEATBELT),
-                # codex goes under srt only off macOS (trustd, see prepare).
-                mock.patch.object(sb, "CODEX_SRT_PLATFORMS_EXCLUDED", ()),
-                mock.patch.object(agent_exec.shutil, "which", return_value="/bin/codex")):
+                mock.patch.object(agent_exec.shutil, "which", return_value="/bin/pi")):
             p.start()
             self.addCleanup(p.stop)
 
@@ -224,16 +190,15 @@ class SpawnPathTests(_StateBase):
                      if line.startswith("EXEC: ")][0]
         self.assertTrue(exec_line.startswith("EXEC: /opt/srt -d -s "), exec_line)
         self.assertIn("cli-srt/t1.json", exec_line)
-        self.assertIn("danger-full-access", exec_line)
         self.assertNotIn(sb.SANDBOX_EXEC, exec_line)
 
     def test_exec_paths_exec_srt(self):
         for label, call in (
                 ("run", lambda: agent_exec.cmd_run([
-                    "codex", "--model", "m", "--effort", "low", "--workdir", self.tree,
+                    "pi", "--model", "m", "--effort", "low", "--workdir", self.tree,
                     "--prompt-file", self.prompt])),
                 ("passthrough", lambda: agent_exec.cmd_dispatch(
-                    "codex", ["exec", "--sandbox", "workspace-write", "hi"]))):
+                    "pi", ["-p", "hi"]))):
             with self.subTest(label):
                 seen = {}
                 with mock.patch.object(agent_exec.os, "getcwd", return_value=self.tree), \
@@ -244,8 +209,6 @@ class SpawnPathTests(_StateBase):
                     call()
                 self.assertEqual(seen["argv"][0], "/opt/srt")
                 self.assertEqual(seen["prepared"]["backend"], "srt")
-                self.assertIn("danger-full-access", seen["argv"][-1])
-                self.assertNotIn("workspace-write", seen["argv"][-1])
                 self.assertNotIn(sb.SANDBOX_EXEC, seen["argv"])
 
 
@@ -315,9 +278,9 @@ class DomainTests(_StateBase):
                                           binary="/opt/srt", platform="darwin")
 
     def test_api_hosts_stay_with_their_executor(self):
-        codex = self.plan("codex")["domains"]
+        chatgpt = self.plan("pi", "openai-codex/gpt-5.6-luna")["domains"]
         pi = self.plan("pi", "anthropic/claude-x")["domains"]
-        self.assertIn("chatgpt.com", codex)
+        self.assertIn("chatgpt.com", chatgpt)
         self.assertNotIn("chatgpt.com", pi)
         self.assertNotIn("api.openai.com", pi)
         self.assertEqual(self.plan("pi", "unknown/x")["domains"], ["api.anthropic.com"])
@@ -344,10 +307,10 @@ class DomainTests(_StateBase):
         self.assertEqual(agent_exec_srt.ecosystem_domains(self.tree),
                          ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org",
                           "npm.example.com"])
-        self.assertIn("registry.npmjs.org", self.plan("codex")["domains"])
+        self.assertIn("registry.npmjs.org", self.plan("pi", "anthropic/claude-x")["domains"])
         cfg = agent_exec.copy.deepcopy(agent_exec.DEFAULTS)
         cfg["sandbox"]["network"]["ecosystem"] = False
-        domains = self.plan("codex", cfg=cfg)["domains"]
+        domains = self.plan("pi", "anthropic/claude-x", cfg=cfg)["domains"]
         self.assertNotIn("registry.npmjs.org", domains)
         self.assertNotIn("npm.example.com", domains)
 

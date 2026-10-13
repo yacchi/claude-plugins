@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-A Claude Code plugin for **cost-tiered multi-agent orchestration**: an expensive instructor model (e.g. Fable/Opus) decomposes work and writes orchestration scripts, `agent-exec route` picks the cheapest ready implementer for each task (Claude Haiku for light work, an external executor such as pi or Codex for standard / independent-review work), Sonnet reviewers adversarially check the result, and only structured pass/fail verdicts flow back up.
+A Claude Code plugin for **cost-tiered multi-agent orchestration**: an expensive instructor model (e.g. Fable/Opus) decomposes work and writes orchestration scripts, `agent-exec route` picks the cheapest ready implementer for each task (Claude Haiku for light work, an external executor such as pi for standard / independent-review work), Sonnet reviewers adversarially check the result, and only structured pass/fail verdicts flow back up.
 
 ## Why
 
@@ -73,7 +73,7 @@ Companion skills:
 
 | Skill | Purpose |
 |---|---|
-| `/setup` (`orchestra:setup`) | Detect Codex/pi and write `orchestra.yaml` interactively |
+| `/setup` (`orchestra:setup`) | Detect pi and write `orchestra.yaml` interactively |
 | `/cleanup` (`orchestra:cleanup`) | Reclaim leftover orchestra worktrees and branches in the repository |
 | `orchestra:ui` | Open the local dashboard (`agent-exec ui --open`): waves, worktrees, dispatches, usage — live, no tokens spent |
 
@@ -82,7 +82,7 @@ Companion skills:
 Config is deep-merged from four layers (later wins): built-in defaults ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`. A project file only needs the keys it changes. `agent-exec config` prints the merged result.
 
 - **`tiers`** — Claude models per class/role (`light`, `standard`, `deep`, `review`), used whenever routing resolves to `claude`.
-- **`external_executors`** — Codex, pi, … as implementers or reviewers. Enabled by default but gated on real availability; with neither CLI installed, everything resolves to `claude`. The recommended setup is the bundled `agent-exec` wrapper (`agent-exec install`) plus one `Bash(agent-exec:*)` allow rule.
+- **`external_executors`** — pi, … as implementers or reviewers. Enabled by default but gated on real availability; with the CLI not installed, everything resolves to `claude`. The recommended setup is the bundled `agent-exec` wrapper (`agent-exec install`) plus one `Bash(agent-exec:*)` allow rule.
 - **`tools`** — pins executor binaries (pi, herdr) to a known version in orchestra's own state dir (`agent-exec tools install`). pi runs with its own agent dir by default, so your personal pi settings do not reach workers.
 - **`sandbox.network`** — the herdr host's outbound domain allowlist, enforced by sandbox-runtime (srt); blocked hosts are audited and surfaced per package, `agent-exec sandbox allow-domain` approves one live (default `api.anthropic.com` only).
 - **`interactive_host`** — which host runs Claude-tier packages in `wave run`: `herdr`, `orca`, or `none` (default `auto`).
@@ -95,7 +95,7 @@ See [`examples/orchestra.yaml`](examples/orchestra.yaml) for the full commented 
 ### Migrating from Copilot CLI / opencode
 
 In v0.43.0, the Copilot CLI and opencode executors were removed because pi is a faster, lighter path to the same models.
-Use pi's `github-copilot/*` provider for Copilot models and `openai-codex/*` for Codex/ChatGPT-subscription models.
+Use pi's `github-copilot/*` provider for Copilot models and `openai-codex/*` for ChatGPT-subscription models. The standalone Codex CLI executor was removed in 0.52.0; pi drives the same models.
 Log in to either provider with `agent-exec pi login --provider <id>` (Claude runs it and shows you the URL/code to open), then re-run `orchestra:setup` to remove old configuration keys.
 
 ## Components
