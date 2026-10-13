@@ -1,0 +1,22 @@
+description: >
+  sweep skips the running session's trees (unless --include-current) and a
+  session seen inside the live window (unless --include-live or
+  --live-window 0); a session-less legacy tree is swept; dry-run previews
+  without touching anything
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+normalize_keys: [age_days, session_idle_minutes]
+steps:
+  - argv: [isolate, create, --task, mine]
+  - argv: [isolate, create, --task, theirs]
+    env: {CLAUDE_CODE_SESSION_ID: "11111111-2222-4333-8444-555555555555"}
+  - argv: [isolate, create, --task, legacy]
+    env: {CLAUDE_CODE_SESSION_ID: ""}
+  - argv: [isolate, sweep, --dry-run, --include-current, --include-live]
+  - argv: [isolate, sweep]
+  - argv: [isolate, list]
+  - argv: [isolate, sweep, --live-window, "0", --json]
+  - argv: [isolate, sweep, --include-current]
+  - argv: [isolate, list]

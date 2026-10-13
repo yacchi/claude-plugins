@@ -1,0 +1,31 @@
+description: >
+  create carries the user's uncommitted work (tracked edits and untracked
+  files) into the baseline, then copies gitignored dependency dirs and local
+  files in; a second create returns the existing tree; list and diff see it
+setup:
+  git: true
+  files:
+    .gitignore: "node_modules/\n.claude/settings.local.json\nCLAUDE.local.md\n"
+    src/a.txt: "one\n"
+    node_modules/pkg/index.js: "module.exports = 1\n"
+    packages/web/node_modules/dep/x.js: "x\n"
+    .claude/settings.local.json: "{}\n"
+  dirty:
+    src/a.txt: "one\ntwo\n"
+    notes/new.txt: "untracked\n"
+steps:
+  - argv: [isolate, create, --task, t1]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-t1/src/a.txt
+      - <ROOT>/work-orchestra/00000000-t1/notes/new.txt
+      - <ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js
+      - <ROOT>/work-orchestra/00000000-t1/packages/web/node_modules/dep/x.js
+      - <ROOT>/work-orchestra/00000000-t1/.claude/settings.local.json
+      - <ROOT>/work-orchestra/00000000-t1/CLAUDE.local.md
+  - argv: [isolate, create, --task, t1, --json]
+  - argv: [isolate, list]
+  - argv: [isolate, diff, --task, t1]
+  - argv: [isolate, remove, --task, t1]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-t1/src/a.txt
+  - argv: [isolate, list]

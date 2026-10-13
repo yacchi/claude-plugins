@@ -1,0 +1,24 @@
+description: >
+  push refuses the main working tree unless --allow-main-tree; a push sets
+  tracked edits and untracked files aside (tree back at HEAD), pop
+  restores them and drops the entry
+setup:
+  git: true
+  files:
+    src/a.txt: "old\n"
+    src/keep.txt: "keep\n"
+  dirty:
+    src/a.txt: "fix\n"
+    src/new.test.txt: "new test\n"
+normalize_keys: [created]
+steps:
+  - argv: [shelf, push]
+    snapshot: [src/a.txt]
+  - argv: [shelf, push, --allow-main-tree, -m, "without the fix"]
+    snapshot: [src/a.txt, src/new.test.txt, src/keep.txt]
+  - argv: [shelf, list]
+  - argv: [shelf, push, --allow-main-tree]
+  - argv: [shelf, pop]
+    snapshot: [src/a.txt, src/new.test.txt, src/keep.txt]
+  - argv: [shelf, list]
+  - argv: [shelf, pop]

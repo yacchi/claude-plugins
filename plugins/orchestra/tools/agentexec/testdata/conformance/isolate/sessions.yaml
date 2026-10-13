@@ -1,0 +1,27 @@
+description: >
+  session-scoped branches: the current session's tree wins, a unique other
+  session's tree is used, two other sessions' trees are ambiguous (exit 2),
+  a session-less legacy tree is listed with session null
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+steps:
+  - argv: [isolate, create, --task, t1]
+    env: {CLAUDE_CODE_SESSION_ID: "AAAAAAAA-0000-4000-8000-000000000001"}
+  - argv: [isolate, create, --task, t1]
+    env: {CLAUDE_CODE_SESSION_ID: "bbbbbbbb-0000-4000-8000-000000000002"}
+  - argv: [isolate, create, --task, solo]
+    env: {CLAUDE_CODE_SESSION_ID: "bbbbbbbb-0000-4000-8000-000000000002"}
+  - argv: [isolate, create, --task, legacy]
+    env: {CLAUDE_CODE_SESSION_ID: "no!"}
+  - argv: [isolate, diff, --task, t1]
+  - argv: [isolate, remove, --task, t1]
+  - argv: [isolate, diff, --task, solo, --names-only]
+  - argv: [isolate, list]
+  - argv: [isolate, list, --session, aaaaaaaa]
+  - argv: [isolate, diff, --task, t1, --names-only]
+    env: {CLAUDE_CODE_SESSION_ID: "aaaaaaaa-0000-4000-8000-000000000001"}
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, diff, --task, t1, --names-only]
+  - argv: [isolate, remove, --task, legacy]

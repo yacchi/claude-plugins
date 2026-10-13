@@ -1,0 +1,330 @@
+{
+  "scenario": "isolate/sweep-sessions",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "mine"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/mine",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-mine",
+        "status": "created",
+        "task": "mine"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "theirs"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/11111111/theirs",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/11111111-theirs",
+        "status": "created",
+        "task": "theirs"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "legacy"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#3>",
+        "branch": "orchestra/legacy",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/legacy",
+        "status": "created",
+        "task": "legacy"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--dry-run",
+        "--include-current",
+        "--include-live"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [],
+        "dry_run": true,
+        "pruned": false,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 0,
+          "errors": 0,
+          "external": 0,
+          "removed": 0,
+          "skipped": 0,
+          "would_remove": 3
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/mine",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-mine",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "would-remove",
+            "task": "mine"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/11111111/theirs",
+            "current": false,
+            "path": "<WORK>-orchestra/11111111-theirs",
+            "session": "11111111",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "would-remove",
+            "task": "theirs"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/legacy",
+            "current": false,
+            "path": "<WORK>-orchestra/legacy",
+            "session": null,
+            "session_idle_minutes": null,
+            "status": "would-remove",
+            "task": "legacy"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [],
+        "dry_run": false,
+        "pruned": true,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 0,
+          "errors": 0,
+          "external": 0,
+          "removed": 1,
+          "skipped": 2,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/mine",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-mine",
+            "reason": "belongs to the running session; pass --include-current to sweep it",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "skipped",
+            "task": "mine"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/11111111/theirs",
+            "current": false,
+            "path": "<WORK>-orchestra/11111111-theirs",
+            "reason": "session 11111111 was active 0 min ago; pass --include-live to sweep it",
+            "session": "11111111",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "skipped",
+            "task": "theirs"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/legacy",
+            "current": false,
+            "path": "<WORK>-orchestra/legacy",
+            "session": null,
+            "session_idle_minutes": null,
+            "status": "removed",
+            "task": "legacy"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/mine",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-mine",
+            "session": "00000000",
+            "task": "mine"
+          },
+          {
+            "branch": "orchestra/11111111/theirs",
+            "current": false,
+            "path": "<WORK>-orchestra/11111111-theirs",
+            "session": "11111111",
+            "task": "theirs"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--live-window",
+        "0",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [],
+        "dry_run": false,
+        "pruned": true,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 0,
+          "errors": 0,
+          "external": 0,
+          "removed": 1,
+          "skipped": 1,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/mine",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-mine",
+            "reason": "belongs to the running session; pass --include-current to sweep it",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "skipped",
+            "task": "mine"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/11111111/theirs",
+            "current": false,
+            "path": "<WORK>-orchestra/11111111-theirs",
+            "session": "11111111",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "removed",
+            "task": "theirs"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--include-current"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [],
+        "dry_run": false,
+        "pruned": true,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 0,
+          "errors": 0,
+          "external": 0,
+          "removed": 1,
+          "skipped": 0,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/mine",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-mine",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "removed",
+            "task": "mine"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": []
+      },
+      "stderr": ""
+    }
+  ]
+}

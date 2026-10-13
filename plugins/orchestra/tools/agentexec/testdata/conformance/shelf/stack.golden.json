@@ -1,0 +1,250 @@
+{
+  "scenario": "shelf/stack",
+  "steps": [
+    {
+      "argv": [
+        "shelf",
+        "push",
+        "--allow-main-tree",
+        "--message",
+        "first",
+        "--",
+        "a.txt"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "files": [
+          "a.txt"
+        ],
+        "id": 0,
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "a.txt": {
+          "content": "a\n",
+          "shape": "text"
+        },
+        "b.txt": {
+          "content": "b2\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "shelf",
+        "push",
+        "--allow-main-tree"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "files": [
+          "b.txt"
+        ],
+        "id": 1,
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "a.txt": {
+          "content": "a\n",
+          "shape": "text"
+        },
+        "b.txt": {
+          "content": "b\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "shelf",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "entries": [
+          {
+            "created": "<CREATED>",
+            "files": [
+              "a.txt"
+            ],
+            "id": 0,
+            "keep_index": false,
+            "message": "first"
+          },
+          {
+            "created": "<CREATED>",
+            "files": [
+              "b.txt"
+            ],
+            "id": 1,
+            "keep_index": false,
+            "message": ""
+          }
+        ],
+        "status": "ok"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "apply",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "dropped": false,
+        "files": [
+          "a.txt"
+        ],
+        "id": 0,
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "a.txt": {
+          "content": "a2\n",
+          "shape": "text"
+        },
+        "b.txt": {
+          "content": "b\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "shelf",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "entries": [
+          {
+            "created": "<CREATED>",
+            "files": [
+              "a.txt"
+            ],
+            "id": 0,
+            "keep_index": false,
+            "message": "first"
+          },
+          {
+            "created": "<CREATED>",
+            "files": [
+              "b.txt"
+            ],
+            "id": 1,
+            "keep_index": false,
+            "message": ""
+          }
+        ],
+        "status": "ok"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "drop",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "id": 0,
+        "status": "ok"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "drop",
+        "7"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "no such shelf entry",
+        "status": "error"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "apply",
+        "7"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "no such shelf entry",
+        "status": "error"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "pop"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "dropped": true,
+        "files": [
+          "b.txt"
+        ],
+        "id": 1,
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "a.txt": {
+          "content": "a2\n",
+          "shape": "text"
+        },
+        "b.txt": {
+          "content": "b2\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "shelf",
+        "drop"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "no such shelf entry",
+        "status": "error"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "entries": [],
+        "status": "ok"
+      },
+      "stderr": ""
+    }
+  ]
+}

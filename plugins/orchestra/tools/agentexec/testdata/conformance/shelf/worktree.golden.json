@@ -1,0 +1,141 @@
+{
+  "scenario": "shelf/worktree",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "push"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "files": [],
+        "status": "empty"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "push",
+        "--repo",
+        "<ROOT>/work-orchestra/00000000-t1"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "not a git repository",
+        "status": "error"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/00000000-t1/scratch/00000000": {
+          "content": null,
+          "shape": "empty"
+        }
+      }
+    },
+    {
+      "argv": [
+        "shelf",
+        "list",
+        "--repo",
+        "<ROOT>/work-orchestra/00000000-t1"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "not a git repository",
+        "status": "error"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "entries": [],
+        "status": "ok"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "shelf",
+        "pop"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "reason": "no such shelf entry",
+        "status": "error"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/00000000-t1/scratch/00000000": {
+          "content": null,
+          "shape": "empty"
+        }
+      }
+    },
+    {
+      "argv": [
+        "shelf",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "entries": [],
+        "status": "ok"
+      },
+      "stderr": ""
+    }
+  ]
+}

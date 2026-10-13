@@ -1,0 +1,126 @@
+{
+  "scenario": "isolate/create-no-carry",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1",
+        "--no-carry"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/00000000-t1/.claude/settings.local.json": null,
+        "<ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js": null,
+        "<ROOT>/work-orchestra/00000000-t1/src/a.txt": {
+          "content": "changed\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t2",
+        "--backend",
+        "gtr"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/00000000/t2",
+        "carried": [
+          "node_modules"
+        ],
+        "carried_files": [
+          ".claude/settings.local.json"
+        ],
+        "carry_method": "clone",
+        "path": "<WORK>-orchestra/00000000-t2",
+        "status": "created",
+        "task": "t2"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t3",
+        "--backend",
+        "auto"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#3>",
+        "branch": "orchestra/00000000/t3",
+        "carried": [
+          "node_modules"
+        ],
+        "carried_files": [
+          ".claude/settings.local.json"
+        ],
+        "carry_method": "clone",
+        "path": "<WORK>-orchestra/00000000-t3",
+        "status": "created",
+        "task": "t3"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/00000000/t2",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t2",
+            "session": "00000000",
+            "task": "t2"
+          },
+          {
+            "branch": "orchestra/00000000/t3",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t3",
+            "session": "00000000",
+            "task": "t3"
+          }
+        ]
+      },
+      "stderr": ""
+    }
+  ]
+}
