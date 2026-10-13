@@ -1,0 +1,981 @@
+{
+ "cases": [
+  {
+   "name": "parallel-idle",
+   "config": {
+    "idle_seconds": 3,
+    "tool_idle_seconds": 5
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": \"a\"}, \"toolCallId\": \"a\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": \"b\"}, \"toolCallId\": \"b\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"b\"}"
+    },
+    {
+     "op": "advance",
+     "s": 4
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"a\"}"
+    },
+    {
+     "op": "advance",
+     "s": 3
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    1.0,
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 3.0,
+    "runtime_s": 7.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"id\":\"b\"}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "turn-end-clears",
+   "config": {
+    "idle_seconds": 3,
+    "tool_idle_seconds": 50
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": \"a\"}, \"toolCallId\": \"a\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": "
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"turn_end\"}"
+    },
+    {
+     "op": "advance",
+     "s": 3
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 3.0,
+    "runtime_s": 3.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"id\":\"a\"}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "deadline-frozen-at-trip",
+   "config": {
+    "idle_seconds": 3,
+    "tool_idle_seconds": 5
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": \"a\"}, \"toolCallId\": \"a\"}"
+    },
+    {
+     "op": "advance",
+     "s": 4.9
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "advance",
+     "s": 0.1
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "advance",
+     "s": 5
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    0.09999999999999432,
+    null,
+    null
+   ],
+   "tool_running": true,
+   "result": {
+    "reason": "tool-idle",
+    "elapsed_s": 5.0,
+    "runtime_s": 5.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"id\":\"a\"}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "wall",
+   "config": {
+    "idle_seconds": 100,
+    "tool_idle_seconds": 100,
+    "wall_seconds": {
+     "deep": 10,
+     "standard": 4
+    }
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "advance",
+     "s": 2
+    },
+    {
+     "op": "line",
+     "text": "not json"
+    },
+    {
+     "op": "advance",
+     "s": 1.5
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "advance",
+     "s": 0.5
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    0.5,
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "wall",
+    "elapsed_s": 4.0,
+    "runtime_s": 4.0,
+    "last_tool": null,
+    "repeat_count": 0
+   }
+  },
+  {
+   "name": "wall-class",
+   "config": {
+    "wall_seconds": {
+     "deep": 10,
+     "standard": 4
+    }
+   },
+   "cls": "deep",
+   "ops": [
+    {
+     "op": "advance",
+     "s": 5
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "advance",
+     "s": 5
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    5.0,
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "wall",
+    "elapsed_s": 10.0,
+    "runtime_s": 10.0,
+    "last_tool": null,
+    "repeat_count": 0
+   }
+  },
+  {
+   "name": "wall-unknown-class",
+   "config": {
+    "wall_seconds": {
+     "deep": 1,
+     "standard": 3
+    }
+   },
+   "cls": "nope",
+   "ops": [
+    {
+     "op": "advance",
+     "s": 2
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "advance",
+     "s": 1
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    1.0,
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "wall",
+    "elapsed_s": 3.0,
+    "runtime_s": 3.0,
+    "last_tool": null,
+    "repeat_count": 0
+   }
+  },
+  {
+   "name": "wall-no-standard",
+   "config": {
+    "wall_seconds": {
+     "deep": 1
+    }
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "advance",
+     "s": 2399
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "advance",
+     "s": 1
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null,
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 2399.0,
+    "runtime_s": 2399.0,
+    "last_tool": null,
+    "repeat_count": 0
+   }
+  },
+  {
+   "name": "wall-not-object",
+   "config": {
+    "wall_seconds": "x"
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "advance",
+     "s": 2399
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "advance",
+     "s": 1
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null,
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 2399.0,
+    "runtime_s": 2399.0,
+    "last_tool": null,
+    "repeat_count": 0
+   }
+  },
+  {
+   "name": "repeat-consecutive",
+   "config": {
+    "repeat_limit": 3
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"x\": 1}, \"toolCallId\": \"1\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"1\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"x\": 1}, \"toolCallId\": \"2\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"2\"}"
+    },
+    {
+     "op": "advance",
+     "s": 0.25
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"x\": 1}, \"toolCallId\": \"3\"}"
+    },
+    {
+     "op": "advance",
+     "s": 1
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": true,
+   "result": {
+    "reason": "repeat",
+    "elapsed_s": 0.25,
+    "runtime_s": 0.25,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"x\":1}"
+    },
+    "repeat_count": 3
+   }
+  },
+  {
+   "name": "repeat-interleaved",
+   "config": {
+    "repeat_limit": 3
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"a\", \"args\": {\"x\": 1}, \"toolCallId\": \"1\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"1\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"b\", \"args\": {\"x\": 1}, \"toolCallId\": \"2\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"2\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"a\", \"args\": {\"x\": 1}, \"toolCallId\": \"3\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"3\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"b\", \"args\": {\"x\": 1}, \"toolCallId\": \"4\"}"
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    900.0
+   ],
+   "tool_running": true,
+   "result": null
+  },
+  {
+   "name": "repeat-key-order-insensitive",
+   "config": {
+    "repeat_limit": 2
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"a\": 1, \"b\": [1.0, \"é\"]}, \"toolCallId\": \"1\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"b\": [1.0, \"é\"], \"a\": 1}, \"toolCallId\": \"2\"}"
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": true,
+   "result": {
+    "reason": "repeat",
+    "elapsed_s": 0.0,
+    "runtime_s": 0.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"a\":1,\"b\":[1.0,\"é\"]}"
+    },
+    "repeat_count": 2
+   }
+  },
+  {
+   "name": "repeat-int-float-differ",
+   "config": {
+    "repeat_limit": 2
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"a\": 1}, \"toolCallId\": \"1\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"a\": 1.0}, \"toolCallId\": \"2\"}"
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    900.0
+   ],
+   "tool_running": true,
+   "result": null
+  },
+  {
+   "name": "anonymous-calls",
+   "config": {
+    "idle_seconds": 1,
+    "tool_idle_seconds": 10
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": null}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": null}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"never-seen\"}"
+    },
+    {
+     "op": "advance",
+     "s": 2
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"never-seen\"}"
+    },
+    {
+     "op": "advance",
+     "s": 0.5
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "advance",
+     "s": 1
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    8.0,
+    0.5,
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 1.5,
+    "runtime_s": 3.5,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"id\":null}"
+    },
+    "repeat_count": 2
+   }
+  },
+  {
+   "name": "anonymous-sorted-lexically",
+   "config": {
+    "idle_seconds": 1,
+    "tool_idle_seconds": 10
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 0}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 1}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 2}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 3}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 4}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 5}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 6}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 7}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 8}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 9}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"n\": 10}}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "advance",
+     "s": 2
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": \"x\"}"
+    },
+    {
+     "op": "advance",
+     "s": 1
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    8.0,
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 1.0,
+    "runtime_s": 3.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"n\":10}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "end-without-id-clears",
+   "config": {
+    "idle_seconds": 1,
+    "tool_idle_seconds": 10
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": \"a\"}, \"toolCallId\": \"a\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": \"b\"}, \"toolCallId\": \"b\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\"}"
+    },
+    {
+     "op": "advance",
+     "s": 1
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 1.0,
+    "runtime_s": 1.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"id\":\"b\"}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "agent-end-clears",
+   "config": {
+    "idle_seconds": 1,
+    "tool_idle_seconds": 10
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": \"a\"}, \"toolCallId\": \"a\"}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"agent_end\"}"
+    },
+    {
+     "op": "advance",
+     "s": 1
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 1.0,
+    "runtime_s": 1.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"id\":\"a\"}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "numeric-call-id",
+   "config": {
+    "idle_seconds": 1,
+    "tool_idle_seconds": 10
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"id\": 7}, \"toolCallId\": 7}"
+    },
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_end\", \"toolCallId\": 7}"
+    },
+    {
+     "op": "advance",
+     "s": 1
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 1.0,
+    "runtime_s": 1.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"id\":7}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "long-unicode-preview",
+   "config": {
+    "repeat_limit": 1
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"ツール\", \"args\": {\"text\": \"ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ\", \"esc\": \"\\\"\\\\\\n\\t\\u0001/\"}, \"toolCallId\": \"a\"}"
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": true,
+   "result": {
+    "reason": "repeat",
+    "elapsed_s": 0.0,
+    "runtime_s": 0.0,
+    "last_tool": {
+     "name": "ツール",
+     "args_preview": "{\"esc\":\"\\\"\\\\\\n\\t\\u0001/\",\"text\":\"あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "non-string-tool-name",
+   "config": {
+    "repeat_limit": 1
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": null, \"args\": {\"id\": \"a\"}, \"toolCallId\": \"a\"}"
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": true,
+   "result": {
+    "reason": "repeat",
+    "elapsed_s": 0.0,
+    "runtime_s": 0.0,
+    "last_tool": {
+     "name": "None",
+     "args_preview": "{\"id\":\"a\"}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "missing-name-and-args",
+   "config": {
+    "repeat_limit": 1
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolCallId\": \"z\"}"
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": true,
+   "result": {
+    "reason": "repeat",
+    "elapsed_s": 0.0,
+    "runtime_s": 0.0,
+    "last_tool": {
+     "name": "",
+     "args_preview": "{}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "float-args-repr",
+   "config": {
+    "repeat_limit": 1
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "line",
+     "text": "{\"type\": \"tool_execution_start\", \"toolName\": \"bash\", \"args\": {\"f\": [1e+16, 1e-05, 0.1, 2.0, 123456789012345678901234567890]}, \"toolCallId\": \"a\"}"
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    null
+   ],
+   "tool_running": true,
+   "result": {
+    "reason": "repeat",
+    "elapsed_s": 0.0,
+    "runtime_s": 0.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"f\":[1e+16,1e-05,0.1,2.0,123456789012345678901234567890]}"
+    },
+    "repeat_count": 1
+   }
+  },
+  {
+   "name": "records-reset-idle",
+   "config": {
+    "idle_seconds": 2
+   },
+   "cls": "standard",
+   "ops": [
+    {
+     "op": "advance",
+     "s": 1.5
+    },
+    {
+     "op": "line",
+     "text": "x"
+    },
+    {
+     "op": "advance",
+     "s": 1.5
+    },
+    {
+     "op": "check"
+    },
+    {
+     "op": "advance",
+     "s": 0.5
+    },
+    {
+     "op": "check"
+    }
+   ],
+   "checks": [
+    0.5,
+    null
+   ],
+   "tool_running": false,
+   "result": {
+    "reason": "idle",
+    "elapsed_s": 2.0,
+    "runtime_s": 3.5,
+    "last_tool": null,
+    "repeat_count": 0
+   }
+  }
+ ]
+}

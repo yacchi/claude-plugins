@@ -1,0 +1,1097 @@
+{
+ "cases": [
+  {
+   "name": "safe-denial-resumed",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.pub-cache/p/x: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    },
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 5, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 6, \"cost\": {\"total\": 5e-06}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    },
+    {
+     "prompt": "The sandbox blocked writes to: <HOME>/.pub-cache/p. Those paths are now writable. Re-run the step that failed and continue the original task. If nothing remains to do, repeat your previous final answer unchanged.",
+     "resume": "s1"
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "s1",
+    "resumed": true,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "cost_micro_usd": 15,
+     "tokens": {
+      "input_tokens": 15,
+      "output_tokens": 2,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     }
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.pub-cache/p/x",
+       "op": "write",
+       "grant_candidate": "<HOME>/.pub-cache/p",
+       "auto": true,
+       "granted": true
+      }
+     ],
+     "granted": [
+      "<HOME>/.pub-cache/p"
+     ],
+     "cycles": 1
+    }
+   },
+   "learned": [
+    "<HOME>/.pub-cache/p"
+   ],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".local",
+    ".local/state",
+    ".local/state/claude-orchestra",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "mixed-set-not-resumed",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.pub-cache/p/x: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.config/q: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"mkdir failed: Operation not permitted\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "mkdir failed: Operation not permitted",
+    "session_id": "s1",
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 10,
+      "output_tokens": 1,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 10
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.pub-cache/p/x",
+       "op": "write",
+       "grant_candidate": "<HOME>/.pub-cache/p",
+       "auto": true,
+       "granted": true
+      },
+      {
+       "path": "<HOME>/.config/q",
+       "op": "write",
+       "grant_candidate": "<HOME>/.config/q",
+       "auto": false,
+       "why": "not under an auto-grantable cache root"
+      }
+     ],
+     "granted": [
+      "<HOME>/.pub-cache/p"
+     ],
+     "cycles": 0
+    }
+   },
+   "learned": [
+    "<HOME>/.pub-cache/p"
+   ],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".local",
+    ".local/state",
+    ".local/state/claude-orchestra",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "worked-around-stays-ok",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.config/q: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"ok\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"wrote it elsewhere\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "wrote it elsewhere",
+    "session_id": "s1",
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 10,
+      "output_tokens": 1,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 10
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.config/q",
+       "op": "write",
+       "grant_candidate": "<HOME>/.config/q",
+       "auto": false,
+       "why": "not under an auto-grantable cache root"
+      }
+     ],
+     "granted": [],
+     "cycles": 0
+    }
+   },
+   "learned": [],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "cycle-cap",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.cache/a/x: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    },
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.cache/b/x: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    },
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.cache/c/x: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    },
+    {
+     "prompt": "The sandbox blocked writes to: <HOME>/.cache/a. Those paths are now writable. Re-run the step that failed and continue the original task. If nothing remains to do, repeat your previous final answer unchanged.",
+     "resume": "s1"
+    },
+    {
+     "prompt": "The sandbox blocked writes to: <HOME>/.cache/b. Those paths are now writable. Re-run the step that failed and continue the original task. If nothing remains to do, repeat your previous final answer unchanged.",
+     "resume": "s1"
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "s1",
+    "resumed": true,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "cost_micro_usd": 30,
+     "tokens": {
+      "input_tokens": 30,
+      "output_tokens": 3,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     }
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.cache/a/x",
+       "op": "write",
+       "grant_candidate": "<HOME>/.cache/a",
+       "auto": true,
+       "granted": true
+      },
+      {
+       "path": "<HOME>/.cache/b/x",
+       "op": "write",
+       "grant_candidate": "<HOME>/.cache/b",
+       "auto": true,
+       "granted": true
+      },
+      {
+       "path": "<HOME>/.cache/c/x",
+       "op": "write",
+       "grant_candidate": "<HOME>/.cache/c",
+       "auto": true,
+       "granted": true
+      }
+     ],
+     "granted": [
+      "<HOME>/.cache/a",
+      "<HOME>/.cache/b",
+      "<HOME>/.cache/c"
+     ],
+     "cycles": 2,
+     "grant_note": "granted; not resumed: cycle-cap"
+    }
+   },
+   "learned": [
+    "<HOME>/.cache/a",
+    "<HOME>/.cache/b",
+    "<HOME>/.cache/c"
+   ],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".local",
+    ".local/state",
+    ".local/state/claude-orchestra",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "no-session-noted",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.cache/a/x: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": null,
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 10,
+      "output_tokens": 1,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 10
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.cache/a/x",
+       "op": "write",
+       "grant_candidate": "<HOME>/.cache/a",
+       "auto": true,
+       "granted": true
+      }
+     ],
+     "granted": [
+      "<HOME>/.cache/a"
+     ],
+     "cycles": 0,
+     "grant_note": "granted; not resumed: no-session"
+    }
+   },
+   "learned": [
+    "<HOME>/.cache/a"
+   ],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".local",
+    ".local/state",
+    ".local/state/claude-orchestra",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "resumed-without-session-keeps-it",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.cache/a/x: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    },
+    {
+     "stdout": "{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"error\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    },
+    {
+     "prompt": "The sandbox blocked writes to: <HOME>/.cache/a. Those paths are now writable. Re-run the step that failed and continue the original task. If nothing remains to do, repeat your previous final answer unchanged.",
+     "resume": "s1"
+    }
+   ],
+   "want": {
+    "status": "unavailable",
+    "answer": null,
+    "session_id": "s1",
+    "resumed": true,
+    "reason": "error",
+    "exit_code": 0,
+    "usage": {
+     "cost_micro_usd": 20,
+     "tokens": {
+      "input_tokens": 20,
+      "output_tokens": 2,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     }
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.cache/a/x",
+       "op": "write",
+       "grant_candidate": "<HOME>/.cache/a",
+       "auto": true,
+       "granted": true
+      }
+     ],
+     "granted": [
+      "<HOME>/.cache/a"
+     ],
+     "cycles": 1
+    }
+   },
+   "learned": [
+    "<HOME>/.cache/a"
+   ],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".local",
+    ".local/state",
+    ".local/state/claude-orchestra",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "bwrap-direct-file-grant",
+   "backend": "bwrap",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.pnpm-store/probe.txt: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    },
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 5, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 6, \"cost\": {\"total\": 5e-06}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    },
+    {
+     "prompt": "The sandbox blocked writes to: <HOME>/.pnpm-store. Those paths are now writable. Re-run the step that failed and continue the original task. If nothing remains to do, repeat your previous final answer unchanged.",
+     "resume": "s1"
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "s1",
+    "resumed": true,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "cost_micro_usd": 15,
+     "tokens": {
+      "input_tokens": 15,
+      "output_tokens": 2,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     }
+    },
+    "sandbox": {
+     "backend": "bwrap",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.pnpm-store/probe.txt",
+       "op": "write",
+       "grant_candidate": "<HOME>/.pnpm-store",
+       "auto": true,
+       "granted": true
+      }
+     ],
+     "granted": [
+      "<HOME>/.pnpm-store"
+     ],
+     "cycles": 1
+    }
+   },
+   "learned": [
+    "<HOME>/.pnpm-store"
+   ],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".local",
+    ".local/state",
+    ".local/state/claude-orchestra",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "bwrap-dir-created",
+   "backend": "bwrap",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.cargo/registry/x/y: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    },
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 5, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 6, \"cost\": {\"total\": 5e-06}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    },
+    {
+     "prompt": "The sandbox blocked writes to: <HOME>/.cargo/registry/x. Those paths are now writable. Re-run the step that failed and continue the original task. If nothing remains to do, repeat your previous final answer unchanged.",
+     "resume": "s1"
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "s1",
+    "resumed": true,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "cost_micro_usd": 15,
+     "tokens": {
+      "input_tokens": 15,
+      "output_tokens": 2,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     }
+    },
+    "sandbox": {
+     "backend": "bwrap",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.cargo/registry/x/y",
+       "op": "write",
+       "grant_candidate": "<HOME>/.cargo/registry/x",
+       "auto": true,
+       "granted": true
+      }
+     ],
+     "granted": [
+      "<HOME>/.cargo/registry/x"
+     ],
+     "cycles": 1
+    }
+   },
+   "learned": [
+    "<HOME>/.cargo/registry/x"
+   ],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".cargo/registry",
+    ".cargo/registry/x",
+    ".config",
+    ".local",
+    ".local/state",
+    ".local/state/claude-orchestra",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "grant-did-not-resolve",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.cache/a/x: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    },
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.cache/a/x: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"still Operation not permitted\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    },
+    {
+     "prompt": "The sandbox blocked writes to: <HOME>/.cache/a. Those paths are now writable. Re-run the step that failed and continue the original task. If nothing remains to do, repeat your previous final answer unchanged.",
+     "resume": "s1"
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "still Operation not permitted",
+    "session_id": "s1",
+    "resumed": true,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "cost_micro_usd": 20,
+     "tokens": {
+      "input_tokens": 20,
+      "output_tokens": 2,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     }
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.cache/a/x",
+       "op": "write",
+       "grant_candidate": "<HOME>/.cache/a",
+       "auto": false,
+       "why": "grant did not resolve the denial"
+      }
+     ],
+     "granted": [],
+     "cycles": 1
+    }
+   },
+   "learned": [
+    "<HOME>/.cache/a"
+   ],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".local",
+    ".local/state",
+    ".local/state/claude-orchestra",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "ok-with-unsafe-advisory",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.config/outside: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "s1",
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 10,
+      "output_tokens": 1,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 10
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.config/outside",
+       "op": "write",
+       "grant_candidate": "<HOME>/.config/outside",
+       "auto": false,
+       "why": "not under an auto-grantable cache root"
+      }
+     ],
+     "granted": [],
+     "cycles": 0
+    }
+   },
+   "learned": [],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "failed-with-unsafe-needs-permission",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"mkdir: <HOME>/.config/outside: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"error\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    }
+   ],
+   "want": {
+    "status": "needs-permission",
+    "answer": "DONE",
+    "session_id": "s1",
+    "resumed": false,
+    "reason": "sandbox",
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 10,
+      "output_tokens": 1,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 10
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.config/outside",
+       "op": "write",
+       "grant_candidate": "<HOME>/.config/outside",
+       "auto": false,
+       "why": "not under an auto-grantable cache root"
+      }
+     ],
+     "granted": [],
+     "cycles": 0
+    }
+   },
+   "learned": [],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "stderr-denial",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "touch: <HOME>/.npm/_x/y: Operation not permitted\n",
+     "exit_code": 0
+    },
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 3, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 4, \"cost\": {\"total\": 3e-06}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    },
+    {
+     "prompt": "The sandbox blocked writes to: <HOME>/.npm/_x. Those paths are now writable. Re-run the step that failed and continue the original task. If nothing remains to do, repeat your previous final answer unchanged.",
+     "resume": "s1"
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "s1",
+    "resumed": true,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "cost_micro_usd": 13,
+     "tokens": {
+      "input_tokens": 13,
+      "output_tokens": 2,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     }
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.npm/_x/y",
+       "op": "write",
+       "grant_candidate": "<HOME>/.npm/_x",
+       "auto": true,
+       "granted": true
+      }
+     ],
+     "granted": [
+      "<HOME>/.npm/_x"
+     ],
+     "cycles": 1
+    }
+   },
+   "learned": [
+    "<HOME>/.npm/_x"
+   ],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".local",
+    ".local/state",
+    ".local/state/claude-orchestra",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "intentional-deny-read",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"tool_execution_end\", \"toolName\": \"bash\", \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"cat: <HOME>/.ssh/id: Operation not permitted\"}], \"isError\": true}, \"isError\": true}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"error\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    }
+   ],
+   "want": {
+    "status": "unavailable",
+    "answer": "DONE",
+    "session_id": "s1",
+    "resumed": false,
+    "reason": "error",
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 10,
+      "output_tokens": 1,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 10
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [
+      {
+       "path": "<HOME>/.ssh/id",
+       "op": "read",
+       "intentional": true,
+       "auto": false,
+       "grant_candidate": null,
+       "why": "denied on purpose (deny_read / tamper protection)"
+      }
+     ],
+     "granted": [],
+     "cycles": 0
+    }
+   },
+   "learned": [],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  },
+  {
+   "name": "no-denials",
+   "backend": "seatbelt",
+   "runs": [
+    {
+     "stdout": "{\"type\": \"session\", \"id\": \"s1\"}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"DONE\"}], \"usage\": {\"input\": 10, \"output\": 1, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 11, \"cost\": {\"total\": 1e-05}}, \"stopReason\": \"stop\"}}\n",
+     "stderr": "",
+     "exit_code": 0
+    }
+   ],
+   "calls": [
+    {
+     "prompt": "task",
+     "resume": null
+    }
+   ],
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "s1",
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 10,
+      "output_tokens": 1,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 10
+    },
+    "sandbox": {
+     "backend": "seatbelt",
+     "enforced": true,
+     "reason": "",
+     "limits": [],
+     "writable": [
+      "<HOME>/work/tree"
+     ],
+     "denials": [],
+     "granted": [],
+     "cycles": 0
+    }
+   },
+   "learned": [],
+   "dirs": [
+    ".cache",
+    ".cargo",
+    ".config",
+    ".npm",
+    ".pnpm-store",
+    ".pub-cache",
+    ".ssh",
+    "work",
+    "work/tree"
+   ]
+  }
+ ]
+}
