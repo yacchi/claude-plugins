@@ -338,14 +338,17 @@ DEFAULTS = {
     "interactive_host": "auto",
     # Same job as `orca`, hosted by herdr (agent_exec_herdr.py). `args` are
     # the native claude arguments passed after `--`; the prompt/result
-    # directories and `add_dirs` are appended as --add-dir.
+    # directories and `add_dirs` are appended as --add-dir. orchestra runs its
+    # own herdr (XDG_CONFIG_HOME=<state dir>/hx) under the `sandbox` config;
+    # `auto_trust` (default on) applies only to a worktree the executor
+    # created while the server is actually sandboxed.
     "herdr": {
         "enabled": "auto",
         "args": "--model {model} --permission-mode {permission_mode}",
         "models": {"light": "sonnet", "standard": "opus", "deep": "opus"},
         "permission_mode": "acceptEdits",
         "add_dirs": [],
-        "auto_trust": False,
+        "auto_trust": True,
         "startup_timeout": 90,
         "task_timeout": 3600,
         "keep_sessions": True,
@@ -4264,7 +4267,13 @@ def _build_doctor_report():
         "route": route_preview,
         "cooldowns": {"path": doctor_state_path, "active": doctor_cooldowns},
         "sandbox": agent_exec_sandbox.doctor_section(doctor_cfg.get("sandbox")),
+        "herdr_host": _herdr_host_report(doctor_cfg),
     }
+
+
+def _herdr_host_report(cfg):
+    import agent_exec_herdr
+    return agent_exec_herdr.host_report(cfg)
 
 
 def _print_doctor_text(report):
@@ -4359,6 +4368,9 @@ def _print_doctor_text(report):
             print("  - %s: %s (%s)" % (
                 name, "ok" if probe.get("ok") else "unavailable", probe.get("detail"),
             ))
+        host = report.get("herdr_host") or {}
+        print("herdr host: home=%s sandboxed=%s (%s)" % (
+            host.get("home"), host.get("sandboxed"), host.get("reason")))
         learned = sandbox.get("learned") or {}
         print("  learned grants: %d (%s)" % (learned.get("count", 0), learned.get("path")))
         if learned.get("warning"):

@@ -19,6 +19,13 @@ started it. Each package gets an orchestra-owned worktree (task
 Completion is signalled only by the result file the prompt asks Claude to
 write: `idle`/`done` mean the TUI settled, not that the task finished.
 
+Orchestra owns its herdr: XDG_CONFIG_HOME points every herdr call (and the
+server) at `<orchestra state dir>/hx`, so the user's herdr config and
+sessions are never touched, and the server runs under the executor sandbox
+(Seatbelt / bubblewrap) so every pane and the Claude inside is confined. The
+folder-trust dialog is only auto-accepted for a worktree this executor
+created, under a sandboxed server.
+
 Sessions are persisted in `<state dir>/herdr-sessions.json`. Stdlib only;
 agent_exec is imported lazily.
 """
@@ -28,6 +35,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
 import threading
@@ -47,6 +55,29 @@ _INPUT_SETTLE = 1
 _PERMISSION_MODES = frozenset(("acceptEdits", "auto", "default", "plan"))
 _TRUST_MARKERS = ("trust this folder", "is this a project you")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+# A unix socket path must stay under sun_path (104 bytes on macOS).
+_SOCK_LIMIT = 100
+_HOME_DIR = "hx"
+# herdr settings orchestra pins in its own config.toml: no first-run
+# onboarding, toasts, sounds, update checks or agent resume on restore.
+_CONFIG_TOML = """\
+onboarding = false
+
+[update]
+version_check = false
+
+[ui.toast]
+delivery = "off"
+
+[ui.sound]
+enabled = false
+
+[session]
+resume_agents_on_restore = false
+
+[experimental]
+pane_history = false
+"""
 
 
 def _agent_exec():
@@ -68,6 +99,13 @@ def _tools():
         sys.path.insert(0, _HERE)
     import agent_exec_tools  # noqa: E402
     return agent_exec_tools
+
+
+def _sandbox():
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    import agent_exec_sandbox  # noqa: E402
+    return agent_exec_sandbox
 
 
 def _need(kind, detail):
@@ -179,11 +217,53 @@ def session_name(run_id=None, env=None):
 
 
 def server_env(env=None):
-    """The server's environment: no Claude Code session markers, or the
-    child Claude inherits them and stops saving transcripts."""
+    """The environment of every herdr call and of the server: no Claude Code
+    session markers (a child Claude inherits them and stops saving
+    transcripts) and nothing from the user's own herdr. CLAUDE_CONFIG_DIR stays."""
     env = os.environ if env is None else env
     return {k: v for k, v in env.items()
-            if not k.startswith("CLAUDE_CODE_") and k != "CLAUDECODE"}
+            if not k.startswith(("CLAUDE_CODE_", "HERDR_"))
+            and k not in ("CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT",
+                          "XDG_CONFIG_HOME")}
+
+
+def resolve_home(sname, base=None, fallback_root=None, uid=None, create=True):
+    """The directory used as XDG_CONFIG_HOME for orchestra's herdr:
+    `<orchestra state dir>/hx`, or `<tmp>/orchestra-<uid>/hx` when the
+    longest socket path under it would not fit in a unix socket name. The
+    fallback parent must be a private directory of this user."""
+    base = base or os.path.join(_sandbox().state_dir(), _HOME_DIR)
+    longest = os.path.join(base, "herdr", "sessions", sname, "herdr-client.sock")
+    if len(longest.encode("utf-8")) < _SOCK_LIMIT:
+        return base
+    uid = os.getuid() if uid is None else uid
+    root = fallback_root or ("/private/tmp" if sys.platform == "darwin" else "/tmp")
+    parent = os.path.join(root, "orchestra-%d" % uid)
+    if create and not os.path.lexists(parent):
+        os.mkdir(parent, 0o700)
+    if os.path.lexists(parent):
+        info = os.lstat(parent)
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != uid
+                or info.st_mode & 0o022):
+            raise _need("error", "%s is not a private directory of this user "
+                                 "(herdr home fallback)" % parent)
+    return os.path.join(parent, _HOME_DIR)
+
+
+def host_report(cfg=None, probe_results=None):
+    """Doctor view of the herdr host: its home and whether the server would
+    be sandboxed (and so whether `auto_trust` could apply)."""
+    agent_exec = _agent_exec()
+    cwd = os.getcwd()
+    try:
+        home = resolve_home("orchestra-00000000", create=False)
+    except Exception as exc:
+        return {"home": None, "sandboxed": False, "reason": str(getattr(exc, "detail", exc))}
+    sandbox_cfg = (cfg or agent_exec.DEFAULTS).get("sandbox")
+    spec = _sandbox().prepare_host(
+        sandbox_cfg, cwd, agent_exec.isolate_home(cwd), home, probe_results=probe_results)
+    return {"home": home, "sandboxed": bool(spec["enforced"] and spec["policy"]),
+            "backend": spec["backend"], "reason": spec["reason"]}
 
 
 class HerdrExecutor(object):
@@ -198,7 +278,7 @@ class HerdrExecutor(object):
 
     def __init__(self, cfg=None, binary=None, tools_cfg=None, runner=subprocess.run,
                  popen=subprocess.Popen, clock=time.time, sleep=time.sleep, poll=2.0,
-                 on_event=None, env=None):
+                 on_event=None, env=None, herdr_home=None, sandbox_probes=None):
         self.cfg = merged_config(cfg)
         self.binary = binary
         self.tools_cfg = tools_cfg
@@ -209,6 +289,12 @@ class HerdrExecutor(object):
         self.poll = poll
         self.on_event = on_event
         self.env = env
+        self._home_override = herdr_home
+        self._sandbox_probes = sandbox_probes
+        self._home_cache = None
+        self._sandboxed = False
+        self._unsandboxed = None
+        self._repo = None
         self.state_dir = None
         self.lock = threading.Lock()
         self.sname = session_name(env=env)
@@ -250,7 +336,9 @@ class HerdrExecutor(object):
             proc = self.runner(
                 [binary, "--session", self.sname or "orchestra-probe", "--version"],
                 capture_output=True, text=True, stdin=subprocess.DEVNULL,
-                timeout=_STATUS_TIMEOUT)
+                timeout=_STATUS_TIMEOUT, env=self._env(self.sname or "orchestra-probe"))
+        except _orca().OrcaNeed as exc:
+            return False, exc.detail
         except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
             return False, "could not run herdr: %s" % exc
         if proc.returncode != 0:
@@ -266,6 +354,21 @@ class HerdrExecutor(object):
             raise _HerdrError("herdr is not configured (binary or session name missing)")
         return [binary, "--session", sname]
 
+    def _home(self, sname=None):
+        sname = sname or self.sname
+        if self._home_override:
+            return self._home_override
+        if self._home_cache is None or self._home_cache[0] != sname:
+            self._home_cache = (sname, resolve_home(sname))
+        return self._home_cache[1]
+
+    def _env(self, sname=None):
+        """The environment of every herdr process: scrubbed, and pointed at
+        orchestra's own herdr home so the user's herdr is never reached."""
+        env = server_env(self.env)
+        env["XDG_CONFIG_HOME"] = self._home(sname)
+        return env
+
     def _call(self, args, timeout=_CALL_TIMEOUT, sname=None):
         """One herdr call. Returns (parsed payload or {}, raw stdout);
         raises _HerdrError on a non-zero exit."""
@@ -273,7 +376,8 @@ class HerdrExecutor(object):
         label = " ".join(args[:2])
         try:
             proc = self.runner(argv, capture_output=True, text=True,
-                               stdin=subprocess.DEVNULL, timeout=timeout)
+                               stdin=subprocess.DEVNULL, timeout=timeout,
+                               env=self._env(sname))
         except subprocess.TimeoutExpired:
             raise _HerdrError("herdr %s timed out after %ss" % (label, timeout))
         except (OSError, ValueError) as exc:
@@ -320,14 +424,25 @@ class HerdrExecutor(object):
             if self._server_ready:
                 return
             if self._status_running():
+                # Not ours: nothing says it runs under the sandbox.
+                self._set_sandboxed(None, "the server was already running")
                 self._server_ready = True
                 return
+            home = self._home()
+            os.makedirs(os.path.join(home, "herdr"), mode=0o700, exist_ok=True)
+            with open(os.path.join(home, "herdr", "config.toml"), "w",
+                      encoding="utf-8") as fh:
+                fh.write(_CONFIG_TOML)
+            spec = self._host_spec(home)
+            argv = _sandbox().wrap_argv(self._h() + ["server"], os.getcwd(), spec)
+            env = _sandbox().child_env(spec, self._env())
+            self._set_sandboxed(spec)
             log_dir = os.path.join(self.state_dir or os.getcwd(), "herdr")
             os.makedirs(log_dir, exist_ok=True)
             log = open(os.path.join(log_dir, self.sname + ".server.log"), "ab")
             try:
-                self.popen(self._h() + ["server"], stdin=subprocess.DEVNULL, stdout=log,
-                           stderr=log, start_new_session=True, env=server_env(self.env))
+                self.popen(argv, stdin=subprocess.DEVNULL, stdout=log,
+                           stderr=log, start_new_session=True, env=env)
             except OSError as exc:
                 raise _need("error", "could not start the herdr server: %s" % exc)
             finally:
@@ -341,6 +456,27 @@ class HerdrExecutor(object):
                 if self.clock() >= deadline:
                     raise _need("error", "herdr server did not start")
                 self.sleep(min(self.poll, 1.0) if self.poll else 0)
+
+    def _host_spec(self, home):
+        agent_exec = _agent_exec()
+        cfg = self.tools_cfg if self.tools_cfg is not None else agent_exec.DEFAULTS
+        repo = self._repo or os.getcwd()
+        spec = _sandbox().prepare_host(
+            cfg.get("sandbox"), repo, agent_exec.isolate_home(repo), home,
+            extra_writable=[self.state_dir], probe_results=self._sandbox_probes)
+        if spec["refuse"]:
+            raise _need("error", spec["reason"])
+        return spec
+
+    def _set_sandboxed(self, spec, reason=None):
+        """Remember whether the server confines its panes; say so once when
+        it does not."""
+        if spec is not None and spec["enforced"] and spec["policy"] is not None:
+            self._sandboxed, self._unsandboxed = True, None
+            return
+        self._sandboxed = False
+        self._unsandboxed = reason or spec["reason"]
+        sys.stderr.write("agent-exec: herdr not sandboxed: %s\n" % self._unsandboxed)
 
     def shutdown(self):
         """Stop the server, but only if this executor started it and no
@@ -462,6 +598,7 @@ class HerdrExecutor(object):
         prompt. Raises OrcaNeed on the trust dialog (unless auto_trust applies
         to a worktree this executor created) or any other failed start."""
         native = self._native_args(session, fork)
+        self._repo = self._repo or session.get("repo")
         self._ensure_server()
         name = agent_name(session["pkg"])
         try:
@@ -493,10 +630,13 @@ class HerdrExecutor(object):
             raise _need("error", str(exc))
         if not _is_trust(screen):
             raise _need("error", "agent not ready:\n%s" % _tail(screen))
-        if not (self.cfg["auto_trust"] and session.get("created")):
+        if not (self.cfg["auto_trust"] and session.get("created") and self._sandboxed):
+            why = ""
+            if self.cfg["auto_trust"] and session.get("created"):
+                why = " (auto_trust not applied: herdr not sandboxed: %s)" % self._unsandboxed
             raise _need("trust", "%s needs the folder-trust dialog accepted once; "
-                                 "open the herdr session %s and accept it"
-                        % (session["worktree"], self.sname))
+                                 "open the herdr session %s (herdr home %s) and accept it%s"
+                        % (session["worktree"], self.sname, self._home(), why))
         # The default option is "No, exit": move down first, then Enter.
         try:
             self._call(["agent", "send-keys", name, "down", "enter"])

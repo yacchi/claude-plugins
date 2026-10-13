@@ -288,7 +288,12 @@ checks:
 #   args: "--model {model} --permission-mode {permission_mode}"   # after `--`
 #   models: {light: sonnet, standard: opus, deep: opus}
 #   permission_mode: acceptEdits
-#   auto_trust: false      # same meaning as orca: only for worktrees orchestra created
+#   auto_trust: true       # (v0.49.0) accept the folder-trust dialog, only for worktrees
+#                          # orchestra created AND while the herdr server is sandboxed
+#                          # (sandbox.mode off / no backend -> a `trust` need instead)
+#   # orchestra runs its own herdr: XDG_CONFIG_HOME=<state dir>/hx (or
+#   # /private/tmp/orchestra-<uid>/hx when that path is too long for a socket),
+#   # server under the `sandbox` config (Seatbelt / bubblewrap).
 #   startup_timeout: 90
 #   task_timeout: 3600
 #   keep_sessions: true

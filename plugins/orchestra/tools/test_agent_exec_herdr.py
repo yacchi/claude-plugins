@@ -38,6 +38,12 @@ SESSION_ENV = {"CLAUDE_CODE_SESSION_ID": "abcdef12-0000", "CLAUDECODE": "1",
                "CLAUDE_CODE_ENTRYPOINT": "cli", "PATH": "/usr/bin"}
 SESSION = "orchestra-abcdef12"
 
+
+def _probes(seatbelt=False):
+    off = {"ok": False, "detail": "off"}
+    return {"seatbelt": {"ok": seatbelt, "detail": "fake"}, "bwrap": dict(off),
+            "landlock": dict(off, abi=0)}
+
 TRUST_SCREEN = ("Accessing workspace\nIs this a project you created or one you trust?\n"
                 "> 1. No, exit\n  2. Yes, I trust this folder")
 PERMISSION_SCREEN = "Bash command\nDo you want to proceed?\n> 1. Yes\n  2. No"
@@ -53,14 +59,17 @@ class FakeHerdr(object):
     walks through (the last value repeats)."""
 
     def __init__(self, running=False, not_ready=False, screen="", statuses=("idle",),
-                 on_prompt=None, stalls=0, fail_warm=False, after_keys=("❯ ",)):
+                 on_prompt=None, stalls=0, fail_warm=False, after_keys=("❯ ",),
+                 on_popen=None):
         self.calls = []
+        self.envs = []
         self.popens = []
         self.running = running
         self.not_ready = not_ready
         self.screen = screen
         self.statuses = list(statuses)
         self.on_prompt = on_prompt
+        self.on_popen = on_popen
         self.stalls = stalls  # the next N `agent prompt` calls stall
         self.fail_warm = fail_warm  # the warm reader's agent never starts
         # Screens `agent read` shows after `send-keys`, one per read (the last
@@ -82,10 +91,13 @@ class FakeHerdr(object):
 
     def popen(self, argv, **kwargs):
         self.popens.append((argv, kwargs))
+        if self.on_popen:
+            self.on_popen()
         self.running = True
 
     def __call__(self, argv, **kwargs):
         self.calls.append(list(argv))
+        self.envs.append(kwargs.get("env"))
         args = argv[3:]
         if args[:1] == ["--version"]:
             return self._ok("")
@@ -160,6 +172,7 @@ class _Base(unittest.TestCase):
         _git(self.repo, "commit", "-q", "-m", "init")
         self.state = os.path.join(self.tmp, "state")
         os.makedirs(self.state)
+        self.home = os.path.join(self.tmp, "hx")
         self.result = os.path.join(self.state, "a.result.json")
 
     def tearDown(self):
@@ -175,6 +188,8 @@ class _Base(unittest.TestCase):
             clock["now"] += max(seconds, 1.0)
 
         kwargs.setdefault("env", dict(SESSION_ENV))
+        kwargs.setdefault("herdr_home", self.home)
+        kwargs.setdefault("sandbox_probes", _probes())
         executor = agent_exec_herdr.HerdrExecutor(
             cfg=cfg, binary="/opt/herdr", runner=fake, popen=fake.popen,
             clock=lambda: clock["now"], sleep=sleep, poll=1.0, **kwargs)
@@ -202,11 +217,87 @@ class SessionIsolationTests(_Base):
         self.assertTrue(fake.calls)
         for argv in fake.calls + [p[0] for p in fake.popens]:
             self.assertEqual(argv[1:3], ["--session", SESSION], argv)
+        # every herdr process, not only the server, runs in orchestra's herdr home
+        for env in fake.envs + [p[1]["env"] for p in fake.popens]:
+            self.assertEqual(env["XDG_CONFIG_HOME"], self.home)
         self.assertEqual(len(fake.popens), 1)
-        env = fake.popens[0][1]["env"]
-        self.assertFalse([k for k in env if k.startswith("CLAUDE_CODE_") or k == "CLAUDECODE"])
-        self.assertEqual(env["PATH"], "/usr/bin")
         self.assertTrue(fake.has("server", "stop"))
+
+    def test_env_scrub_keeps_the_claude_config_dir_and_drops_session_markers(self):
+        env = agent_exec_herdr.server_env({
+            "CLAUDE_CONFIG_DIR": "/c", "CLAUDE_CODE_SESSION_ID": "x", "CLAUDECODE": "1",
+            "CLAUDE_CODE_CHILD_SESSION": "1", "CLAUDE_PID": "9", "CLAUDE_EFFORT": "high",
+            "HERDR_CONFIG_PATH": "/u", "XDG_CONFIG_HOME": "/u", "PATH": "/usr/bin"})
+        self.assertEqual(env, {"CLAUDE_CONFIG_DIR": "/c", "PATH": "/usr/bin"})
+
+    def test_config_toml_is_rewritten_before_the_server_starts(self):
+        os.makedirs(os.path.join(self.home, "herdr"))
+        path = os.path.join(self.home, "herdr", "config.toml")
+        with open(path, "w") as fh:
+            fh.write("onboarding = true\n")
+        seen = []
+
+        def at_popen():
+            with open(path) as fh:
+                seen.append(fh.read())
+
+        fake = FakeHerdr(on_popen=at_popen)
+        self.executor(fake).start("a", self.repo, "main", "standard", "opus", "run-1",
+                                  self.state)
+        self.assertEqual(len(seen), 1)
+        self.assertIn("onboarding = false", seen[0])
+        self.assertIn("resume_agents_on_restore = false", seen[0])
+
+    def test_long_state_path_falls_back_to_a_private_tmp_home(self):
+        long_base = os.path.join(self.tmp, "x" * 60, "hx")
+        root = os.path.join(self.tmp, "tmp")
+        os.makedirs(root)
+        home = agent_exec_herdr.resolve_home(SESSION, base=long_base, fallback_root=root,
+                                             uid=os.getuid())
+        self.assertEqual(home, os.path.join(root, "orchestra-%d" % os.getuid(), "hx"))
+        self.assertEqual(os.stat(os.path.dirname(home)).st_mode & 0o777, 0o700)
+        self.assertEqual(agent_exec_herdr.resolve_home(SESSION, base="/h/hx"), "/h/hx")
+
+    def test_unsafe_fallback_home_is_refused(self):
+        long_base = os.path.join(self.tmp, "x" * 60, "hx")
+        root = os.path.join(self.tmp, "tmp")
+        parent = os.path.join(root, "orchestra-%d" % os.getuid())
+        os.makedirs(parent)
+        os.chmod(parent, 0o775)
+        with self.assertRaises(agent_exec_orca.OrcaNeed) as ctx:
+            agent_exec_herdr.resolve_home(SESSION, base=long_base, fallback_root=root,
+                                          uid=os.getuid())
+        self.assertEqual(ctx.exception.kind, "error")
+        os.chmod(parent, 0o700)
+        with self.assertRaises(agent_exec_orca.OrcaNeed):  # owned by someone else
+            agent_exec_herdr.resolve_home(SESSION, base=long_base, fallback_root=root,
+                                          uid=os.getuid() + 1)
+
+    def test_server_is_sandboxed_when_a_backend_is_available(self):
+        fake = FakeHerdr()
+        executor = self.executor(fake, sandbox_probes=_probes(seatbelt=True))
+        executor.start("a", self.repo, "main", "standard", "opus", "run-1", self.state)
+        argv = fake.popens[0][0]
+        self.assertEqual(argv[0], "/usr/bin/sandbox-exec")
+        self.assertEqual(argv[-4:], ["/opt/herdr", "--session", SESSION, "server"])
+        profile = argv[argv.index("-p") + 1]
+        self.assertIn("(deny file-write*", profile)
+        # the user's own tree is not among the writable params
+        params = [a for a in argv if a.startswith("W") and "=" in a]
+        self.assertNotIn(os.path.realpath(self.repo), [a.split("=", 1)[1] for a in params])
+        self.assertTrue(executor._sandboxed)
+
+    def test_unsandboxed_server_is_reported_and_required_mode_refuses(self):
+        fake = FakeHerdr()
+        executor = self.executor(fake)
+        executor.start("a", self.repo, "main", "standard", "opus", "run-1", self.state)
+        self.assertEqual(fake.popens[0][0], ["/opt/herdr", "--session", SESSION, "server"])
+        self.assertFalse(executor._sandboxed)
+        fake = FakeHerdr()
+        executor = self.executor(fake, tools_cfg={"sandbox": {"mode": "required"}})
+        with self.assertRaises(agent_exec_orca.OrcaNeed):
+            executor.start("a", self.repo, "main", "standard", "opus", "run-1", self.state)
+        self.assertEqual(fake.popens, [])
 
     def test_shutdown_keeps_the_server_while_sessions_await_resume(self):
         fake = FakeHerdr()
@@ -388,27 +479,33 @@ class PromptStallTests(_Base):
 
 
 class TrustTests(_Base):
-    def start(self, fake, cfg, precreate=False):
+    def start(self, fake, cfg, precreate=False, sandboxed=True):
         if precreate:
             _, sha = agent_exec._git(self.repo, "rev-parse", "HEAD")
             agent_exec.isolate_create(self.repo, "pkg-a", backend="git", onto=sha.strip())
-        executor = self.executor(fake, cfg)
+        executor = self.executor(fake, cfg, sandbox_probes=_probes(seatbelt=sandboxed))
         return executor.start("a", self.repo, "main", "standard", "opus", "run-1", self.state)
 
     def test_dialog_is_reported_unless_auto_trust_and_executor_created_the_tree(self):
-        for label, cfg, precreate in (
-                ("auto_trust off", {"auto_trust": False}, False),
-                ("tree not created here", {"auto_trust": True}, True)):
+        for label, cfg, precreate, sandboxed in (
+                ("auto_trust off", {"auto_trust": False}, False, True),
+                ("tree not created here", {"auto_trust": True}, True, True),
+                ("server not sandboxed", {"auto_trust": True}, False, False)):
             with self.subTest(label):
-                fake = FakeHerdr(running=True, not_ready=True, screen=TRUST_SCREEN)
+                fake = FakeHerdr(not_ready=True, screen=TRUST_SCREEN)
                 with self.assertRaises(agent_exec_orca.OrcaNeed) as ctx:
-                    self.start(fake, cfg, precreate)
+                    self.start(fake, cfg, precreate, sandboxed)
                 self.assertEqual(ctx.exception.kind, "trust")
                 self.assertFalse(fake.has("agent", "send-keys"))
                 subprocess.run(["git", "worktree", "prune"], cwd=self.repo)
 
+    def test_auto_trust_is_on_by_default(self):
+        fake = FakeHerdr(not_ready=True, screen=TRUST_SCREEN)
+        self.start(fake, None)
+        self.assertTrue(fake.has("agent", "send-keys"))
+
     def test_auto_trust_moves_down_before_enter_then_waits(self):
-        fake = FakeHerdr(running=True, not_ready=True, screen=TRUST_SCREEN)
+        fake = FakeHerdr(not_ready=True, screen=TRUST_SCREEN)
         self.start(fake, {"auto_trust": True})
         keys = [c[3:] for c in fake.calls if c[3:5] == ["agent", "send-keys"]]
         self.assertEqual(keys, [["agent", "send-keys", "p-a", "down", "enter"]])
@@ -416,7 +513,7 @@ class TrustTests(_Base):
                         fake.verbs().index(["agent", "wait"]))
 
     def test_start_waits_for_the_input_box_after_trust(self):
-        fake = FakeHerdr(running=True, not_ready=True, screen=TRUST_SCREEN,
+        fake = FakeHerdr(not_ready=True, screen=TRUST_SCREEN,
                          after_keys=(TRUST_SCREEN, "", "❯ "))
         self.start(fake, {"auto_trust": True})
         keys = fake.verbs().index(["agent", "send-keys"])
@@ -424,7 +521,7 @@ class TrustTests(_Base):
         self.assertEqual(len(reads), 3)
 
     def test_input_box_that_never_appears_is_stalled(self):
-        fake = FakeHerdr(running=True, not_ready=True, screen=TRUST_SCREEN,
+        fake = FakeHerdr(not_ready=True, screen=TRUST_SCREEN,
                          after_keys=(TRUST_SCREEN,))
         with self.assertRaises(agent_exec_orca.OrcaNeed) as ctx:
             self.start(fake, {"auto_trust": True, "startup_timeout": 5})

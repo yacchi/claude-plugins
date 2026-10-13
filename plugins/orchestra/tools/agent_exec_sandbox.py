@@ -25,6 +25,7 @@ Seatbelt rule on the unresolved spelling silently never matches.
 """
 
 import ctypes
+import glob
 import json
 import os
 import re
@@ -655,6 +656,151 @@ def build_policy(tree, executor, cfg, home=None, env=None, platform=None,
     }
 
 
+# --- the herdr host ----------------------------------------------------------
+
+# What Claude Code must not be able to plant in its own config dir (and in
+# the shared dirs its symlinked children point into): loaded as settings,
+# code or instructions by a later, unsandboxed session.
+CLAUDE_TAMPER_NAMES = ("settings.json", "settings.local.json", "hooks", "skills",
+                       "commands", "agents", "plugins", "CLAUDE.md")
+
+
+def claude_paths(home=None, env=None):
+    """(writable, deny_write) for a Claude Code session: the realpath of its
+    config dir and of every symlinked child of it (a managed config dir links
+    projects/sessions/... into a shared dir; a missing one makes transcript
+    writes fail with EPERM), and the code/instruction names under those dirs."""
+    env = os.environ if env is None else env
+    home = _home(home)
+    real = os.path.realpath(_expand(env.get("CLAUDE_CONFIG_DIR") or "~/.claude", home))
+    writable, parents = [real], [real]
+    if os.path.isdir(real):
+        for entry in sorted(os.listdir(real)):
+            path = os.path.join(real, entry)
+            if os.path.islink(path):
+                target = os.path.realpath(path)
+                writable.append(target)
+                parents.append(os.path.dirname(target))
+    deny = []
+    for parent in _dedupe(parents):
+        for name in CLAUDE_TAMPER_NAMES:
+            path = os.path.join(parent, name)
+            deny.append(path)
+            if os.path.lexists(path):
+                deny.append(os.path.realpath(path))
+    return _dedupe(writable), _dedupe(deny)
+
+
+def host_policy(repo, worktree_base, herdr_home, cfg, extra_writable=(), home=None,
+                env=None, platform=None, learned=None):
+    """The policy for the herdr SERVER, which confines every pane and the
+    Claude Code inside. Same shape as `build_policy`. Writable: the orchestra
+    worktree base of `repo` (never the repo's own tree), the git pieces a
+    linked worktree needs, orchestra's state and herdr home, Claude's own
+    state, temp and `sandbox.allow_write`. The tamper denies come last."""
+    env = os.environ if env is None else env
+    home = os.path.realpath(home or os.path.expanduser("~"))
+    platform = platform or sys.platform
+    cfg = cfg if isinstance(cfg, dict) else {}
+    base = os.path.realpath(worktree_base)
+
+    writable = [base, os.path.realpath(state_dir(home)), os.path.realpath(herdr_home)]
+    writable += [os.path.realpath(p) for p in extra_writable if p]
+    readonly = []
+    _own, common_git = _git_dirs(repo)
+    if common_git is not None:
+        # New linked worktrees' own dirs and the shared object store; refs,
+        # config and hooks stay read-only.
+        writable += [os.path.join(common_git, "worktrees"),
+                     os.path.join(common_git, "objects")]
+    claude_writable, claude_deny = claude_paths(home, env)
+    writable += claude_writable
+    writable.append(os.path.join(home, ".local", "state", "claude"))
+    # The same shared package caches a CLI executor may write (~/.cache
+    # covers ~/.cache/claude): without them `npm install` or a go build in a
+    # hosted pane fails with EPERM.
+    seeds = list(SEED_CACHE_WRITES)
+    if platform == "darwin":
+        seeds += SEED_CACHE_WRITES_DARWIN
+    writable += [_expand(p, home) for p in seeds]
+    tmp = env.get("TMPDIR")
+    if tmp:
+        writable.append(os.path.realpath(tmp))
+    writable.append(os.path.realpath("/private/tmp" if platform == "darwin" else "/tmp"))
+    writable.append("/dev")
+    for p in cfg.get("allow_write") or []:
+        writable.append(_expand(p, home))
+    deny_read = [_expand(p, home) for p in DEFAULT_DENY_READ]
+    deny_read += [_expand(p, home) for p in cfg.get("deny_read") or []]
+    if learned is None:
+        learned, _warning = load_learned(home, deny_read)
+    for g in learned:
+        if isinstance(g, dict) and isinstance(g.get("path"), str):
+            writable.append(os.path.realpath(g["path"]))
+
+    # `~/.claude.json` and its lock/temp siblings sit next to nothing else
+    # Claude owns; Seatbelt matches them by regex, the others by what exists.
+    writable_regex = ["^%s/\\.claude\\.json.*$" % _rx_escape(home)]
+    if platform != "darwin":
+        writable += glob.glob(os.path.join(glob.escape(home), ".claude.json*"))
+
+    # The state dir itself stays writable (result files); only the learned
+    # store inside it is protected, not the directory around it.
+    state = os.path.realpath(state_dir(home))
+    deny_write = [p for p in tamper_paths(home) if os.path.realpath(p) != state]
+    deny_write += claude_deny
+    deny_write_regex = []
+    for tree in (repo, base):
+        root = _repo_root(tree) if os.path.isdir(tree) else None
+        deny_write_regex.append(repo_config_regex(root or os.path.realpath(tree)))
+
+    if common_git is not None and any(
+            _under(common_git, w) for w in writable if w != common_git):
+        readonly.append(common_git)
+    return {
+        "writable": _dedupe(writable),
+        "writable_regex": writable_regex,
+        "readonly": _dedupe(readonly),
+        "deny_read": _dedupe(deny_read),
+        "deny_write": _dedupe(deny_write),
+        "deny_write_regex": deny_write_regex,
+        "tamper": _dedupe(deny_write),
+        "repo_root": _repo_root(repo),
+        "learned": [g["path"] for g in learned if isinstance(g, dict) and g.get("path")],
+    }
+
+
+def prepare_host(cfg, repo, worktree_base, herdr_home, extra_writable=(),
+                 probe_results=None, home=None, env=None, platform=None, learned=None):
+    """Like `prepare`, for the herdr server: Seatbelt or bubblewrap. Landlock
+    cannot keep the learned-grants store read-only inside the writable state
+    dir, so it counts as no backend."""
+    cfg = normalize_config(cfg)
+    mode = cfg["mode"]
+    spec = {"backend": "none", "enforced": False, "reason": "", "limits": [],
+            "writable": [], "refuse": False, "policy": None, "mode": mode}
+    if mode == "off":
+        spec["reason"] = "sandbox.mode is off"
+        return spec
+    results = probe_results if probe_results is not None else probes()
+    backend = next((b for b in ("seatbelt", "bwrap") if results[b]["ok"]), None)
+    if backend is None:
+        detail = "; ".join("%s: %s" % (k, results[k]["detail"]) for k in ("seatbelt", "bwrap"))
+        spec["reason"] = ("no sandbox backend usable for the herdr host (%s)" % detail)
+        if mode == "required":
+            spec["refuse"] = True
+        return spec
+    policy = host_policy(repo, worktree_base, herdr_home, cfg, extra_writable, home,
+                         env, platform, learned)
+    spec.update(backend=backend, enforced=True, policy=policy,
+                writable=list(policy["writable"]),
+                reason=("macOS Seatbelt (sandbox-exec)" if backend == "seatbelt"
+                        else "bubblewrap (user namespaces)"))
+    if backend == "bwrap":
+        spec["limits"] = bwrap_limits(policy)
+    return spec
+
+
 # --- probes (cached per process) --------------------------------------------
 
 _PROBES = None
@@ -906,8 +1052,10 @@ def seatbelt_profile(policy):
         return '(subpath (param "%s"))' % key
 
     rules = ["(version 1)", "(allow default)"]
-    rules.append("(deny file-write* (require-not (require-any %s)))"
-                 % " ".join(param("W", w) for w in policy["writable"]))
+    allow = [param("W", w) for w in policy["writable"]]
+    allow += ['(regex #"%s")' % rx for rx in policy.get("writable_regex") or []
+              if '"' not in rx]
+    rules.append("(deny file-write* (require-not (require-any %s)))" % " ".join(allow))
     for ro in policy.get("readonly") or []:
         inner = [w for w in policy["writable"] if w != ro and _under(w, ro)]
         ro_rule = param("RO", ro)

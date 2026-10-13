@@ -89,6 +89,76 @@ class PolicyTests(unittest.TestCase):
         self.assertIn(os.path.join(self.home, ".pi", "agent"), policy["writable"])
 
 
+class HostPolicyTests(unittest.TestCase):
+    """The policy of the sandboxed herdr server (and so of every pane)."""
+
+    def setUp(self):
+        self.base = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.home = os.path.join(self.base, "home")
+        shared = os.path.join(self.home, ".config", "shared")
+        claude = os.path.join(self.home, ".claude")
+        os.makedirs(os.path.join(shared, "projects"))
+        os.makedirs(os.path.join(shared, "skills"))
+        os.makedirs(claude)
+        with open(os.path.join(shared, "history.jsonl"), "w"):
+            pass
+        for name in ("projects", "history.jsonl", "skills"):
+            os.symlink(os.path.join(shared, name), os.path.join(claude, name))
+        self.shared, self.claude = shared, claude
+        self.repo, _wt = _repo_with_worktree(self.base)
+        self.wt_base = self.repo + "-orchestra"
+        os.environ.pop("XDG_STATE_HOME", None)
+        self.policy = sb.host_policy(
+            self.repo, self.wt_base, os.path.join(self.home, "hx"), {}, home=self.home,
+            env={"TMPDIR": "/nonexistent-tmp"}, platform="darwin", learned=[])
+
+    def test_symlinked_claude_children_are_writable_by_their_real_path(self):
+        writable = self.policy["writable"]
+        self.assertIn(self.claude, writable)
+        self.assertIn(os.path.join(self.shared, "projects"), writable)
+        self.assertIn(os.path.join(self.shared, "history.jsonl"), writable)
+
+    def test_the_users_own_tree_is_not_writable_but_the_worktree_base_is(self):
+        self.assertFalse(_under_any(self.repo, self.policy["writable"]))
+        self.assertIn(self.wt_base, self.policy["writable"])
+
+    def test_package_caches_are_writable_from_hosted_panes(self):
+        # npm install / go build inside a hosted pane write these.
+        for rel in (".npm", os.path.join("go", "pkg", "mod"), os.path.join(".cache", "claude"),
+                    os.path.join("Library", "Caches")):
+            self.assertTrue(_under_any(os.path.join(self.home, rel), self.policy["writable"]), rel)
+
+    def test_claude_code_config_cannot_be_planted(self):
+        deny = self.policy["deny_write"]
+        for name in ("settings.json", "hooks", "CLAUDE.md", "plugins"):
+            self.assertIn(os.path.join(self.claude, name), deny)
+        # a symlinked skills dir is denied at its real path as well
+        self.assertIn(os.path.join(self.shared, "skills"), deny)
+
+    def test_seatbelt_denies_come_after_every_allow(self):
+        sbpl, params = sb.seatbelt_profile(self.policy)
+        allow_end = sbpl.index("(deny file-write* (require-not")
+        last_deny = sbpl.rindex("(deny file-write*")
+        self.assertGreater(last_deny, allow_end)
+        denied = [v for k, v in params if k.startswith("D")]
+        self.assertIn(os.path.join(self.claude, "settings.json"), denied)
+        self.assertIn(os.path.join(self.shared, "skills"), denied)
+        self.assertTrue(sbpl.index("claude\\.json") < last_deny)
+
+    def test_prepare_host_needs_seatbelt_or_bwrap(self):
+        results = {"seatbelt": NO, "bwrap": NO, "landlock": dict(OK, abi=6)}
+        spec = sb.prepare_host({"mode": "auto"}, self.repo, self.wt_base,
+                               os.path.join(self.home, "hx"), probe_results=results,
+                               home=self.home, learned=[])
+        self.assertFalse(spec["enforced"])
+        self.assertFalse(spec["refuse"])
+        spec = sb.prepare_host({"mode": "required"}, self.repo, self.wt_base,
+                               os.path.join(self.home, "hx"), probe_results=results,
+                               home=self.home, learned=[])
+        self.assertTrue(spec["refuse"])
+
+
 class ConfigUnionTests(unittest.TestCase):
     def test_allow_write_and_deny_read_union_across_layers(self):
         d1 = tempfile.mkdtemp()
