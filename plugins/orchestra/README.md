@@ -83,6 +83,8 @@ Config is deep-merged from four layers (later wins): built-in defaults ← `~/.c
 
 - **`tiers`** — Claude models per class/role (`light`, `standard`, `deep`, `review`), used whenever routing resolves to `claude`.
 - **`external_executors`** — Codex, pi, … as implementers or reviewers. Enabled by default but gated on real availability; with neither CLI installed, everything resolves to `claude`. The recommended setup is the bundled `agent-exec` wrapper (`agent-exec install`) plus one `Bash(agent-exec:*)` allow rule.
+- **`tools`** — pins executor binaries (pi, herdr) to a known version in orchestra's own state dir (`agent-exec tools install`). pi runs with its own agent dir by default, so your personal pi settings do not reach workers.
+- **`interactive_host`** — which host runs Claude-tier packages in `wave run`: `herdr`, `orca`, or `none` (default `auto`).
 - **`priority`** — ordered executors per class/role. `agent-exec route` / `agent-exec dispatch` perform the walk so the instructor never does it by hand.
 - **`enforcement.*`** — the hook guards (`worker_vcs`, `worker_tree`, `worktree_lease`, `session_cleanup`, `turn_edits`, `opus_generalist`, opt-in `light_class`). Each has an escape marker and an environment kill switch.
 
@@ -105,6 +107,7 @@ Log in to either provider with `/login` inside `pi`, then re-run `orchestra:setu
 | `skills/run/` | The playbook, plus on-demand references (`authoring`, `gates`, `isolation`, `config`, `programme`, `external-executors`, `poc-findings`) |
 | `skills/setup/`, `skills/cleanup/`, `skills/ui/` | Companion skills |
 | `tools/agent_exec.py` | The `agent-exec` CLI: route, dispatch, isolate, shelf, wave, ui, telemetry, … |
+| `tools/agent_exec_tools.py`, `tools/agent_exec_herdr.py` | Managed executor binaries (pinned pi and herdr), pi's dedicated agent dir, and the herdr interactive host |
 | `hooks/` | Router injection and reminder, turn-size tripwire, worker VCS/tree/lease guards, Opus-generalist nudge, worktree cleanup |
 | `examples/orchestra.yaml` | Sample configuration |
 

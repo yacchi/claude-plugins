@@ -54,6 +54,8 @@ piは複数プロバイダに単一インターフェースで到達するコー
 
 **クォータ共有。** `openai-codex/*`上のpiとCodexは同じChatGPTサブスクリプションを使うため、片方が枯渇またはcooldownになるともう片方も`exhausted-shared:` / `cooldown-shared:`としてスキップされる。設定に書かれた未知のエグゼキュータ名(削除済みの`copilot`/`opencode`を除く)は`unknown-executor:<name>`としてスキップされる。削除済みの名前は設定エラーになり、移行ガイドが表示される。
 
+**版の固定と専用のエージェントディレクトリ(v0.47.0)。** piは`@earendil-works/pi-coding-agent`を`tools.pi`で`1.2.0`に固定し、`agent-exec tools install pi`で導入する。`agent_dir: managed`(既定)では`<state>/pi-agent`を`PI_CODING_AGENT_DIR`に使い、ユーザーの設定・モデル・AGENTS.md・パッケージが実行役に混ざらないようにする。`context_files: false`で`--no-context-files`を付ける。ログインは`agent-exec pi`で`/login`、または自分のpiでログインすれば`auth.json`のリンクで引き継がれる。詳細は`config.md`の§6・§7。
+
 **起動コマンド(agent-execが組み立てる。`command`テンプレートは不要):**
 
 ```bash

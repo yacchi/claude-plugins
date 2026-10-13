@@ -423,3 +423,93 @@ orca:
 ```
 
 `enabled` accepts YAML booleans or the strings `auto`/`true`/`false`; anything else means `auto`. `{model}` in `command` is replaced by the route's model, else `models.<cls>`, and `{permission_mode}` is replaced by `permission_mode` when present. Only `acceptEdits`, `auto`, `default`, and `plan` are allowed; permission bypass modes and `--dangerously-skip-permissions` are refused. Orca can reach the repository root, the state/spec/preamble directories, and every `add_dirs` entry. Without Orca, or with `enabled: false`, `wave run` behaves exactly as before: the package lands on the needs list as `delegate`. The run-time behaviour is described in `programme.md` §6 ("Orca sessions").
+
+## 6. Managed executor tools (`tools`)
+
+`tools` pins the binaries orchestra depends on. Orchestra installs each one at the pinned version into its own state directory (`$XDG_STATE_HOME/claude-orchestra/tools`, or `~/.local/state/claude-orchestra/tools`), so a personal install of the same tool cannot change worker behavior. (v0.47.0)
+
+```yaml
+tools:
+  installer: auto          # auto = mise when on PATH, else npm; or mise | npm
+  pi:
+    source: auto           # auto | managed | system (see resolution order below)
+    spec: "npm:@earendil-works/pi-coding-agent"
+    version: "1.2.0"
+    bin: pi
+  herdr:                   # the herdr host (§8)
+    source: auto
+    spec: "aqua:herdrdev/herdr"
+    version: "0.8.2"
+    bin: herdr
+```
+
+**Resolution order** (`source` per tool, default `auto`):
+
+- `auto`: use the managed copy when its record matches the configured `spec` and `version` and the file is still executable. Otherwise use the binary on PATH. When PATH is used while a `spec` is configured, doctor adds a `hint`.
+- `managed`: only the managed copy. When it is missing or stale, the tool is unavailable and doctor gives the install hint.
+- `system`: only the binary on PATH.
+
+**Manifest.** Each install writes `<state>/tools/manifest.json` with `spec`, `version`, `installer`, `path`, and `installed_at`. A missing or corrupt manifest counts as empty. A manifest entry is stale when its `spec` or `version` differs from the config, or its `path` is no longer executable. The manifest is written only after a successful install.
+
+**Installers.**
+
+- `mise` runs `mise install <spec>@<version>` in a private mise world. `MISE_DATA_DIR`, `MISE_CONFIG_DIR`, `MISE_GLOBAL_CONFIG_FILE`, `MISE_CACHE_DIR`, and `MISE_STATE_DIR` all point under `<state>/tools/mise/`, and `MISE_CEILING_PATHS` is set. The user's global and project mise config is neither read nor modified.
+- `npm` runs `npm install --prefix <state>/tools/npm/<name>/<version> <package>@<version>` and uses `node_modules/.bin/<bin>` from that prefix. It only supports `npm:` specs.
+
+**Doctor fields.** Each executor entry in `agent-exec doctor --json` has `path`, `source` (`managed` or `system`), and `tool_version` (the managed record's version, or null when the binary comes from PATH). A `hint` (`agent-exec tools install <name>`) appears when the managed copy is missing or stale or PATH is being used in place of a configured `spec`. When pi is unavailable, `ready.pi.missing` contains `executor-binary-unavailable`. The run should relay that hint to the user rather than installing silently.
+
+**CLI.**
+
+```bash
+agent-exec tools                         # status (same as `tools status`); --json or --text
+agent-exec tools install                 # install every configured tool that is not already valid
+agent-exec tools install pi --force      # reinstall even when the record is valid
+agent-exec tools install --installer npm # override the installer for this call
+agent-exec tools path pi                 # print the one resolved path
+```
+
+Install reports `installed`, `already`, `failed` (with the tail of the installer's stderr), or `skipped` (no `spec` or `version`) per tool. There is no update command: change `version` in the config, then run `agent-exec tools install <name>`.
+
+## 7. Dedicated pi agent directory (`external_executors.pi.agent_dir`)
+
+By default pi runs with its own agent directory, not the user's `~/.pi/agent`. A user's pi settings, models, `AGENTS.md`, installed packages, and pi version all change worker behavior, and none of them are part of what the routing and review were measured against. (v0.47.0)
+
+```yaml
+external_executors:
+  pi:
+    agent_dir: managed     # managed (default) | user | a path
+    context_files: true    # false adds --no-context-files (no AGENTS.md / CLAUDE.md)
+```
+
+- `managed` (default): `<state>/pi-agent`, created with mode `0700`. Orchestra sets `PI_CODING_AGENT_DIR` to it for every pi child.
+- `user`: pi's own default, `~/.pi/agent`. Orchestra sets no `PI_CODING_AGENT_DIR`.
+- a path: that directory (`~` is expanded). `PI_CODING_AGENT_DIR` is set to it.
+
+**Login carry-over (`auth.json`).** When the managed directory has no `auth.json` and the user's pi `auth.json` exists, orchestra creates a symlink `auth.json` in the managed directory that points at the user's file. The source is `$PI_CODING_AGENT_DIR` when that is set and differs from the managed directory, otherwise `~/.pi/agent`. The check runs on every pi call, so the link appears once a login exists. An existing `auth.json` (file or symlink) is never overwritten or removed. Because the link is followed, token refreshes write to the user's own `auth.json`, and pi's sandbox writes to the symlink target's directory (see `external-executors.md` §2a).
+
+To log in for workers, run `agent-exec pi` and use `/login`. Logging in with your own pi also works while the link exists, because the managed directory reads the same `auth.json`.
+
+## 8. Interactive host selection (`interactive_host`, `herdr`)
+
+`wave run` sends a package whose route resolves to a Claude tier to an interactive Claude Code session instead of returning it as a `delegate` need, when an interactive host is available. The host is chosen by the top-level key `interactive_host`. (v0.47.0)
+
+```yaml
+interactive_host: auto     # auto | herdr | orca | none
+herdr:
+  enabled: auto            # auto | true | false, same meaning as orca.enabled
+  args: "--model {model} --permission-mode {permission_mode}"   # native claude args, after `--`
+  models: {light: sonnet, standard: opus, deep: opus}
+  permission_mode: acceptEdits
+  auto_trust: false        # only for worktrees orchestra created
+  startup_timeout: 90
+  task_timeout: 3600
+  keep_sessions: true
+```
+
+- `auto`: herdr when it is available, else Orca when available, else none. `herdr` or `orca` selects only that backend. `none` never uses an interactive host. Each backend's own `enabled` still applies. In `auto`, a backend with `enabled: true` that is unreachable stops the run with `<name> unavailable: <reason>`.
+- `herdr` runs each package in its own orchestra-owned worktree (task `pkg-<id>`), with one workspace and one named agent. Completion is signalled only by the result file the prompt asks Claude to write.
+- `args` are passed after `--`. The prompt and result directories and `add_dirs` are appended as `--add-dir`.
+- `auto_trust: true` accepts Claude's folder-trust dialog only for worktrees the executor created itself, as with `orca`.
+- **Session naming.** Every herdr call carries `--session orchestra-<8 chars>`. The 8 characters come from `CLAUDE_CODE_SESSION_ID`, falling back to the run id. The user's own herdr sessions are never touched.
+- **Server lifecycle.** The herdr server is started detached when it is not already running. `shutdown()` stops it only if orchestra started it. While `keep_sessions` is true and sessions are registered in `<state>/herdr-sessions.json`, the server stays up so `resume` can reach them.
+- **Server environment.** The server is started without `CLAUDE_CODE_*` variables and without `CLAUDECODE`. A child Claude that inherited those markers would stop saving transcripts.

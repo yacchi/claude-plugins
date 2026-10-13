@@ -83,6 +83,8 @@ claude plugin validate .
 
 - **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。
 - **`external_executors`** — Codex、pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、どちらの CLI も入っていなければすべて `claude` に振り分けられます。推奨は同梱の `agent-exec` ラッパー(`agent-exec install`)と、`Bash(agent-exec:*)` の許可ルール 1 つです。
+- **`tools`** — 実行役のバイナリ(pi、herdr)を決まった版で orchestra 専用の状態ディレクトリに入れます(`agent-exec tools install`)。pi は既定で専用のエージェントディレクトリを使うため、個人の pi の設定はワーカーに届きません。
+- **`interactive_host`** — `wave run` で Claude 系のパッケージを動かすホストを選びます: `herdr`、`orca`、`none`(既定は `auto`)。
 - **`priority`** — クラス/役割ごとの実行系の優先順。順に候補をたどる処理は `agent-exec route` / `agent-exec dispatch` が行い、指示役が手作業でたどることはありません。
 - **`enforcement.*`** — フックによる防護(`worker_vcs`、`worker_tree`、`worktree_lease`、`session_cleanup`、`turn_edits`、`opus_generalist`、オプトインの `light_class`)。どれにも回避用のマーカーと、環境変数による無効化スイッチがあります。
 
@@ -105,6 +107,7 @@ Copilotのモデルはpiの`github-copilot/*`、Codex/ChatGPTサブスクリプ�
 | `skills/run/` | 手順書本体と、必要なときに読む参考資料(`authoring`、`gates`、`isolation`、`config`、`programme`、`external-executors`、`poc-findings`) |
 | `skills/setup/`、`skills/cleanup/`、`skills/ui/` | 付属のスキル |
 | `tools/agent_exec.py` | `agent-exec` CLI: route、dispatch、isolate、shelf、wave、ui、telemetry など |
+| `tools/agent_exec_tools.py`、`tools/agent_exec_herdr.py` | 版を固定して管理する実行役バイナリ(pi と herdr)、pi の専用エージェントディレクトリ、herdr の対話ホスト |
 | `hooks/` | ルーターの注入と再通知、ターン規模の検知、ワーカーの VCS・作業ツリー・lease の防護、Opus 汎用サブエージェントへの通知、worktree の後片付け |
 | `examples/orchestra.yaml` | 設定のサンプル |
 
