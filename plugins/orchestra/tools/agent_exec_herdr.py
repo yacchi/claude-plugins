@@ -267,10 +267,14 @@ class HerdrExecutor(object):
         except (OSError, ValueError) as exc:
             raise _HerdrError("could not run herdr: %s" % exc)
         out = proc.stdout or ""
-        try:
-            payload = json.loads(out)
-        except ValueError:
-            payload = None
+        payload = None
+        # herdr prints its error object on stderr and leaves stdout empty.
+        for text in (out, proc.stderr or ""):
+            try:
+                payload = json.loads(text)
+                break
+            except ValueError:
+                continue
         error = payload.get("error") if isinstance(payload, dict) else None
         if proc.returncode != 0 or error:
             code = error.get("code") if isinstance(error, dict) else None
@@ -472,7 +476,10 @@ class HerdrExecutor(object):
         # The default option is "No, exit": move down first, then Enter.
         try:
             self._call(["agent", "send-keys", name, "down", "enter"])
-            self._call(["agent", "wait", name, "--timeout", str(ms)], timeout=timeout)
+            # A bare `wait` returns at once while the dialog is still
+            # `blocked` (launch_pending); only `idle` means it took the keys.
+            self._call(["agent", "wait", name, "--until", "idle", "--timeout", str(ms)],
+                       timeout=timeout)
         except _HerdrError as exc:
             try:
                 tail = _tail(self._screen(name))

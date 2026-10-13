@@ -114,8 +114,9 @@ class FakeHerdr(object):
     @staticmethod
     def _err(code, rc=1):
         return types.SimpleNamespace(
-            returncode=rc, stdout=json.dumps({"error": {"code": code, "message": code}}),
-            stderr="")
+            # Real herdr: error object on stderr, stdout empty.
+            returncode=rc, stdout="",
+            stderr=json.dumps({"error": {"code": code, "message": code}}))
 
 
 class _Base(unittest.TestCase):
