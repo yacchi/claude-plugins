@@ -70,13 +70,16 @@ DEFAULT_DENY_READ = (
 # DEFAULT_DENY_READ entries the herdr host must be able to read (see host_policy).
 HOST_READABLE = ("~/Library/Keychains",)
 
-# srt's macOS profile denies mach-lookup of com.apple.trustd.agent (the
-# opt-in `enableWeakerNetworkIsolation` would open it, and with it an
-# exfiltration channel). codex verifies TLS through Security.framework,
-# which needs trustd: every request fails with "error sending request" and
-# the turn with "workspace routing discovery failed". Given a PEM bundle in
-# CODEX_CA_CERTIFICATE, codex verifies against that file instead.
-SRT_CA_BUNDLE = "/etc/ssl/cert.pem"
+# srt's macOS profile denies mach-lookup of com.apple.trustd.agent; the
+# opt-in `enableWeakerNetworkIsolation` would open it, and with it a channel
+# around the allowlist (trustd fetches OCSP/CRL/AIA URLs itself). codex
+# verifies TLS through Security.framework, which needs trustd, so under srt
+# every request fails. Handing it a PEM bundle instead would skip the OS
+# trust store (revocation, distrust settings, MDM-installed roots), so on
+# macOS codex stays on its own sandbox.
+CODEX_SRT_PLATFORMS_EXCLUDED = ("darwin",)
+CODEX_SRT_UNSUPPORTED = ("codex under srt on macOS cannot reach the OS trust "
+                         "store (trustd); codex keeps its own sandbox")
 
 # Package/build caches every toolchain a worker runs writes into.
 # NOT `~/.local/share/uv/tools`: that holds uv's INSTALLED tool environments,
@@ -1315,7 +1318,8 @@ def _not_restricted(spec, why):
     return spec
 
 
-def prepare(executor, tree, cfg, probe_results=None, env=None, network=None):
+def prepare(executor, tree, cfg, probe_results=None, env=None, network=None,
+            platform=None):
     """Decide how `executor` will be sandboxed for a run in `tree`.
 
     Returns the internal spec; `report(spec)` is its public projection and
@@ -1337,7 +1341,10 @@ def prepare(executor, tree, cfg, probe_results=None, env=None, network=None):
         return spec
     results = None
     why = None
-    if network is not None:
+    if network is not None and executor == "codex" \
+            and (platform or sys.platform) in CODEX_SRT_PLATFORMS_EXCLUDED:
+        why = CODEX_SRT_UNSUPPORTED
+    elif network is not None:
         results = probe_results if probe_results is not None else probes()
         why = _srt_spec(spec, executor, tree, cfg, results, env, network)
         if why is None:
@@ -1428,17 +1435,13 @@ def bwrap_limits(policy, exists=os.path.exists):
     return limits
 
 
-def child_env(spec, env, platform=None, ca_bundle=SRT_CA_BUNDLE):
+def child_env(spec, env):
     """Env additions for a sandboxed child: `uvx` must build its throwaway
     tool envs in temp, never in `~/.local/share/uv/tools` (installed tools,
     run later unsandboxed). An explicit UV_TOOL_DIR is left alone. Under srt
     a Node child (pi) is told to use srt's HTTP(S)_PROXY: only the proxy is
-    reachable, and Node ignores the proxy variables unless asked. Under srt
-    on macOS codex is pointed at the PEM root bundle `ca_bundle` (see
-    SRT_CA_BUNDLE); a CA file the user already chose (CODEX_CA_CERTIFICATE
-    or SSL_CERT_FILE) wins."""
+    reachable, and Node ignores the proxy variables unless asked."""
     env = dict(env)
-    platform = platform or sys.platform
     backend = (spec or {}).get("backend")
     if backend in ("seatbelt", "bwrap", "landlock", "srt") \
             and spec.get("policy") is not None and "UV_TOOL_DIR" not in env:
@@ -1446,9 +1449,6 @@ def child_env(spec, env, platform=None, ca_bundle=SRT_CA_BUNDLE):
         env["UV_TOOL_DIR"] = os.path.join(os.path.realpath(tmp), UV_TOOL_DIR_NAME)
     if backend == "srt":
         env.setdefault("NODE_USE_ENV_PROXY", "1")
-        if platform == "darwin" and ca_bundle and os.path.isfile(ca_bundle) \
-                and not env.get("CODEX_CA_CERTIFICATE") and not env.get("SSL_CERT_FILE"):
-            env["CODEX_CA_CERTIFICATE"] = ca_bundle
     return env
 
 

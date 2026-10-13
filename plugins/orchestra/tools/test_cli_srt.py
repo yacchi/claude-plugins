@@ -50,7 +50,8 @@ class BackendTests(_StateBase):
         for executor in ("pi", "codex"):
             with self.subTest(executor):
                 spec = sb.prepare(executor, self.tree, {"mode": "auto"},
-                                  probe_results=SEATBELT, network=self.network())
+                                  probe_results=SEATBELT, network=self.network(),
+                                  platform="linux")
                 self.assertEqual(spec["backend"], "srt")
                 argv = sb.wrap_argv(["/bin/x", "-p"], self.tree, spec)
                 self.assertEqual(argv[:5], ["/opt/srt", "-d", "-s",
@@ -60,7 +61,7 @@ class BackendTests(_StateBase):
                 self.assertNotIn("bwrap", argv)
                 self.assertNotIn("_sandbox-exec", argv)
         spec = sb.prepare("codex", self.tree, {"mode": "auto"},
-                          probe_results=SEATBELT, network=self.network())
+                          probe_results=SEATBELT, network=self.network(), platform="linux")
         for resume in (None, "SID"):
             argv = agent_exec._build_executor_argv(
                 "codex", "codex", "m", None, self.tree, "p", resume, "json", sandbox=spec)
@@ -69,6 +70,17 @@ class BackendTests(_StateBase):
         settings = spec["srt"]["settings"]
         self.assertIs(settings["allowPty"], False)
         self.assertEqual(settings["network"]["allowUnixSockets"], [])
+
+    def test_codex_on_macos_keeps_its_own_sandbox_under_an_allowlist(self):
+        # srt blocks trustd; codex must not be moved off the OS trust store.
+        spec = sb.prepare("codex", self.tree, {"mode": "auto"}, probe_results=SEATBELT,
+                          network=self.network(), platform="darwin")
+        self.assertEqual(spec["backend"], "codex-native")
+        self.assertIn("network not restricted: " + sb.CODEX_SRT_UNSUPPORTED, spec["limits"])
+        argv = agent_exec._build_executor_argv(
+            "codex", "codex", "m", None, self.tree, "p", None, "json", sandbox=spec)
+        self.assertIn("workspace-write", argv)
+        self.assertNotIn("CODEX_CA_CERTIFICATE", sb.child_env(spec, {}))
 
     def test_without_srt_codex_keeps_its_sandbox_and_the_fallback_is_named(self):
         for label, probes, network, why in (
@@ -81,7 +93,8 @@ class BackendTests(_StateBase):
                                       ("pi", "seatbelt" if probes is SEATBELT else "landlock")):
                 with self.subTest(label=label, executor=executor):
                     spec = sb.prepare(executor, self.tree, {"mode": "auto"},
-                                      probe_results=probes, network=network)
+                                      probe_results=probes, network=network,
+                                      platform="linux")
                     self.assertEqual(spec["backend"], backend)
                     self.assertTrue(any(n.startswith("network not restricted: " + why)
                                         for n in spec["limits"]), spec["limits"])
@@ -140,7 +153,7 @@ class SpawnTests(_StateBase):
 
     def test_failed_codex_run_carries_its_stderr_tail_without_srt_lines(self):
         spec = sb.prepare("codex", self.tree, {"mode": "auto"}, probe_results=SEATBELT,
-                          network=self.network(srt=self.fake_srt()))
+                          network=self.network(srt=self.fake_srt()), platform="linux")
         codex = os.path.join(self.tmp, "codex")
         with open(codex, "w") as fh:
             fh.write(textwrap.dedent("""\
@@ -174,35 +187,6 @@ class SpawnTests(_StateBase):
         self.assertNotIn("stderr_tail", result)
 
 
-class SrtChildEnvTests(unittest.TestCase):
-    """codex under srt on macOS cannot reach trustd: it is handed a PEM root
-    bundle unless the user already chose a CA file."""
-
-    def setUp(self):
-        fd, self.bundle = tempfile.mkstemp(suffix=".pem")
-        os.close(fd)
-        self.addCleanup(os.unlink, self.bundle)
-        self.srt = {"backend": "srt", "policy": {}}
-
-    def env(self, spec, base, platform="darwin", bundle=None):
-        return sb.child_env(spec, dict(base, TMPDIR="/tmp"), platform=platform,
-                            ca_bundle=bundle or self.bundle)
-
-    def test_srt_on_macos_points_codex_at_the_bundle(self):
-        self.assertEqual(self.env(self.srt, {})["CODEX_CA_CERTIFICATE"], self.bundle)
-
-    def test_the_bundle_is_not_set_elsewhere_or_over_a_user_choice(self):
-        for label, spec, base, platform, bundle in (
-                ("linux", self.srt, {}, "linux", None),
-                ("not srt", {"backend": "seatbelt", "policy": {}}, {}, "darwin", None),
-                ("missing bundle", self.srt, {}, "darwin", self.bundle + ".none"),
-                ("user SSL_CERT_FILE", self.srt, {"SSL_CERT_FILE": "/u.pem"}, "darwin", None)):
-            with self.subTest(label):
-                self.assertNotIn("CODEX_CA_CERTIFICATE",
-                                 self.env(spec, base, platform, bundle))
-        env = self.env(self.srt, {"CODEX_CA_CERTIFICATE": "/mine.pem"})
-        self.assertEqual(env["CODEX_CA_CERTIFICATE"], "/mine.pem")
-
 class SpawnPathTests(_StateBase):
     """Every spawn path wraps with srt when it applies."""
 
@@ -223,6 +207,8 @@ class SpawnPathTests(_StateBase):
                 mock.patch.object(agent_exec_srt, "srt_status",
                                   return_value=("/opt/srt", "1", "")),
                 mock.patch.object(sb, "probes", return_value=SEATBELT),
+                # codex goes under srt only off macOS (trustd, see prepare).
+                mock.patch.object(sb, "CODEX_SRT_PLATFORMS_EXCLUDED", ()),
                 mock.patch.object(agent_exec.shutil, "which", return_value="/bin/codex")):
             p.start()
             self.addCleanup(p.stop)
