@@ -504,6 +504,7 @@ herdr:
   startup_timeout: 90
   task_timeout: 3600
   keep_sessions: true
+  warm: {enabled: true, ttl_seconds: 3000, min_packages: 2}   # (v0.48.0)
 ```
 
 - `auto`: herdr when it is available, else Orca when available, else none. `herdr` or `orca` selects only that backend. `none` never uses an interactive host. Each backend's own `enabled` still applies. In `auto`, a backend with `enabled: true` that is unreachable stops the run with `<name> unavailable: <reason>`.
@@ -512,4 +513,5 @@ herdr:
 - `auto_trust: true` accepts Claude's folder-trust dialog only for worktrees the executor created itself, as with `orca`.
 - **Session naming.** Every herdr call carries `--session orchestra-<8 chars>`. The 8 characters come from `CLAUDE_CODE_SESSION_ID`, falling back to the run id. The user's own herdr sessions are never touched.
 - **Server lifecycle.** The herdr server is started detached when it is not already running. `shutdown()` stops it only if orchestra started it. While `keep_sessions` is true and sessions are registered in `<state>/herdr-sessions.json`, the server stays up so `resume` can reach them.
+- **Warm reader (v0.48.0).** When the host is herdr, `warm.enabled` is true, the plan has a non-empty read set, and at least `warm.min_packages` packages of the run start on the same model, the first such package first triggers one warm session per (model, base revision): a dedicated orchestra worktree `warm-<model>` at the integration base, in which a Claude session reads the plan's `preamble` files that live inside the repo plus its top-level `warm_read` (repo-relative paths). Every package on that model then starts with `claude --resume <warm session> --fork-session` and reads the shared files from the prompt cache instead of from disk. The first prompt of a forked package starts with one line telling it its own working tree and that the earlier messages came from the warm worktree. The warm record (`_warm` key of `herdr-sessions.json`) is reused while `now - last_used < ttl_seconds` and no file of the read set changed between its base revision and the current one; otherwise it is rebuilt. If a fork leaves the warm worktree dirty, that package ends as an `error` need (`fork wrote outside its tree`) and the record is rebuilt next time. Any warm failure emits a `warm-failed` event and the packages start fresh, exactly as without warm. Warm worktrees are removed at host shutdown; warm records alone do not keep the herdr server alive.
 - **Server environment.** The server is started without `CLAUDE_CODE_*` variables and without `CLAUDECODE`. A child Claude that inherited those markers would stop saving transcripts.

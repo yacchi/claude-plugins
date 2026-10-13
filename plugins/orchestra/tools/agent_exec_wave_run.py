@@ -326,11 +326,11 @@ class _Runner(object):
             for glob in extra:
                 if glob not in pkg["files_owned"]:
                     pkg["files_owned"].append(glob)
-        plan_warnings = agent_exec_wave_plan.lint_plan(self.plan)
         self.pkgs = dict((p["id"], p) for p in self.plan["packages"])
         self.root = agent_exec.repo_root(self.opts["repo"])
         if self.root is None:
             raise RuntimeError("not a git repository: %s" % self.opts["repo"])
+        plan_warnings = agent_exec_wave_plan.lint_plan(self.plan, self.root)
         self.into = agent_exec.sanitize_task_id(self.opts["into"])
         self.store.init(os.path.abspath(self.opts["plan"]),
                         [p["id"] for p in self.plan["packages"]], self.into)
@@ -446,6 +446,34 @@ class _Runner(object):
         self.orca.on_event = lambda pkg, detail: self._emit(
             "orca-session", pkg, dict(detail, host=name))
         os.makedirs(os.path.join(self.state_dir, "orca"), exist_ok=True)
+        configure_warm = getattr(self.orca, "configure_warm", None)
+        if configure_warm is not None:
+            configure_warm(self._warm_read_set(), self._model_counts())
+
+    def _warm_read_set(self):
+        """Repo-relative files a warm reader reads: the preamble files that
+        live inside the repo, then the plan's `warm_read`."""
+        root = os.path.realpath(self.root)
+        paths = []
+        for path in self.plan["preamble"]:
+            rel = os.path.relpath(os.path.realpath(path), root)
+            if rel != ".." and not rel.startswith(".." + os.sep):
+                paths.append(rel.replace(os.sep, "/"))
+        for rel in self.plan.get("warm_read", []):
+            if rel not in paths:
+                paths.append(rel)
+        return paths
+
+    def _model_counts(self):
+        """Packages still to start, per interactive-host model."""
+        pkg_states = self.store.load()["packages"]
+        counts = {}
+        for pkg in self.plan["packages"]:
+            if pkg_states.get(pkg["id"], {}).get("status", "pending") != "pending":
+                continue
+            model = self.orca.model_for(pkg["cls"])
+            counts[model] = counts.get(model, 0) + 1
+        return counts
 
     # -- stop / select -------------------------------------------------------
 

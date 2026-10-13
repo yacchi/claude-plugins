@@ -140,6 +140,30 @@ class LoadPlanValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(wp.PlanError, "CORE-1"):
             wp.load_plan(path)
 
+    def test_warm_read_must_stay_inside_the_repo(self):
+        for bad in ("/etc/passwd", "../outside.md", "a/../../outside.md"):
+            with self.subTest(bad):
+                path = self.fx.write_plan([self.fx.pkg("CORE-1")])
+                with open(path) as f:
+                    raw = json.load(f)
+                raw["warm_read"] = [bad]
+                with open(path, "w") as f:
+                    json.dump(raw, f)
+                with self.assertRaisesRegex(wp.PlanError, "warm_read"):
+                    wp.load_plan(path)
+
+    def test_warm_read_is_normalized_and_missing_files_only_warn(self):
+        path = self.fx.write_plan([self.fx.pkg("CORE-1")])
+        with open(path) as f:
+            raw = json.load(f)
+        raw["warm_read"] = ["./docs/a.md", "docs/a.md"]
+        with open(path, "w") as f:
+            json.dump(raw, f)
+        plan = wp.load_plan(path)
+        self.assertEqual(plan["warm_read"], ["docs/a.md"])
+        warnings = wp.lint_plan(plan, self.tmp.name)
+        self.assertTrue(any("docs/a.md" in w["message"] for w in warnings))
+
     def test_preamble_path_not_existing(self):
         pkg = self.fx.pkg("CORE-1")
         path = self.fx.write_plan([pkg], preamble=["missing-preamble.md"])

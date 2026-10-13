@@ -12,6 +12,7 @@ the plan.json and state.json shapes this module works with.
 
 import json
 import os
+import posixpath
 import re
 
 _VALID_CLS = ("light", "standard", "deep")
@@ -77,7 +78,22 @@ def load_plan(path):
                 or not all(isinstance(item, str) for item in rule["require"])):
             raise PlanError("plan rules entries must be {'if': <glob>, 'require': [<glob>...]}")
 
+    warm_read = raw.get("warm_read", [])
+    if not isinstance(warm_read, list) or not all(
+            isinstance(item, str) and item for item in warm_read):
+        raise PlanError("plan warm_read must be a list of repo-relative paths")
+    warm_paths = []
+    for item in warm_read:
+        norm = posixpath.normpath(item.replace("\\", "/"))
+        if os.path.isabs(item) or norm.startswith("/") or norm == ".." \
+                or norm.startswith("../"):
+            raise PlanError("warm_read path must be repo-relative and stay inside the repo: %s"
+                            % item)
+        if norm not in warm_paths:
+            warm_paths.append(norm)
+
     plan = {
+        "warm_read": warm_paths,
         "preamble": [_resolve(p, base_dir) for p in raw.get("preamble", [])],
         "external_done": list(raw.get("external_done", [])),
         "rules": [{"if": rule["if"], "require": list(rule["require"])} for rule in rules],
@@ -197,9 +213,18 @@ def overlaps(files_a, files_b):
 _DELETION_WORDS = re.compile(r"削除|撤去|取り除|外す|remove|delete|drop|deprecat", re.IGNORECASE)
 
 
-def lint_plan(plan):
-    """Return non-blocking ownership warnings for a normalized plan."""
+def lint_plan(plan, root=None):
+    """Return non-blocking ownership warnings for a normalized plan. With
+    `root`, also warn about `warm_read` files missing from it (they may
+    appear after integration, so this is never an error)."""
     warnings = []
+    if root:
+        for rel in plan.get("warm_read", []):
+            if not os.path.exists(os.path.join(root, rel)):
+                warnings.append({
+                    "pkg": None,
+                    "message": "warm_read file does not exist in the repo: %s" % rel,
+                })
     for pkg in plan.get("packages", []):
         owned = pkg.get("files_owned", [])
         try:

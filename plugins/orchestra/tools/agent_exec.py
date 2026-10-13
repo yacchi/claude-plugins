@@ -349,6 +349,7 @@ DEFAULTS = {
         "startup_timeout": 90,
         "task_timeout": 3600,
         "keep_sessions": True,
+        "warm": {"enabled": True, "ttl_seconds": 3000, "min_packages": 2},
     },
 }
 

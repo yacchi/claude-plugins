@@ -32,13 +32,16 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 REGISTRY_NAME = "herdr-sessions.json"
+WARM_KEY = "_warm"  # registry key of the warm reader records; never a package id
 
 _STATUS_TIMEOUT = 15
 _CALL_TIMEOUT = 60
+_PROMPT_RETRY_WAIT = 2
 _PERMISSION_MODES = frozenset(("acceptEdits", "auto", "default", "plan"))
 _TRUST_MARKERS = ("trust this folder", "is this a project you")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -83,9 +86,12 @@ def merged_config(cfg):
     defaults = _agent_exec().DEFAULTS["herdr"]
     out = dict(defaults)
     out["models"] = dict(defaults["models"])
+    out["warm"] = dict(defaults.get("warm") or {})
     for key, value in (cfg or {}).items():
         if key == "models" and isinstance(value, dict):
             out["models"].update(value)
+        elif key == "warm" and isinstance(value, dict):
+            out["warm"].update(value)
         elif value is not None:
             out[key] = value
     out["enabled"] = _orca().normalize_enabled(out.get("enabled"))
@@ -206,6 +212,10 @@ class HerdrExecutor(object):
         self.sname = session_name(env=env)
         self.server_started = False
         self._server_ready = False
+        self._warm_paths = []
+        self._warm_counts = {}
+        self._warm_failed = set()
+        self._warm_lock = threading.RLock()
 
     @classmethod
     def from_config(cls, **kwargs):
@@ -332,12 +342,14 @@ class HerdrExecutor(object):
 
     def shutdown(self):
         """Stop the server, but only if this executor started it and no
-        registered session is left to resume (keep_sessions)."""
+        registered session is left to resume (keep_sessions). Warm worktrees
+        are removed either way; warm records alone never keep the server."""
+        self._warm_cleanup()
         with self.lock:
             if not self.server_started:
                 return
             if (self.cfg["keep_sessions"] and self.state_dir
-                    and self._load_registry()):
+                    and self._package_sessions()):
                 return
             self.server_started = False
             self._server_ready = False
@@ -359,7 +371,13 @@ class HerdrExecutor(object):
             return {}
         return data if isinstance(data, dict) else {}
 
+    def _package_sessions(self, state_dir=None):
+        return dict((k, v) for k, v in self._load_registry(state_dir).items()
+                    if k != WARM_KEY)
+
     def _save(self, session):
+        if session.get("ephemeral"):
+            return  # the warm reader lives under WARM_KEY, not as a package
         state_dir = session.get("state_dir") or self.state_dir
         with self.lock:
             data = self._load_registry(state_dir)
@@ -386,7 +404,7 @@ class HerdrExecutor(object):
         knows is dropped from the session (the next prompt opens a new one on
         the same worktree); a worktree that is gone drops the whole entry."""
         state_dir = state_dir or self.state_dir
-        entry = self._load_registry(state_dir).get(pkg)
+        entry = self._load_registry(state_dir).get(pkg) if pkg != WARM_KEY else None
         if not isinstance(entry, dict) or not entry.get("worktree"):
             return None
         if not os.path.isdir(entry["worktree"]):
@@ -415,7 +433,7 @@ class HerdrExecutor(object):
             return "\n".join(_strings(payload))
         return out
 
-    def _native_args(self, session):
+    def _native_args(self, session, fork=False):
         permission_mode = self.cfg.get("permission_mode", "acceptEdits")
         template = str(self.cfg.get("args") or "")
         if permission_mode not in _PERMISSION_MODES:
@@ -431,13 +449,17 @@ class HerdrExecutor(object):
         # without --add-dir the session stops on a permission dialog.
         for directory in session.get("add_dirs") or ():
             args += ["--add-dir", directory]
+        if session.get("claude_session_id"):
+            args += ["--session-id", session["claude_session_id"]]
+        if fork and session.get("warm_session"):
+            args += ["--resume", session["warm_session"], "--fork-session"]
         return args
 
-    def _open_agent(self, session):
+    def _open_agent(self, session, fork=False):
         """Workspace + agent on the session's worktree, up to a usable
         prompt. Raises OrcaNeed on the trust dialog (unless auto_trust applies
         to a worktree this executor created) or any other failed start."""
-        native = self._native_args(session)
+        native = self._native_args(session, fork)
         self._ensure_server()
         name = agent_name(session["pkg"])
         try:
@@ -505,6 +527,182 @@ class HerdrExecutor(object):
         self._save(session)
         self._event(session["pkg"], "close", handle)
 
+    # -- warm reader -------------------------------------------------------------
+
+    def configure_warm(self, read_paths, model_counts):
+        """The runner's hook: repo-relative files the warm reader reads, and
+        how many packages of the run start on each model."""
+        self._warm_paths = list(read_paths or ())
+        self._warm_counts = dict(model_counts or {})
+
+    def _warm_records(self, state_dir):
+        records = self._load_registry(state_dir).get(WARM_KEY)
+        return records if isinstance(records, dict) else {}
+
+    def _warm_put(self, state_dir, model, record):
+        with self.lock:
+            data = self._load_registry(state_dir)
+            records = data.get(WARM_KEY) if isinstance(data.get(WARM_KEY), dict) else {}
+            if record is None:
+                records.pop(model, None)
+            else:
+                records[model] = record
+            if records:
+                data[WARM_KEY] = records
+            else:
+                data.pop(WARM_KEY, None)
+            self._write_registry(state_dir, data)
+
+    def _warm_drop(self, record):
+        try:
+            _agent_exec().isolate_remove(record["repo"], record["task"], force=True)
+        except Exception as exc:
+            sys.stderr.write("agent-exec: herdr: warm worktree removal failed: %s\n" % exc)
+
+    def _warm_cleanup(self):
+        """Remove every warm worktree of this state dir (host shutdown)."""
+        if not self.state_dir:
+            return
+        for model, record in list(self._warm_records(self.state_dir).items()):
+            if isinstance(record, dict) and record.get("task") and record.get("repo"):
+                self._warm_drop(record)
+            self._warm_put(self.state_dir, model, None)
+
+    def _warm_for(self, pkg, repo, base_ref, model, state_dir, add_dirs):
+        """The warm record to fork `pkg`'s session from, or None. Never
+        raises: a failure is a `warm-failed` event and a fresh start."""
+        warm = self.cfg.get("warm") or {}
+        if (not warm.get("enabled") or not self._warm_paths
+                or self._warm_counts.get(model, 0) < int(warm.get("min_packages", 2))):
+            return None
+        with self._warm_lock:
+            if model in self._warm_failed:
+                return None
+            try:
+                return self.ensure_warm(model, base_ref, self._warm_paths, repo, state_dir,
+                                        add_dirs=add_dirs)
+            except Exception as exc:
+                self._warm_failed.add(model)
+                self._event(pkg, "warm-failed", None, model=model,
+                            reason=getattr(exc, "detail", None) or str(exc))
+                return None
+
+    def _warm_usable(self, record, repo, base_rev, paths, now):
+        if (record.get("invalid") or record.get("requested") != paths
+                or not os.path.isdir(record.get("worktree") or "")):
+            return False
+        ttl = float((self.cfg.get("warm") or {}).get("ttl_seconds", 3000))
+        if now - float(record.get("last_used") or 0) >= ttl:
+            return False
+        if record.get("base_rev") == base_rev:
+            return True
+        rc, out = _agent_exec()._git(repo, "diff", "--name-only", str(record.get("base_rev")),
+                                     base_rev)
+        if rc != 0:
+            return False
+        changed = [line.strip() for line in out.splitlines() if line.strip()]
+        return not any(c == f or c.startswith(f.rstrip("/") + "/")
+                       for c in changed for f in paths)
+
+    def ensure_warm(self, model, base_ref, read_paths, repo, state_dir, add_dirs=()):
+        """The warm reader record for `model` at `base_ref`: reused while it
+        is fresh and its files are unchanged, otherwise rebuilt. Raises on
+        any failure (the caller falls back to a fresh start)."""
+        agent_exec = _agent_exec()
+        paths = list(read_paths)
+        rc, out = agent_exec._git(repo, "rev-parse", "--verify", "%s^{commit}" % base_ref)
+        base_rev = out.strip() if rc == 0 else ""
+        if not base_rev:
+            raise _need("error", "could not resolve %s to a commit" % base_ref)
+        now = self.clock()
+        record = self._warm_records(state_dir).get(model)
+        if isinstance(record, dict):
+            if self._warm_usable(record, repo, base_rev, paths, now):
+                record["last_used"] = now
+                self._warm_put(state_dir, model, record)
+                return record
+            self._warm_drop(record)
+            self._warm_put(state_dir, model, None)
+
+        resolved, config_error = agent_exec.resolve_config()
+        if config_error is not None:
+            raise _need("error", config_error)
+        tag = _sanitize(model) or "model"
+        task = "warm-" + tag
+        created = agent_exec.isolate_create(repo, task, backend="git", onto=base_rev,
+                                            carry=False)
+        path = created.get("path")
+        if created.get("status") not in ("created", "exists") or not path \
+                or not os.path.isdir(path):
+            raise _need("error", "could not create the warm worktree: %s"
+                        % created.get("reason"))
+        built = False
+        try:
+            files = [p for p in paths if os.path.isfile(os.path.join(path, p))]
+            if not files:
+                raise _need("error", "none of the warm files exist at %s" % base_ref)
+            sid = str(uuid.uuid4())
+            result_path = os.path.join(state_dir, "orca", task + ".result.json")
+            os.makedirs(os.path.dirname(result_path), exist_ok=True)
+            try:
+                os.remove(result_path)
+            except OSError:
+                pass
+            session = {
+                "pkg": task, "worktree": path, "terminal": None, "workspace": None,
+                "pane": None, "repo": repo, "model": model, "state_dir": state_dir,
+                "created": created.get("status") == "created", "herdr_session": self.sname,
+                "add_dirs": sorted(set(os.path.abspath(d)
+                                       for d in list(add_dirs) + [state_dir])),
+                "claude_session_id": sid, "ephemeral": True,
+            }
+            line = (
+                "Read each of these files with the Read tool, using exactly these relative "
+                "paths, and nothing else: %s. Do not run any other tool and do not edit "
+                "anything. Then write %s containing JSON {\"status\": \"ok\"}."
+                % (", ".join(files), result_path))
+            try:
+                name = self._open_agent(session)
+                self._send_prompt(session, name, line, result_path)
+                data = self._wait_result(
+                    session, result_path,
+                    float(self.cfg["startup_timeout"]) + float(self.cfg["task_timeout"]))
+            finally:
+                self._close_agent(session)
+            if data.get("status") != "ok":
+                raise _need("error", "warm reader reported %s" % data.get("status"))
+            rc, out = agent_exec._git(path, "status", "--porcelain")
+            if rc != 0 or out.strip():
+                raise _need("error", "warm worktree is not clean after reading")
+            record = {
+                "session_id": sid, "worktree": path, "base_ref": base_ref,
+                "base_rev": base_rev, "files": files, "requested": paths, "repo": repo,
+                "task": task, "created_at": now, "last_used": now,
+            }
+            self._warm_put(state_dir, model, record)
+            built = True
+            return record
+        finally:
+            if not built:
+                self._warm_drop({"repo": repo, "task": task})
+
+    def _warm_leak(self, session):
+        """Files a fork left dirty in the warm worktree (the record is then
+        invalidated so the next package rebuilds it); [] when clean."""
+        worktree = session.get("warm_worktree")
+        if not worktree or not os.path.isdir(worktree):
+            return []
+        rc, out = _agent_exec()._git(worktree, "status", "--porcelain")
+        if rc != 0 or not out.strip():
+            return []
+        state_dir = session.get("state_dir") or self.state_dir
+        model = session.get("model")
+        record = self._warm_records(state_dir).get(model)
+        if isinstance(record, dict) and record.get("session_id") == session.get("warm_session"):
+            record["invalid"] = True
+            self._warm_put(state_dir, model, record)
+        return [line[3:] if len(line) > 3 else line for line in out.splitlines()]
+
     # -- the contract ------------------------------------------------------------
 
     def start(self, pkg_id, repo, base_ref, cls, model, run_id, state_dir, add_dirs=()):
@@ -525,6 +723,8 @@ class HerdrExecutor(object):
         if config_error is not None:
             raise _need("error", config_error)
         isolation = (resolved or {}).get("isolation") or agent_exec.DEFAULTS["isolation"]
+        add_dirs = sorted(set(os.path.abspath(d) for d in add_dirs))
+        warm = self._warm_for(pkg_id, repo, base_ref, model, state_dir, add_dirs)
         created = agent_exec.isolate_create(
             repo, "pkg-" + pkg_id, backend="git", onto=base_sha,
             carry_extra=(isolation.get("carry_extra") or ()),
@@ -540,19 +740,36 @@ class HerdrExecutor(object):
             "model": model, "cls": cls, "state_dir": state_dir,
             "created": created.get("status") == "created",
             "herdr_session": self.sname,
-            "add_dirs": sorted(set(os.path.abspath(d) for d in add_dirs)),
+            "add_dirs": add_dirs,
         }
+        if warm:
+            session.update(warm_session=warm["session_id"], warm_worktree=warm["worktree"])
         self._save(session)
         if created.get("carried") or created.get("carried_files"):
             self._event(pkg_id, "carry", None, method=created.get("carry_method", "none"),
                         files=len(created.get("carried_files") or []))
         try:
-            name = self._open_agent(session)
+            try:
+                name = self._open_agent(session, fork=bool(warm))
+            except _orca().OrcaNeed as exc:
+                if not warm or exc.kind != "error":
+                    raise
+                # The fork could not start (e.g. the warm transcript is gone):
+                # warm never fails a package, so start it fresh instead.
+                self._warm_failed.add(model)
+                self._event(pkg_id, "warm-failed", None, model=model, reason=exc.detail)
+                self._close_agent(session)
+                for key in ("warm_session", "warm_worktree"):
+                    session.pop(key, None)
+                warm = None
+                name = self._open_agent(session)
         except _orca().OrcaNeed:
             self.close(session, remove_worktree=True)
             raise
-        self._event(pkg_id, "start", name)
+        self._event(pkg_id, "start", name, **({"warm": warm["session_id"]} if warm else {}))
         session["fresh"] = True  # the first prompt is not a resume
+        if warm:
+            session["fork_first"] = True
         return session
 
     def prompt(self, session, prompt_files, result_path, timeout):
@@ -593,16 +810,14 @@ class HerdrExecutor(object):
             "\"<=15 lines\"}. If you must ESCALATE, put the reason in summary."
             % (" and ".join(prompt_files), result_path)
         )
-        try:
-            self._call(["agent", "prompt", name, line], timeout=_CALL_TIMEOUT)
-        except _HerdrError as exc:
-            if exc.code == "agent_blocked":
-                raise self._blocked(session, name, result_path)
-            if exc.code == "agent_prompt_stalled":
-                raise _need("stalled", "prompt stalled: %s\nterminal: %s\nworktree: %s\n"
-                                       "result: %s" % (exc, name, session.get("worktree"),
-                                                       result_path))
-            raise _need("error", str(exc))
+        if session.pop("fork_first", False) and session.get("warm_worktree"):
+            line = (
+                "Your working tree is %s. Earlier messages in this conversation were produced "
+                "in %s; any path under it maps to the same relative path under your working "
+                "tree. Never read or write under %s. "
+                % (session["worktree"], session["warm_worktree"], session["warm_worktree"])
+            ) + line
+        self._send_prompt(session, name, line, result_path)
 
         try:
             data = self.wait_result(session, result_path, timeout)
@@ -619,6 +834,25 @@ class HerdrExecutor(object):
                           "workdir": session["worktree"]},
         }
 
+    def _send_prompt(self, session, name, line, result_path):
+        """Send ONE prompt line. A stalled prompt is resent once after a short
+        wait; only a second stall is a need."""
+        for attempt in (0, 1):
+            try:
+                self._call(["agent", "prompt", name, line], timeout=_CALL_TIMEOUT)
+                return
+            except _HerdrError as exc:
+                if exc.code == "agent_blocked":
+                    raise self._blocked(session, name, result_path)
+                if exc.code == "agent_prompt_stalled":
+                    if attempt == 0:
+                        self.sleep(_PROMPT_RETRY_WAIT)
+                        continue
+                    raise _need("stalled", "prompt stalled: %s\nterminal: %s\nworktree: %s\n"
+                                           "result: %s" % (exc, name, session.get("worktree"),
+                                                           result_path))
+                raise _need("error", str(exc))
+
     def _blocked(self, session, name, result_path):
         try:
             screen = self._screen(name)
@@ -630,7 +864,23 @@ class HerdrExecutor(object):
             % (_tail(screen), name, session.get("worktree"), result_path))
 
     def wait_result(self, session, result_path, timeout):
-        """Wait for a result file without sending another prompt."""
+        """Wait for a result file without sending another prompt. For a
+        forked package the warm worktree must still be clean afterwards: a
+        fork that wrote there is a need, whatever the outcome."""
+        failure = None
+        data = None
+        try:
+            data = self._wait_result(session, result_path, timeout)
+        except _orca().OrcaNeed as exc:
+            failure = exc
+        leaked = self._warm_leak(session)
+        if leaked:
+            raise _need("error", "fork wrote outside its tree: %s" % ", ".join(leaked))
+        if failure is not None:
+            raise failure
+        return data
+
+    def _wait_result(self, session, result_path, timeout):
         name = session.get("terminal")
         if not name:
             raise _need("stalled", "agent is no longer registered")
