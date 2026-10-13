@@ -52,6 +52,8 @@ _CALL_TIMEOUT = 60
 _PROMPT_RETRY_WAIT = 2
 # Seconds to let Claude's TUI settle once its input box is drawn.
 _INPUT_SETTLE = 1
+# `agent start` retries while a just-created pane's shell is not up yet.
+_SHELL_RETRIES = 3
 _PERMISSION_MODES = frozenset(("acceptEdits", "auto", "default", "plan"))
 _TRUST_MARKERS = ("trust this folder", "is this a project you")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -617,13 +619,19 @@ class HerdrExecutor(object):
 
         ms = int(float(self.cfg["startup_timeout"]) * 1000)
         timeout = float(self.cfg["startup_timeout"]) + 30
-        try:
-            self._call(["agent", "start", name, "--kind", "claude", "--pane", pane,
-                        "--timeout", str(ms), "--"] + native, timeout=timeout)
-            return name
-        except _HerdrError as exc:
-            if exc.code != "agent_not_ready":
-                raise _need("error", str(exc))
+        for attempt in range(_SHELL_RETRIES + 1):
+            try:
+                self._call(["agent", "start", name, "--kind", "claude", "--pane", pane,
+                            "--timeout", str(ms), "--"] + native, timeout=timeout)
+                return name
+            except _HerdrError as exc:
+                # A pane created a moment ago may not have its shell up yet.
+                if "not an available shell" in str(exc) and attempt < _SHELL_RETRIES:
+                    self.sleep(1)
+                    continue
+                if exc.code != "agent_not_ready":
+                    raise _need("error", str(exc))
+                break
         try:
             screen = self._screen(name)
         except _HerdrError as exc:

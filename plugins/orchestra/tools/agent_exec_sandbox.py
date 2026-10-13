@@ -50,6 +50,9 @@ DEFAULT_DENY_READ = (
     "~/Library/Keychains",
 )
 
+# DEFAULT_DENY_READ entries the herdr host must be able to read (see host_policy).
+HOST_READABLE = ("~/Library/Keychains",)
+
 # Package/build caches every toolchain a worker runs writes into.
 # NOT `~/.local/share/uv/tools`: that holds uv's INSTALLED tool environments,
 # code that runs later outside any sandbox. A sandboxed child gets
@@ -730,7 +733,11 @@ def host_policy(repo, worktree_base, herdr_home, cfg, extra_writable=(), home=No
     writable.append("/dev")
     for p in cfg.get("allow_write") or []:
         writable.append(_expand(p, home))
-    deny_read = [_expand(p, home) for p in DEFAULT_DENY_READ]
+    # Claude Code keeps its login token in the macOS Keychain; denying the
+    # keychain files leaves every hosted session "Not logged in". Only the
+    # host drops this one entry - CLI executors keep it.
+    deny_read = [_expand(p, home) for p in DEFAULT_DENY_READ
+                 if p not in HOST_READABLE]
     deny_read += [_expand(p, home) for p in cfg.get("deny_read") or []]
     if learned is None:
         learned, _warning = load_learned(home, deny_read)

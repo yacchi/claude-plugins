@@ -136,6 +136,11 @@ class HostPolicyTests(unittest.TestCase):
         # a symlinked skills dir is denied at its real path as well
         self.assertIn(os.path.join(self.shared, "skills"), deny)
 
+    def test_keychain_stays_readable_for_the_claude_login_only_on_the_host(self):
+        keychains = os.path.join(self.home, "Library", "Keychains")
+        self.assertNotIn(keychains, self.policy["deny_read"])
+        self.assertIn(os.path.join(self.home, ".ssh"), self.policy["deny_read"])
+
     def test_managed_tools_and_pi_agent_dir_cannot_be_replaced(self):
         state = os.path.realpath(sb.state_dir(self.home))
         for name in ("tools", "pi-agent"):
