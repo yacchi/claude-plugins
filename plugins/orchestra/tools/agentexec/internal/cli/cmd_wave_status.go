@@ -6,8 +6,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -67,28 +65,6 @@ func addWaveStatusCommands(parent *cobra.Command) {
 	formatFlags(lint, "json", "text")
 
 	parent.AddCommand(status, stop, lint)
-}
-
-// pyInt parses like Python's int(): surrounding whitespace, a sign, and
-// single underscores between digits.
-func pyInt(s string) (int, bool) {
-	s = strings.TrimSpace(s)
-	neg := false
-	if s != "" && (s[0] == '+' || s[0] == '-') {
-		neg = s[0] == '-'
-		s = s[1:]
-	}
-	if s == "" || s[0] == '_' || s[len(s)-1] == '_' || strings.Contains(s, "__") {
-		return 0, false
-	}
-	n, err := strconv.Atoi(strings.ReplaceAll(s, "_", ""))
-	if err != nil || strings.ContainsAny(s, "+-") {
-		return 0, false
-	}
-	if neg {
-		n = -n
-	}
-	return n, true
 }
 
 func runWaveStatus(out, errw io.Writer, args []string) error {
