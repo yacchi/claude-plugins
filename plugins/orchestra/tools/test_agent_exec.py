@@ -818,7 +818,7 @@ class EnforcementLightClassNormalizationTests(_IsolatedConfigMixin, unittest.Tes
     """YAML 1.1 (what yaml.safe_load implements) parses a bareword
     off/on/yes/no as a bool, not a string. resolve_config() must normalize
     enforcement.light_class so every consumer (agent-exec config/doctor, the
-    enforce-router hook) always sees one of the two real strings, never a
+    light-class guard in hooks/guards/light-class.ts) always sees one of the two real strings, never a
     stray bool -- and fails SAFE (-> "off") on anything ambiguous rather
     than ever silently meaning "block"."""
 

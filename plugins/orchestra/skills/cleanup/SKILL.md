@@ -6,7 +6,7 @@ when_to_use: Use when orchestra worktrees have piled up in a repo (`git worktree
 
 # cleanup: reclaim leftover orchestra worktrees
 
-`agent-exec dispatch --isolate` gives every worker a worktree on an `orchestra/<session8>/<task>` branch. `hooks/cleanup-worktrees.sh` reclaims them at `SessionEnd` — but only the finishing session's, and only when the hook actually runs. Everything else survives with nothing to reclaim it:
+`agent-exec dispatch --isolate` gives every worker a worktree on an `orchestra/<session8>/<task>` branch. `hooks/lifecycle/cleanup-worktrees.ts` reclaims them at `SessionEnd` — but only the finishing session's, and only when the hook actually runs. Everything else survives with nothing to reclaim it:
 
 - a session that crashed, was killed, or ended before the hook shipped (< v0.26.0);
 - `ORCHESTRA_SESSION_CLEANUP=off` or `enforcement.session_cleanup: "off"`;

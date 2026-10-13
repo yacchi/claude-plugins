@@ -177,7 +177,7 @@ DEFAULTS = {
     },
     # "off": route/dispatch only ever advise; nothing nudges a light-class
     # task away from Claude. "block": the PreToolUse hook
-    # (hooks/enforce-router.sh) nudges a generic Haiku implementation
+    # (hooks/guards/light-class.ts) nudges a generic Haiku implementation
     # subagent toward `agent-exec dispatch` instead, at most once per
     # session, with documented escape hatches. Consumed by that hook (and by
     # `agent-exec config`/`doctor`'s reflection of resolved config), not
@@ -185,20 +185,20 @@ DEFAULTS = {
     # "worker_vcs" guards the other direction and therefore defaults to
     # "block": a subagent must not run destructive VCS commands
     # (checkout --/restore/reset --hard/clean -f/stash) against the user's
-    # shared working tree. Consumed by hooks/guard-worker-vcs.sh. Set to
+    # shared working tree. Consumed by hooks/guards/worker-vcs.ts. Set to
     # "off" to disable that guard entirely.
     # "turn_edits" is the turn-size tripwire threshold consumed by
-    # hooks/count-turn-edits.sh: once the main thread has hand-edited this
+    # hooks/router/turn-edits.ts: once the main thread has hand-edited this
     # many files inside one turn, the hook asks it once to re-classify into
     # the orchestrated lane. Set to "off" to disable.
     # "opus_generalist" is the once-per-session nudge consumed by
-    # hooks/nudge-opus-generalist.sh: a general-purpose subagent that would
+    # hooks/guards/opus-generalist.ts: a general-purpose subagent that would
     # run on the instructor's own Opus/Fable model (named, or `model`
     # omitted so it inherits) is denied once and redirected to a cheaper
     # tier or to orchestra. "nudge" (default) or "off".
     # "session_cleanup" removes the finishing session's orchestra worktrees
     # at SessionEnd, keeping any that still hold uncollected changes.
-    # Consumed by hooks/cleanup-worktrees.sh. Set to "off" to disable.
+    # Consumed by hooks/lifecycle/cleanup-worktrees.ts. Set to "off" to disable.
     "enforcement": {
         "light_class": "off",
         "worker_vcs": "block",
@@ -5651,7 +5651,7 @@ def _prune_heartbeats(now=None):
 
 # --- isolate sweep ------------------------------------------------------------
 #
-# WHY THIS EXISTS. `hooks/cleanup-worktrees.sh` reclaims a session's worktrees
+# WHY THIS EXISTS. `hooks/lifecycle/cleanup-worktrees.ts` reclaims a session's worktrees
 # at `SessionEnd`, but only that session's, and only when the hook actually
 # runs. Everything else accumulates with nothing to reclaim it: a session that
 # crashed or was killed, a run from before the cleanup hook shipped, a legacy
