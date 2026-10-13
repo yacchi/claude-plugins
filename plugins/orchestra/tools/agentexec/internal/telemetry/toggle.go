@@ -75,6 +75,16 @@ func splitLinesKeepEnds(s string) []string {
 	return lines
 }
 
+// endsWithBreak reports whether s ends in a splitlines line terminator.
+func endsWithBreak(s string) bool {
+	r, _ := utf8.DecodeLastRuneInString(s)
+	switch r {
+	case '\n', '\r', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
+		return true
+	}
+	return false
+}
+
 // SetEnabledInText returns the content of an orchestra.yaml layer file (nil
 // when the file does not exist yet) with telemetry.enabled surgically set.
 // It is a LINE edit, not a YAML round trip: every other line, comment, key
@@ -146,6 +156,11 @@ func SetEnabledInText(text *string, enabled bool) string {
 		break
 	}
 	insert := childIndent + "enabled: " + b + "\n"
+	// An anchor that is the last line and has no terminator would get the
+	// child glued onto it (Python's behavior); end the anchor line first.
+	if anchor := lines[telemetryIdx]; telemetryIdx == len(lines)-1 && !endsWithBreak(anchor) {
+		insert = "\n" + insert
+	}
 	lines = append(lines[:telemetryIdx+1], append([]string{insert}, lines[telemetryIdx+1:]...)...)
 	return strings.Join(lines, "")
 }

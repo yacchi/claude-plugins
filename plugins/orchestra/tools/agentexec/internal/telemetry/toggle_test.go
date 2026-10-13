@@ -43,7 +43,7 @@ func TestSetEnabledInTextBytes(t *testing.T) {
 		{"insert uses the tab indent", "telemetry:\n\tdir: x\n", false, "telemetry:\n\tenabled: false\n\tdir: x\n"},
 		{"insert skips blank and finds the first child", "telemetry:\n\n  dir: x\n", true, "telemetry:\n  enabled: true\n\n  dir: x\n"},
 		{"insert into an empty block", "telemetry:\nother: 1\n", true, "telemetry:\n  enabled: true\nother: 1\n"},
-		{"insert after an anchor without newline", "telemetry:", true, "telemetry:  enabled: true\n"},
+		{"insert after an anchor without newline", "telemetry:", true, "telemetry:\n  enabled: true\n"},
 		{"next top-level key ends the block", "telemetry:\n  dir: x\ntiers:\n  enabled: false\n", true, "telemetry:\n  enabled: true\n  dir: x\ntiers:\n  enabled: false\n"},
 		{"inline flow mapping is not the anchor", "telemetry: {enabled: false}\n", true, "telemetry: {enabled: false}\n\n" + strings.Replace(tmpl, "%s", "true", 1)},
 		{"commented anchor", "# telemetry:\nother: 1\n", true, "# telemetry:\nother: 1\n\n" + strings.Replace(tmpl, "%s", "true", 1)},
@@ -192,15 +192,6 @@ func FuzzSetEnabledInText(f *testing.F) {
 			return
 		}
 		out := SetEnabledInText(&text, enabled)
-		// Python's editor glues the inserted child onto an anchor line that
-		// lacks its line terminator ("telemetry:" at EOF); that output is not
-		// a fixed point and is pinned by the byte table instead.
-		if lines := splitLinesKeepEnds(text); len(lines) > 0 {
-			last := lines[len(lines)-1]
-			if topLevelRE.MatchString(last) && strings.TrimRight(last, "\r\n") == last {
-				return
-			}
-		}
 		again := SetEnabledInText(&out, enabled)
 		if again != out {
 			t.Fatalf("not stable:\n in   %q\n out  %q\n then %q", text, out, again)
