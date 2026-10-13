@@ -1,0 +1,23 @@
+description: >
+  every configured provider already has credentials: ready, herdr untouched
+  (there is none on PATH)
+setup:
+  git: true
+  env:
+    PATH: "<HOME>/fakebin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/fakebin/pi: "0755"
+  files:
+    ~/fakebin/pi: |
+      #!/bin/sh
+      echo 'noise'
+      echo '{"status": "ready"}'
+    .claude/orchestra.yaml: |
+      external_executors:
+        pi:
+          class_policy:
+            light: {model: "openai-codex/gpt-5", effort: low}
+            deep: {model: "anthropic/claude-sonnet", effort: high}
+steps:
+  - argv: [pi, login]
+  - argv: [pi, login, --provider, openai-codex, --json]

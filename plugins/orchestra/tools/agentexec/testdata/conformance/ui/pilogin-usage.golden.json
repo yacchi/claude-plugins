@@ -1,0 +1,72 @@
+{
+  "scenario": "ui/pilogin-usage",
+  "steps": [
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: pi login: unknown argument: --bogus\nUsage:\n  agent-exec pi login [--provider ID] [--json]\n  agent-exec pi login --wait [--timeout SEC] [--json]\n  agent-exec pi login --paste TEXT [--timeout SEC] [--json]\n  agent-exec pi login --cancel [--json]\n"
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--provider"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: pi login: --provider needs a value\nUsage:\n  agent-exec pi login [--provider ID] [--json]\n  agent-exec pi login --wait [--timeout SEC] [--json]\n  agent-exec pi login --paste TEXT [--timeout SEC] [--json]\n  agent-exec pi login --cancel [--json]\n"
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--paste"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: pi login: --paste needs a value\nUsage:\n  agent-exec pi login [--provider ID] [--json]\n  agent-exec pi login --wait [--timeout SEC] [--json]\n  agent-exec pi login --paste TEXT [--timeout SEC] [--json]\n  agent-exec pi login --cancel [--json]\n"
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--timeout",
+        "soon"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: pi login: --timeout needs a number\nUsage:\n  agent-exec pi login [--provider ID] [--json]\n  agent-exec pi login --wait [--timeout SEC] [--json]\n  agent-exec pi login --paste TEXT [--timeout SEC] [--json]\n  agent-exec pi login --cancel [--json]\n"
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "extra"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: pi login: unknown argument: extra\nUsage:\n  agent-exec pi login [--provider ID] [--json]\n  agent-exec pi login --wait [--timeout SEC] [--json]\n  agent-exec pi login --paste TEXT [--timeout SEC] [--json]\n  agent-exec pi login --cancel [--json]\n"
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "-h"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: pi login: unknown argument: -h\nUsage:\n  agent-exec pi login [--provider ID] [--json]\n  agent-exec pi login --wait [--timeout SEC] [--json]\n  agent-exec pi login --paste TEXT [--timeout SEC] [--json]\n  agent-exec pi login --cancel [--json]\n"
+    }
+  ]
+}

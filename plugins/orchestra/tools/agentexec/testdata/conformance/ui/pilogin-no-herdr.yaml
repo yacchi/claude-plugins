@@ -1,0 +1,20 @@
+description: >
+  pi is installed but not logged in and herdr is absent: a manual result at
+  the herdr step; an unknown provider has no /login label to drive
+setup:
+  git: true
+  env:
+    PATH: "<HOME>/fakebin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/fakebin/pi: "0755"
+  files:
+    ~/fakebin/pi: |
+      #!/bin/sh
+      echo '{"status": "not_ready"}'
+      exit 1
+steps:
+  - argv: [pi, login]
+  - argv: [pi, login, --provider, anthropic]
+  - argv: [pi, login, --provider, nonesuch]
+  - argv: [pi, login, --cancel]
+  - argv: [pi, login, --wait, --timeout, "1"]

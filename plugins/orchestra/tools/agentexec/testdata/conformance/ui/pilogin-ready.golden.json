@@ -1,0 +1,39 @@
+{
+  "scenario": "ui/pilogin-ready",
+  "steps": [
+    {
+      "argv": [
+        "pi",
+        "login"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "providers": [
+          "openai-codex",
+          "anthropic"
+        ],
+        "status": "ready"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--provider",
+        "openai-codex",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "providers": [
+          "openai-codex"
+        ],
+        "status": "ready"
+      },
+      "stderr": ""
+    }
+  ]
+}

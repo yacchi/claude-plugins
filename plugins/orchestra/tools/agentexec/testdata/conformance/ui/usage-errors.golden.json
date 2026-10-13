@@ -1,0 +1,99 @@
+{
+  "scenario": "ui/usage-errors",
+  "steps": [
+    {
+      "argv": [
+        "ui",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec ui: unknown argument '--bogus'\nUsage:\n  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]\n"
+    },
+    {
+      "argv": [
+        "ui",
+        "--port"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec ui: --port needs a value\nUsage:\n  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]\n"
+    },
+    {
+      "argv": [
+        "ui",
+        "--port",
+        "abc"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec ui: --port: invalid value 'abc'\nUsage:\n  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]\n"
+    },
+    {
+      "argv": [
+        "ui",
+        "--port",
+        "-1"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec ui: --port must not be negative\nUsage:\n  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]\n"
+    },
+    {
+      "argv": [
+        "ui",
+        "--idle-minutes",
+        "x"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec ui: --idle-minutes: invalid value 'x'\nUsage:\n  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]\n"
+    },
+    {
+      "argv": [
+        "ui",
+        "--idle-minutes",
+        "-0.5"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec ui: --idle-minutes must not be negative\nUsage:\n  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]\n"
+    },
+    {
+      "argv": [
+        "ui",
+        "--help"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "Usage:\n  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]\n"
+    },
+    {
+      "argv": [
+        "ui",
+        "-h"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "Usage:\n  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]\n"
+    },
+    {
+      "argv": [
+        "ui",
+        "extra"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec ui: unknown argument 'extra'\nUsage:\n  agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]\n"
+    }
+  ]
+}

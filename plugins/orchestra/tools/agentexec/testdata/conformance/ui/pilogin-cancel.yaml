@@ -1,0 +1,64 @@
+description: >
+  a login in progress is cancelled: the pane is closed and the server
+  stopped, so a following --wait finds no login
+normalize_keys: [session]
+setup:
+  git: true
+  env:
+    PATH: "<HOME>/fakebin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/fakebin/pi: "0755"
+    ~/fakebin/herdr: "0755"
+  files:
+    ~/fakebin/pi: |
+      #!/bin/sh
+      echo '{"status": "not_ready"}'
+      exit 1
+    ~/fakebin/herdr: |
+      #!/bin/sh
+      dir="$HOME/fake"
+      mkdir -p "$dir"
+      [ "$1" = "--session" ] && shift 2
+      stage() { cat "$dir/stage" 2>/dev/null; }
+      setstage() { printf '%s' "$1" > "$dir/stage"; }
+      case "$1 $2" in
+        "status "*)
+          if [ -f "$dir/running" ]; then
+            echo '{"result": {"server": {"running": true}}}'
+          else
+            echo '{"result": {"server": {"running": false}}}'
+          fi;;
+        "server stop") rm -f "$dir/running"; echo '{}';;
+        "server "*|"server") touch "$dir/running";;
+        "workspace create")
+          echo '{"result": {"workspace": {"workspace_id": "w1"}, "root_pane": {"pane_id": "w1:p1"}}}';;
+        "workspace close"|"pane close") echo '{}';;
+        "pane run") setstage boot; echo '{}';;
+        "pane send-text")
+          case "$4" in
+            "/login") setstage typed;;
+            "Anthropic") setstage filtered;;
+          esac
+          echo '{}';;
+        "pane send-keys")
+          case "$(stage)/$4" in
+            typed/enter) setstage auth;;
+            auth/enter) setstage providers;;
+            filtered/enter) setstage final;;
+          esac
+          echo '{}';;
+        "pane read")
+          case "$(stage)" in
+            boot) printf ' v1.2.0\n escape interrupt · ctrl+c/ctrl+d clear/exit · / commands\n';;
+            auth) printf ' Select authentication method:\n → Sign in with an account\n   Sign in with an API key\n';;
+            providers) printf ' Select provider to configure:\n>\n → Anthropic • not configured\n';;
+            filtered) printf ' Select provider to configure:\n> Anthropic\n → Anthropic • not configured\n';;
+            final) printf ' Open this URL to sign in:\n https://auth.example.com/oauth/authorize?client_id=a\n bc&state=xyz\n Cmd+click to open\n Waiting for authentication...\n paste the final redirect URL here:\n';;
+            *) printf 'user@host ~ %% \n';;
+          esac;;
+        *) echo '{"error": {"code": "unknown", "message": "unknown"}}' >&2; exit 2;;
+      esac
+steps:
+  - argv: [pi, login, --provider, anthropic]
+  - argv: [pi, login, --cancel]
+  - argv: [pi, login, --wait, --timeout, "1"]
