@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -304,6 +305,64 @@ func TestWaitStates(t *testing.T) {
 	full, _ := Wait(cfg, "dsp-000000000004", 0, false)
 	if get(full, "answer") != long {
 		t.Error("a later wait without --summary returns the full answer")
+	}
+}
+
+// A recorded pid now owned by another user's process (pid 1: kill(0)
+// fails with EPERM) is not our child: the run is finished, not running.
+func TestForeignPIDIsNotAlive(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root may signal pid 1")
+	}
+	cfg := testConfig(t)
+	putState(t, cfg, "dsp-000000000001", `{"pid": 1}`)
+	mustWrite(t, detachFile(cfg, "dsp-000000000001", ".out"), `{"status": "ok", "answer": "x"}`)
+	if out := Detach(cfg, "dsp-000000000001", nil); get(out, "status") != "done" {
+		t.Fatalf("detach: %v", out)
+	}
+	if d := ListDetached(cfg); len(d) != 1 || d[0].Alive || !d[0].ResultPresent {
+		t.Fatalf("list: %+v", d)
+	}
+	out, _ := Wait(cfg, "dsp-000000000001", time.Second, false)
+	if get(out, "status") != "ok" || get(out, "answer") != "x" || get(out, "answer_path") == nil {
+		t.Fatalf("wait: %v", out)
+	}
+
+	putState(t, cfg, "dsp-000000000002", `{"pid": 1}`)
+	old := detachFile(cfg, "dsp-000000000002", ".out")
+	mustWrite(t, old, "x")
+	age(t, old, 60*24*time.Hour)
+	ResetRetention()
+	SweepRetention(cfg)
+	if _, err := os.Stat(old); err == nil {
+		t.Error("retention must sweep the files of a foreign pid")
+	}
+}
+
+// Concurrent waits on one finished, uncollected child all get its result.
+func TestConcurrentWaitsCollectOnce(t *testing.T) {
+	cfg := testConfig(t)
+	putState(t, cfg, "dsp-000000000001", `{"pid": 999999999}`)
+	mustWrite(t, detachFile(cfg, "dsp-000000000001", ".out"), `{"status": "ok", "answer": "x"}`)
+	const n = 8
+	// Stagger the collects so, unserialized, a late one finds .out removed.
+	var calls atomic.Int32
+	beforeCollect = func() { time.Sleep(time.Duration(calls.Add(1)) * 20 * time.Millisecond) }
+	t.Cleanup(func() { beforeCollect = func() {} })
+	results := make(chan any, n)
+	for range n {
+		go func() {
+			out, _ := Wait(cfg, "dsp-000000000001", 0, false)
+			results <- get(out, "status")
+		}()
+	}
+	for range n {
+		if s := <-results; s != "ok" {
+			t.Fatalf("a concurrent wait got %v", s)
+		}
+	}
+	if final := readObject(detachFile(cfg, "dsp-000000000001", ".result.json")); get(final, "status") != "ok" {
+		t.Fatalf("persisted result %v", final)
 	}
 }
 

@@ -2,7 +2,7 @@ description: >
   the watchdog stops a run past its class's wall budget: status `runaway`
   with the trip details; the session is still stored (the instructor resumes
   a runaway once the cause is fixed) and no cooldown starts
-normalize_keys: [elapsed_s, idle_s, wall_s, seconds]
+normalize_keys: [elapsed_s, runtime_s]
 setup:
   git: true
   fakes: [pi]

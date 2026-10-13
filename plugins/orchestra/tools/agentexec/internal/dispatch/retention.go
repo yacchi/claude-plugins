@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 )
@@ -78,7 +78,7 @@ func sweepDetach(cfg *config.Resolved, cutoff time.Time) {
 		token, _, _ := strings.Cut(e.Name(), ".")
 		live, seen := alive[token]
 		if !seen {
-			live = fsutil.PIDAlive(statePID(filepath.Join(dir, token+".json")))
+			live = pidAlive(statePID(filepath.Join(dir, token+".json")))
 			alive[token] = live
 		}
 		if !live {
@@ -103,6 +103,15 @@ func statePID(path string) int {
 	}
 	p, _ := o.Get("pid")
 	return pidOf(p)
+}
+
+// pidAlive is the detached child's liveness as dispatch has always judged
+// it: kill(pid, 0) succeeding. Any error (EPERM included) is dead — a
+// recorded pid now owned by another user's process is not our child, so
+// it must not keep a run "running" forever (unlike fsutil.PIDAlive, which
+// the UI uses for processes it does not own).
+func pidAlive(pid int) bool {
+	return pid > 0 && syscall.Kill(pid, 0) == nil
 }
 
 // pidOf is a JSON pid: a positive integer (never a bool or a float).

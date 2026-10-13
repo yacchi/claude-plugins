@@ -23,7 +23,8 @@ import (
 //
 // Files, all under DetachDir: <T>.json (state: pid, token, started,
 // wait_calls, out[, collected, finished]), <T>.out (the child's output),
-// <T>.result.json (the collected result), <T>.answer.txt (its full answer).
+// <T>.result.json (the collected result), <T>.answer.txt (its full answer),
+// <T>.lock (serializes the collect step of concurrent waits).
 
 // SummaryAnswerChars is how many code points of `answer` a --summary keeps.
 const SummaryAnswerChars = 400
@@ -35,6 +36,14 @@ const DefaultMaxWait = 560 * time.Second
 // relayRawChars is how much of an unparsable child output a relay-failed
 // result keeps (its tail, in code points).
 const relayRawChars = 2000
+
+// collectLockTimeout bounds the wait for another `wait` collecting the same
+// token; past it the collect proceeds unlocked (best effort, as before).
+const collectLockTimeout = 30 * time.Second
+
+// beforeCollect runs just before a wait reads the child's output (a seam
+// for the concurrent-collect test).
+var beforeCollect = func() {}
 
 // DetachDir is the directory of the detach files.
 func DetachDir(cfg *config.Resolved) string { return filepath.Join(TokenDir(cfg), "detach") }
@@ -87,7 +96,7 @@ func Detach(cfg *config.Resolved, token string, args []string) *jsonx.Object {
 			state = jsonx.NewObject()
 		}
 		pv, _ := state.Get("pid")
-		if pid := pidOf(pv); fsutil.PIDAlive(pid) {
+		if pid := pidOf(pv); pidAlive(pid) {
 			return jsonx.NewObject().Set("status", "running").Set("token", token).Set("pid", pv)
 		}
 		if c, _ := state.Get("collected"); c != true {
@@ -177,14 +186,24 @@ func Wait(cfg *config.Resolved, token string, maxWait time.Duration, summary boo
 	}
 	start := time.Now()
 	deadline := start.Add(max(maxWait, 0))
-	for fsutil.PIDAlive(pid) && time.Now().Before(deadline) {
+	for pidAlive(pid) && time.Now().Before(deadline) {
 		time.Sleep(min(2*time.Second, max(50*time.Millisecond, time.Until(deadline))))
 	}
-	if fsutil.PIDAlive(pid) {
+	if pidAlive(pid) {
 		calls, _ := state.Get("wait_calls")
 		return jsonx.NewObject().Set("status", "running").Set("token", token).Set("pid", pv).
 			Set("waited_s", int64(time.Since(start).Seconds())).Set("wait_calls", calls), 0
 	}
+	// Collect under a per-token lock: of two concurrent waits on a finished
+	// child, the loser reads the winner's result instead of finding .out
+	// gone and persisting a relay failure over it.
+	if unlock, err := fsutil.Lock(detachFile(cfg, token, ".lock"), fsutil.Exclusive, collectLockTimeout); err == nil {
+		defer unlock()
+		if cached := readObject(resultPath); cached != nil {
+			return present(cached), 0
+		}
+	}
+	beforeCollect()
 	raw, _ := os.ReadFile(outPath)
 	result, ok := extractObject(string(raw))
 	if !ok {
@@ -330,7 +349,7 @@ func ListDetached(cfg *config.Resolved) []Detached {
 			Token: token, PID: get("pid"), Started: get("started"), Finished: get("finished"),
 			Executor: get("executor"), Model: get("model"), Class: get("class"), Task: get("task"),
 		}
-		d.Alive = fsutil.PIDAlive(pidOf(d.PID))
+		d.Alive = pidAlive(pidOf(d.PID))
 		d.Collected = get("collected") == true
 		d.WaitCalls, _ = get("wait_calls").(int64)
 		_, err := os.Stat(detachFile(cfg, token, ".result.json"))

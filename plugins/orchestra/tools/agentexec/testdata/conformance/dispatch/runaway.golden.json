@@ -54,7 +54,7 @@
           "last_tool": null,
           "reason": "wall",
           "repeat_count": 0,
-          "runtime_s": 1
+          "runtime_s": "<RUNTIME_S>"
         },
         "sandbox": {
           "backend": "none",
