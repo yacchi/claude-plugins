@@ -1,0 +1,228 @@
+{
+  "scenario": "config/yaml11-enforcement",
+  "steps": [
+    {
+      "argv": [
+        "config"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "checks": {
+          "ensure": [],
+          "flaky_threshold": 3,
+          "items": [],
+          "max_parallel": 2,
+          "retry_failed_alone": true
+        },
+        "cooldown": {
+          "enabled": true,
+          "path": "~/.claude/orchestra/executor-state.json",
+          "seconds": {
+            "auth": 0,
+            "credits": 3600,
+            "nonzero-exit": 0,
+            "quota": 3600,
+            "rate-limit": 900,
+            "sandbox": 0
+          }
+        },
+        "enforcement": {
+          "light_class": "off",
+          "opus_generalist": "off",
+          "session_cleanup": "off",
+          "turn_edits": 12,
+          "worker_vcs": "off"
+        },
+        "external_executors": {
+          "pi": {
+            "agent_dir": "managed",
+            "available": false,
+            "class_policy": {
+              "deep": {
+                "effort": "high",
+                "model": "openai-codex/gpt-6.1-sol"
+              },
+              "independent-review": {
+                "effort": "medium",
+                "model": "openai-codex/gpt-6.1-sol"
+              },
+              "light": {
+                "effort": "medium",
+                "model": "openai-codex/gpt-5.6-luna"
+              },
+              "standard": {
+                "effort": "medium",
+                "model": "openai-codex/gpt-5.6-luna"
+              }
+            },
+            "classes": [
+              "light",
+              "standard",
+              "deep",
+              "independent-review"
+            ],
+            "context_files": false,
+            "dispatch": "cli",
+            "enabled": true
+          }
+        },
+        "herdr": {
+          "add_dirs": [],
+          "args": "--model {model} --permission-mode {permission_mode}",
+          "auto_trust": true,
+          "enabled": "auto",
+          "keep_sessions": true,
+          "models": {
+            "deep": "opus",
+            "light": "sonnet",
+            "standard": "opus"
+          },
+          "permission_mode": "auto",
+          "startup_timeout": 90,
+          "task_timeout": 3600,
+          "user_config": "isolate",
+          "warm": {
+            "enabled": true,
+            "min_packages": 2,
+            "ttl_seconds": 3000
+          }
+        },
+        "interactive_host": "auto",
+        "isolation": {
+          "carry_extra": [],
+          "carry_files": [
+            ".claude/settings.local.json",
+            ".claude/orchestra.local.yaml",
+            "CLAUDE.local.md"
+          ]
+        },
+        "ledger": {
+          "dir": "~/.claude/orchestra/runs",
+          "enabled": true,
+          "retention_days": 30
+        },
+        "orca": {
+          "add_dirs": [],
+          "auto_trust": false,
+          "command": "claude --model {model} --permission-mode {permission_mode}",
+          "enabled": false,
+          "keep_sessions": true,
+          "models": {
+            "deep": "opus",
+            "light": "sonnet",
+            "standard": "opus"
+          },
+          "permission_mode": null,
+          "setup": "skip",
+          "startup_timeout": 90,
+          "task_timeout": "1e3",
+          "user_config": "isolate"
+        },
+        "priority": {
+          "deep": {
+            "default": [
+              "claude",
+              "pi"
+            ]
+          },
+          "independent-review": {
+            "default": [
+              "pi"
+            ]
+          },
+          "light": {
+            "default": [
+              "claude",
+              "pi"
+            ],
+            "investigation": [
+              "claude",
+              "pi"
+            ]
+          },
+          "review": {
+            "default": [
+              "claude"
+            ]
+          },
+          "standard": {
+            "default": [
+              "pi",
+              "claude"
+            ]
+          }
+        },
+        "sandbox": {
+          "allow_write": [],
+          "deny_read": [],
+          "learned": [],
+          "mode": "off",
+          "network": {
+            "allowed_domains": [
+              "api.anthropic.com"
+            ],
+            "denied_domains": [],
+            "ecosystem": true,
+            "mode": "allowlist",
+            "quiet_domains": [
+              "mcp-proxy.anthropic.com",
+              "downloads.claude.ai",
+              "statsig.anthropic.com",
+              "datadoghq.com",
+              "*.datadoghq.com",
+              "sentry.io",
+              "*.sentry.io",
+              "herdr.dev"
+            ]
+          }
+        },
+        "telemetry": {
+          "dir": "~/.claude/orchestra/telemetry",
+          "enabled": true
+        },
+        "tiers": {
+          "deep": "opus",
+          "light": "haiku",
+          "review": "sonnet",
+          "standard": "sonnet"
+        },
+        "tools": {
+          "herdr": {
+            "bin": "herdr",
+            "source": "auto",
+            "spec": "aqua:herdrdev/herdr",
+            "version": "0.8.2"
+          },
+          "installer": "auto",
+          "pi": {
+            "bin": "pi",
+            "source": "auto",
+            "spec": "npm:@earendil-works/pi-coding-agent",
+            "version": "1.2.0"
+          },
+          "srt": {
+            "bin": "srt",
+            "source": "auto",
+            "spec": "npm:@anthropic-ai/sandbox-runtime",
+            "version": "0.0.79"
+          }
+        },
+        "warnings": [],
+        "watchdog": {
+          "enabled": false,
+          "idle_seconds": 1200,
+          "repeat_limit": 8,
+          "tool_idle_seconds": 90,
+          "wall_seconds": {
+            "deep": 685230.15,
+            "independent-review": 2400,
+            "light": 1.5,
+            "standard": 0.5
+          }
+        }
+      },
+      "stderr": ""
+    }
+  ]
+}

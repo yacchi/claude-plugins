@@ -1,0 +1,6 @@
+description: no config layer at all -- the built-in defaults, normalized
+setup:
+  keep_sandbox_default: true
+steps:
+  - argv: [config]
+  - argv: [config, --json]

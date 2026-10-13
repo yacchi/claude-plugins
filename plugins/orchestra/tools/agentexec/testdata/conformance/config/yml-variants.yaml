@@ -1,0 +1,15 @@
+description: >
+  .yml layers are read; when both exist .yaml wins (user and local alike)
+setup:
+  files:
+    ~/.claude/orchestra.yml: |
+      sandbox: {mode: off}
+      tiers: {light: from-user-yml}
+    .claude/orchestra.yml: |
+      tiers: {standard: from-project-yml}
+    .claude/orchestra.local.yaml: |
+      tiers: {deep: from-local-yaml}
+    .claude/orchestra.local.yml: |
+      tiers: {deep: from-local-yml, review: from-local-yml}
+steps:
+  - argv: [config]

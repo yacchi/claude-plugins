@@ -1,0 +1,13 @@
+description: >
+  with the cwd at $HOME the user and project layers are one file, read once;
+  the local layer still applies on top
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox: {mode: off}
+      tiers: {light: home}
+    ~/.claude/orchestra.local.yaml: |
+      tiers: {standard: home-local}
+steps:
+  - argv: [config]
+    cwd: "~"

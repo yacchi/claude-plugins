@@ -1,0 +1,42 @@
+description: >
+  user < project < local precedence; objects deep-merge, lists replace
+  wholesale, an explicit null replaces, unknown keys pass through
+setup:
+  git: true
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      tiers:
+        light: sonnet
+        review: opus
+      priority:
+        standard:
+          default: [claude]
+      custom_user_key: {a: 1}
+      ledger:
+        retention_days: 7
+    .claude/orchestra.yaml: |
+      tiers:
+        review: haiku
+      priority:
+        standard:
+          investigation: [pi]
+      watchdog:
+        wall_seconds:
+          deep: 99
+      checks:
+        items:
+          - name: lint
+            run: "echo {files}"
+      telemetry:
+        dir: null
+    .claude/orchestra.local.yml: |
+      tiers:
+        deep: sonnet
+      watchdog:
+        repeat_limit: 9
+      checks:
+        max_parallel: 0
+steps:
+  - argv: [config, --json]

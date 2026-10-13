@@ -1,0 +1,31 @@
+description: >
+  the project layer is found walking up from the cwd to the git toplevel
+  (nearest directory with a layer wins); outside git only the cwd counts;
+  ORCHESTRA_CONFIG_ROOT overrides the walk
+setup:
+  git: true
+  files:
+    .claude/orchestra.yaml: |
+      tiers: {light: repo-root}
+    pkg/.claude/orchestra.local.yaml: |
+      tiers: {standard: pkg-local}
+    pkg/deep/dir/keep.txt: "x\n"
+    other/.claude/orchestra.yaml: |
+      tiers: {deep: forced-root}
+    ~/plain/sub/keep.txt: "x\n"
+    ~/plain/.claude/orchestra.yaml: |
+      tiers: {deep: not-git-parent}
+steps:
+  - argv: [config]
+    cwd: pkg/deep/dir
+  - argv: [config]
+    cwd: other/..
+  - argv: [config]
+    cwd: pkg/deep
+    env:
+      ORCHESTRA_CONFIG_ROOT: <WORK>/other
+  - argv: [config]
+    env:
+      ORCHESTRA_CONFIG_ROOT: <WORK>/does-not-exist
+  - argv: [config]
+    cwd: ~/plain/sub

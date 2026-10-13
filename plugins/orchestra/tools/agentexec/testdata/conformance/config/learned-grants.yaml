@@ -1,0 +1,25 @@
+description: >
+  sandbox.learned lists the machine's learned grants; invalid entries are
+  dropped with a sandbox_learned warning, a store without a grants list is
+  reported as corrupt
+setup:
+  files:
+    ~/.local/state/claude-orchestra/sandbox-learned.json: |
+      {"version": 1, "grants": [
+        {"path": "<WORK>/data", "source": "user", "added": "2026-01-01T00:00:00Z", "reason": "fixtures"},
+        {"path": "relative/path", "source": "user"},
+        {"path": "<WORK>/other", "source": "nobody"}
+      ]}
+    <ROOT>/state-corrupt/claude-orchestra/sandbox-learned.json: |
+      {"version": 1, "domains": []}
+    corrupt/.claude/orchestra.yaml: |
+      tiers: {light: corrupt-store}
+steps:
+  - argv: [config]
+  - argv: [config]
+    cwd: corrupt
+    env:
+      XDG_STATE_HOME: <ROOT>/state-corrupt
+  - argv: [config]
+    env:
+      XDG_STATE_HOME: <WORK>/no-such-dir

@@ -1,0 +1,34 @@
+description: >
+  `available` is set only for enabled dispatch:cli executors: true when the
+  tool resolves (here the fake pi on PATH), false otherwise; a disabled
+  executor or one dispatched as an agent gets no flag; `tools: null` falls
+  back to a plain PATH lookup
+setup:
+  fakes: [pi]
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox: {mode: off}
+      tools:
+        pi:
+          source: system
+    off/.claude/orchestra.yaml: |
+      external_executors:
+        pi: {enabled: off}
+    agent/.claude/orchestra.yaml: |
+      external_executors:
+        pi: {dispatch: agent}
+    nulltools/.claude/orchestra.yaml: |
+      tools: null
+    managed/.claude/orchestra.yaml: |
+      tools:
+        pi: {source: managed}
+steps:
+  - argv: [config]
+  - argv: [config]
+    cwd: off
+  - argv: [config]
+    cwd: agent
+  - argv: [config]
+    cwd: nulltools
+  - argv: [config]
+    cwd: managed

@@ -1,18 +1,135 @@
 #!/bin/sh
 # agent-exec bootstrap — stable entry point shipped inside the orchestra plugin.
 # The installed shim (~/.local/bin/agent-exec or similar) execs this file by
-# absolute path, so it must resolve its own directory and hand off to the
-# PEP723 Python implementation via `uv run`.
+# absolute path, so it must resolve its own directory.
 #
-# This is the seam where a future compiled-binary swap would replace the
-# `uv run` line below; keep this file minimal.
+# Default: the PEP723 Python implementation via `uv run`.
+# AGENT_EXEC_IMPL=go: the Go implementation in ./agentexec, built from source
+# on first use and cached per source hash under
+# ${XDG_CACHE_HOME:-~/.cache}/claude-orchestra/agent-exec/<sha256>/agent-exec.
+#   AGENT_EXEC_BIN   run this binary instead (no build, no hash)
+#   AGENT_EXEC_GO    the go toolchain to build with; else `go` on PATH; else
+#                    `mise exec go@<agentexec/.go-version> -- go`
 
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+AGENT_EXEC_BOOTSTRAP="$DIR/agent-exec"
+export AGENT_EXEC_BOOTSTRAP
 
-if ! command -v uv >/dev/null 2>&1; then
-    echo "agent-exec: 'uv' is required but was not found on PATH." >&2
-    echo "Install uv: https://docs.astral.sh/uv/" >&2
+if [ "${AGENT_EXEC_IMPL:-python}" != "go" ]; then
+    if ! command -v uv >/dev/null 2>&1; then
+        echo "agent-exec: 'uv' is required but was not found on PATH." >&2
+        echo "Install uv: https://docs.astral.sh/uv/" >&2
+        exit 127
+    fi
+    exec uv run --quiet "$DIR/agent_exec.py" "$@"
+fi
+
+if [ -n "$AGENT_EXEC_BIN" ]; then
+    exec "$AGENT_EXEC_BIN" "$@"
+fi
+
+SRC="$DIR/agentexec"
+
+# The cache key covers everything the binary is built from: module files,
+# the toolchain pin, and every non-test Go file (names and contents).
+source_hash() {
+    (
+        cd "$SRC" || exit 1
+        files=$(find go.mod go.sum .go-version cmd internal -type f \
+            \( -name '*.go' ! -name '*_test.go' -o -name go.mod -o -name go.sum \
+               -o -name .go-version -o -path '*/assets/*' \) \
+            ! -path '*/testdata/*' | LC_ALL=C sort)
+        # shellcheck disable=SC2086 # file names have no spaces
+        { printf '%s\n' "$files"; cat $files; } | sha256
+    )
+}
+
+sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | cut -d' ' -f1
+    else
+        shasum -a 256 | cut -d' ' -f1
+    fi
+}
+
+HASH=$(source_hash) || exit 1
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/claude-orchestra/agent-exec"
+BIN="$CACHE/$HASH/agent-exec"
+
+if [ -x "$BIN" ]; then
+    exec "$BIN" "$@"
+fi
+
+find_go() {
+    if [ -n "$AGENT_EXEC_GO" ]; then
+        echo "$AGENT_EXEC_GO"
+    elif go version >/dev/null 2>&1; then
+        # (a mise shim with no version configured is on PATH but fails)
+        echo go
+    elif command -v mise >/dev/null 2>&1; then
+        echo mise
+    fi
+}
+
+GO=$(find_go)
+if [ -z "$GO" ]; then
+    echo "agent-exec: a Go toolchain is needed to build agent-exec on first use, and none was found." >&2
+    echo "Install Go $(cat "$SRC/.go-version") (https://go.dev/dl/), or mise (https://mise.jdx.dev/)," >&2
+    echo "or point AGENT_EXEC_GO at a go binary." >&2
     exit 127
 fi
 
-exec uv run --quiet "$DIR/agent_exec.py" "$@"
+go_build() {
+    if [ "$GO" = mise ]; then
+        mise exec "go@$(cat "$SRC/.go-version")" -- go "$@"
+    else
+        "$GO" "$@"
+    fi
+}
+
+mkdir -p "$CACHE" || exit 1
+LOCK="$CACHE/$HASH.lock"
+# mkdir is atomic: one process builds, the others wait for its result. A lock
+# older than 10 minutes is a crashed build and is taken over.
+waited=0
+until mkdir "$LOCK" 2>/dev/null; do
+    if [ -x "$BIN" ]; then
+        exec "$BIN" "$@"
+    fi
+    if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+        rmdir "$LOCK" 2>/dev/null
+        continue
+    fi
+    if [ "$waited" -ge 600 ]; then
+        echo "agent-exec: timed out waiting for another build ($LOCK)" >&2
+        exit 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+done
+trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
+
+if [ ! -x "$BIN" ]; then
+    mkdir -p "$CACHE/$HASH" || exit 1
+    TMP="$CACHE/$HASH/agent-exec.tmp.$$"
+    if ! (cd "$SRC" && go_build build -trimpath -o "$TMP" ./cmd/agent-exec) >&2; then
+        rm -f "$TMP"
+        echo "agent-exec: building the Go implementation failed (source: $SRC)" >&2
+        exit 1
+    fi
+    mv -f "$TMP" "$BIN" || exit 1
+    # Keep the current build and the two most recent others.
+    # shellcheck disable=SC2012 # hash-named directories only
+    ls -1t "$CACHE" | while read -r entry; do
+        case "$entry" in
+            "$HASH" | *.lock) continue ;;
+        esac
+        [ -d "$CACHE/$entry" ] && echo "$entry"
+    done | tail -n +3 | while read -r old; do
+        rm -rf "${CACHE:?}/$old"
+    done
+fi
+
+rmdir "$LOCK" 2>/dev/null
+trap - EXIT INT TERM
+exec "$BIN" "$@"

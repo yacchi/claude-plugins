@@ -1,0 +1,36 @@
+description: >
+  unusable enforcement values fall back to their defaults; a non-object
+  enforcement section is rebuilt from scratch; turn_edits accepts "off"
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox: {mode: off}
+      enforcement:
+        light_class: block
+        worker_vcs: maybe
+        turn_edits: "off"
+        opus_generalist: 3
+        session_cleanup: null
+    .claude/orchestra.local.yaml: |
+      enforcement: [not, a, mapping]
+    sub/.claude/orchestra.yaml: |
+      enforcement:
+        light_class: Block
+        turn_edits: -2
+    sub2/.claude/orchestra.yaml: |
+      enforcement:
+        turn_edits: true
+        worker_vcs: " OFF"
+    sub3/.claude/orchestra.yaml: |
+      enforcement:
+        turn_edits: 2.0
+steps:
+  - argv: [config]
+    cwd: "~"
+  - argv: [config]
+  - argv: [config]
+    cwd: sub
+  - argv: [config]
+    cwd: sub2
+  - argv: [config]
+    cwd: sub3

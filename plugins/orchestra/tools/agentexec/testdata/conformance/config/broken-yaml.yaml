@@ -1,0 +1,18 @@
+description: >
+  an invalid layer is exit 1 naming the file (the parser's own message
+  differs between implementations, so only the prefix is pinned); an empty
+  layer is an empty mapping
+setup:
+  files:
+    .claude/orchestra.yaml: |
+      tiers: [unclosed
+    empty/.claude/orchestra.yaml: ""
+    comment-only/.claude/orchestra.local.yaml: "# nothing here\n"
+steps:
+  - argv: [config]
+    stderr: prefix
+    stderr_prefix: "agent-exec: invalid YAML in <WORK>/.claude/orchestra.yaml: "
+  - argv: [config]
+    cwd: empty
+  - argv: [config]
+    cwd: comment-only

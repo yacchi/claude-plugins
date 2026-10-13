@@ -1,0 +1,34 @@
+description: >
+  sandbox allow_write/deny_read and the network domain lists are UNIONED
+  across layers (defaults kept, domains trimmed/lowercased/deduped), as are
+  an executor's network_domains; mode and ecosystem normalize; other
+  sandbox keys are dropped
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: " Required "
+        allow_write: [/tmp/a, /tmp/b, 3, ""]
+        deny_read: [~/.secret]
+        stray_key: dropped
+        network:
+          mode: OFF
+          ecosystem: "No"
+          allowed_domains: [" Example.COM ", example.com, api.anthropic.com]
+          quiet_domains: [quiet.example]
+      external_executors:
+        pi:
+          network_domains: [a.example, b.example]
+    .claude/orchestra.yaml: |
+      sandbox:
+        mode: weird
+        allow_write: [/tmp/b, /tmp/c]
+        deny_read: ~/.not-a-list
+        network:
+          denied_domains: [bad.example, "  "]
+          ecosystem: 0
+      external_executors:
+        pi:
+          network_domains: [b.example, c.example]
+steps:
+  - argv: [config]
