@@ -163,7 +163,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, line)
 	}
 	if d.hang {
-		select {}
+		// A bare `select {}` is a deadlock the Go runtime aborts (exit 2):
+		// sleep instead, so only a signal ends the process.
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 	for n, command := range commands {
 		callID := fmt.Sprintf("call_%d", n)

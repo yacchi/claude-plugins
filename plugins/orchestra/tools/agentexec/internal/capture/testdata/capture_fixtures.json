@@ -1,0 +1,428 @@
+{
+ "cases": [
+  {
+   "name": "ok",
+   "prompt": "hello\nFAKEPI-ANSWER: PONG\n",
+   "resume": null,
+   "class": "standard",
+   "watchdog": null,
+   "exit": 0,
+   "want": {
+    "status": "ok",
+    "answer": "PONG",
+    "session_id": "d4a7ff08-0380-4088-ab41-0e51968275a7",
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "commands",
+   "prompt": "COMMANDS:\necho hi\nls /nonexistent-p5-zzz\n",
+   "resume": null,
+   "class": "light",
+   "watchdog": null,
+   "exit": 0,
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "c2f7fda7-14e5-4aaf-ac97-c973174e30b1",
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "quota",
+   "prompt": "FAKEPI-FAULT: quota\n",
+   "resume": null,
+   "class": "standard",
+   "watchdog": null,
+   "exit": 0,
+   "want": {
+    "status": "unavailable",
+    "answer": "DONE",
+    "session_id": "d9264225-9cba-4ac7-a11e-7af3bdb6339a",
+    "resumed": false,
+    "reason": "quota",
+    "exit_code": 1,
+    "usage": {
+     "tokens": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "nonzero",
+   "prompt": "FAKEPI-FAULT: nonzero\n",
+   "resume": null,
+   "class": "standard",
+   "watchdog": null,
+   "exit": 0,
+   "want": {
+    "status": "unavailable",
+    "answer": "DONE",
+    "session_id": "87a4937e-4600-4e7a-a85d-079fd4ccc282",
+    "resumed": false,
+    "reason": "nonzero-exit",
+    "exit_code": 1,
+    "usage": {
+     "tokens": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "exit3",
+   "prompt": "FAKEPI-EXIT: 3\nFAKEPI-ANSWER: x\n",
+   "resume": null,
+   "class": "standard",
+   "watchdog": null,
+   "exit": 0,
+   "want": {
+    "status": "unavailable",
+    "answer": "x",
+    "session_id": "e747b7f5-d7d4-4d50-ac42-21338c26f66f",
+    "resumed": false,
+    "reason": "nonzero-exit",
+    "exit_code": 3,
+    "usage": {
+     "tokens": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "long-line-2mb",
+   "prompt": "FAKEPI-LONGLINE: 2000000\n",
+   "resume": null,
+   "class": "standard",
+   "watchdog": null,
+   "exit": 0,
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "18eb8a97-77a2-44e4-adf9-33cc4988b8d0",
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "raw-events",
+   "prompt": "FAKEPI-EVENT: {\"type\": \"result\", \"success\": false}\nFAKEPI-STDERR: plain warning\n",
+   "resume": null,
+   "class": "standard",
+   "watchdog": null,
+   "exit": 0,
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "989db7b8-5d29-4f4d-abd6-d64fee4b4265",
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "resume",
+   "prompt": "FAKEPI-ANSWER: again\n",
+   "resume": "11111111-2222-4333-a444-555555555555",
+   "class": "standard",
+   "watchdog": null,
+   "exit": 0,
+   "want": {
+    "status": "ok",
+    "answer": "again",
+    "session_id": "11111111-2222-4333-a444-555555555555",
+    "resumed": true,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "hang-idle",
+   "prompt": "FAKEPI-HANG\n",
+   "resume": null,
+   "class": "standard",
+   "watchdog": {
+    "enabled": true,
+    "idle_seconds": 0.3,
+    "tool_idle_seconds": 900,
+    "repeat_limit": 3,
+    "wall_seconds": {
+     "standard": 2400
+    }
+   },
+   "exit": 0,
+   "want": {
+    "status": "runaway",
+    "answer": null,
+    "session_id": "a07c04e9-5396-481a-a995-0d499e83beb6",
+    "resumed": false,
+    "reason": "idle",
+    "exit_code": -15,
+    "usage": null,
+    "runaway": {
+     "reason": "idle",
+     "elapsed_s": "<S>",
+     "runtime_s": "<S>",
+     "last_tool": null,
+     "repeat_count": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "wall",
+   "prompt": "FAKEPI-SLEEP: 5000\n",
+   "resume": null,
+   "class": "deep",
+   "watchdog": {
+    "enabled": true,
+    "idle_seconds": 600,
+    "tool_idle_seconds": 900,
+    "repeat_limit": 3,
+    "wall_seconds": {
+     "deep": 0.4,
+     "standard": 99
+    }
+   },
+   "exit": 0,
+   "want": {
+    "status": "runaway",
+    "answer": null,
+    "session_id": "e1b4b201-b943-41f3-ae38-a06432550151",
+    "resumed": false,
+    "reason": "wall",
+    "exit_code": -15,
+    "usage": null,
+    "runaway": {
+     "reason": "wall",
+     "elapsed_s": "<S>",
+     "runtime_s": "<S>",
+     "last_tool": null,
+     "repeat_count": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "repeat",
+   "prompt": "COMMANDS:\nsleep 1\nsleep 1\nsleep 1\n",
+   "resume": null,
+   "class": "standard",
+   "watchdog": {
+    "enabled": true,
+    "idle_seconds": 600,
+    "tool_idle_seconds": 900,
+    "repeat_limit": 3,
+    "wall_seconds": {
+     "standard": 2400
+    }
+   },
+   "exit": 0,
+   "want": {
+    "status": "runaway",
+    "answer": null,
+    "session_id": "c08c98e0-96a5-4b30-ab0d-9c6b4fb5788f",
+    "resumed": false,
+    "reason": "repeat",
+    "exit_code": -15,
+    "usage": null,
+    "runaway": {
+     "reason": "repeat",
+     "elapsed_s": "<S>",
+     "runtime_s": "<S>",
+     "last_tool": {
+      "name": "bash",
+      "args_preview": "{\"command\":\"sleep 1\"}"
+     },
+     "repeat_count": 3
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  },
+  {
+   "name": "watchdog-disabled",
+   "prompt": "FAKEPI-SLEEP: 300\n",
+   "resume": null,
+   "class": "standard",
+   "watchdog": {
+    "enabled": false,
+    "idle_seconds": 0.01,
+    "wall_seconds": {
+     "standard": 0.01
+    }
+   },
+   "exit": 0,
+   "want": {
+    "status": "ok",
+    "answer": "DONE",
+    "session_id": "cd618a54-f16a-4d44-a675-c9a1df0b1119",
+    "resumed": false,
+    "reason": null,
+    "exit_code": 0,
+    "usage": {
+     "tokens": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "reasoning_output_tokens": 0
+     },
+     "cost_micro_usd": 0
+    },
+    "sandbox": {
+     "backend": "none",
+     "enforced": false,
+     "reason": "sandbox.mode is off",
+     "limits": [],
+     "writable": []
+    }
+   }
+  }
+ ]
+}
