@@ -11,9 +11,10 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
-// parseFixtures is testdata/parse_fixtures.json: Python's parse_pi_jsonl
-// over hand-made and fakepi transcripts (internal/capture/testdata/
-// gen_fixtures.py; never edited by hand).
+// parseFixtures is testdata/parse_fixtures.json: the retired Python
+// parse_pi_jsonl over hand-made and fakepi transcripts (recorded by a
+// generator removed at the v0.55.0 cutover; see git history). Frozen
+// regression data: never edit by hand.
 type parseFixtures struct {
 	Cases []struct {
 		Name     string          `json:"name"`

@@ -11,8 +11,9 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
-// fixtures is testdata/sbpl/fixtures.json, generated from the Python
-// implementation by gen_fixtures.py (never edited by hand).
+// fixtures is testdata/sbpl/fixtures.json, recorded from the retired Python
+// implementation by a generator removed at the v0.55.0 cutover (see git
+// history). Frozen regression data: never edit by hand.
 type fixtures struct {
 	Argv    []string         `json:"argv"`
 	Now     string           `json:"now"`

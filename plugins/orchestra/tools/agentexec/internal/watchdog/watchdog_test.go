@@ -13,8 +13,9 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
-// fixtures is testdata/fixtures.json: Python's Watchdog driven by a fake
-// clock (internal/capture/testdata/gen_fixtures.py; never edited by hand).
+// fixtures is testdata/fixtures.json: the retired Python Watchdog driven by
+// a fake clock (recorded by a generator removed at the v0.55.0 cutover; see
+// git history). Frozen regression data: never edit by hand.
 type fixtures struct {
 	Cases []struct {
 		Name        string          `json:"name"`

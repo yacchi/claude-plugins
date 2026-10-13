@@ -2,10 +2,12 @@
 // testdata/conformance against an agent-exec implementation and compares
 // the normalized result with the recorded golden.
 //
-//	go test ./internal/conformance                       # Go vs goldens
-//	go test ./internal/conformance -impl=python          # Python vs goldens (make verify-goldens)
-//	go test ./internal/conformance -impl=python -update  # (re)capture goldens from Python
+//	go test ./internal/conformance                      # Go vs goldens
+//	go test ./internal/conformance -impl=go -update     # rewrite goldens (add a CHANGES.md line)
 //	go test ./internal/conformance -run 'TestConformance/config'
+//
+// The goldens were first recorded from the retired Python implementation;
+// since the cutover Go is the only implementation and the goldens are Go's.
 package conformance
 
 import (
@@ -19,18 +21,13 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 )
 
 var (
-	implFlag   = flag.String("impl", "go", "implementation under test: go | python")
+	implFlag   = flag.String("impl", "go", "implementation under test (go is the only one)")
 	updateFlag = flag.Bool("update", false, "rewrite the goldens from this run")
 )
-
-// goldensFromPython: until the cutover the goldens are the Python
-// implementation's behavior, so only -impl=python may rewrite them.
-const goldensFromPython = true
 
 var env struct {
 	git   string
@@ -40,7 +37,6 @@ var env struct {
 
 const (
 	testdataDir = "../../testdata/conformance"
-	toolsDir    = "../../.." // plugins/orchestra/tools
 )
 
 func TestMain(m *testing.M) {
@@ -54,38 +50,32 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// recordSources opens every file the implementations under test are built
-// from. The binaries are built in a subprocess, which go test's result cache
-// cannot see; opening the sources makes them part of the cache key, so an
-// edit to either implementation re-runs the scenarios.
+// recordSources opens every file the binaries under test are built from.
+// They are built in a subprocess, which go test's result cache cannot see;
+// opening the sources makes them part of the cache key, so an edit re-runs
+// the scenarios.
 func recordSources() error {
-	for _, dir := range []string{"../..", toolsDir} {
-		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				if path != dir && (d.Name() == "testdata" || strings.HasPrefix(d.Name(), ".") ||
-					(dir == toolsDir && path != dir)) {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			switch filepath.Ext(path) {
-			case ".go", ".py", ".mod", ".sum":
-				f, err := os.Open(path)
-				if err != nil {
-					return err
-				}
-				return f.Close()
-			}
-			return nil
-		})
+	const dir = "../.."
+	return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-	}
-	return nil
+		if d.IsDir() {
+			if path != dir && (d.Name() == "testdata" || strings.HasPrefix(d.Name(), ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".go", ".mod", ".sum", ".html":
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			return f.Close()
+		}
+		return nil
+	})
 }
 
 // setupEnv builds the binaries the scenarios need and returns the build dir.
@@ -116,69 +106,18 @@ func setupEnv() (string, error) {
 		return dir, err
 	}
 	env.fakes = map[string]string{"pi": fakepi}
-	switch *implFlag {
-	case "go":
-		bin := filepath.Join(dir, "agent-exec")
-		if err := build("./cmd/agent-exec", bin); err != nil {
-			return dir, err
-		}
-		env.impl = []string{bin}
-	case "python":
-		py, err := pythonImpl()
-		if err != nil {
-			return dir, err
-		}
-		env.impl = py
-	default:
-		return dir, fmt.Errorf("-impl must be go or python, not %q", *implFlag)
+	if *implFlag != "go" {
+		return dir, fmt.Errorf("-impl must be go (the only implementation), not %q", *implFlag)
 	}
+	bin := filepath.Join(dir, "agent-exec")
+	if err := build("./cmd/agent-exec", bin); err != nil {
+		return dir, err
+	}
+	env.impl = []string{bin}
 	return dir, nil
 }
 
-var python struct {
-	once sync.Once
-	argv []string
-	err  error
-}
-
-// pythonImpl is the Python implementation's argv prefix, resolved once and
-// only when needed (-impl=python, or a mixed scenario's `impl: python` step).
-func pythonImpl() ([]string, error) {
-	python.once.Do(func() {
-		py, err := pythonWithYAML()
-		if err != nil {
-			python.err = err
-			return
-		}
-		script, err := filepath.Abs(filepath.Join(toolsDir, "agent_exec.py"))
-		if err != nil {
-			python.err = err
-			return
-		}
-		python.argv = []string{py, script}
-	})
-	return python.argv, python.err
-}
-
-// pythonWithYAML asks uv (with the caller's real environment, so its cache
-// is reused) for an interpreter that has PyYAML, the Python implementation's
-// only dependency. Steps then run that interpreter directly, hermetically.
-func pythonWithYAML() (string, error) {
-	cmd := exec.Command("uv", "run", "--quiet", "--no-project", "--with", "pyyaml",
-		"python", "-c", "import sys, yaml; print(sys.executable)")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("uv run python: %v\n%s", err, stderr.String())
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
 func TestConformance(t *testing.T) {
-	if *updateFlag && *implFlag != "python" && goldensFromPython {
-		t.Fatal("-update is only allowed with -impl=python until the cutover")
-	}
 	// Inside the test (not TestMain) so go test records the opens.
 	must(t, recordSources())
 	scenarios, err := loadScenarios(testdataDir)
@@ -195,7 +134,7 @@ func TestConformance(t *testing.T) {
 			}
 			got := runScenario(t, sc)
 			if *updateFlag {
-				writeGolden(t, sc.GoldenPath(), got)
+				writeGolden(t, sc.GoldenPath(), bakeGoDeviations(t, sc, got))
 				return
 			}
 			want := readGolden(t, sc.GoldenPath())
@@ -210,18 +149,11 @@ func runScenario(t *testing.T, sc *Scenario) Golden {
 	g := Golden{Scenario: sc.ID()}
 	vars := map[string]string{}
 	for _, st := range sc.Steps {
-		impl, argv := env.impl, st.Argv
-		switch {
-		case st.Impl == "python":
-			py, err := pythonImpl()
-			if err != nil {
-				t.Fatal(err)
-			}
-			impl = py
-		case *implFlag == "go" && len(st.ArgvGo) > 0:
+		argv := st.Argv
+		if len(st.ArgvGo) > 0 {
 			argv = st.ArgvGo
 		}
-		raw := s.run(t, impl, argv, st, vars)
+		raw := s.run(t, env.impl, argv, st, vars)
 		for name, key := range st.Save {
 			vars[name] = savedValue(t, raw.stdout, key)
 		}
@@ -259,7 +191,7 @@ func writeGolden(t *testing.T, path string, g Golden) {
 func readGolden(t *testing.T, path string) Golden {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("missing golden (capture with -impl=python -update): %v", err)
+		t.Fatalf("missing golden (capture with -impl=go -update): %v", err)
 	}
 	var g Golden
 	must(t, json.Unmarshal(b, &g))
@@ -284,10 +216,8 @@ func compare(t *testing.T, sc *Scenario, want, got Golden) {
 			t.Errorf("%s: golden argv %v differs from the scenario (re-capture?)", where, w.Argv)
 			continue
 		}
-		if *implFlag == "go" {
-			for _, msg := range applyGoDeviations(st, &w, &g) {
-				t.Errorf("%s: %s", where, msg)
-			}
+		for _, msg := range applyGoDeviations(st, &w, &g) {
+			t.Errorf("%s: %s", where, msg)
 		}
 		if w.Exit != g.Exit {
 			t.Errorf("%s: exit %d, want %d\nstderr: %s", where, g.Exit, w.Exit, g.Stderr)

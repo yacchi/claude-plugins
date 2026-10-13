@@ -105,7 +105,7 @@ func Prepare(executor, tree string, cfg *config.Resolved, model, task string) Sp
 	return s
 }
 
-// prepare is Python's agent_exec_sandbox.prepare. network nil keeps the
+// prepare builds the Spec for one executor run. network nil keeps the
 // network question out (open network, no note).
 func prepare(executor, tree string, sc Config, results *ProbeReport, o policyOpts, network *Network) Spec {
 	spec := newSpec(sc.Mode)

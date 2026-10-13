@@ -15,12 +15,17 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/orca"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ui"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/runner"
 )
 
 // WaveUIStart starts (or reuses) the dashboard for `wave run` and returns
-// its URL. nil (the default) starts none; the ui command wires it.
-var WaveUIStart func() (url string, err error)
+// its URL; a dashboard it starts stops after the default idle time. A
+// variable so tests can replace it; nil starts none.
+var WaveUIStart = func() (url string, err error) {
+	info, err := ui.StartOrReuseIdle(false, 0, ui.IdleMinutesDefault)
+	return info.URL, err
+}
 
 const waveUsage = "usage: agent-exec wave status --state PATH [--json|--line|--text] [--live]\n" +
 	"                        [--watch SEC] [--events N]\n" +

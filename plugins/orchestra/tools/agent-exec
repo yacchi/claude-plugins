@@ -1,28 +1,30 @@
 #!/bin/sh
 # agent-exec bootstrap — stable entry point shipped inside the orchestra plugin.
 # The installed shim (~/.local/bin/agent-exec or similar) execs this file by
-# absolute path, so it must resolve its own directory.
+# absolute path, and it may also be reached through a symlink, so it resolves
+# its own real directory.
 #
-# Default: the PEP723 Python implementation via `uv run`.
-# AGENT_EXEC_IMPL=go: the Go implementation in ./agentexec, built from source
-# on first use and cached per source hash under
+# Runs the Go implementation in ./agentexec, built from source on first use
+# and cached per source hash under
 # ${XDG_CACHE_HOME:-~/.cache}/claude-orchestra/agent-exec/<sha256>/agent-exec.
+# `agent-exec doctor` (run by /orchestra:setup) builds it ahead of time.
 #   AGENT_EXEC_BIN   run this binary instead (no build, no hash)
 #   AGENT_EXEC_GO    the go toolchain to build with; else `go` on PATH; else
 #                    `mise exec go@<agentexec/.go-version> -- go`
 
-DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# Follow symlinks to this file. Portable: plain `readlink` (no -f, which
+# older macOS lacks), resolving relative targets against the link's dir.
+SELF=$0
+while [ -L "$SELF" ]; do
+    LINK=$(readlink -- "$SELF") || break
+    case "$LINK" in
+        /*) SELF=$LINK ;;
+        *) SELF=$(dirname -- "$SELF")/$LINK ;;
+    esac
+done
+DIR=$(CDPATH= cd -P -- "$(dirname -- "$SELF")" && pwd) || exit 1
 AGENT_EXEC_BOOTSTRAP="$DIR/agent-exec"
 export AGENT_EXEC_BOOTSTRAP
-
-if [ "${AGENT_EXEC_IMPL:-python}" != "go" ]; then
-    if ! command -v uv >/dev/null 2>&1; then
-        echo "agent-exec: 'uv' is required but was not found on PATH." >&2
-        echo "Install uv: https://docs.astral.sh/uv/" >&2
-        exit 127
-    fi
-    exec uv run --quiet "$DIR/agent_exec.py" "$@"
-fi
 
 if [ -n "$AGENT_EXEC_BIN" ]; then
     exec "$AGENT_EXEC_BIN" "$@"

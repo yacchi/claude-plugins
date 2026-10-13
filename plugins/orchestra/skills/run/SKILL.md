@@ -777,7 +777,7 @@ Key semantics, the merge algorithm and its upgrade trap, `enforcement.light_clas
 
 ## 10. Telemetry
 
-Opt-in, default off, anonymized: `agent-exec` enforces a field/value allowlist, so prompts, paths, ids, and free text are structurally unrecordable. Two sources: `agent-exec run ... --capture` self-logs one `dispatch` record per dispatch (LLM-independent), and you emit exactly one `run_summary` at run end through a haiku relay when enabled. Fields, storage layout, and the `record`/`show`/`archive`/`clear` CLI: `references/config.md` §2.
+Opt-in, default off, anonymized: `agent-exec` enforces a field/value allowlist, so prompts, paths, ids, and free text are structurally unrecordable. Two sources: `agent-exec dispatch` self-logs one `dispatch` record per dispatch (LLM-independent), and you emit exactly one `run_summary` at run end through a haiku relay when enabled. Fields, storage layout, and the `record`/`show`/`archive`/`clear` CLI: `references/config.md` §2.
 
 Measure one workflow run with `agent-exec usage --run <workflow-run-id>`; this is exact rather than a time window. `--run-id` sharpens the ledger's session key to a run key and should still always be passed — at `dispatch prepare` time, never on the relay's `--token` call — but omitting it now costs precision rather than the measurement itself.
 

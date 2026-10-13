@@ -73,5 +73,4 @@ setup:
 steps:
   - argv: [pi, login, --json]
   - argv: [pi, login, --paste, "http://localhost:1455/auth/callback?code=x", --timeout, "30"]
-    impl: python
   - argv: [pi, login, --wait, --timeout, "1"]

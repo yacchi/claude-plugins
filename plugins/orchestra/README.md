@@ -42,6 +42,8 @@ This plugin is distributed as part of the `yacchi-plugins` marketplace:
 /plugin install orchestra@yacchi-plugins
 ```
 
+The `agent-exec` CLI (used by pi dispatch, worktree isolation, `wave run`, the dashboard, and the hooks) is written in Go and built from source on first use: it needs [mise](https://mise.jdx.dev/) (agent-exec then uses the Go version pinned in `tools/agentexec/.go-version`) or Go on `PATH`. The first call builds it in a few seconds and caches the binary under `~/.cache/claude-orchestra/agent-exec/`; `agent-exec doctor` (run by `/orchestra:setup`) builds it ahead of time.
+
 For local development, add the marketplace repository root as a local marketplace instead:
 
 ```text
@@ -112,8 +114,8 @@ Log in to either provider with `agent-exec pi login --provider <id>` (Claude run
 | `agents/orchestra-delegate.md` | Middle manager for environments without Workflows (Sonnet) |
 | `skills/run/` | The playbook, plus on-demand references (`authoring`, `gates`, `isolation`, `config`, `programme`, `external-executors`, `poc-findings`) |
 | `skills/setup/`, `skills/cleanup/`, `skills/ui/` | Companion skills |
-| `tools/agent_exec.py` | The `agent-exec` CLI: route, dispatch, isolate, shelf, wave, ui, telemetry, … |
-| `tools/agent_exec_tools.py`, `tools/agent_exec_herdr.py` | Managed executor binaries (pinned pi and herdr), pi's dedicated agent dir, and the herdr interactive host |
+| `tools/agent-exec` | Bootstrap for the `agent-exec` CLI: builds `tools/agentexec/` on first use and runs the cached binary |
+| `tools/agentexec/` | The `agent-exec` CLI (Go): route, dispatch, isolate, shelf, wave, ui, telemetry, managed executor binaries (pinned pi and herdr), the herdr/Orca interactive hosts, … |
 | `hooks/` | Router injection and reminder, turn-size tripwire, worker VCS/tree/lease guards, Opus-generalist nudge, worktree cleanup |
 | `examples/orchestra.yaml` | Sample configuration |
 

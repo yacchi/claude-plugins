@@ -13,9 +13,10 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
-// The fixtures are registries the Python hosts wrote (testdata/
-// gen_registry.py): Go must read them and write them back byte for byte,
-// so either implementation can pick up the other's sessions mid-run.
+// The fixtures are registries the retired Python hosts wrote (recorded by a
+// generator script removed at the v0.55.0 cutover; see git history): Go
+// must read them and write them back byte for byte, so registries left by a
+// pre-cutover run stay usable.
 func TestRegistryFixturesRoundTrip(t *testing.T) {
 	files, _ := filepath.Glob("testdata/registry/*.json")
 	if len(files) < 5 {

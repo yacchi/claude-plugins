@@ -72,7 +72,6 @@ func newSandbox(t *testing.T, sc *Scenario) *sandbox {
 		"ORCHESTRA_UI_STATE=" + filepath.Join(s.home, ".claude", "orchestra", "ui.json"),
 		"ORCHESTRA_WAVE_REGISTRY=" + filepath.Join(s.home, ".claude", "orchestra", "waves.jsonl"),
 		"ORCHESTRA_WAVE_NO_UI=1",
-		"PYTHONDONTWRITEBYTECODE=1",
 	}
 	s.setup(t, sc)
 	return s

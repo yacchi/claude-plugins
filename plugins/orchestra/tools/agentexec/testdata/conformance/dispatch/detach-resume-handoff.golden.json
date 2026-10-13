@@ -1,5 +1,5 @@
 {
-  "scenario": "dispatch/mixed-python-prepare",
+  "scenario": "dispatch/detach-resume-handoff",
   "steps": [
     {
       "argv": [

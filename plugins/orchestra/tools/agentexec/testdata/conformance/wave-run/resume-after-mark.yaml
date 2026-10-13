@@ -1,8 +1,8 @@
 description: >
-  a wave started by the Python runner is marked and resumed by the
-  implementation under test: the Python run leaves A as a delegate need and
-  B pending, `wave mark` hands A back, and the resumed run integrates A and
-  dispatches B from the same state.json / events.jsonl
+  a wave run leaves A as a delegate need and B pending, `wave mark` hands A
+  back, and a second run resumes from the same state.json / events.jsonl,
+  integrating A and dispatching B (recorded as a Python/Go mix before the
+  cutover)
 setup:
   git: true
   fakes: [pi]
@@ -40,7 +40,7 @@ normalize_text:
 steps:
   - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work]
     cwd: "~"
-    impl: python
+    snapshot: ["~/wave/state.json"]
   - argv: [wave, mark, --state, wave/state.json, --pkg, A, --status, ready]
     cwd: "~"
   - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work]
@@ -48,4 +48,3 @@ steps:
     snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl"]
   - argv: [wave, status, --state, wave/state.json, --text]
     cwd: "~"
-    impl: python

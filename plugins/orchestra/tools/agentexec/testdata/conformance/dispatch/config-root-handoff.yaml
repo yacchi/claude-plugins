@@ -1,8 +1,7 @@
 description: >
-  pre-cutover mix, the other way: a token (with its recorded config root)
-  minted by the implementation under test is dispatched and waited on by
-  Python, and Python resumes the session the implementation under test
-  stored
+  a token minted in a subdirectory project keeps its recorded config root
+  when later processes dispatch it, detach it and wait on it, and the stored
+  session is resumed (recorded as a Python/Go mix before the cutover)
 setup:
   git: true
   fakes: [pi]
@@ -27,8 +26,6 @@ steps:
     cwd: proj
     save: {TOK: token}
   - argv: [dispatch, --token, "<@TOK>"]
-    impl: python
   - argv: [dispatch, --token, "<@TOK>"]
   - argv: [dispatch, --token, "<@TOK>", --detach]
   - argv: [dispatch, wait, --token, "<@TOK>", --max-wait, "60"]
-    impl: python

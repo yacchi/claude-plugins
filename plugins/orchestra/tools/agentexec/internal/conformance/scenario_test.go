@@ -39,16 +39,13 @@ import (
 //	    stderr_prefix: "agent-exec: invalid YAML in <WORK>/"
 //	    snapshot: ["~/.claude/orchestra.yaml"]  # files captured after the step
 //	    save: {TOK: token}       # top-level stdout JSON key later steps use as <@TOK>
-//	    argv_go: [dispatch, ...] # argv when the Go implementation runs the step
-//	                             #   (a renamed command); the golden keeps argv
-//	    impl: python             # always run this step with Python (pre-cutover
-//	                             #   mixed scenarios: state one implementation
-//	                             #   wrote, read by the other)
+//	    argv_go: [dispatch, ...] # argv actually run (a command renamed since the
+//	                             #   golden was recorded); the golden keeps argv
 //
 // <ROOT>, <HOME> and <WORK> are substituted in file contents, env values and
 // cwd; <@NAME> (a saved value) in argv, argv_go, stdin, env values and
 // snapshot paths. Every step also sees AGENT_EXEC_UNDER_TEST, an executable
-// running that step's implementation, for a PATH shim that must reach it
+// running the binary under test, for a PATH shim that must reach it
 // (`exec "$AGENT_EXEC_UNDER_TEST" "$@"`: a detached child re-runs the shim).
 type Scenario struct {
 	Description   string     `yaml:"description"`
@@ -87,10 +84,9 @@ type Step struct {
 	Snapshot     []string          `yaml:"snapshot"`
 	Save         map[string]string `yaml:"save"`
 	ArgvGo       []string          `yaml:"argv_go"`
-	Impl         string            `yaml:"impl"`
-	// GoSwap / GoReplace record intentional Go-only deviations from the
-	// Python golden (each also has a line in CHANGES.md); they apply only
-	// under -impl=go. See applyGoDeviations.
+	// GoSwap / GoReplace record intentional Go deviations from goldens
+	// recorded from Python before the cutover (each also has a line in
+	// CHANGES.md). See applyGoDeviations and bakeGoDeviations.
 	GoSwap    *GoSwap     `yaml:"go_swap"`
 	GoReplace []GoReplace `yaml:"go_replace"`
 }
@@ -156,9 +152,6 @@ func loadScenarios(root string) ([]*Scenario, error) {
 			return nil, fmt.Errorf("%s: no steps", path)
 		}
 		for i, st := range sc.Steps {
-			if st.Impl != "" && st.Impl != "python" {
-				return nil, fmt.Errorf("%s: step %d: impl must be python, not %q", path, i, st.Impl)
-			}
 			switch st.Stderr {
 			case "", "exact", "ignore":
 			case "prefix":

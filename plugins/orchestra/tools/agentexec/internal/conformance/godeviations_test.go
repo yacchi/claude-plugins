@@ -1,13 +1,44 @@
 package conformance
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
 	"strings"
+	"testing"
 )
 
-// applyGoDeviations edits the golden (w) and the Go output (g) of one step
+// bakeGoDeviations prepares a run for -update: go_swap's volatile object (or
+// text line) is left out of the golden, since only its shape is checked, and
+// go_replace needs nothing (it accepts a golden that already holds New).
+func bakeGoDeviations(t *testing.T, sc *Scenario, got Golden) Golden {
+	var out Golden
+	b, err := json.Marshal(got)
+	must(t, err)
+	must(t, json.Unmarshal(b, &out))
+	for i, st := range sc.Steps {
+		sw := st.GoSwap
+		if sw == nil || i >= len(out.Steps) {
+			continue
+		}
+		switch v := out.Steps[i].Stdout.(type) {
+		case map[string]any:
+			delete(v, sw.Got)
+		case string:
+			var kept []string
+			for _, l := range strings.Split(v, "\n") {
+				if !strings.HasPrefix(l, sw.Got+": ") {
+					kept = append(kept, l)
+				}
+			}
+			out.Steps[i].Stdout = strings.Join(kept, "\n")
+		}
+	}
+	return out
+}
+
+// applyGoDeviations edits the golden (w) and the output (g) of one step
 // for the deviations the step declares (go_swap, go_replace), returning
 // what did not hold.
 func applyGoDeviations(st Step, w, g *GoldenStep) []string {
@@ -69,7 +100,11 @@ func applyGoDeviations(st Step, w, g *GoldenStep) []string {
 		}
 		for _, r := range st.GoReplace {
 			if !strings.Contains(text, r.Old) {
-				problems = append(problems, fmt.Sprintf("go_replace: golden lacks %q", r.Old))
+				// A golden rewritten by -update already holds the Go text.
+				if !strings.Contains(text, r.New) {
+					problems = append(problems, fmt.Sprintf("go_replace: golden lacks %q", r.Old))
+				}
+				continue
 			}
 			text = strings.Replace(text, r.Old, r.New, 1)
 		}

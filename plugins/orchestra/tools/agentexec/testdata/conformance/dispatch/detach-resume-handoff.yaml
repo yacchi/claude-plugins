@@ -1,8 +1,8 @@
 description: >
-  pre-cutover mix: a token Python minted (and a detach Python started) is
-  dispatched, detached and waited on by the implementation under test, and
-  a Python-written session-store record is resumed — the token, detach and
-  session file formats are shared
+  state handed between processes: a minted token is dispatched, re-dispatched
+  detached and waited on, and a detached run started by one process is
+  summarized and waited on by later ones — the token, detach and session
+  files are the only link (recorded as a Python/Go mix before the cutover)
 normalize_keys: [started, waited_s]
 setup:
   git: true
@@ -21,17 +21,12 @@ setup:
       FAKEPI-ANSWER: mixed
 steps:
   - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-m, --run-id, run-m]
-    impl: python
     save: {TOK: token}
   - argv: [dispatch, --token, "<@TOK>"]
-    impl: python
   - argv: [dispatch, --token, "<@TOK>", --capture, --detach]
   - argv: [dispatch, wait, --token, "<@TOK>", --max-wait, "60"]
   - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, .]
-    impl: python
     save: {TOK2: token}
   - argv: [dispatch, --token, "<@TOK2>", --detach]
-    impl: python
   - argv: [dispatch, wait, --token, "<@TOK2>", --max-wait, "60", --summary]
   - argv: [dispatch, wait, --token, "<@TOK2>"]
-    impl: python

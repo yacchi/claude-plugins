@@ -11,8 +11,8 @@ import (
 
 // TestWrapArgvMatchesPython: the argv a dispatch would spawn -- above all
 // the SBPL profile and its -D params -- is byte-identical to what the
-// Python implementation produced for the same layout and config. The
-// fixtures come from gen_fixtures.py; a difference here is a sandbox that
+// Python implementation produced for the same layout and config (frozen
+// fixtures, see fixtures_test.go); a difference here is a sandbox that
 // enforces something else than the reviewed one.
 func TestWrapArgvMatchesPython(t *testing.T) {
 	f := loadFixtures(t)

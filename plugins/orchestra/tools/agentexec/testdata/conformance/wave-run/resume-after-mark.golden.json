@@ -1,5 +1,5 @@
 {
-  "scenario": "wave-run/mixed-go-run",
+  "scenario": "wave-run/resume-after-mark",
   "steps": [
     {
       "argv": [

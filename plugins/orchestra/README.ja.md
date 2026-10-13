@@ -42,6 +42,8 @@ flowchart TD
 /plugin install orchestra@yacchi-plugins
 ```
 
+`agent-exec` CLI(pi への振り分け、ワークツリー隔離、`wave run`、ダッシュボード、フックが使います)は Go で書かれており、初回の実行時にソースからビルドします。[mise](https://mise.jdx.dev/)(`tools/agentexec/.go-version` で固定した Go の版を使います)か、`PATH` 上の Go が必要です。初回の呼び出しで数秒かけてビルドし、バイナリを `~/.cache/claude-orchestra/agent-exec/` に保存します。`agent-exec doctor`(`/orchestra:setup` が実行します)で事前にビルドできます。
+
 ローカルで開発する場合は、マーケットプレイスのリポジトリのルートをローカルのマーケットプレイスとして追加します:
 
 ```text
@@ -112,8 +114,8 @@ Copilotのモデルはpiの`github-copilot/*`、ChatGPTサブスクリプショ�
 | `agents/orchestra-delegate.md` | Workflows が使えない環境での中間管理役(Sonnet) |
 | `skills/run/` | 手順書本体と、必要なときに読む参考資料(`authoring`、`gates`、`isolation`、`config`、`programme`、`external-executors`、`poc-findings`) |
 | `skills/setup/`、`skills/cleanup/`、`skills/ui/` | 付属のスキル |
-| `tools/agent_exec.py` | `agent-exec` CLI: route、dispatch、isolate、shelf、wave、ui、telemetry など |
-| `tools/agent_exec_tools.py`、`tools/agent_exec_herdr.py` | 版を固定して管理する実行役バイナリ(pi と herdr)、pi の専用エージェントディレクトリ、herdr の対話ホスト |
+| `tools/agent-exec` | `agent-exec` CLI の起動スクリプト。初回に `tools/agentexec/` をビルドし、保存したバイナリを実行します |
+| `tools/agentexec/` | `agent-exec` CLI(Go): route、dispatch、isolate、shelf、wave、ui、telemetry、版を固定して管理する実行役バイナリ(pi と herdr)、herdr と Orca の対話ホストなど |
 | `hooks/` | ルーターの注入と再通知、ターン規模の検知、ワーカーの VCS・作業ツリー・lease の防護、Opus 汎用サブエージェントへの通知、worktree の後片付け |
 | `examples/orchestra.yaml` | 設定のサンプル |
 

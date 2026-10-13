@@ -1,5 +1,5 @@
 {
-  "scenario": "dispatch/mixed-go-prepare",
+  "scenario": "dispatch/config-root-handoff",
   "steps": [
     {
       "argv": [

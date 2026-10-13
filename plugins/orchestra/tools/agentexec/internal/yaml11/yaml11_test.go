@@ -13,8 +13,9 @@ import (
 )
 
 // TestPyYAMLTable replays testdata/yaml11/cases.json, generated from PyYAML
-// itself by gen_cases.py, so every implicit-typing rule is checked against
-// the real implementation rather than a reading of it.
+// itself (by a script removed at the v0.55.0 cutover; see git history), so
+// every implicit-typing rule is checked against the real implementation
+// rather than a reading of it. Frozen data: never edit by hand.
 func TestPyYAMLTable(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "yaml11", "cases.json"))
 	if err != nil {

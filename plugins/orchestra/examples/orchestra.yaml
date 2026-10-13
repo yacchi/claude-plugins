@@ -128,8 +128,8 @@ external_executors:
 #
 # Omit `priority` entirely to keep the legacy behavior: the Claude `tiers.<name>`
 # model, with external executors woven in ad hoc per their own `classes` list.
-# Opt-in, anonymized telemetry. Default OFF. When enabled, `agent-exec run
-# --capture` self-logs one sanitized `dispatch` record per dispatch, and the
+# Opt-in, anonymized telemetry. Default OFF. When enabled, `agent-exec
+# dispatch` self-logs one sanitized `dispatch` record per dispatch, and the
 # instructor emits one `run_summary` record per orchestration (via a cheap
 # haiku relay, never the instructor itself). Redaction is enforced by an
 # ALLOWLIST inside `agent-exec` itself, not by trusting callers — only
@@ -144,7 +144,7 @@ telemetry:
   dir: ~/.claude/orchestra/telemetry
 
 # Persisted, time-decaying executor cooldown. Entries are written automatically
-# when `agent-exec run --capture` or `agent-exec dispatch` parses
+# when `agent-exec dispatch` parses
 # `status: unavailable`; routing loads active entries as an additional candidate
 # gate. `0` means no cooldown.
 cooldown:
@@ -301,8 +301,8 @@ priority:
 
 # Opt-in guardrail against defaulting to a direct Claude Haiku implementer when a
 # ready external executor exists — a NUDGE WITH A GUARANTEED ESCAPE, never a hard
-# wall. NOTE: quote the value ("off"/"block") - YAML 1.1 (what PyYAML's
-# safe_load implements) parses a bareword `off` as boolean False, not a string.
+# wall. NOTE: quote the value ("off"/"block") - YAML 1.1 (what agent-exec's
+# config loader implements) parses a bareword `off` as boolean False, not a string.
 # When `light_class: "block"`, a PreToolUse hook (`hooks/guards/light-class.ts`)
 # fires only on a GENERIC Claude implementer call (no `subagent_type` at all,
 # or `subagent_type` in general-purpose/claude, at a Haiku-class model) while
