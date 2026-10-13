@@ -656,23 +656,28 @@ class NetworkTests(_Base):
         os.environ["CLAUDE_CONFIG_DIR"] = self.claude
         self.read_ends = []
 
-    def pipe(self):
-        read_end, write_end = os.pipe()
-        keep = os.dup(read_end)
-        os.set_blocking(keep, False)
-        self.read_ends.append(keep)
-        self.addCleanup(os.close, keep)
-        return read_end, write_end
+    def control_path(self):
+        return os.path.join(self.xstate, "claude-orchestra", "herdr-srt", SESSION + ".ctl")
+
+    def open_reader(self):
+        """Stand-in for srt: a reader on the control FIFO, opened when the
+        server is spawned (the spawner keeps no descriptor of its own)."""
+        if os.path.exists(self.control_path()):
+            fd = os.open(self.control_path(), os.O_RDONLY | os.O_NONBLOCK)
+            self.read_ends.append(fd)
+            self.addCleanup(os.close, fd)
 
     def lines(self):
         try:
-            data = os.read(self.read_ends[0], 1 << 20)
+            data = os.read(self.read_ends[-1], 1 << 20)
         except BlockingIOError:
             return []
         return [json.loads(line) for line in data.decode().splitlines()]
 
     def srt_executor(self, fake, cfg=None, srt="/opt/srt", seatbelt=True, **kwargs):
-        return self.executor(fake, cfg, srt_binary=srt, pipe=self.pipe,
+        if fake.on_popen is None:
+            fake.on_popen = self.open_reader
+        return self.executor(fake, cfg, srt_binary=srt,
                              sandbox_probes=_probes(seatbelt=seatbelt), **kwargs)
 
     def start(self, executor):
@@ -828,6 +833,57 @@ class NetworkTests(_Base):
         executor._call = call
         executor.prompt(session, ["/p/one.md"], self.result, 60)
         self.assertEqual(pushed_at_prompt[:1], [1])
+
+    def test_a_later_run_pushes_to_the_server_an_earlier_run_left_running(self):
+        import agent_exec_sandbox
+        self.start(self.srt_executor(FakeHerdr()))
+        agent_exec.isolate_remove(self.repo, "pkg-a", force=True)
+        path, initial = self.settings()
+        agent_exec_sandbox.add_domain("registry.npmjs.org")
+        fake = FakeHerdr(running=True)
+        later = self.srt_executor(fake)
+        self.start(later)
+        self.assertEqual(fake.popens, [])
+        self.assertFalse(fake.has("server", "stop"))
+        self.assertTrue(later._net_restricted)
+        expected = json.loads(json.dumps(initial))
+        expected["network"]["allowedDomains"] = ["api.anthropic.com", "registry.npmjs.org"]
+        self.assertEqual(self.lines(), [expected])
+        self.assertEqual(self.settings()[1], expected)
+        later.network_tick()
+        self.assertEqual(self.lines(), [])  # unchanged vs the file on disk
+
+    def test_a_server_without_a_live_control_fifo_is_restarted_unless_busy(self):
+        import agent_exec_sandbox
+        for label, statuses, restarted in (("idle", ("idle",), True),
+                                           ("mid-task", ("working",), False)):
+            with self.subTest(label):
+                registry = os.path.join(self.state, agent_exec_herdr.REGISTRY_NAME)
+                with open(registry, "w") as fh:
+                    json.dump({"b": {"pkg": "b", "worktree": self.tmp, "terminal": "p-b",
+                                     "herdr_session": SESSION}}, fh)
+                # an earlier server whose srt is gone: settings, FIFO, no reader
+                directory = os.path.join(self.xstate, "claude-orchestra", "herdr-srt")
+                os.makedirs(directory, exist_ok=True)
+                with open(os.path.join(directory, SESSION + ".json"), "w") as fh:
+                    json.dump({"network": {"allowedDomains": []}}, fh)
+                if os.path.lexists(self.control_path()):
+                    os.unlink(self.control_path())
+                os.mkfifo(self.control_path(), 0o600)
+                fake = FakeHerdr(running=True, statuses=statuses)
+                fake.on_popen = lambda: None
+                events = []
+                executor = self.srt_executor(fake, on_event=lambda p, d: events.append(d))
+                self.start(executor)
+                self.assertEqual(fake.has("server", "stop"), restarted)
+                self.assertEqual(len(fake.popens), 1 if restarted else 0)
+                reasons = [e.get("reason") for e in events if e.get("action") == "network"]
+                self.assertTrue(reasons and "network settings stale" in reasons[0], reasons)
+                self.assertEqual(executor._net_restricted, False if not restarted else True)
+                if not restarted:
+                    agent_exec_sandbox.add_domain("registry.npmjs.org")
+                    executor.network_tick()  # no settings adopted: nothing is pushed
+                agent_exec.isolate_remove(self.repo, "pkg-a", force=True)
 
     def test_bypass_needs_srt_with_the_allowlist_and_the_host_sandbox(self):
         for label, cfg_key, value in (

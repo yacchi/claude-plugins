@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import unittest
 from unittest import mock
 
@@ -260,6 +261,65 @@ class SpawnPathTests(_StateBase):
                 self.assertIn("danger-full-access", seen["argv"][-1])
                 self.assertNotIn("workspace-write", seen["argv"][-1])
                 self.assertNotIn(sb.SANDBOX_EXEC, seen["argv"])
+
+
+class ControlFifoTests(_StateBase):
+    """The herdr server's control FIFO, pushed to by any later process."""
+
+    def setUp(self):
+        _StateBase.setUp(self)
+        self.path = os.path.join(sb.state_dir(), sb.SRT_SETTINGS_DIR, "s.ctl")
+
+    def test_a_long_line_arrives_whole(self):
+        fd = agent_exec_srt.make_fifo(self.path)  # srt's descriptor
+        self.addCleanup(os.close, fd)
+        line = (json.dumps({"pad": "x" * (1 << 18)}) + "\n").encode()
+        got = []
+
+        def read():
+            buf = b""
+            while not buf.endswith(b"\n"):
+                buf += os.read(fd, 1 << 16)
+            got.append(buf)
+        reader = threading.Thread(target=read)
+        reader.start()
+        self.assertIsNone(agent_exec_srt.push_line(self.path, line))
+        reader.join(10)
+        self.assertEqual(got, [line])
+        self.assertEqual(os.stat(self.path).st_mode & 0o777, 0o600)
+
+    def test_no_reader_or_no_fifo_is_reported_without_blocking(self):
+        os.makedirs(os.path.dirname(self.path))
+        os.mkfifo(self.path)
+        self.assertIn("nothing reads", agent_exec_srt.push_line(self.path, b"{}\n"))
+        os.unlink(self.path)
+        self.assertIn("no control channel", agent_exec_srt.push_line(self.path, b"{}\n"))
+        open(self.path, "w").close()
+        self.assertIn("not a FIFO", agent_exec_srt.push_line(self.path, b"{}\n"))
+
+    def test_push_is_skipped_when_unchanged_and_stale_without_a_reader(self):
+        settings = {"network": {"allowedDomains": ["a.example.com"]}}
+        fd = agent_exec_srt.make_fifo(self.path)
+        os.set_blocking(fd, False)
+        run = agent_exec_srt.SrtRun(settings, ["a.example.com"],
+                                    self.path[:-4] + ".json", control_path=self.path)
+        disk = run.prepare()
+        run.push()
+        with self.assertRaises(BlockingIOError):
+            os.read(fd, 1 << 16)  # unchanged vs the file on disk: nothing written
+        sb.add_domain("b.example.com")
+        run.push()
+        pushed = json.loads(os.read(fd, 1 << 16))
+        self.assertEqual(pushed["network"]["allowedDomains"], ["a.example.com", "b.example.com"])
+        with open(disk) as fh:
+            self.assertEqual(json.load(fh), pushed)
+        os.close(fd)  # srt is gone
+        sb.add_domain("c.example.com")
+        with mock.patch("sys.stderr", io.StringIO()):
+            run.push()
+        self.assertIn("nothing reads", run.stale)
+        with open(disk) as fh:
+            self.assertEqual(json.load(fh), pushed)  # not claimed as applied
 
 
 class DomainTests(_StateBase):

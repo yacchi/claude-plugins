@@ -228,6 +228,21 @@ def tamper_paths(home=None):
     return _dedupe(paths)
 
 
+def state_denies(home=None):
+    """`tamper_paths` for a policy whose writable set reaches INTO the state
+    dir (the managed pi agent dir, the host's result files): the state dir
+    itself is left out -- srt, Seatbelt and bwrap all let a deny win over
+    every allow, so denying it would deny everything inside -- and the
+    entries that need protecting are denied by name: the learned store, the
+    managed tools, the network sandbox's settings and its audit log."""
+    home = _home(home)
+    state = os.path.realpath(state_dir(home))
+    out = [p for p in tamper_paths(home) if os.path.realpath(p) != state]
+    out += [os.path.join(state, "tools"), os.path.join(state, SRT_SETTINGS_DIR),
+            os.path.join(state, CLI_SRT_DIR), os.path.join(state, AUDIT_DIR)]
+    return _dedupe(out)
+
+
 def user_grant_refusal(path, deny_read=(), home=None):
     """Why a `source: user` grant on `path` is refused, or None if allowed."""
     home = _home(home)
@@ -545,6 +560,26 @@ def _regex_globs(rx):
     return [root + "/.claude/orchestra*.y*ml", root + "/**/.claude/orchestra*.y*ml"]
 
 
+def _carve_out(ro, inner):
+    """The entries of the read-only dir `ro` to deny so that only the
+    writable paths `inner` below it stay writable: every entry holding none
+    of them, descending into an entry that holds one deeper down (a grant of
+    `plugins/data/x` leaves `plugins/cache` and `plugins/data/y` denied)."""
+    try:
+        names = sorted(os.listdir(ro))
+    except OSError:
+        names = []
+    out = []
+    for name in names:
+        entry = os.path.join(ro, name)
+        holders = [w for w in inner if _under(w, entry)]
+        if not holders:
+            out.append(_real(entry))
+        elif entry not in holders and os.path.isdir(entry) and not os.path.islink(entry):
+            out += _carve_out(entry, holders)
+    return out
+
+
 def srt_settings(policy, sockets, allowed_domains, denied_domains, home=None,
                  allow_pty=True):
     """The sandbox-runtime settings from a `host_policy` / `build_policy`.
@@ -561,14 +596,7 @@ def srt_settings(policy, sockets, allowed_domains, denied_domains, home=None,
         deny += _regex_globs(rx)
     for ro in policy.get("readonly") or []:
         inner = [w for w in policy.get("writable") or [] if w != ro and _under(w, ro)]
-        try:
-            names = sorted(os.listdir(ro))
-        except OSError:
-            names = []
-        for name in names:
-            entry = os.path.join(ro, name)
-            if not any(_under(w, entry) for w in inner):
-                deny.append(_real(entry))
+        deny += _carve_out(ro, inner)
     return {
         "network": {
             "allowedDomains": _dedupe(allowed_domains),
@@ -906,7 +934,9 @@ def build_policy(tree, executor, cfg, home=None, env=None, platform=None,
     writable.append(os.path.realpath("/private/tmp" if platform == "darwin" else "/tmp"))
     writable.append("/dev")
 
-    deny_write = list(tamper_paths(home))
+    # Not the whole state dir: the managed pi agent dir lives inside it.
+    tamper = state_denies(home)
+    deny_write = list(tamper)
     for p in executor_state_dirs(executor, home, env):
         state = _expand(p, home)
         writable.append(state)
@@ -948,7 +978,7 @@ def build_policy(tree, executor, cfg, home=None, env=None, platform=None,
         "deny_read": _dedupe(deny_read),
         "deny_write": _dedupe(deny_write),
         "deny_write_regex": deny_write_regex,
-        "tamper": tamper_paths(home),
+        "tamper": tamper,
         "repo_root": root,
         "learned": [g["path"] for g in learned if isinstance(g, dict) and g.get("path")],
     }
@@ -961,6 +991,14 @@ def build_policy(tree, executor, cfg, home=None, env=None, platform=None,
 # code or instructions by a later, unsandboxed session.
 CLAUDE_TAMPER_NAMES = ("settings.json", "settings.local.json", "hooks", "skills",
                        "commands", "agents", "plugins", "CLAUDE.md")
+# The data dir Claude Code gives the orchestra plugin loaded with
+# `--plugin-dir` (its hooks mkdir it on every event): the one writable spot
+# under the config dir's `plugins/`, which otherwise stays read-only.
+INLINE_PLUGIN_DATA = os.path.join("plugins", "data", "orchestra-inline")
+# What Claude Code loads plugins from under `plugins/`: denied by name even
+# before they exist (srt can only carve existing entries out of `plugins/`).
+CLAUDE_PLUGIN_NAMES = ("cache", "marketplaces", "repos", "installed_plugins.json",
+                       "known_marketplaces.json", "config.json")
 
 
 def claude_paths(home=None, env=None):
@@ -1013,6 +1051,21 @@ def host_policy(repo, worktree_base, herdr_home, cfg, extra_writable=(), home=No
                      os.path.join(common_git, "objects")]
     claude_writable, claude_deny = claude_paths(home, env)
     writable += claude_writable
+    # The inline orchestra plugin's data dir: `plugins/` becomes a read-only
+    # carve-out (instead of a deny, which would win over this allow) with
+    # only that dir writable inside it.
+    plugins = os.path.join(claude_writable[0], "plugins")
+    inline = os.path.join(claude_writable[0], INLINE_PLUGIN_DATA)
+    try:
+        os.makedirs(inline, mode=0o700, exist_ok=True)
+    except OSError:
+        pass
+    if os.path.isdir(inline):
+        real_plugins = os.path.realpath(plugins)
+        claude_deny = [d for d in claude_deny if d not in (plugins, real_plugins)]
+        readonly.append(real_plugins)
+        writable.append(os.path.realpath(inline))
+        claude_deny += [os.path.join(real_plugins, n) for n in CLAUDE_PLUGIN_NAMES]
     writable.append(os.path.join(home, ".local", "state", "claude"))
     # The same shared package caches a CLI executor may write (~/.cache
     # covers ~/.cache/claude): without them `npm install` or a go build in a
@@ -1046,18 +1099,13 @@ def host_policy(repo, worktree_base, herdr_home, cfg, extra_writable=(), home=No
     if platform != "darwin":
         writable += glob.glob(os.path.join(glob.escape(home), ".claude.json*"))
 
-    # The state dir itself stays writable (result files); only the learned
-    # store inside it is protected, not the directory around it.
+    # The state dir itself stays writable (result files); the learned store,
+    # the managed tools and the network sandbox's settings and audit log
+    # inside it are protected (`state_denies`), and so is the dedicated pi
+    # agent dir: config orchestra later runs outside this sandbox's scope.
     state = os.path.realpath(state_dir(home))
-    deny_write = [p for p in tamper_paths(home) if os.path.realpath(p) != state]
-    deny_write += claude_deny
-    # Binaries and config orchestra later runs (outside this sandbox's scope):
-    # managed tools and the dedicated pi agent dir must not be replaceable.
-    deny_write += [os.path.join(state, "tools"), os.path.join(state, "pi-agent")]
-    # The network sandbox's settings and its audit log: written by the
-    # executor outside the sandbox, never by a pane.
-    deny_write += [os.path.join(state, SRT_SETTINGS_DIR), os.path.join(state, CLI_SRT_DIR),
-                   os.path.join(state, AUDIT_DIR)]
+    deny_write = state_denies(home) + claude_deny
+    deny_write.append(os.path.join(state, "pi-agent"))
     deny_write_regex = []
     for tree in (repo, base):
         root = _repo_root(tree) if os.path.isdir(tree) else None

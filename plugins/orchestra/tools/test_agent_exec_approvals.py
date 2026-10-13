@@ -228,6 +228,16 @@ class EscalateParseTests(unittest.TestCase):
                       "ESCALATE: network is down", "done"):
             self.assertIsNone(ap.network_escalate_hosts(plain), plain)
 
+    def test_prose_after_the_host_list_yields_no_host(self):
+        # Observed: a doubled prefix, then prose with an abbreviation in it.
+        self.assertEqual(ap.network_escalate_hosts(
+            "ESCALATE: ESCALATE: network example.com. curl failed with 403, i.e. blocked "
+            "by the proxy (see docs.example.org)"),
+            [{"host": "example.com", "port": 443}])
+        self.assertEqual(ap.network_escalate_hosts(
+            "ESCALATE: ESCALATE: network a.example.com, b.example.net: needed for tests"),
+            [{"host": "a.example.com", "port": 443}, {"host": "b.example.net", "port": 443}])
+
 
 class CliTests(_Case):
     def test_decide_requires_reason(self):

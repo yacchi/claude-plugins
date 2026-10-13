@@ -44,6 +44,8 @@ DEFAULT_PORT = 443
 _NET_ESCALATE_RE = re.compile(r"^(?:ESCALATE:\s*)+network\s+(\S.*)$")
 _HOST_RE = re.compile(r"^[a-z0-9*]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+"
                       r"(:[0-9]{1,5})?$")
+# A host ends in an alphabetic TLD of at least two letters (`i.e` is not one).
+_TLD_RE = re.compile(r"\.[a-z]{2,}(:[0-9]{1,5})?$")
 _TERMINAL_RE = re.compile(r"\nterminal: ([^\n]+)")
 
 
@@ -68,12 +70,17 @@ def network_escalate_hosts(answer):
     if not match:
         return None
     out = []
+    # Only the host list right after `network`: the first token that is not
+    # a host ends it, so the prose after it ("curl failed, i.e. blocked")
+    # never yields a bogus host.
     for token in re.split(r"[,\s]+", match.group(1)):
-        text = token.strip("`'\"()[]<>;.").lower()
+        text = token.strip("`'\"()[]<>;:.").lower()
+        if not text:
+            continue
         if text.startswith("https://") or text.startswith("http://"):
             text = text.split("://", 1)[1].split("/", 1)[0]
-        if not text or not _HOST_RE.match(text):
-            continue
+        if not _HOST_RE.match(text) or not _TLD_RE.search(text):
+            break
         host, port = text, DEFAULT_PORT
         if ":" in text:
             host, port = text.rsplit(":", 1)

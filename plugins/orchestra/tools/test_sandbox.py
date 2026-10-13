@@ -88,6 +88,45 @@ class PolicyTests(unittest.TestCase):
         policy = self._policy(self.base)
         self.assertIn(os.path.join(self.home, ".pi", "agent"), policy["writable"])
 
+    def _managed_pi(self, platform="linux"):
+        state = os.path.join(self.home, ".local", "state", "claude-orchestra")
+        agent = os.path.join(state, "pi-agent")
+        os.makedirs(os.path.join(agent, "sessions"))
+        self.env["PI_CODING_AGENT_DIR"] = agent
+        with mock.patch.dict(os.environ):
+            os.environ.pop("XDG_STATE_HOME", None)
+            return state, agent, self._policy(self.base, platform=platform)
+
+    def test_managed_pi_agent_dir_is_writable_but_orchestra_state_is_not(self):
+        state, agent, policy = self._managed_pi()
+        self.assertIn(agent, policy["writable"])
+        protected = [os.path.join(state, "sandbox-learned.json"), os.path.join(state, "tools")]
+        for deny in (policy["deny_write"],
+                     sb.srt_settings(policy, [], [], [])["filesystem"]["denyWrite"]):
+            # srt and Seatbelt let a deny win over every allow
+            self.assertFalse([d for d in deny if _under_any(agent + "/sessions/s", [d])])
+            for path in protected:
+                self.assertIn(path, deny)
+        argv = sb._bwrap_argv(["pi"], self.base, policy, exists=lambda p: True)
+        ro = [argv[i + 1] for i, a in enumerate(argv) if a == "--ro-bind"]
+        self.assertFalse([d for d in ro if d != "/" and _under_any(agent, [d])])
+
+    @unittest.skipUnless(sys.platform == "darwin" and os.path.exists(sb.SANDBOX_EXEC),
+                         "needs macOS sandbox-exec")
+    def test_seatbelt_writes_managed_pi_sessions_but_not_tamper_files(self):
+        state, agent, policy = self._managed_pi(platform="darwin")
+        os.makedirs(os.path.join(state, "tools"))
+
+        def can_write(path):
+            argv = sb.wrap_argv(["/bin/sh", "-c", 'echo x >> "$1"', "sh", path],
+                                self.base, {"backend": "seatbelt", "policy": policy})
+            return subprocess.run(argv, capture_output=True).returncode == 0
+
+        self.assertTrue(can_write(os.path.join(agent, "sessions", "s.jsonl")))
+        self.assertFalse(can_write(os.path.join(state, "sandbox-learned.json")))
+        self.assertFalse(can_write(os.path.join(state, "tools", "x")))
+        self.assertFalse(can_write(os.path.join(agent, "settings.json")))
+
 
 class HostPolicyTests(unittest.TestCase):
     """The policy of the sandboxed herdr server (and so of every pane)."""
@@ -131,8 +170,9 @@ class HostPolicyTests(unittest.TestCase):
 
     def test_claude_code_config_cannot_be_planted(self):
         deny = self.policy["deny_write"]
-        for name in ("settings.json", "hooks", "CLAUDE.md", "plugins"):
+        for name in ("settings.json", "hooks", "CLAUDE.md"):
             self.assertIn(os.path.join(self.claude, name), deny)
+        self.assertIn(os.path.join(self.shared, "plugins"), deny)
         # a symlinked skills dir is denied at its real path as well
         self.assertIn(os.path.join(self.shared, "skills"), deny)
 
@@ -155,6 +195,46 @@ class HostPolicyTests(unittest.TestCase):
         self.assertIn(os.path.join(self.claude, "settings.json"), denied)
         self.assertIn(os.path.join(self.shared, "skills"), denied)
         self.assertTrue(sbpl.index("claude\\.json") < last_deny)
+
+    def test_only_the_inline_plugin_data_dir_is_writable_under_plugins(self):
+        plugins = os.path.join(self.claude, "plugins")
+        inline = os.path.join(plugins, "data", "orchestra-inline")
+        other = os.path.join(plugins, "data", "other-plugin")
+        os.makedirs(other)
+        os.makedirs(os.path.join(plugins, "cache"))
+        policy = sb.host_policy(
+            self.repo, self.wt_base, os.path.join(self.home, "hx"), {}, home=self.home,
+            env={"TMPDIR": "/nonexistent-tmp"}, platform="darwin", learned=[])
+        self.assertTrue(os.path.isdir(inline))
+        self.assertEqual([w for w in policy["writable"] if _under_any(w, [plugins])],
+                         [inline])
+        self.assertIn(plugins, policy["readonly"])
+        # srt: denyWrite wins over allowWrite, so nothing may cover the inline
+        # dir while every sibling (existing or a known name) stays denied
+        fs = sb.srt_settings(policy, [], [], [])["filesystem"]
+        self.assertFalse([d for d in fs["denyWrite"] if _under_any(inline, [d])])
+        for path in (other, os.path.join(plugins, "cache"),
+                     os.path.join(plugins, "installed_plugins.json")):
+            self.assertIn(path, fs["denyWrite"])
+
+    @unittest.skipUnless(sys.platform == "darwin" and os.path.exists(sb.SANDBOX_EXEC),
+                         "needs macOS sandbox-exec")
+    def test_seatbelt_host_writes_the_inline_plugin_data_dir_only(self):
+        plugins = os.path.join(self.claude, "plugins")
+        os.makedirs(os.path.join(plugins, "data", "other-plugin"))
+        policy = sb.host_policy(
+            self.repo, self.wt_base, os.path.join(self.home, "hx"), {}, home=self.home,
+            env={"TMPDIR": "/nonexistent-tmp"}, platform="darwin", learned=[])
+
+        def can_write(path):
+            argv = sb.wrap_argv(["/bin/sh", "-c", 'echo x >> "$1"', "sh", path],
+                                self.base, {"backend": "seatbelt", "policy": policy})
+            return subprocess.run(argv, capture_output=True).returncode == 0
+
+        self.assertTrue(can_write(os.path.join(plugins, "data", "orchestra-inline", "x")))
+        self.assertFalse(can_write(os.path.join(plugins, "data", "other-plugin", "x")))
+        self.assertFalse(can_write(os.path.join(plugins, "installed_plugins.json")))
+        self.assertTrue(can_write(os.path.join(self.claude, "history-x.jsonl")))
 
     def test_prepare_host_needs_seatbelt_or_bwrap(self):
         results = {"seatbelt": NO, "bwrap": NO, "landlock": dict(OK, abi=6)}

@@ -9,9 +9,12 @@ stderr; with `--control-fd 3` it reads one full-config JSON line per update,
 of which only the domain lists change live.
 
 `SrtRun` is one process under srt: settings file (dir 0700, file 0600),
-control pipe, debug-log tailing into `<state>/audit/network.jsonl` and the
-blocked hosts of this run, and the live push of learned domains (one full
-line, only when they changed). `cli_network` plans the network of one CLI
+control channel, debug-log tailing into `<state>/audit/network.jsonl` and
+the blocked hosts of this run, and the live push of learned domains (one
+full line, only when they changed). A CLI run's control channel is a pipe
+its parent holds; the herdr server outlives the process that started it, so
+its channel is a FIFO (`<state>/herdr-srt/<session>.ctl`) that any later
+process pushes to (`push_line`). `cli_network` plans the network of one CLI
 executor run: srt status, and the domains its settings allow -- the
 configured allowlist, the package-registry presets of the tree
 (`ECOSYSTEM_PRESETS`) and that executor's own API hosts.
@@ -19,11 +22,14 @@ configured allowlist, the package-registry presets of the tree
 Stdlib only.
 """
 
+import errno
+import fcntl
 import fnmatch
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -245,6 +251,53 @@ def audit(record):
         fh.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def make_fifo(path):
+    """A fresh control FIFO at `path` (dir 0700, FIFO 0600), opened
+    read-write: srt reads it as its control fd and, holding a writer itself,
+    never sees EOF when a pushing process closes its end. Returns the fd."""
+    directory = os.path.dirname(path)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    os.chmod(directory, 0o700)
+    if os.path.lexists(path):
+        os.unlink(path)
+    os.mkfifo(path, 0o600)
+    os.chmod(path, 0o600)
+    return os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+
+
+def push_line(path, data):
+    """Write `data` (one full-config line, or b"" to only probe) to the
+    control FIFO at `path`. Returns None, or why it cannot be used: missing,
+    not a FIFO, or no reader (ENXIO: the srt behind it is gone). Never
+    blocks on a FIFO nobody reads; a line is written whole."""
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return "no control channel (%s)" % path
+    except OSError as exc:
+        return "control channel: %s" % exc
+    if not stat.S_ISFIFO(info.st_mode):
+        return "control channel is not a FIFO (%s)" % path
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    except OSError as exc:
+        if exc.errno == errno.ENXIO:
+            return "nothing reads the control channel (%s)" % path
+        return "control channel: %s" % exc
+    try:
+        # Blocking from here: a non-blocking write of a line longer than the
+        # pipe buffer could stop half-way and leave srt a broken line.
+        os.set_blocking(fd, True)
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view):]
+    except OSError as exc:
+        return "control channel: %s" % exc
+    finally:
+        os.close(fd)
+    return None
+
+
 def _control_slot(fd):
     """In the child only: `fd` becomes the (inheritable) control fd."""
     if fd == sb.SRT_CONTROL_FD:
@@ -257,10 +310,11 @@ class SrtRun(object):
     """One process under srt. `settings` is the srt settings dict with the
     static `domains` as allowedDomains; learned domains are added on every
     write and push. Without `settings` only the debug log is watched (a
-    server this run did not start)."""
+    server whose control channel is unusable). With `control_path` the
+    control channel is that FIFO (`make_fifo` / `push_line`), not a pipe."""
 
     def __init__(self, settings=None, domains=(), settings_path=None, session=None,
-                 quiet=(), pipe=os.pipe, label="srt"):
+                 quiet=(), pipe=os.pipe, label="srt", control_path=None):
         self.base = settings
         self.domains = list(domains)
         self.settings_path = settings_path
@@ -268,7 +322,9 @@ class SrtRun(object):
         self.quiet = list(quiet)
         self.pipe = pipe
         self.label = label
+        self.control_path = control_path
         self.control_w = None
+        self.stale = None
         self.live = None
         self.log_path = None
         self.offset = 0
@@ -306,16 +362,21 @@ class SrtRun(object):
     # -- spawn -----------------------------------------------------------------
 
     def spawn(self, popen, argv, **kwargs):
-        """`popen(argv, ...)` with a fresh pipe's read end as the control fd
-        of the child; the write end is kept for `push`."""
-        read_end, write_end = self.pipe()
+        """`popen(argv, ...)` with the control channel as the child's control
+        fd: a fresh pipe's read end (the write end is kept for `push`), or
+        the FIFO at `control_path`, of which only srt keeps a descriptor."""
+        if self.control_path:
+            read_end, write_end = make_fifo(self.control_path), None
+        else:
+            read_end, write_end = self.pipe()
         try:
             # close_fds=False keeps fd 3; every other fd Python opened is
             # non-inheritable (PEP 446) and so is not leaked.
             proc = popen(argv, close_fds=False,
                          preexec_fn=lambda: _control_slot(read_end), **kwargs)
         except BaseException:
-            os.close(write_end)
+            if write_end is not None:
+                os.close(write_end)
             raise
         finally:
             os.close(read_end)
@@ -389,6 +450,8 @@ class SrtRun(object):
 
     def push(self):
         """One full-config line to srt when the learned domains changed."""
+        if self.control_path:
+            return self._push_fifo()
         if self.control_w is None or self.base is None:
             return
         learned = sb.learned_domains()
@@ -412,6 +475,43 @@ class SrtRun(object):
             self.write_settings(settings)
         except OSError:
             pass
+
+    def _on_disk(self):
+        try:
+            with open(self.settings_path, encoding="utf-8") as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            return None
+
+    def _push_fifo(self):
+        """`push` through the FIFO, from whichever process runs it: one full
+        line, only when the settings differ from the file on disk, which is
+        rewritten after a push. Pushes of one session are serialized."""
+        if self.base is None:
+            return
+        directory = os.path.dirname(self.settings_path)
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        lock = os.open(self.settings_path + ".lock", os.O_WRONLY | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            learned = sb.learned_domains()
+            settings = self.settings(learned)
+            if settings == self._on_disk():
+                self.live = set(learned)
+                return
+            line = (json.dumps(settings, sort_keys=True) + "\n").encode("utf-8")
+            why = push_line(self.control_path, line)
+            if why:
+                if why != self.stale:
+                    sys.stderr.write("agent-exec: %s: network settings stale: %s\n"
+                                     % (self.label, why))
+                self.stale = why
+                return
+            self.stale = None
+            self.live = set(learned)
+            self.write_settings(settings)
+        finally:
+            os.close(lock)
 
     def tick(self):
         """Tail the log for blocked connections and push newly approved

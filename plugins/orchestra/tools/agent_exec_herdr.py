@@ -33,7 +33,9 @@ allowlist (with the package-registry presets of the repo's tracked files).
 The srt mechanics live in agent_exec_srt.SrtRun. Blocked connections from srt's debug log are appended to
 `<state>/audit/network.jsonl` and surfaced per package as
 `network_denials`; a domain approved with `agent-exec sandbox allow-domain`
-reaches the running server through srt's control pipe. Only there may
+reaches the running server through srt's control FIFO
+(`<state>/herdr-srt/<session>.ctl`), also from a later `wave run` that
+attaches to a server an earlier one left running. Only there may
 `herdr.permission_mode` be `bypassPermissions`.
 
 Sessions are persisted in `<state dir>/herdr-sessions.json`. Stdlib only;
@@ -331,7 +333,7 @@ class HerdrExecutor(object):
     def __init__(self, cfg=None, binary=None, tools_cfg=None, runner=subprocess.run,
                  popen=subprocess.Popen, clock=time.time, sleep=time.sleep, poll=2.0,
                  on_event=None, env=None, herdr_home=None, sandbox_probes=None,
-                 srt_binary=None, which=None, platform=None, pipe=os.pipe):
+                 srt_binary=None, which=None, platform=None):
         self.cfg = merged_config(cfg)
         self.binary = binary
         self.tools_cfg = tools_cfg
@@ -359,12 +361,11 @@ class HerdrExecutor(object):
         self._warm_lock = threading.RLock()
         # network sandbox (srt)
         self.srt_binary = srt_binary
-        self.pipe = pipe
         self.which = which
         self.platform = platform
         self._net_restricted = False
         self._net_reason = None
-        # agent_exec_srt.SrtRun of the server: settings, control pipe, log
+        # agent_exec_srt.SrtRun of the server: settings, control FIFO, log
         self._srt = None
 
     @classmethod
@@ -485,12 +486,7 @@ class HerdrExecutor(object):
         with self.lock:
             if self._server_ready:
                 return
-            if self._status_running():
-                # Not ours: nothing says it runs under the sandbox.
-                self._set_sandboxed(None, "the server was already running")
-                self._set_network(None, "the server was already running")
-                self._srt = _srt().SrtRun(session=self.sname, label="herdr")
-                self._srt.watch(self._srt_log_path(self._home()), from_end=True)
+            if self._status_running() and self._attach():
                 self._server_ready = True
                 return
             home = self._home()
@@ -530,6 +526,77 @@ class HerdrExecutor(object):
                     raise _need("error", "herdr server did not start")
                 self.sleep(min(self.poll, 1.0) if self.poll else 0)
 
+    def _attach(self):
+        """Use the server an earlier run left running. Its network settings
+        stay live through its control FIFO; when that is unusable (missing,
+        not a FIFO, nobody reading: a server started before the FIFO existed
+        or without srt) its settings are stale, and the server is stopped for
+        a fresh start when srt is usable and no registered session of this
+        state is mid-task. Returns False when it was stopped."""
+        net = self._net_cfg()
+        why = "the server was already running"
+        if net["mode"] == "allowlist":
+            settings_path, control_path = self._srt_paths()
+            run = _srt().SrtRun(None, self._static_domains(), settings_path,
+                                session=self.sname, quiet=net["quiet_domains"],
+                                label="herdr", control_path=control_path)
+            base = run._on_disk()
+            stale = (_srt().push_line(control_path, b"") if isinstance(base, dict)
+                     else "no settings file of the running server")
+            if stale is None:
+                run.base = base
+                return self._attached(run, None)
+            cfg = self.tools_cfg if self.tools_cfg is not None else _agent_exec().DEFAULTS
+            if srt_status(cfg, self.which, self.platform, self.srt_binary)[0]:
+                why = "network settings stale: %s" % stale
+                if not self._busy():
+                    message = why + "; restarting the herdr server"
+                    sys.stderr.write("agent-exec: herdr: %s\n" % message)
+                    self._event(None, "network", None, restricted=False, reason=message)
+                    self._stop_server()
+                    return False
+        return self._attached(_srt().SrtRun(session=self.sname, label="herdr"), why)
+
+    def _attached(self, run, unrestricted):
+        """Adopt a running server: `run` watches its srt log (and pushes,
+        when it has settings); `unrestricted` says why its network is not
+        restricted, None when its srt is live."""
+        # Not started here: nothing says it runs under the sandbox.
+        self._set_sandboxed(None, "the server was already running")
+        run.watch(self._srt_log_path(self._home()), from_end=True)
+        self._srt = run
+        self._set_network(unrestricted is None, unrestricted)
+        if unrestricted is None:
+            run.tick()  # a domain approved since that server started
+        return True
+
+    def _busy(self):
+        """Whether a registered session of this state, in this herdr
+        session, is mid-task (its agent working or on a dialog)."""
+        for entry in self._package_sessions().values() if self.state_dir else ():
+            if not isinstance(entry, dict) or not entry.get("terminal"):
+                continue
+            if (entry.get("herdr_session") or self.sname) != self.sname:
+                continue
+            try:
+                status = self._status(entry["terminal"])
+            except _HerdrError:
+                continue
+            if status in ("working", "blocked"):
+                return True
+        return False
+
+    def _stop_server(self):
+        try:
+            self._call(["server", "stop"], _CALL_TIMEOUT)
+        except _HerdrError as exc:
+            sys.stderr.write("agent-exec: herdr: %s\n" % exc)
+        deadline = self.clock() + float(self.cfg["startup_timeout"])
+        while self._status_running():
+            if self.clock() >= deadline:
+                raise _need("error", "the stale herdr server did not stop")
+            self.sleep(min(self.poll, 1.0) if self.poll else 0)
+
     def _host_spec(self, home):
         agent_exec = _agent_exec()
         cfg = self.tools_cfg if self.tools_cfg is not None else agent_exec.DEFAULTS
@@ -556,26 +623,36 @@ class HerdrExecutor(object):
         cfg = self.tools_cfg if self.tools_cfg is not None else _agent_exec().DEFAULTS
         return _sandbox().normalize_config(cfg.get("sandbox"))["network"]
 
-    def _spawn_srt(self, srt, spec, home, env, log):
-        """Start the server under sandbox-runtime: srt's own Seatbelt /
-        bubblewrap profile built from the host policy (never nested in
-        orchestra's), the domain allowlist (`allowed_domains` plus the
-        registry presets of the repo), and a control pipe on fd 3 for live
-        domain updates. srt's debug output goes to the session's srt.log,
-        which `network_tick` tails for blocked connections."""
+    def _srt_paths(self):
+        """(settings file, control FIFO) of this session's srt: in the state
+        dir, which no hosted process may write."""
+        directory = os.path.join(_sandbox().state_dir(), _sandbox().SRT_SETTINGS_DIR)
+        return (os.path.join(directory, self.sname + ".json"),
+                os.path.join(directory, self.sname + ".ctl"))
+
+    def _static_domains(self):
+        """`allowed_domains` plus the registry presets of the repo."""
         net = self._net_cfg()
         domains = list(net["allowed_domains"])
         if net["ecosystem"]:
             domains += _srt().ecosystem_domains(self._repo or os.getcwd())
-        domains = _sandbox()._dedupe(domains)
+        return _sandbox()._dedupe(domains)
+
+    def _spawn_srt(self, srt, spec, home, env, log):
+        """Start the server under sandbox-runtime: srt's own Seatbelt /
+        bubblewrap profile built from the host policy (never nested in
+        orchestra's), the domain allowlist (`_static_domains`), and the
+        control FIFO on fd 3 for live domain updates. srt's debug output goes
+        to the session's srt.log, which `network_tick` tails for blocked
+        connections."""
+        net = self._net_cfg()
+        domains = self._static_domains()
         settings = _sandbox().srt_settings(
             spec["policy"], self._sockets(home), domains, net["denied_domains"])
+        settings_path, control_path = self._srt_paths()
         run = _srt().SrtRun(
-            settings, domains,
-            os.path.join(_sandbox().state_dir(), _sandbox().SRT_SETTINGS_DIR,
-                         self.sname + ".json"),
-            session=self.sname, quiet=net["quiet_domains"], pipe=self.pipe,
-            label="herdr")
+            settings, domains, settings_path, session=self.sname,
+            quiet=net["quiet_domains"], label="herdr", control_path=control_path)
         path = run.prepare()
         log_path = self._srt_log_path(home)
         os.makedirs(os.path.dirname(log_path), mode=0o700, exist_ok=True)
