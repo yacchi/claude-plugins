@@ -1,0 +1,14 @@
+{
+  "scenario": "install/marketplace-not-file",
+  "steps": [
+    {
+      "argv": [
+        "install"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: install: resolved bootstrap does not exist: <HOME>/.claude/plugins/marketplaces/mp1/plugins/orchestra/tools/agent-exec\n"
+    }
+  ]
+}

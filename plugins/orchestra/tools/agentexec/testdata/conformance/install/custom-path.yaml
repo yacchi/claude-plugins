@@ -1,0 +1,13 @@
+description: >
+  choice 5 with a custom directory (created) that is on PATH
+setup:
+  env:
+    PATH: "<HOME>/custom/bin:<ROOT>/bin:/usr/bin:/bin"
+  files:
+    ~/.claude/plugins/marketplaces/mp1/plugins/orchestra/tools/agent-exec: |
+      #!/bin/sh
+steps:
+  - argv: [install]
+    stdin: "5\n~/custom/bin\n"
+    go_replace: [{old: "Quick test: agent-exec list", new: "Quick test: agent-exec doctor"}]
+    snapshot: ["~/custom/bin/agent-exec"]

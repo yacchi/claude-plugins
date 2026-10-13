@@ -65,6 +65,27 @@ type Step struct {
 	Stderr       string            `yaml:"stderr"`
 	StderrPrefix string            `yaml:"stderr_prefix"`
 	Snapshot     []string          `yaml:"snapshot"`
+	// GoSwap / GoReplace record intentional Go-only deviations from the
+	// Python golden (each also has a line in CHANGES.md); they apply only
+	// under -impl=go. See applyGoDeviations.
+	GoSwap    *GoSwap     `yaml:"go_swap"`
+	GoReplace []GoReplace `yaml:"go_replace"`
+}
+
+// GoSwap: the golden's top-level key (JSON stdout) or "<key>: " lines (text
+// stdout) named Golden is replaced in Go by Got, whose value is volatile and
+// so only checked for shape: a JSON object with exactly Keys, or, in text, one
+// "<got>: " line carrying every "<key>=".
+type GoSwap struct {
+	Golden string   `yaml:"golden"`
+	Got    string   `yaml:"got"`
+	Keys   []string `yaml:"keys"`
+}
+
+// GoReplace rewrites the golden's text stdout (Old -> New) before comparing.
+type GoReplace struct {
+	Old string `yaml:"old"`
+	New string `yaml:"new"`
 }
 
 func (s *Scenario) ID() string { return s.area + "/" + s.name }

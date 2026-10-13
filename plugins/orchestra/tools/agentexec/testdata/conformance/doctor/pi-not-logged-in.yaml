@@ -1,0 +1,24 @@
+description: >
+  pi auth check reports not_ready: the login map and the hint for Claude
+platforms: [darwin]
+setup:
+  env:
+    PATH: "<HOME>/.local/bin:<HOME>/fakebin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+    ~/fakebin/pi: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/fakebin/pi: |
+      #!/bin/sh
+      echo '{"status": "not_ready"}'
+      exit 1
+steps:
+  - argv: [doctor]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
+  - argv: [doctor, --text]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
