@@ -1,0 +1,76 @@
+description: >
+  a valid plan lints clean (no output, exit 0; [] in json): unknown fields are ignored, overlapping files_owned between packages is not a lint finding, external_done satisfies a dependency, a relative preamble is resolved against the plan
+setup:
+  files:
+    "plan/specs/a.md": |
+      # a
+      do the thing
+    "plan/specs/b.md": |
+      # b
+      do the thing
+    "plan/specs/c.md": |
+      # c
+      do the thing
+    "plan/specs/d.md": |
+      # d
+      do the thing
+    "plan/specs/e.md": |
+      # e
+      do the thing
+    "plan/specs/f.md": |
+      # f
+      do the thing
+    "plan/plan.json": |
+      {
+        "external_done": [
+          "ext"
+        ],
+        "preamble": [
+          "specs/a.md"
+        ],
+        "mystery": {
+          "anything": [
+            1,
+            2,
+            3
+          ]
+        },
+        "packages": [
+          {
+            "id": "a",
+            "spec": "specs/a.md",
+            "cls": "light",
+            "files_owned": [
+              "a.go"
+            ],
+            "prio": 2,
+            "note": "unknown package field"
+          },
+          {
+            "id": "b",
+            "spec": "specs/b.md",
+            "cls": "light",
+            "depends_on": [
+              "a",
+              "ext"
+            ],
+            "files_owned": [
+              "a.go"
+            ]
+          },
+          {
+            "id": "c",
+            "spec": "specs/c.md",
+            "cls": "light",
+            "files_owned": [
+              "a.go",
+              "pkg/**"
+            ]
+          }
+        ]
+      }
+steps:
+  - argv: ["wave", "lint", "--plan", "plan/plan.json"]
+  - argv: ["wave", "lint", "--plan", "plan/plan.json", "--json"]
+  - argv: ["wave", "lint", "--plan", "plan/plan.json", "--text"]
+  - argv: ["wave", "lint", "--plan", "plan/plan.json", "--text", "--json"]

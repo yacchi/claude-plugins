@@ -1,0 +1,12 @@
+description: no checks configured is "no-checks" with exit 0, in json and text, with and without a --files override
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+  dirty:
+    a.txt: "changed\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, .]
+  - argv: [check, --path, ., --text]
+  - argv: [check, --path, ., --files, "a.txt, b.txt ,,"]

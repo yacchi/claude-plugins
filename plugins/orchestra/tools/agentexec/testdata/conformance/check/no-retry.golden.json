@@ -1,0 +1,58 @@
+{
+  "scenario": "check/no-retry",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--no-retry"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "FAIL a.test.js",
+            "exit": 1,
+            "name": "single",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        "."
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "single",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "pass",
+        "tree": "."
+      },
+      "stderr": ""
+    }
+  ]
+}

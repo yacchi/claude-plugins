@@ -1,0 +1,57 @@
+{
+  "scenario": "wave/lint-clean",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "lint",
+        "--plan",
+        "plan/plan.json"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "lint",
+        "--plan",
+        "plan/plan.json",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": [],
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "lint",
+        "--plan",
+        "plan/plan.json",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "lint",
+        "--plan",
+        "plan/plan.json",
+        "--text",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": [],
+      "stderr": ""
+    }
+  ]
+}

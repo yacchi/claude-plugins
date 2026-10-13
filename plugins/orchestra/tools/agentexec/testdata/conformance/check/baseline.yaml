@@ -1,0 +1,25 @@
+description: >
+  --baseline re-runs failed checks on a clean checkout of the ref: failures
+  that also fail there are "preexisting", failures caused by the working
+  tree stay "fail" (exit 1)
+setup:
+  git: true
+  files:
+    bad.txt: "committed\n"
+    a.txt: "a\n"
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: preexisting-one
+            run: "test ! -e bad.txt"
+          - name: mine
+            run: "test ! -e new.txt"
+          - name: fine
+            run: "true"
+  dirty:
+    a.txt: "a2\n"
+    new.txt: "new\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, ., --all, --baseline]
+  - argv: [check, --path, ., --all, --baseline, --since, HEAD, --text]

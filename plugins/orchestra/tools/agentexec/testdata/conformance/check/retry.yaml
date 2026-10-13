@@ -1,0 +1,35 @@
+description: >
+  a failed check whose output names failing files is re-run alone; passing
+  the second time marks the files flaky. A check without {files} or a
+  retry_alone template is not retried
+setup:
+  git: true
+  files:
+    flaky.sh: |
+      #!/bin/sh
+      if [ -e "$TMPDIR/seen-$1" ]; then exit 0; fi
+      : > "$TMPDIR/seen-$1"
+      echo "FAIL $1"
+      exit 1
+    a.test.js: "a\n"
+    b.test.js: "b\n"
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: single
+            paths: ["a.test.js"]
+            run: "sh flaky.sh {files}"
+          - name: custom
+            paths: ["b.test.js"]
+            run: "sh flaky.sh b.test.js"
+            retry_alone: "sh flaky.sh {failed}"
+          - name: plain
+            paths: ["nothing-matches-here"]
+            run: "echo plain"
+  dirty:
+    a.test.js: "a2\n"
+    b.test.js: "b2\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, ., --all]
+  - argv: [check, --path, ., --all]

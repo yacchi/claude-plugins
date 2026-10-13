@@ -1,0 +1,38 @@
+description: >
+  paths globs select files (** spans directories, * and ? stay in a
+  segment), a check with no matching file is skipped, a {files} check drops
+  files that no longer exist or sit outside its cwd, and file names are
+  shell-quoted
+setup:
+  git: true
+  files:
+    src/a.ts: "a\n"
+    src/deep/b.ts: "b\n"
+    docs/c.md: "c\n"
+    web/d.tsx: "d\n"
+    "weird name.ts": "w\n"
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: ts-all
+            paths: ["src/**/*.ts"]
+            run: "echo FAIL {files}; exit 1"
+          - name: ts-top
+            paths: ["src/*.ts"]
+            run: "echo FAIL {files}; exit 1"
+          - name: md-q
+            paths: ["docs/?.md"]
+            run: "echo FAIL {files}; exit 1"
+          - name: web-cwd
+            paths: ["**/*.tsx", "**/*.md"]
+            cwd: web
+            run: "echo FAIL {files}; exit 1"
+          - name: none
+            paths: ["*.py"]
+            run: "exit 1"
+          - name: quoting
+            paths: ["*.ts"]
+            run: "echo FAIL {files}; exit 1"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, ., --all, --no-retry, --files, "src/a.ts,src/deep/b.ts,docs/c.md,web/d.tsx,gone.ts,weird name.ts"]

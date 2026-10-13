@@ -1,0 +1,121 @@
+description: >
+  --live counts git status lines of in-flight packages' trees (a trailing * in text), reports null when git fails there, and skips trees that do not exist
+setup:
+  files:
+    "wave/state.json": |
+      {
+        "integration": {
+          "base": "abc123",
+          "path": "/tmp/x/int",
+          "task": "wave-int"
+        },
+        "needs": [
+          {
+            "at": 99999999996.5,
+            "detail": "needs wider scope\nmore detail",
+            "id": "d",
+            "kind": "scope"
+          },
+          {
+            "at": 99999999997.5,
+            "detail": "wave level need",
+            "id": null,
+            "kind": "environment"
+          }
+        ],
+        "packages": {
+          "a": {
+            "attempts": 1,
+            "commit": null,
+            "detail": "working on it",
+            "executor": "pi",
+            "files_changed": null,
+            "session": true,
+            "since": 99999999993.5,
+            "status": "implementing",
+            "tree": "<WORK>/tree"
+          },
+          "b": {
+            "attempts": 2,
+            "commit": "deadbeef",
+            "detail": "done",
+            "executor": "claude",
+            "files_changed": 3,
+            "session": false,
+            "since": 99999999994.5,
+            "status": "integrated",
+            "tree": null
+          },
+          "c": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "gate failed\nsecond line",
+            "executor": null,
+            "files_changed": 0,
+            "session": false,
+            "since": 99999999995.5,
+            "status": "failed",
+            "tree": null
+          },
+          "d": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "needs wider scope\nmore detail",
+            "executor": null,
+            "files_changed": null,
+            "session": false,
+            "since": 99999999996.5,
+            "status": "needs",
+            "tree": null
+          },
+          "e": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "ünïcode detail",
+            "executor": "pi",
+            "files_changed": null,
+            "network_denials": [
+              {
+                "host": "api.anthropic.com",
+                "port": 443
+              }
+            ],
+            "session": false,
+            "since": 99999999999.5,
+            "status": "fixing",
+            "tree": "<ROOT>/plain"
+          },
+          "f": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "",
+            "executor": null,
+            "files_changed": null,
+            "session": false,
+            "since": 99999999990.5,
+            "status": "pending",
+            "tree": null
+          }
+        },
+        "plan": "plan.json",
+        "stopped": {
+          "at": 100000000000.5,
+          "reason": "by test"
+        },
+        "updated": 100000000001.5,
+        "version": 1,
+        "wave": 2
+      }
+    "tree/a.txt": |
+      a
+    "<ROOT>/plain/x.txt": |
+      x
+  git: true
+  dirty:
+    tree/b.txt: "b\n"
+    tree/c.txt: "c\n"
+normalize_keys: [updated_ago]
+steps:
+  - argv: ["wave", "status", "--state", "wave/state.json", "--live"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--json", "--live"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--line", "--live"]

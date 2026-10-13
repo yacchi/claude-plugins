@@ -1,0 +1,10 @@
+description: a config layer that does not parse is exit 3 after the tree and files were resolved
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    .claude/orchestra.yaml: "checks: [unclosed\n"
+steps:
+  - argv: [check, --path, .]
+    stderr: prefix
+    stderr_prefix: "agent-exec: invalid YAML in <WORK>/"

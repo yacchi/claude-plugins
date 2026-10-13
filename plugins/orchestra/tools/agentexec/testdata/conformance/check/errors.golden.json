@@ -1,0 +1,131 @@
+{
+  "scenario": "check/errors",
+  "steps": [
+    {
+      "argv": [
+        "check"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: check: provide exactly one of --task or --path\n"
+    },
+    {
+      "argv": [
+        "check",
+        "--task",
+        "t",
+        "--path",
+        "p"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: check: provide exactly one of --task or --path\n"
+    },
+    {
+      "argv": [
+        "check",
+        "--task"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: check: missing value for --task\n"
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        "a",
+        "--path",
+        "b"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: check: duplicate option: --path\n"
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        "a",
+        "--json",
+        "--text"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: check: --json and --text are mutually exclusive\n"
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        "a",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: check: unknown option: --bogus\n"
+    },
+    {
+      "argv": [
+        "check",
+        "stray"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: check: unknown option: stray\n"
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        "missing"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [],
+        "files": 0,
+        "status": "error",
+        "tree": "missing"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        "missing",
+        "--text"
+      ],
+      "exit": 3,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--repo",
+        "../tmp"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [],
+        "files": 0,
+        "status": "error",
+        "tree": null
+      },
+      "stderr": ""
+    }
+  ]
+}

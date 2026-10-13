@@ -1,0 +1,35 @@
+description: >
+  check over an arbitrary path: changed files come from git diff plus
+  untracked files, a failing check stops the run and the rest are skipped,
+  --all keeps going, --text prints one line per check then the excerpts
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    src/x.ts: "x\n"
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: lint
+            phase: lint
+            run: "echo lint ok"
+          - name: unit
+            phase: test
+            run: "echo 'FAIL a.test.ts > case one' >&2; echo 'AssertionError: nope'; exit 1"
+          - name: types
+            phase: type
+            run: "echo types ok"
+          - name: heavy
+            phase: heavy
+            run: "echo heavy ok"
+  dirty:
+    a.txt: "changed\n"
+    new.txt: "new\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, .]
+  - argv: [check, --path, ., --all]
+  - argv: [check, --path, ., --text]
+  - argv: [check, --path, ., --all, --text]
+  - argv: [check, --path, ., --since, HEAD]
+  - argv: [check, --path, ., --since, no-such-ref]

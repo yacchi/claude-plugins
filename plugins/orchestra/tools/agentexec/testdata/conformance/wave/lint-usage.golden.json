@@ -1,0 +1,218 @@
+{
+  "scenario": "wave/lint-usage",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "lint"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave lint: --plan is required\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "lint",
+        "--plan"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave lint: missing value for --plan\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "lint",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave lint: unknown argument: --bogus\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "lint",
+        "stray"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave lint: unknown argument: stray\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "lint",
+        "--plan",
+        "plan.json",
+        "--plan",
+        "plan.json"
+      ],
+      "exit": 3,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave lint: plan plan.json: missing required key 'packages'\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "status"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: status: --state is required\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: missing value for --state\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "s.json",
+        "--watch",
+        "x"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: bad --watch value: x\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "s.json",
+        "--watch"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: missing value for --watch\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "s.json",
+        "--events",
+        "x"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: bad --events value: x\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "s.json",
+        "--events"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: missing value for --events\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "s.json",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: unknown argument: --bogus\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "s.json"
+      ],
+      "exit": 3,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: no state file at s.json\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "s.json",
+        "--json"
+      ],
+      "exit": 3,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: no state file at s.json\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "stop"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: stop: --state is required\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "stop",
+        "--state"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: missing value for --state\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "stop",
+        "--reason"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: missing value for --reason\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "stop",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave: unknown argument: --bogus\n"
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "scenario": "check/skipped",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all",
+        "--no-retry",
+        "--files",
+        "src/a.ts,src/deep/b.ts,docs/c.md,web/d.tsx,gone.ts,weird name.ts"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "FAIL src/a.ts src/deep/b.ts",
+            "exit": 1,
+            "name": "ts-all",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "FAIL src/a.ts",
+            "exit": 1,
+            "name": "ts-top",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "FAIL docs/c.md",
+            "exit": 1,
+            "name": "md-q",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "FAIL d.tsx",
+            "exit": 1,
+            "name": "web-cwd",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "none",
+            "reason": "no matching files",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          },
+          {
+            "excerpt": "FAIL weird name.ts",
+            "exit": 1,
+            "name": "quoting",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          }
+        ],
+        "files": 6,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    }
+  ]
+}

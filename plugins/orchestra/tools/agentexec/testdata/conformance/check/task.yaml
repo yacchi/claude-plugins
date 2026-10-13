@@ -1,0 +1,22 @@
+description: >
+  --task resolves the task's worktree, takes the changed files from the
+  isolate diff (or --files) and, with --baseline, measures from the
+  worktree's baseline; an unknown task is an error
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: show
+            run: "echo FAIL {files}; exit 1"
+normalize_keys: [seconds]
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [check, --task, t1, --no-retry]
+  - argv: [check, --task, t1, --files, a.txt, --no-retry]
+  - argv: [check, --task, t1, --files, a.txt, --no-retry, --baseline]
+  - argv: [check, --task, nope]
+  - argv: [check, --task, nope, --text]
+  - argv: [check, --task, t1, --repo, ../tmp]

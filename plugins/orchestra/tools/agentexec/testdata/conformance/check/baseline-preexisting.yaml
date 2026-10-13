@@ -1,0 +1,19 @@
+description: when every failure is also present at the baseline the status is "preexisting" (exit 4); an unresolvable ref leaves the failure as it is
+setup:
+  git: true
+  files:
+    bad.txt: "committed\n"
+    a.txt: "a\n"
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: preexisting-one
+            run: "test ! -e bad.txt"
+          - name: fine
+            run: "true"
+  dirty:
+    a.txt: "a2\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, ., --baseline]
+  - argv: [check, --path, ., --baseline, --since, no-such-ref]
