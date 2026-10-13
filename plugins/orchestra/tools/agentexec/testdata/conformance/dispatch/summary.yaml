@@ -1,0 +1,47 @@
+description: >
+  synchronous `dispatch --token T --summary`: one compact line, `answer`
+  cut to its first 400 code points (multibyte and astral characters count
+  as one) with answer_truncated and the full text written to answer_path;
+  an answer of exactly 400 code points is not cut; a non-JSON outcome
+  (DRYRUN text) is passed through unchanged
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ja.md: |
+      FAKEPI-ANSWER: あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお
+    emoji.md: |
+      FAKEPI-ANSWER: x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀
+    exact.md: |
+      FAKEPI-ANSWER: x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀
+    short.md: |
+      FAKEPI-ANSWER: short
+steps:
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, ja.md, --workdir, .]
+    save: {JA: token}
+  - argv: [dispatch, --token, "<@JA>", --summary]
+    snapshot: ["~/.claude/orchestra/tokens/detach/<@JA>.answer.txt"]
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, emoji.md, --workdir, .]
+    save: {EM: token}
+  - argv: [dispatch, --token, "<@EM>", --summary, --capture]
+    snapshot: ["~/.claude/orchestra/tokens/detach/<@EM>.answer.txt"]
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, exact.md, --workdir, .]
+    save: {EX: token}
+  - argv: [dispatch, --token, "<@EX>", --summary]
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, short.md, --workdir, .]
+    save: {SH: token}
+  - argv: [dispatch, --token, "<@SH>", --summary]
+  - argv: [dispatch, --token, "<@SH>", --summary]
+    env: {AGENT_EXEC_DRYRUN: "1"}
+  - argv: [dispatch, prepare, --class, light, --prompt-file, short.md, --workdir, .]
+    save: {LI: token}
+  - argv: [dispatch, --token, "<@LI>", --summary]

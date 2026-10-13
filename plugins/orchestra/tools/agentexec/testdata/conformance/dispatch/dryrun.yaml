@@ -1,0 +1,27 @@
+description: >
+  AGENT_EXEC_DRYRUN prints the executor argv instead of running it (sandbox
+  off: no wrapper); routing, isolation and the session store are still
+  consulted (a stored session shows up as --session), outcomes that spawn
+  nothing stay JSON
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+    AGENT_EXEC_DRYRUN: "1"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra/sessions/pi-t-s.json: |
+      {"executor":"pi","task":"t-s","session_id":"11111111-2222-4333-a444-555555555555","workdir":"<WORK>","updated":"2026-01-01T00:00:00Z"}
+    p.md: "work\n"
+steps:
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, .]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-s]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-s, --no-resume]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, .]

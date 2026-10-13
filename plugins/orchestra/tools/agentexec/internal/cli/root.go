@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	_ "github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/capture" // registers the executor env with sandbox
 )
 
 // ExitError ends the process with Code after printing "agent-exec: <Msg>" to

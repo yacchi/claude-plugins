@@ -1,0 +1,196 @@
+{
+  "scenario": "dispatch/direct",
+  "steps": [
+    {
+      "argv": [
+        "run",
+        "pi",
+        "--capture",
+        "--model",
+        "m-1",
+        "--effort",
+        "low",
+        "--workdir",
+        ".",
+        "--prompt-file",
+        "ok.md",
+        "--class",
+        "standard",
+        "--run-id",
+        "run-d"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "direct",
+        "exit_code": 0,
+        "reason": null,
+        "resumed": false,
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-run-d.jsonl": {
+          "content": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "cls": "standard",
+            "cost_micro_usd": 0,
+            "executor": "pi",
+            "input_tokens": 0,
+            "model": "m-1",
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "status": "ok",
+            "ts": "<TS>"
+          },
+          "shape": "json-line"
+        }
+      }
+    },
+    {
+      "argv": [
+        "run",
+        "pi",
+        "--capture",
+        "--model",
+        "m-1",
+        "--effort",
+        "low",
+        "--workdir",
+        ".",
+        "--prompt-file",
+        "ok.md",
+        "--resume",
+        "99999999-8888-4777-a666-555555555555"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "direct",
+        "exit_code": 0,
+        "reason": null,
+        "resumed": true,
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#2>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "run",
+        "pi",
+        "--capture",
+        "--model",
+        "m-1",
+        "--effort",
+        "high",
+        "--workdir",
+        ".",
+        "--prompt-file",
+        "quota.md"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "DONE",
+        "exit_code": 1,
+        "reason": "quota",
+        "resumed": false,
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#3>",
+        "status": "unavailable",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "run",
+        "pi",
+        "--capture",
+        "--model",
+        "m-1",
+        "--effort",
+        "low",
+        "--workdir",
+        ".",
+        "--prompt-file",
+        "ok.md"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: <ROOT>/bin/pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model m-1 --thinking low\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "run",
+        "pi",
+        "--capture",
+        "--model",
+        "m-1",
+        "--effort",
+        "low",
+        "--workdir",
+        ".",
+        "--prompt-file",
+        "ok.md"
+      ],
+      "exit": 127,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: executor 'pi' not found on PATH\n"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+description: >
+  pi failing: a nonzero exit is reported as the parsed status (no cooldown);
+  a quota error is `unavailable` and starts a cooldown, so the next standard
+  dispatch skips pi and delegates to claude (cooldowns_applied) unless
+  --no-cooldown; a failed round never writes the session store
+normalize_keys: [until]
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    nonzero.md: |
+      FAKEPI-FAULT: nonzero
+    quota.md: |
+      FAKEPI-FAULT: quota
+    ok.md: |
+      FAKEPI-ANSWER: fine
+steps:
+  - argv: [dispatch, --class, standard, --prompt-file, nonzero.md, --workdir, ., --task, t-n]
+    snapshot:
+      - "~/.claude/orchestra/sessions/pi-t-n.json"
+      - "~/.claude/orchestra/executor-state.json"
+  - argv: [dispatch, --class, standard, --prompt-file, quota.md, --workdir, ., --task, t-q]
+    snapshot:
+      - "~/.claude/orchestra/sessions/pi-t-q.json"
+      - "~/.claude/orchestra/executor-state.json"
+      - "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl"
+  - argv: [dispatch, --class, standard, --prompt-file, ok.md, --workdir, .]
+  - argv: [dispatch, --class, standard, --prompt-file, ok.md, --workdir, ., --no-cooldown]

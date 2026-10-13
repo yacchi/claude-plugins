@@ -1,0 +1,34 @@
+description: >
+  a prepared token dispatches through the route to pi (fake): ok result with
+  executor/model/effort/route/isolation/sandbox, a run-ledger line and a
+  session-store record for the task; the same token again resumes that
+  session from the store, --no-resume starts cold, and --class escalates the
+  token's class (light -> claude delegate)
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    prompt.md: |
+      Do the thing.
+      FAKEPI-ANSWER: all done
+steps:
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, prompt.md, --workdir, ., --task, t-1, --run-id, run-1]
+    save: {TOK: token}
+  - argv: [dispatch, --token, "<@TOK>", --capture]
+    snapshot:
+      - "~/.claude/orchestra/sessions/pi-t-1.json"
+      - "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-run-1.jsonl"
+  - argv: [dispatch, --token, "<@TOK>"]
+    snapshot: ["~/.claude/orchestra/sessions/pi-t-1.json"]
+  - argv: [dispatch, --token, "<@TOK>", --no-resume]
+  - argv: [dispatch, --token, "<@TOK>", --class, light]
+  - argv: [dispatch, --token, "<@TOK>", --exhausted, "pi,claude"]

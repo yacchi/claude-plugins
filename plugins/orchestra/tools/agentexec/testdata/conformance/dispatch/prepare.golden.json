@@ -1,0 +1,218 @@
+{
+  "scenario": "dispatch/prepare",
+  "steps": [
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "prompt.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-1",
+        "--run-id",
+        "run-1",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "config_layers": [
+          "<HOME>/.claude/orchestra.yaml",
+          "<WORK>/.claude/orchestra.yaml"
+        ],
+        "token": "<TOKEN#1>"
+      },
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/tokens/<@TOK>.json": {
+          "content": {
+            "archetype": "default",
+            "class": "standard",
+            "config_root": "<WORK>",
+            "isolate": "auto",
+            "prompt_files": [
+              "<WORK>/prompt.md"
+            ],
+            "run_id": "run-1",
+            "task": "t-1",
+            "workdir": "<WORK>"
+          },
+          "shape": "json-line"
+        }
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "light",
+        "--prompt-file",
+        "a.md",
+        "--prompt-file",
+        "later/b.md",
+        "--workdir",
+        "sub",
+        "--archetype",
+        "investigation",
+        "--isolate",
+        "never"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "config_layers": [
+          "<HOME>/.claude/orchestra.yaml",
+          "<WORK>/.claude/orchestra.yaml"
+        ],
+        "token": "<TOKEN#2>"
+      },
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/tokens/<@TOK2>.json": {
+          "content": {
+            "archetype": "investigation",
+            "class": "light",
+            "config_root": "<WORK>",
+            "isolate": "never",
+            "prompt_files": [
+              "<WORK>/sub/a.md",
+              "<WORK>/sub/later/b.md"
+            ],
+            "run_id": null,
+            "task": null,
+            "workdir": "<WORK>/sub/sub"
+          },
+          "shape": "json-line"
+        }
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "."
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing required option: --class\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "light",
+        "--workdir",
+        "."
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing required option: --prompt-file\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing required option: --workdir\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--isolate",
+        "sometimes"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: --isolate must be auto|always|never\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--run-id",
+        "bad id"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: invalid --run-id: bad id\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: unknown option: --bogus\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing value for --class\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing value for --task\n"
+    }
+  ]
+}

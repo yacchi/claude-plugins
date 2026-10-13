@@ -34,9 +34,18 @@ import (
 //	    stderr: exact            # exact (default) | ignore | prefix
 //	    stderr_prefix: "agent-exec: invalid YAML in <WORK>/"
 //	    snapshot: ["~/.claude/orchestra.yaml"]  # files captured after the step
+//	    save: {TOK: token}       # top-level stdout JSON key later steps use as <@TOK>
+//	    argv_go: [dispatch, ...] # argv when the Go implementation runs the step
+//	                             #   (a renamed command); the golden keeps argv
+//	    impl: python             # always run this step with Python (pre-cutover
+//	                             #   mixed scenarios: state one implementation
+//	                             #   wrote, read by the other)
 //
 // <ROOT>, <HOME> and <WORK> are substituted in file contents, env values and
-// cwd.
+// cwd; <@NAME> (a saved value) in argv, argv_go, stdin, env values and
+// snapshot paths. Every step also sees AGENT_EXEC_UNDER_TEST, an executable
+// running that step's implementation, for a PATH shim that must reach it
+// (`exec "$AGENT_EXEC_UNDER_TEST" "$@"`: a detached child re-runs the shim).
 type Scenario struct {
 	Description   string   `yaml:"description"`
 	Platforms     []string `yaml:"platforms"`
@@ -65,6 +74,9 @@ type Step struct {
 	Stderr       string            `yaml:"stderr"`
 	StderrPrefix string            `yaml:"stderr_prefix"`
 	Snapshot     []string          `yaml:"snapshot"`
+	Save         map[string]string `yaml:"save"`
+	ArgvGo       []string          `yaml:"argv_go"`
+	Impl         string            `yaml:"impl"`
 }
 
 func (s *Scenario) ID() string { return s.area + "/" + s.name }
@@ -107,6 +119,9 @@ func loadScenarios(root string) ([]*Scenario, error) {
 			return nil, fmt.Errorf("%s: no steps", path)
 		}
 		for i, st := range sc.Steps {
+			if st.Impl != "" && st.Impl != "python" {
+				return nil, fmt.Errorf("%s: step %d: impl must be python, not %q", path, i, st.Impl)
+			}
 			switch st.Stderr {
 			case "", "exact", "ignore":
 			case "prefix":

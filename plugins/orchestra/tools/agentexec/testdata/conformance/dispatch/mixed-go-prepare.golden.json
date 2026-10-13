@@ -1,0 +1,231 @@
+{
+  "scenario": "dispatch/mixed-go-prepare",
+  "steps": [
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-g",
+        "--isolate",
+        "never"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "config_layers": [
+          "<HOME>/.claude/orchestra.yaml",
+          "<WORK>/proj/.claude/orchestra.yaml"
+        ],
+        "token": "<TOKEN#1>"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "<@TOK>"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "from the other side",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "never",
+          "reason": "isolation disabled (--isolate never)"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "<@TOK>"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "from the other side",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "never",
+          "reason": "isolation disabled (--isolate never)"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": true,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "<@TOK>",
+        "--detach"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "pid": "<PID>",
+        "status": "detached",
+        "token": "<TOKEN#1>"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "wait",
+        "--token",
+        "<@TOK>",
+        "--max-wait",
+        "60"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "from the other side",
+        "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "never",
+          "reason": "isolation disabled (--isolate never)"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": true,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    }
+  ]
+}

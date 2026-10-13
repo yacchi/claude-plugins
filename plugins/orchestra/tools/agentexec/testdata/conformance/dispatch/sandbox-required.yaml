@@ -1,0 +1,30 @@
+description: >
+  `sandbox.mode: required` with no usable backend never spawns the child:
+  the result is `unavailable` with reason `sandbox` and the refusal's
+  sandbox report, recorded in the run ledger
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+    AGENT_EXEC_SANDBOX_BACKEND: none
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: required
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    p.md: |
+      COMMANDS:
+      touch spawned.txt
+steps:
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-r]
+    snapshot:
+      - spawned.txt
+      - "~/.claude/orchestra/sessions/pi-t-r.json"
+      - "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl"

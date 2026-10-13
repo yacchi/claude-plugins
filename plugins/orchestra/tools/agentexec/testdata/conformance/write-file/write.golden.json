@@ -1,0 +1,255 @@
+{
+  "scenario": "write-file/write",
+  "steps": [
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "out.txt"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "chars": 11,
+        "path": "<WORK>/out.txt",
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "out.txt": {
+          "content": "hello world",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "deep/nested/dir/out.md",
+        "--expect-chars",
+        "4"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "chars": 4,
+        "path": "<WORK>/deep/nested/dir/out.md",
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "deep/nested/dir/out.md": {
+          "content": "日本語。\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "crlf.txt",
+        "--expect-chars",
+        "13"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "chars": 13,
+        "path": "<WORK>/crlf.txt",
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "crlf.txt": {
+          "content": "line1\r\nline2\r\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "existing.txt",
+        "--expect-chars",
+        "3"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "chars": 12,
+        "expected": 3,
+        "path": "<WORK>/existing.txt",
+        "status": "mismatch"
+      },
+      "stderr": "",
+      "files": {
+        "existing.txt": {
+          "content": "old content\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "existing.txt",
+        "--expect-chars",
+        "-1"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "chars": 0,
+        "expected": -1,
+        "path": "<WORK>/existing.txt",
+        "status": "mismatch"
+      },
+      "stderr": "",
+      "files": {
+        "existing.txt": {
+          "content": "old content\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "empty.txt",
+        "--expect-chars",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "chars": 0,
+        "path": "<WORK>/empty.txt",
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "empty.txt": {
+          "content": null,
+          "shape": "empty"
+        }
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "emoji.txt",
+        "--expect-chars",
+        "3"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "chars": 3,
+        "path": "<WORK>/emoji.txt",
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "emoji.txt": {
+          "content": "é😀",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "sub/../abs.txt"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "chars": 1,
+        "path": "<WORK>/abs.txt",
+        "status": "ok"
+      },
+      "stderr": "",
+      "files": {
+        "abs.txt": {
+          "content": "x",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "write-file"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: write-file: missing required option: --path\n"
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: write-file: missing value for --path\n"
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "x.txt",
+        "--expect-chars"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: write-file: missing value for --expect-chars\n"
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "x.txt",
+        "--expect-chars",
+        "ten"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: write-file: --expect-chars must be an integer\n"
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "x.txt",
+        "--verbose"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: write-file: unknown option: --verbose\n"
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "x.txt",
+        "extra"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: write-file: unknown option: extra\n"
+    }
+  ]
+}

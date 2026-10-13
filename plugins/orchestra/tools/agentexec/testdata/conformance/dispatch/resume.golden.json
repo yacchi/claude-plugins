@@ -1,0 +1,522 @@
+{
+  "scenario": "dispatch/resume",
+  "steps": [
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "round",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/sessions/pi-t-1.json": {
+          "content": {
+            "executor": "pi",
+            "session_id": "<UUID#1>",
+            "task": "t-1",
+            "updated": "<TS>",
+            "workdir": "<WORK>"
+          },
+          "shape": "json-line"
+        }
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "round",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": true,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-1",
+        "--no-resume"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "round",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-1",
+        "--resume",
+        "99999999-8888-4777-a666-555555555555"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "round",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": true,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#2>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-foreign"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "round",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/sessions/pi-t-foreign.json": {
+          "content": {
+            "executor": "pi",
+            "session_id": "<UUID#1>",
+            "task": "t-foreign",
+            "updated": "<TS>",
+            "workdir": "<WORK>"
+          },
+          "shape": "json-line"
+        }
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-bad"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "round",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--resume",
+        "99999999-8888-4777-a666-555555555555"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "round",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": true,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#2>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    }
+  ]
+}

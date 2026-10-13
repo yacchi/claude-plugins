@@ -1,0 +1,219 @@
+{
+  "scenario": "dispatch/config-root",
+  "steps": [
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "dsp-0123456789ab"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "never",
+          "reason": "isolation disabled (--isolate never)"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude",
+            "pi"
+          ],
+          "class": "light",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [
+            "pi"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "dsp-0123456789ac"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: invalid token: <TOKEN#1>\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "dsp-0123456789ad"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: invalid token: <TOKEN#2>\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "."
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "config_layers": [
+          "<HOME>/.claude/orchestra.yaml",
+          "<WORK>/proj/.claude/orchestra.yaml"
+        ],
+        "token": "<TOKEN#3>"
+      },
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/tokens/<@TOK>.json": {
+          "content": {
+            "archetype": "default",
+            "class": "standard",
+            "config_root": "<WORK>/proj",
+            "isolate": "auto",
+            "prompt_files": [
+              "<WORK>/proj/p.md"
+            ],
+            "run_id": null,
+            "task": null,
+            "workdir": "<WORK>/proj"
+          },
+          "shape": "json-line"
+        }
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "<@TOK>"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "sonnet",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "sonnet",
+          "remaining": [],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "proj/p.md",
+        "--workdir",
+        "proj"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "sonnet",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "sonnet",
+          "remaining": [],
+          "skipped": [
+            {
+              "executor": "pi",
+              "reason": "not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable"
+            }
+          ],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      },
+      "stderr": ""
+    }
+  ]
+}

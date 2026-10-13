@@ -1,0 +1,42 @@
+description: >
+  `dispatch --token T --detach` starts a background child and returns
+  detached; while it runs a second --detach reports running and
+  `wait --max-wait 0` reports running with its counters; a blocking wait
+  returns the final result (--summary: cut answer + answer_path), persists
+  it, and every later wait returns the same object; --detach after the
+  result was collected starts a fresh run
+normalize_keys: [started, waited_s]
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    slow.md: |
+      FAKEPI-SLEEP: 4000
+      FAKEPI-ANSWER: あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお
+steps:
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, slow.md, --workdir, ., --task, t-d]
+    save: {TOK: token}
+  - argv: [dispatch, --token, "<@TOK>", --capture, --detach]
+  - argv: [dispatch, --token, "<@TOK>", --capture, --detach]
+  - argv: [dispatch, wait, --token, "<@TOK>", --max-wait, "0"]
+  - argv: [dispatch, wait, --token, "<@TOK>", --summary, --max-wait, "60"]
+    snapshot:
+      - "~/.claude/orchestra/tokens/detach/<@TOK>.json"
+      - "~/.claude/orchestra/tokens/detach/<@TOK>.out"
+      - "~/.claude/orchestra/tokens/detach/<@TOK>.answer.txt"
+  - argv: [dispatch, wait, --token, "<@TOK>"]
+    snapshot:
+      - "~/.claude/orchestra/tokens/detach/<@TOK>.json"
+      - "~/.claude/orchestra/tokens/detach/<@TOK>.result.json"
+  - argv: [dispatch, wait, --token, "<@TOK>", --summary]
+  - argv: [dispatch, --token, "<@TOK>", --detach]
+  - argv: [dispatch, wait, --token, "<@TOK>", --max-wait, "60"]

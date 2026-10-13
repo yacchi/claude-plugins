@@ -1,0 +1,82 @@
+{
+  "scenario": "dispatch/sandbox-required",
+  "steps": [
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-r"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": null,
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": null,
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": "sandbox",
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [
+            "network not restricted: srt forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none"
+          ],
+          "reason": "sandbox.mode is required and no backend is usable (seatbelt: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; bwrap: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; landlock: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none); network not restricted: srt forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+          "writable": []
+        },
+        "session_id": null,
+        "status": "unavailable",
+        "usage": null
+      },
+      "stderr": "",
+      "files": {
+        "spawned.txt": null,
+        "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl": {
+          "content": {
+            "cls": "standard",
+            "executor": "pi",
+            "model": "openai-codex/gpt-5.6-luna",
+            "status": "unavailable",
+            "ts": "<TS>"
+          },
+          "shape": "json-line"
+        },
+        "~/.claude/orchestra/sessions/pi-t-r.json": null
+      }
+    }
+  ]
+}

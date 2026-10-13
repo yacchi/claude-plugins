@@ -1,0 +1,31 @@
+description: >
+  the watchdog stops a run past its class's wall budget: status `runaway`
+  with the trip details; the session is still stored (the instructor resumes
+  a runaway once the cause is fixed) and no cooldown starts
+normalize_keys: [elapsed_s, idle_s, wall_s, seconds]
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      watchdog:
+        wall_seconds:
+          standard: 1
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    p.md: |
+      FAKEPI-SLEEP: 20000
+steps:
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-w]
+    snapshot:
+      - "~/.claude/orchestra/sessions/pi-t-w.json"
+      - "~/.claude/orchestra/executor-state.json"

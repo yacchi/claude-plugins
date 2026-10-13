@@ -1,0 +1,37 @@
+description: >
+  pre-cutover mix: a token Python minted (and a detach Python started) is
+  dispatched, detached and waited on by the implementation under test, and
+  a Python-written session-store record is resumed — the token, detach and
+  session file formats are shared
+normalize_keys: [started, waited_s]
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    p.md: |
+      FAKEPI-ANSWER: mixed
+steps:
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-m, --run-id, run-m]
+    impl: python
+    save: {TOK: token}
+  - argv: [dispatch, --token, "<@TOK>"]
+    impl: python
+  - argv: [dispatch, --token, "<@TOK>", --capture, --detach]
+  - argv: [dispatch, wait, --token, "<@TOK>", --max-wait, "60"]
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, .]
+    impl: python
+    save: {TOK2: token}
+  - argv: [dispatch, --token, "<@TOK2>", --detach]
+    impl: python
+  - argv: [dispatch, wait, --token, "<@TOK2>", --max-wait, "60", --summary]
+  - argv: [dispatch, wait, --token, "<@TOK2>"]
+    impl: python

@@ -151,19 +151,51 @@ type rawStep struct {
 	files          map[string]*string // scenario path -> content (nil: absent)
 }
 
-func (s *sandbox) run(t *testing.T, impl []string, st Step) rawStep {
+// expandVars substitutes the <@NAME> values saved by earlier steps.
+func expandVars(v string, vars map[string]string) string {
+	for name, val := range vars {
+		v = strings.ReplaceAll(v, "<@"+name+">", val)
+	}
+	return v
+}
+
+// implWrapper is an executable that runs impl with its arguments (the
+// AGENT_EXEC_UNDER_TEST of a step), written once per implementation.
+func (s *sandbox) implWrapper(t *testing.T, impl []string) string {
 	t.Helper()
-	argv := append(append([]string(nil), impl...), st.Argv...)
+	quoted := make([]string, len(impl))
+	for i, a := range impl {
+		quoted[i] = "'" + strings.ReplaceAll(a, "'", `'\''`) + "'"
+	}
+	body := "#!/bin/sh\nexec " + strings.Join(quoted, " ") + " \"$@\"\n"
+	sum := 0
+	for _, c := range body {
+		sum = sum*31 + int(c)
+	}
+	path := filepath.Join(s.root, fmt.Sprintf("impl-%x", uint32(sum)))
+	if _, err := os.Stat(path); err != nil {
+		must(t, os.WriteFile(path, []byte(body), 0o755))
+	}
+	return path
+}
+
+func (s *sandbox) run(t *testing.T, impl, args []string, st Step, vars map[string]string) rawStep {
+	t.Helper()
+	argv := append([]string(nil), impl...)
+	for _, a := range args {
+		argv = append(argv, expandVars(a, vars))
+	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = s.work
 	if st.Cwd != "" {
 		cmd.Dir = s.resolve(st.Cwd)
 	}
 	cmd.Env = append([]string(nil), s.env...)
+	cmd.Env = append(cmd.Env, "AGENT_EXEC_UNDER_TEST="+s.implWrapper(t, impl))
 	for _, k := range sortedKeys(st.Env) {
-		cmd.Env = append(cmd.Env, k+"="+s.expand(st.Env[k]))
+		cmd.Env = append(cmd.Env, k+"="+expandVars(s.expand(st.Env[k]), vars))
 	}
-	cmd.Stdin = strings.NewReader(st.Stdin)
+	cmd.Stdin = strings.NewReader(expandVars(st.Stdin, vars))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
@@ -175,16 +207,20 @@ func (s *sandbox) run(t *testing.T, impl []string, st Step) rawStep {
 		}
 		code = ee.ExitCode()
 	}
-	out := rawStep{exit: code, stdout: stdout.String(), stderr: stderr.String(), files: map[string]*string{}}
+	return rawStep{exit: code, stdout: stdout.String(), stderr: stderr.String(), files: map[string]*string{}}
+}
+
+// snapshot records the step's snapshot files (after its `save`, so a path
+// may name a value the step itself printed).
+func (s *sandbox) snapshot(st Step, vars map[string]string, out *rawStep) {
 	for _, p := range st.Snapshot {
-		if b, err := os.ReadFile(s.resolve(p)); err == nil {
+		if b, err := os.ReadFile(s.resolve(expandVars(p, vars))); err == nil {
 			content := string(b)
 			out.files[p] = &content
 		} else {
 			out.files[p] = nil
 		}
 	}
-	return out
 }
 
 func sortedKeys[V any](m map[string]V) []string {
