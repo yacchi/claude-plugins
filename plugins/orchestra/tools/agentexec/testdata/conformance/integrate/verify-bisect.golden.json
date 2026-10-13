@@ -1,0 +1,945 @@
+{
+  "scenario": "integrate/verify-bisect",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t2"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/00000000/t2",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t2",
+        "status": "created",
+        "task": "t2"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t3"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#3>",
+        "branch": "orchestra/00000000/t3",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t3",
+        "status": "created",
+        "task": "t3"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t4"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#4>",
+        "branch": "orchestra/00000000/t4",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t4",
+        "status": "created",
+        "task": "t4"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t5"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#5>",
+        "branch": "orchestra/00000000/t5",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t5",
+        "status": "created",
+        "task": "t5"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "boot"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#6>",
+        "branch": "orchestra/00000000/boot",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-boot",
+        "status": "created",
+        "task": "boot"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/00000000/t2",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t2",
+            "session": "00000000",
+            "task": "t2"
+          },
+          {
+            "branch": "orchestra/00000000/t3",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t3",
+            "session": "00000000",
+            "task": "t3"
+          },
+          {
+            "branch": "orchestra/00000000/t4",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t4",
+            "session": "00000000",
+            "task": "t4"
+          },
+          {
+            "branch": "orchestra/00000000/t5",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t5",
+            "session": "00000000",
+            "task": "t5"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "boot",
+        "--into",
+        "prep",
+        "--verify",
+        "sh ../../prep.sh"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/prep",
+          "path": "<WORK>-orchestra/00000000-prep",
+          "task": "prep"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
+        "onto": "<SHA#6>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "boot"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1,t2,t3",
+        "--verify",
+        "sh ../../check.sh"
+      ],
+      "exit": 4,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/integrate",
+          "path": "<WORK>-orchestra/00000000-integrate",
+          "task": "integrate"
+        },
+        "note": "3 of 3 task(s) applied cleanly into worktree 'integrate' at <WORK>-orchestra/00000000-integrate",
+        "onto": "<SHA#1>",
+        "status": "verify-failed",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t1"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t2"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t3"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "FAILED: bad.txt is present",
+          "exit": 1,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "fail",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1,t2,t3,t4,t5",
+        "--into",
+        "bis",
+        "--verify",
+        "sh ../../check.sh",
+        "--bisect",
+        "--progress-jsonl",
+        "../progress/events.jsonl"
+      ],
+      "exit": 5,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/bis",
+          "path": "<WORK>-orchestra/00000000-bis",
+          "task": "bis"
+        },
+        "note": "3 of 5 task(s) applied cleanly (2 reverted) into worktree 'bis' at <WORK>-orchestra/00000000-bis",
+        "onto": "<SHA#1>",
+        "status": "reverted",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t1"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "reverted",
+            "task": "t2",
+            "verify_excerpt": "FAILED: bad.txt is present"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t3"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "reverted",
+            "task": "t4",
+            "verify_excerpt": "FAILED: bad2.txt is present"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t5"
+          }
+        ],
+        "verify": {
+          "baseline": "pass",
+          "dirtied": 2,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/progress/events.jsonl": {
+          "content": [
+            {
+              "at": "<AT>",
+              "detail": {
+                "tasks": [
+                  "t1",
+                  "t2",
+                  "t3",
+                  "t4",
+                  "t5"
+                ]
+              },
+              "event": "integrate-start",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t1"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t2"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t3"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t4"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t5"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "at_commit": "<SHA#7>"
+              },
+              "event": "verify-start",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "seconds": "<SECONDS>",
+                "status": "fail"
+              },
+              "event": "verify-end",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#8>",
+                "result": "fail"
+              },
+              "event": "bisect-probe",
+              "pkg": "t3"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#9>",
+                "result": "pass"
+              },
+              "event": "bisect-probe",
+              "pkg": "t1"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#10>",
+                "result": "fail"
+              },
+              "event": "bisect-probe",
+              "pkg": "t2"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "result": "reverted"
+              },
+              "event": "revert",
+              "pkg": "t2"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#11>",
+                "result": "fail"
+              },
+              "event": "bisect-probe",
+              "pkg": "t4"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#8>",
+                "result": "pass"
+              },
+              "event": "bisect-probe",
+              "pkg": "t3"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "result": "reverted"
+              },
+              "event": "revert",
+              "pkg": "t4"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "reverted"
+              },
+              "event": "integrate-end",
+              "pkg": null
+            }
+          ],
+          "shape": "jsonl"
+        },
+        "<ROOT>/work-orchestra/00000000-bis/a.txt": {
+          "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT\n9\n",
+          "shape": "text"
+        },
+        "<ROOT>/work-orchestra/00000000-bis/bad.txt": null,
+        "<ROOT>/work-orchestra/00000000-bis/bad2.txt": null,
+        "<ROOT>/work-orchestra/00000000-bis/c.txt": {
+          "content": "good\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1,t2,t3,t4,t5",
+        "--into",
+        "bis1",
+        "--verify",
+        "sh ../../check.sh",
+        "--bisect",
+        "--bisect-max",
+        "1",
+        "--text"
+      ],
+      "exit": 4,
+      "stdout_shape": "text",
+      "stdout": "integrate verify-failed  onto 6b5c419701c0  worktree <WORK>-orchestra/00000000-bis1\n  t1               applied    1 file(s)\n  t2               reverted   1 file(s)\n  t3               applied    1 file(s)\n  t4               applied    1 file(s)\n  t5               applied    1 file(s)\nverify fail  exit=1  0.0s  baseline=pass\nnote: 4 of 5 task(s) applied cleanly (1 reverted) into worktree 'bis1' at <WORK>-orchestra/00000000-bis1\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1,t3",
+        "--into",
+        "red",
+        "--verify",
+        "echo 'FAILED always'; exit 3",
+        "--bisect"
+      ],
+      "exit": 4,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/red",
+          "path": "<WORK>-orchestra/00000000-red",
+          "task": "red"
+        },
+        "note": "2 of 2 task(s) applied cleanly into worktree 'red' at <WORK>-orchestra/00000000-red",
+        "onto": "<SHA#1>",
+        "status": "verify-failed",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t1"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t3"
+          }
+        ],
+        "verify": {
+          "baseline": "fail",
+          "dirtied": 0,
+          "excerpt": "FAILED always",
+          "exit": 3,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "fail",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--into",
+        "slow",
+        "--verify",
+        "sleep 5",
+        "--verify-timeout",
+        "1"
+      ],
+      "exit": 4,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/slow",
+          "path": "<WORK>-orchestra/00000000-slow",
+          "task": "slow"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'slow' at <WORK>-orchestra/00000000-slow",
+        "onto": "<SHA#1>",
+        "status": "verify-failed",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t1"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": null,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "fail",
+          "timed_out": true
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--into",
+        "messy",
+        "--verify",
+        "echo x > junk.txt; echo y >> a.txt",
+        "--progress-jsonl",
+        "../progress/events.jsonl"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/messy",
+          "path": "<WORK>-orchestra/00000000-messy",
+          "task": "messy"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'messy' at <WORK>-orchestra/00000000-messy",
+        "onto": "<SHA#1>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t1"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 2,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/progress/events.jsonl": {
+          "content": [
+            {
+              "at": "<AT>",
+              "detail": {
+                "tasks": [
+                  "t1",
+                  "t2",
+                  "t3",
+                  "t4",
+                  "t5"
+                ]
+              },
+              "event": "integrate-start",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t1"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t2"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t3"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t4"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t5"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "at_commit": "<SHA#7>"
+              },
+              "event": "verify-start",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "seconds": "<SECONDS>",
+                "status": "fail"
+              },
+              "event": "verify-end",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#8>",
+                "result": "fail"
+              },
+              "event": "bisect-probe",
+              "pkg": "t3"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#9>",
+                "result": "pass"
+              },
+              "event": "bisect-probe",
+              "pkg": "t1"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#10>",
+                "result": "fail"
+              },
+              "event": "bisect-probe",
+              "pkg": "t2"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "result": "reverted"
+              },
+              "event": "revert",
+              "pkg": "t2"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#11>",
+                "result": "fail"
+              },
+              "event": "bisect-probe",
+              "pkg": "t4"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "commit": "<SHA#8>",
+                "result": "pass"
+              },
+              "event": "bisect-probe",
+              "pkg": "t3"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "result": "reverted"
+              },
+              "event": "revert",
+              "pkg": "t4"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "reverted"
+              },
+              "event": "integrate-end",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "tasks": [
+                  "t1"
+                ]
+              },
+              "event": "integrate-start",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "applied"
+              },
+              "event": "integrate-task",
+              "pkg": "t1"
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "at_commit": "<SHA#9>"
+              },
+              "event": "verify-start",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "seconds": "<SECONDS>",
+                "status": "pass"
+              },
+              "event": "verify-end",
+              "pkg": null
+            },
+            {
+              "at": "<AT>",
+              "detail": {
+                "status": "ok"
+              },
+              "event": "integrate-end",
+              "pkg": null
+            }
+          ],
+          "shape": "jsonl"
+        },
+        "<ROOT>/work-orchestra/00000000-messy/a.txt": {
+          "content": "1\nTWO\n3\n4\n5\n6\n7\n8\n9\n",
+          "shape": "text"
+        },
+        "<ROOT>/work-orchestra/00000000-messy/junk.txt": null
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "ghost",
+        "--into",
+        "none",
+        "--verify",
+        "true",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <WORK>-orchestra/00000000-none\n  ghost            missing    0 file(s)\nverify skipped  exit=None  0.0s  (nothing applied)\nnote: 0 of 1 task(s) applied cleanly (1 had no worktree) into worktree 'none' at <WORK>-orchestra/00000000-none\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branch": "orchestra/00000000/t1",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "session": "00000000",
+        "status": "removed",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "t2"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "files": [
+          "bad.txt"
+        ],
+        "path": "<WORK>-orchestra/00000000-t2",
+        "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+        "status": "dirty",
+        "task": "t2"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "t4"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branch": "orchestra/00000000/t4",
+        "path": "<WORK>-orchestra/00000000-t4",
+        "session": "00000000",
+        "status": "removed",
+        "task": "t4"
+      },
+      "stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+description: >
+  integrate's usage errors (exit 2): required and empty --tasks, duplicates,
+  unknown options and positionals, missing values, --json with --text, bad
+  --on-conflict/--verify-timeout/--bisect-max/--lock/--lock-timeout values,
+  --bisect without --verify, task ids with no usable characters
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+steps:
+  - argv: [isolate, integrate]
+  - argv: [isolate, integrate, --tasks, " , ,"]
+  - argv: [isolate, integrate, --tasks, a, --tasks, b]
+  - argv: [isolate, integrate, --tasks, a, --bisect, --bisect, --verify, "true"]
+  - argv: [isolate, integrate, --tasks, a, --progress-jsonl, x, --progress-jsonl, y]
+  - argv: [isolate, integrate, --tasks, a, --bogus]
+  - argv: [isolate, integrate, --tasks, a, extra]
+  - argv: [isolate, integrate, --tasks]
+  - argv: [isolate, integrate, --tasks, a, --progress-jsonl]
+  - argv: [isolate, integrate, --tasks, a, --json, --text]
+  - argv: [isolate, integrate, --tasks, a, --on-conflict, merge]
+  - argv: [isolate, integrate, --tasks, a, --verify-timeout, "0"]
+  - argv: [isolate, integrate, --tasks, a, --verify-timeout, "1.5"]
+  - argv: [isolate, integrate, --tasks, a, --bisect-max, "-1"]
+  - argv: [isolate, integrate, --tasks, a, --bisect-max, two]
+  - argv: [isolate, integrate, --tasks, a, --bisect]
+  - argv: [isolate, integrate, --tasks, a, --lock, never]
+  - argv: [isolate, integrate, --tasks, a, --lock-timeout, "-1"]
+  - argv: [isolate, integrate, --tasks, a, --lock-timeout, inf]
+  - argv: [isolate, integrate, --tasks, a, --lock-timeout, nan]
+  - argv: [isolate, integrate, --tasks, "a,//"]
+  - argv: [isolate, integrate, --tasks, a, --into, "../.."]
+  - argv: [isolate, list]

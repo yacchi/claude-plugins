@@ -1,0 +1,254 @@
+{
+  "scenario": "integrate/lock",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "boot"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/00000000/boot",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-boot",
+        "status": "created",
+        "task": "boot"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "boot",
+        "--into",
+        "prep",
+        "--verify",
+        "sh ../../prep.sh"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/prep",
+          "path": "<WORK>-orchestra/00000000-prep",
+          "task": "prep"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
+        "onto": "<SHA#2>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "boot"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--lock",
+        "fail"
+      ],
+      "exit": 6,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "holder": "held-by-test",
+        "into": "integrate",
+        "lock": "<WORK>/.git/orchestra/integrate-integrate.lock",
+        "note": "another integrate holds the lock for this target",
+        "status": "locked"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--lock",
+        "fail",
+        "--text"
+      ],
+      "exit": 6,
+      "stdout_shape": "text",
+      "stdout": "integrate locked  into integrate  holder held-by-test\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--lock-timeout",
+        "0.3"
+      ],
+      "exit": 6,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "holder": "held-by-test",
+        "into": "integrate",
+        "lock": "<WORK>/.git/orchestra/integrate-integrate.lock",
+        "note": "another integrate holds the lock for this target",
+        "status": "locked"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--into",
+        "other",
+        "--lock",
+        "fail"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/other",
+          "path": "<WORK>-orchestra/00000000-other",
+          "task": "other"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'other' at <WORK>-orchestra/00000000-other",
+        "onto": "<SHA#1>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t1"
+          }
+        ]
+      },
+      "stderr": "",
+      "files": {
+        "<WORK>/.git/orchestra/integrate-integrate.lock": {
+          "content": "held-by-test\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/other",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-other",
+            "session": "00000000",
+            "task": "other"
+          },
+          {
+            "branch": "orchestra/00000000/prep",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-prep",
+            "session": "00000000",
+            "task": "prep"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          }
+        ]
+      },
+      "stderr": ""
+    }
+  ]
+}

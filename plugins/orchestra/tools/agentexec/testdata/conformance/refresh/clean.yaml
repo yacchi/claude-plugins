@@ -1,0 +1,59 @@
+description: >
+  refresh onto a moved HEAD: the task's work (an edit and a new file) is
+  saved as a patch file, the worktree is recreated at the new base under the
+  same branch (dependency dirs carried again) and the patch re-applied; a
+  second refresh is unchanged; a clean task has no patch file; a legacy
+  session-less branch keeps its name; an explicit --onto; --text; the
+  error/absent exits (3); the usage errors (2)
+setup:
+  git: true
+  files:
+    a.txt: "1\n2\n3\n4\n5\n6\n7\n8\n9\n"
+    .gitignore: "node_modules/\n"
+    node_modules/pkg/index.js: "module.exports = 1\n"
+    <ROOT>/prep.sh: |
+      set -e
+      W=<ROOT>/work-orchestra
+      printf '1\nTWO\n3\n4\n5\n6\n7\n8\n9\n' > $W/00000000-t1/a.txt
+      printf 'new\n' > $W/00000000-t1/new.txt
+      printf 'legacy\n' > $W/legacy/l.txt
+      cd <WORK>
+      printf '1\n2\n3\n4\n5\n6\n7\nEIGHT\n9\n' > a.txt
+      git commit -qam "move main"
+normalize_keys: [seconds]
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, t2]
+  - argv: [isolate, create, --task, legacy]
+    env: {CLAUDE_CODE_SESSION_ID: ""}
+  - argv: [isolate, create, --task, boot]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, refresh, --task, t1]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-t1/a.txt
+      - <ROOT>/work-orchestra/00000000-t1/new.txt
+      - <ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js
+  - argv: [isolate, refresh, --task, t1, --json]
+  - argv: [isolate, diff, --task, t1, --names-only]
+  - argv: [isolate, refresh, --task, t2, --text]
+  - argv: [isolate, refresh, --task, legacy]
+    env: {CLAUDE_CODE_SESSION_ID: ""}
+    snapshot:
+      - <ROOT>/work-orchestra/legacy/l.txt
+  - argv: [isolate, refresh, --task, t1, --onto, "HEAD~1", --text]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-t1/a.txt
+  - argv: [isolate, refresh, --task, t1, --onto, nope]
+  - argv: [isolate, refresh, --task, ghost]
+  - argv: [isolate, refresh, --task, ghost, --text]
+  - argv: [isolate, refresh, --task, t1]
+    cwd: "~"
+  - argv: [isolate, list]
+  - argv: [isolate, refresh]
+  - argv: [isolate, refresh, --task, t1, --task, t2]
+  - argv: [isolate, refresh, --task, t1, --bogus]
+  - argv: [isolate, refresh, --task, t1, --onto]
+  - argv: [isolate, refresh, --task, t1, --json, --text]
+  - argv: [isolate, refresh, --task, "//"]

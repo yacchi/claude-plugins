@@ -1,0 +1,43 @@
+description: >
+  two tasks changing the same line conflict: keep (the default) commits the
+  markers, keeps earlier and later clean applies and skips --verify; skip
+  rolls the conflicting apply back and verifies the rest; stop also skips
+  every later task; the order decides who conflicts; an applied source is
+  removable while a conflicted one keeps its uncollected work
+setup:
+  git: true
+  files:
+    a.txt: "1\n2\n3\n4\n5\n6\n7\n8\n9\n"
+    <ROOT>/prep.sh: |
+      set -e
+      W=<ROOT>/work-orchestra
+      printf '1\n2\n3\n4\nFIVE-A\n6\n7\n8\n9\n' > $W/00000000-t1/a.txt
+      printf '1\n2\n3\n4\nFIVE-B\n6\n7\n8\n9\n' > $W/00000000-t2/a.txt
+      printf 'other\n' > $W/00000000-t3/b.txt
+normalize_keys: [seconds]
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, t2]
+  - argv: [isolate, create, --task, t3]
+  - argv: [isolate, create, --task, boot]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, "t1,t2,t3"]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-integrate/a.txt
+      - <ROOT>/work-orchestra/00000000-integrate/b.txt
+  - argv: [isolate, integrate, --tasks, "t1,t2,t3", --into, kept, --verify, "true", --text]
+  - argv: [isolate, integrate, --tasks, "t1,t2,t3", --into, skipped, --on-conflict, skip, --verify, "true"]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-skipped/a.txt
+      - <ROOT>/work-orchestra/00000000-skipped/b.txt
+  - argv: [isolate, integrate, --tasks, "t1,t2,t3", --into, stopped, --on-conflict, stop]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-stopped/a.txt
+      - <ROOT>/work-orchestra/00000000-stopped/b.txt
+  - argv: [isolate, integrate, --tasks, "t1,t2,t3", --into, stopped2, --on-conflict, stop, --text]
+  - argv: [isolate, integrate, --tasks, "t2,t1", --into, reversed]
+  - argv: [isolate, remove, --task, t1]
+  - argv: [isolate, remove, --task, t2]
+  - argv: [isolate, remove, --task, t3]

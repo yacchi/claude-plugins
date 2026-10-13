@@ -1,0 +1,79 @@
+description: >
+  adopt registers external worktrees (made with plain git by the priming
+  verify) as tasks: dependency dirs and local files are carried (an already
+  present dir is left alone), --no-carry copies nothing, --baseline and
+  --session are honoured; re-adopting is exists; the refusals (exit 3);
+  diff/collect/integrate reach the tree by task id, list ignores it and
+  sweep reports it external and leaves it; unadopt drops only markers;
+  --text; the usage errors (exit 2)
+setup:
+  git: true
+  files:
+    a.txt: "1\n2\n3\n"
+    .gitignore: "node_modules/\nCLAUDE.local.md\n"
+    node_modules/pkg/index.js: "module.exports = 1\n"
+    CLAUDE.local.md: "local notes\n"
+    <ROOT>/prep.sh: |
+      set -e
+      cd <WORK>
+      git worktree add -q -b ext <ROOT>/ext
+      git worktree add -q -b ext2 <ROOT>/ext2
+      git worktree add -q --detach <ROOT>/det
+      printf '1\nTWO\n3\n' > <ROOT>/ext/a.txt
+      mkdir -p <ROOT>/ext2/node_modules/own
+      printf 'own\n' > <ROOT>/ext2/node_modules/own/x.js
+normalize_keys: [seconds, age_days, session_idle_minutes]
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, boot]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, adopt, --task, x, --path, ../ext]
+    snapshot:
+      - <ROOT>/ext/node_modules/pkg/index.js
+      - <ROOT>/ext/CLAUDE.local.md
+  - argv: [isolate, adopt, --task, x, --path, ../ext]
+  - argv: [isolate, adopt, --task, x, --path, ../ext, --baseline, main, --text]
+  - argv: [isolate, adopt, --task, x, --path, ../ext, --baseline, nope]
+  - argv: [isolate, adopt, --task, y, --path, ../ext]
+  - argv: [isolate, adopt, --task, x, --path, ../ext2]
+  - argv: [isolate, adopt, --task, t1, --path, ../ext2]
+  - argv: [isolate, adopt, --task, z, --path, ../nowhere]
+  - argv: [isolate, adopt, --task, z, --path, .]
+  - argv: [isolate, adopt, --task, z, --path, ../work-orchestra/00000000-t1, --text]
+  - argv: [isolate, adopt, --task, y, --path, ../ext2]
+    snapshot:
+      - <ROOT>/ext2/node_modules/own/x.js
+      - <ROOT>/ext2/node_modules/pkg/index.js
+  - argv: [isolate, adopt, --task, d, --path, ../det, --no-carry, --session, "11111111-2222-4333-8444-555555555555"]
+    snapshot:
+      - <ROOT>/det/node_modules/pkg/index.js
+  - argv: [isolate, list]
+  - argv: [isolate, diff, --task, x]
+  - argv: [isolate, collect, --task, y]
+  - argv: [isolate, sweep, --dry-run, --include-current, --include-live, --live-window, "0"]
+  - argv: [isolate, sweep, --include-current, --include-live, --older-than, "0"]
+  - argv: [isolate, integrate, --tasks, "x,y,d", --into, ix]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-ix/a.txt
+  - argv: [isolate, remove, --task, y]
+  - argv: [isolate, unadopt, --task, x]
+  - argv: [isolate, unadopt, --task, x]
+  - argv: [isolate, unadopt, --task, t1]
+  - argv: [isolate, unadopt, --task, d, --text]
+  - argv: [isolate, unadopt, --task, y, --repo, ../ext2, --no-carry]
+  - argv: [isolate, diff, --task, x]
+  - argv: [isolate, unadopt, --task, ghost]
+    cwd: "~"
+  - argv: [isolate, adopt, --task, x, --path, ../ext]
+    cwd: "~"
+  - argv: [isolate, adopt, --path, ../ext]
+  - argv: [isolate, adopt, --task, x]
+  - argv: [isolate, adopt, --task, x, --path, ../ext, --no-carry, --no-carry]
+  - argv: [isolate, adopt, --task, x, --path, ../ext, --json, --text]
+  - argv: [isolate, adopt, --task, x, --path]
+  - argv: [isolate, unadopt, --task, x, --path, ../ext]
+  - argv: [isolate, unadopt]
+  - argv: [isolate, unadopt, --task, "//"]
+  - argv: [isolate, sweep, --include-current, --include-live, --live-window, "0"]

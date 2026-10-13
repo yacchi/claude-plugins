@@ -1,0 +1,59 @@
+description: >
+  --verify grades the integrated tip (exit 4 with an excerpt when red);
+  --bisect finds each culprit (two here, within the round budget), reverts
+  it, reports it reverted (exit 5) and un-collects its source; a baseline
+  that is already red reverts nothing; a timeout kills the command; whatever
+  verify leaves in the tree is reset and counted; nothing applied skips it;
+  --progress-jsonl records every stage
+setup:
+  git: true
+  files:
+    a.txt: "1\n2\n3\n4\n5\n6\n7\n8\n9\n"
+    <ROOT>/prep.sh: |
+      set -e
+      W=<ROOT>/work-orchestra
+      printf '1\nTWO\n3\n4\n5\n6\n7\n8\n9\n' > $W/00000000-t1/a.txt
+      printf 'bad\n' > $W/00000000-t2/bad.txt
+      printf '1\n2\n3\n4\n5\n6\n7\nEIGHT\n9\n' > $W/00000000-t3/a.txt
+      printf 'bad\n' > $W/00000000-t4/bad2.txt
+      printf 'good\n' > $W/00000000-t5/c.txt
+    <ROOT>/check.sh: |
+      for f in bad.txt bad2.txt; do
+        if [ -e "$f" ]; then echo "FAILED: $f is present"; exit 1; fi
+      done
+      echo "all good"
+normalize_keys: [seconds, at]
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, t2]
+  - argv: [isolate, create, --task, t3]
+  - argv: [isolate, create, --task, t4]
+  - argv: [isolate, create, --task, t5]
+  - argv: [isolate, create, --task, boot]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, "t1,t2,t3", --verify, "sh ../../check.sh"]
+  - argv: [isolate, integrate, --tasks, "t1,t2,t3,t4,t5", --into, bis, --verify, "sh ../../check.sh",
+           --bisect, --progress-jsonl, ../progress/events.jsonl]
+    snapshot:
+      - <ROOT>/progress/events.jsonl
+      - <ROOT>/work-orchestra/00000000-bis/a.txt
+      - <ROOT>/work-orchestra/00000000-bis/bad.txt
+      - <ROOT>/work-orchestra/00000000-bis/bad2.txt
+      - <ROOT>/work-orchestra/00000000-bis/c.txt
+  - argv: [isolate, integrate, --tasks, "t1,t2,t3,t4,t5", --into, bis1, --verify, "sh ../../check.sh",
+           --bisect, --bisect-max, "1", --text]
+  - argv: [isolate, integrate, --tasks, "t1,t3", --into, red, --verify, "echo 'FAILED always'; exit 3",
+           --bisect]
+  - argv: [isolate, integrate, --tasks, t1, --into, slow, --verify, "sleep 5", --verify-timeout, "1"]
+  - argv: [isolate, integrate, --tasks, t1, --into, messy, --verify, "echo x > junk.txt; echo y >> a.txt",
+           --progress-jsonl, ../progress/events.jsonl]
+    snapshot:
+      - <ROOT>/progress/events.jsonl
+      - <ROOT>/work-orchestra/00000000-messy/a.txt
+      - <ROOT>/work-orchestra/00000000-messy/junk.txt
+  - argv: [isolate, integrate, --tasks, ghost, --into, none, --verify, "true", --text]
+  - argv: [isolate, remove, --task, t1]
+  - argv: [isolate, remove, --task, t2]
+  - argv: [isolate, remove, --task, t4]

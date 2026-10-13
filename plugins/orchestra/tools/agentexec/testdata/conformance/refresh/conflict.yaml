@@ -1,0 +1,29 @@
+description: >
+  refresh onto a HEAD that changed the same line: conflicted (exit 1) with
+  the conflict counted, the markers left in the recreated worktree and the
+  patch file kept for recovery (JSON and --text)
+setup:
+  git: true
+  files:
+    a.txt: "1\n2\n3\n4\n5\n6\n7\n8\n9\n"
+    <ROOT>/prep.sh: |
+      set -e
+      W=<ROOT>/work-orchestra
+      printf '1\n2\n3\n4\nFIVE-T1\n6\n7\n8\n9\n' > $W/00000000-t1/a.txt
+      printf '1\n2\n3\n4\nFIVE-T2\n6\n7\n8\n9\n' > $W/00000000-t2/a.txt
+      cd <WORK>
+      printf '1\n2\n3\n4\nFIVE-MAIN\n6\n7\n8\n9\n' > a.txt
+      git commit -qam "move main"
+normalize_keys: [seconds]
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, t2]
+  - argv: [isolate, create, --task, boot]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, refresh, --task, t1]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-t1/a.txt
+  - argv: [isolate, refresh, --task, t2, --text]
+  - argv: [isolate, list]

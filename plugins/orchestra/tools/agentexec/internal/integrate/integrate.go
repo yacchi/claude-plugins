@@ -1,0 +1,476 @@
+// Package integrate replays each task worktree's diff, in order, onto one
+// integration worktree, and answers with counts and enums only (paths, file
+// and hunk counts, never patch text), so an orchestrator can parallelize
+// tasks that share files without ingesting diffs. Conflicts are a normal,
+// reported outcome; an optional verify command grades the result and an
+// optional bisection finds and reverts the applied task that broke it.
+package integrate
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
+)
+
+// Conflict policies of Options.OnConflict.
+const (
+	// OnConflictKeep commits the conflict markers and carries on: a later
+	// resolution task inspects them. Earlier clean applies are kept.
+	OnConflictKeep = "keep"
+	// OnConflictSkip rolls the conflicting apply back and carries on.
+	OnConflictSkip = "skip"
+	// OnConflictStop rolls it back and skips every remaining task.
+	OnConflictStop = "stop"
+)
+
+// DefaultInto is the integration task id when Options.Into is empty.
+const DefaultInto = "integrate"
+
+// DefaultBisectMax is the bisect-and-revert round budget when
+// Options.BisectMax is not positive.
+const DefaultBisectMax = 3
+
+// Options tunes Integrate. Onto "" starts a new integration tree at the
+// first task's baseline. Into "" is DefaultInto. OnConflict "" is keep.
+// Verify "" runs no verification; VerifyTimeout 0 means no limit. Lock ""
+// takes no lock; LockWait waits up to LockTimeout, LockFail tries once.
+// Progress, when set, receives one JSON line per stage
+// ({"event","pkg","detail","at"}), one Write per line; its errors are
+// ignored.
+type Options struct {
+	Onto, Into, OnConflict, Verify, Lock string
+	VerifyTimeout, LockTimeout           time.Duration
+	Bisect                               bool
+	BisectMax                            int
+	Progress                             io.Writer
+}
+
+// Integration names the integration worktree.
+type Integration struct {
+	Task   string             `json:"task"`
+	Branch string             `json:"branch"`
+	Path   isolate.NullString `json:"path"`
+}
+
+// TaskResult is one task's outcome. Status is applied | conflicted |
+// missing | empty | skipped | reverted.
+type TaskResult struct {
+	Task          string             `json:"task"`
+	Status        string             `json:"status"`
+	FilesChanged  int                `json:"files_changed"`
+	Conflicts     []isolate.Conflict `json:"conflicts"`
+	RolledBack    bool               `json:"rolled_back,omitempty"`
+	Revert        string             `json:"revert,omitempty"`
+	VerifyExcerpt *string            `json:"verify_excerpt,omitempty"`
+}
+
+// Result is `isolate integrate`'s output. Status is ok | conflicted |
+// verify-failed | reverted | error, or locked (then only Into, Holder,
+// LockFile and Note are meaningful).
+type Result struct {
+	Status      string
+	Integration Integration
+	Onto        string
+	Tasks       []TaskResult
+	Note        string
+	Verify      *VerifyResult
+	Into        string // locked only
+	Holder      string // locked only
+	LockFile    string // locked only
+}
+
+func (r Result) MarshalJSON() ([]byte, error) {
+	o := jsonx.NewObject().Set("status", r.Status)
+	if r.Status == "locked" {
+		var holder any
+		if r.Holder != "" {
+			holder = r.Holder
+		}
+		return jsonx.Marshal(o.Set("into", r.Into).Set("holder", holder).
+			Set("lock", r.LockFile).Set("note", r.Note))
+	}
+	var onto any
+	if r.Onto != "" {
+		onto = r.Onto
+	}
+	tasks := r.Tasks
+	if tasks == nil {
+		tasks = []TaskResult{}
+	}
+	o.Set("integration", r.Integration).Set("onto", onto).Set("tasks", tasks).Set("note", r.Note)
+	if r.Verify != nil {
+		o.Set("verify", r.Verify)
+	}
+	return jsonx.Marshal(o)
+}
+
+// ExitCode is the CLI exit status of a result.
+func ExitCode(r Result) int {
+	switch r.Status {
+	case "ok":
+		return 0
+	case "conflicted":
+		return 1
+	case "verify-failed":
+		return 4
+	case "reverted":
+		return 5
+	case "locked":
+		return 6
+	}
+	return 3
+}
+
+const integrateIdentity = "user.email=orchestra@local"
+
+func commitAll(wt, message string) {
+	_, _ = gitx.Run(wt, "add", "-A")
+	_, _ = gitx.Run(wt, "-c", integrateIdentity, "-c", "user.name=orchestra",
+		"commit", "-q", "--allow-empty", "-m", message)
+}
+
+func headSHA(wt string) string {
+	out, err := gitx.Run(wt, "rev-parse", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// emit writes one progress line; observability never fails a merge.
+func emit(w io.Writer, event string, pkg string, detail *jsonx.Object) {
+	if w == nil {
+		return
+	}
+	var p any
+	if pkg != "" {
+		p = pkg
+	}
+	line, err := jsonx.Marshal(jsonx.NewObject().Set("event", event).Set("pkg", p).
+		Set("detail", detail).Set("at", float64(time.Now().UnixNano())/1e9))
+	if err == nil {
+		_, _ = w.Write(append(line, '\n'))
+	}
+}
+
+// changeSet is one source task's own changes.
+type changeSet struct {
+	task     string
+	state    string // missing | empty | ready
+	files    []string
+	patch    string
+	baseline string
+}
+
+func taskChangeSet(root, task string) (changeSet, error) {
+	blank := changeSet{task: task, state: "missing"}
+	path, _, ok := isolate.ResolveWorktree(root, task, "")
+	if !ok {
+		// ResolveWorktree hides ambiguity; Diff below reports it.
+		if _, err := isolate.Diff(root, task, "", false); err != nil {
+			return blank, err
+		}
+		return blank, nil
+	}
+	if st, err := os.Stat(path); err != nil || !st.IsDir() {
+		return blank, nil
+	}
+	// Stage in full first: `git apply --3way` needs the post-image blobs in
+	// the object database, and an intent-to-add file has none.
+	_, _ = gitx.Run(path, "add", "-A")
+	diff, err := isolate.Diff(root, task, "", true)
+	if err != nil {
+		return blank, err
+	}
+	if diff.Status != "ok" {
+		return blank, nil
+	}
+	cs := changeSet{task: task, state: "empty", patch: diff.Patch, baseline: diff.Baseline}
+	for _, f := range diff.Files {
+		if f != "" {
+			cs.files = append(cs.files, f)
+		}
+	}
+	if len(cs.files) > 0 && strings.TrimSpace(cs.patch) != "" {
+		cs.state = "ready"
+	}
+	return cs, nil
+}
+
+// markSourceCollected records the source tree's changes as collected, from
+// the files and patch this run already computed (never a fresh diff).
+func markSourceCollected(root, task string, files []string, patch string) {
+	if src, _, ok := isolate.ResolveWorktree(root, task, ""); ok {
+		_ = isolate.WriteCollected(src, isolate.CollectedDigest(files, patch, isolate.IgnoredEntries(src)))
+	}
+}
+
+// clearSourceCollected undoes markSourceCollected when a bisect revert takes
+// the task's contribution back out: sweep must keep its tree again.
+func clearSourceCollected(root, task string) {
+	if src, _, ok := isolate.ResolveWorktree(root, task, ""); ok {
+		_ = isolate.ClearCollected(src)
+	}
+}
+
+// Integrate replays tasks' diffs onto the integration worktree o.Into of
+// the repository containing root. The user's tree is never touched. Each
+// applied task is committed there, giving the next 3-way apply a real merge
+// base. A non-nil error means unusable input (a task id with no usable
+// characters, an ambiguous task); everything else is in Result.Status.
+func Integrate(root string, tasks []string, o Options) (Result, error) {
+	into := o.Into
+	if into == "" {
+		into = DefaultInto
+	}
+	if o.Lock != "" {
+		if lockFile := LockPath(root, into); lockFile != "" {
+			held, holder, err := acquireLock(lockFile, o.Lock, o.LockTimeout)
+			if err != nil {
+				return Result{Status: "error", Integration: Integration{Task: into},
+					Note: fmt.Sprintf("could not open the integrate lock %s: %v", lockFile, err)}, nil
+			}
+			if held == nil {
+				return Result{Status: "locked", Into: into, Holder: holder, LockFile: lockFile,
+					Note: "another integrate holds the lock for this target"}, nil
+			}
+			defer held.release()
+		}
+	}
+	return integrate(root, tasks, into, o)
+}
+
+func integrate(root string, tasks []string, into string, o Options) (Result, error) {
+	resolved, isRepo := gitx.RepoRoot(root)
+	intoTask, err := isolate.SanitizeTaskID(into)
+	if err != nil {
+		return Result{}, err
+	}
+	session, _ := paths.SessionID()
+	branch := isolate.Branch(intoTask, session)
+	ids := make([]string, len(tasks))
+	for i, t := range tasks {
+		if ids[i], err = isolate.SanitizeTaskID(t); err != nil {
+			return Result{}, err
+		}
+	}
+	failure := func(note string) (Result, error) {
+		r := Result{Status: "error", Integration: Integration{Task: intoTask, Branch: branch}, Note: note}
+		for _, t := range ids {
+			r.Tasks = append(r.Tasks, TaskResult{Task: t, Status: "missing", Conflicts: []isolate.Conflict{}})
+		}
+		return r, nil
+	}
+	if !isRepo {
+		return failure("not a git repository")
+	}
+
+	changes := make([]changeSet, len(ids))
+	for i, t := range ids {
+		if changes[i], err = taskChangeSet(resolved, t); err != nil {
+			return Result{}, err
+		}
+	}
+
+	// Default base: the first task's baseline, the commit it was written
+	// against, so its patch applies to the tree it expects.
+	ref := o.Onto
+	if ref == "" {
+		ref = "HEAD"
+		if len(changes) > 0 && changes[0].baseline != "" {
+			ref = changes[0].baseline
+		}
+	}
+	ontoSHA := isolate.RevParseCommit(resolved, ref)
+	if ontoSHA == "" {
+		return failure(fmt.Sprintf("could not resolve --onto ref %s to a commit", isolate.PyRepr(ref)))
+	}
+	created, err := isolate.Create(resolved, intoTask, isolate.CreateOptions{Backend: isolate.BackendGit, Onto: ontoSHA})
+	if err != nil {
+		return Result{}, err
+	}
+	wt := created.Path
+	if st, serr := os.Stat(wt); created.Status == "error" || wt == "" || serr != nil || !st.IsDir() {
+		return failure("could not create the integration worktree " + branch)
+	}
+	if created.Status == "exists" {
+		// A reused integration tree's own baseline is the truth about where
+		// it starts, not the ref we would have picked.
+		if b, ok := isolate.ReadBaseline(wt); ok {
+			ontoSHA = b
+		}
+	}
+	_ = isolate.WriteRole(wt, isolate.RoleIntegration)
+
+	// Bisection's search space starts at the tip before THIS invocation: a
+	// reused tree may already carry earlier rounds' commits.
+	invocationBase := headSHA(wt)
+	if invocationBase == "" {
+		invocationBase = ontoSHA
+	}
+
+	emit(o.Progress, "integrate-start", "", jsonx.NewObject().Set("tasks", append([]string{}, ids...)))
+	results := make([]TaskResult, 0, len(changes))
+	var applied []AppliedCommit
+	stop := false
+	for _, ch := range changes {
+		task := ch.task
+		if stop {
+			results = append(results, TaskResult{Task: task, Status: "skipped", Conflicts: []isolate.Conflict{}})
+			emit(o.Progress, "integrate-task", task, jsonx.NewObject().Set("status", "skipped"))
+			continue
+		}
+		if ch.state != "ready" {
+			results = append(results, TaskResult{Task: task, Status: ch.state, Conflicts: []isolate.Conflict{}})
+			emit(o.Progress, "integrate-task", task, jsonx.NewObject().Set("status", ch.state))
+			if ch.state == "empty" {
+				markSourceCollected(resolved, task, ch.files, ch.patch)
+			}
+			continue
+		}
+		pre := headSHA(wt)
+		if pre == "" {
+			pre = invocationBase
+		}
+		applyErr := gitx.ApplyPatch3Way(wt, []byte(ch.patch))
+		conflicts := []isolate.Conflict{}
+		if applyErr != nil {
+			conflicts = isolate.UnmergedConflicts(wt)
+		}
+		// Commit whatever resulted, markers included: staging resolves the
+		// index, so the next task still has a real base to merge against.
+		commitAll(wt, "orchestra integrate "+task)
+		entry := TaskResult{Task: task, Status: "applied", FilesChanged: len(ch.files), Conflicts: conflicts}
+		switch {
+		case applyErr == nil:
+			markSourceCollected(resolved, task, ch.files, ch.patch)
+			applied = append(applied, AppliedCommit{Task: task, SHA: headSHA(wt)})
+		case o.OnConflict == OnConflictSkip || o.OnConflict == OnConflictStop:
+			// Undo the apply entirely: later tasks (and verify) must see no
+			// conflict markers, and the source is NOT collected.
+			entry.Status = "conflicted"
+			_, _ = gitx.Run(wt, "reset", "--hard", pre)
+			_, _ = gitx.Run(wt, "clean", "-fdq")
+			entry.RolledBack = true
+			stop = o.OnConflict == OnConflictStop
+		default:
+			entry.Status = "conflicted"
+		}
+		results = append(results, entry)
+		emit(o.Progress, "integrate-task", task, jsonx.NewObject().Set("status", entry.Status))
+	}
+
+	conflicted := false
+	for _, r := range results {
+		conflicted = conflicted || r.Status == "conflicted"
+	}
+	verify := runVerifyStage(o, resolved, wt, branch, invocationBase, applied, conflicted, results)
+
+	status := "ok"
+	switch {
+	case verify != nil && verify.Status == "fail":
+		status = "verify-failed"
+	case conflicted:
+		status = "conflicted"
+	case hasStatus(results, "reverted"):
+		status = "reverted"
+	}
+	res := Result{
+		Status:      status,
+		Integration: Integration{Task: intoTask, Branch: branch, Path: isolate.NullString(wt)},
+		Onto:        ontoSHA,
+		Tasks:       results,
+		Note:        note(results, intoTask, wt),
+		Verify:      verify,
+	}
+	emit(o.Progress, "integrate-end", "", jsonx.NewObject().Set("status", status))
+	return res, nil
+}
+
+// runVerifyStage runs o.Verify (and the bisection) after every task was
+// processed, updating results in place for reverted culprits. nil when no
+// verify was asked for.
+func runVerifyStage(o Options, root, wt, branch, base string, applied []AppliedCommit,
+	conflicted bool, results []TaskResult) *VerifyResult {
+	switch {
+	case o.Verify == "":
+		return nil
+	case (o.OnConflict == "" || o.OnConflict == OnConflictKeep) && conflicted:
+		return skippedVerify("conflict markers committed")
+	case len(applied) == 0:
+		return skippedVerify("nothing applied")
+	}
+	emit(o.Progress, "verify-start", "", jsonx.NewObject().Set("at_commit", headSHA(wt)))
+	v := RunVerify(wt, o.Verify, o.VerifyTimeout)
+	emit(o.Progress, "verify-end", "", jsonx.NewObject().Set("status", v.Status).Set("seconds", v.Seconds))
+	if v.Status != "fail" || !o.Bisect {
+		return &v
+	}
+	b, err := Bisect(BisectInput{
+		Root: root, Worktree: wt, Branch: branch, BaseSHA: base, Applied: applied,
+		Verify: o.Verify, Timeout: o.VerifyTimeout, Max: o.BisectMax,
+		Progress: o.Progress, DirtiedInitial: v.Dirtied,
+	})
+	if err != nil {
+		return &v
+	}
+	for i := range results {
+		for _, rv := range b.Reverted {
+			if results[i].Task == rv.Task {
+				excerpt := rv.Excerpt
+				results[i].Status, results[i].VerifyExcerpt = "reverted", &excerpt
+			}
+		}
+		if results[i].Task == b.RevertConflicted {
+			results[i].Revert = "conflicted"
+		}
+	}
+	return &b.Verify
+}
+
+func hasStatus(results []TaskResult, status string) bool {
+	for _, r := range results {
+		if r.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+// note is one short human sentence summarizing the run (never patch text).
+func note(results []TaskResult, intoTask, wt string) string {
+	counts := map[string]int{}
+	for _, r := range results {
+		counts[r.Status]++
+	}
+	var tail []string
+	if n := counts["missing"]; n > 0 {
+		tail = append(tail, fmt.Sprintf("%d had no worktree", n))
+	}
+	if n := counts["empty"]; n > 0 {
+		tail = append(tail, fmt.Sprintf("%d changed nothing", n))
+	}
+	if n := counts["skipped"]; n > 0 {
+		tail = append(tail, fmt.Sprintf("%d skipped", n))
+	}
+	if n := counts["reverted"]; n > 0 {
+		tail = append(tail, fmt.Sprintf("%d reverted", n))
+	}
+	suffix := ""
+	if len(tail) > 0 {
+		suffix = " (" + strings.Join(tail, ", ") + ")"
+	}
+	if counts["conflicted"] > 0 {
+		return fmt.Sprintf("%d of %d task(s) applied, %d conflicted%s; resolve in worktree '%s' at %s",
+			counts["applied"], len(results), counts["conflicted"], suffix, intoTask, wt)
+	}
+	return fmt.Sprintf("%d of %d task(s) applied cleanly%s into worktree '%s' at %s",
+		counts["applied"], len(results), suffix, intoTask, wt)
+}
