@@ -203,27 +203,3 @@ func TestBisectAbortsAConflictingRevert(t *testing.T) {
 	}
 }
 
-func TestFailureExcerpt(t *testing.T) {
-	var noise []string
-	for i := 0; i < 100; i++ {
-		noise = append(noise, "ok line")
-	}
-	out := "\x1b[31mFAIL\x1b[0m test_login\n  ctx1\n  ctx2\n  ctx3\n  ctx4\n" + strings.Join(noise, "\n") + "\nlast line"
-	got := FailureExcerpt(out)
-	if !strings.HasPrefix(got, "FAIL test_login\n  ctx1\n  ctx2\n  ctx3\n--- tail ---\n") ||
-		!strings.HasSuffix(got, "\nlast line") || strings.Contains(got, "ctx4") {
-		t.Errorf("anchor excerpt:\n%s", got)
-	}
-	markup := "Error: boom\n<div>\n<span>\n<p>\n</div>\nafter"
-	if got := FailureExcerpt(markup); !strings.Contains(got, "… (4 markup lines omitted)") {
-		t.Errorf("markup not collapsed:\n%s", got)
-	}
-	long := strings.Repeat("é", 10000)
-	if got := FailureExcerpt(long); len([]rune(got)) > excerptLimit ||
-		!strings.Contains(got, "chars omitted") {
-		t.Errorf("clip: %d runes", len([]rune(got)))
-	}
-	if FailureExcerpt("") != "" {
-		t.Error("empty output gave an excerpt")
-	}
-}

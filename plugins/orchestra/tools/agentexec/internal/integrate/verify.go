@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"os/exec"
-	"regexp"
 	"strings"
 	"syscall"
 	"time"
-	"unicode/utf8"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
@@ -94,7 +92,7 @@ func RunVerify(dir, cmd string, timeout time.Duration) VerifyResult {
 	if exit != nil && *exit == 0 && !timedOut {
 		res.Status = "pass"
 	} else {
-		res.Excerpt = FailureExcerpt(out.String())
+		res.Excerpt = checks.FailureExcerpt(out.String())
 	}
 	if status, err := gitx.Run(dir, "status", "--porcelain"); err == nil {
 		res.Dirtied = len(splitLines(status))
@@ -126,132 +124,4 @@ func splitLines(s string) []string {
 		return nil
 	}
 	return strings.Split(s, "\n")
-}
-
-// The excerpt helpers below are agent_exec_checks.failure_excerpt: the part
-// of a failed command's output worth handing to a fixer.
-
-var (
-	reANSI   = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
-	reAnchor = regexp.MustCompile(`\bFAIL(?:ED)?\b|[×✖✗]|\berror TS\d+|\berror\[|\bError:|\bAssertionError\b` +
-		`|panicked at|\bnot ok\b|^Traceback|^\s*Expected\b|^\s*Received\b|Timed out|timed out`)
-	reMarkup = regexp.MustCompile(`^\s*(?:</?[A-Za-z][\w:-]*(?:\s|/?>|$)|/?>$|[\w:-]+="[^"]*"\s*/?>?$)`)
-)
-
-const (
-	excerptLimit   = 4000
-	markupRun      = 4
-	contextAfter   = 3
-	tailLines      = 30
-	pyLineBreakers = "\n\r\v\f\x1c\x1d\x1e\u0085  "
-)
-
-// pySplitLines is Python's str.splitlines (no keepends).
-func pySplitLines(s string) []string {
-	var lines []string
-	for len(s) > 0 {
-		i := strings.IndexAny(s, pyLineBreakers)
-		if i < 0 {
-			lines = append(lines, s)
-			break
-		}
-		lines = append(lines, s[:i])
-		r, size := utf8.DecodeRuneInString(s[i:])
-		s = s[i+size:]
-		if r == '\r' && strings.HasPrefix(s, "\n") {
-			s = s[1:]
-		}
-	}
-	return lines
-}
-
-func collapseMarkup(lines []string) []string {
-	var out, run []string
-	flush := func() {
-		if len(run) < markupRun {
-			out = append(out, run...)
-		} else {
-			out = append(out, fmt.Sprintf("  … (%d markup lines omitted)", len(run)))
-		}
-		run = nil
-	}
-	for _, line := range lines {
-		if reMarkup.MatchString(line) {
-			run = append(run, line)
-			continue
-		}
-		flush()
-		out = append(out, line)
-	}
-	flush()
-	return out
-}
-
-func runeLen(s string) int { return utf8.RuneCountInString(s) }
-
-func clip(text string, limit int) string {
-	n := runeLen(text)
-	if n <= limit {
-		return text
-	}
-	marker := func(k int) string { return fmt.Sprintf("\n… (%d chars omitted) …\n", k) }
-	keep := max(limit-runeLen(marker(n)), 0)
-	head := keep * 2 / 3
-	tail := keep - head
-	r := []rune(text)
-	out := string(r[:head]) + marker(n-keep)
-	if tail > 0 {
-		out += string(r[len(r)-tail:])
-	}
-	return out
-}
-
-// FailureExcerpt picks failure anchors (with a few lines of context) first,
-// then the tail of the output, at most 4000 characters. Markup dumps
-// collapse to one line.
-func FailureExcerpt(text string) string {
-	if text == "" {
-		return ""
-	}
-	lines := collapseMarkup(pySplitLines(reANSI.ReplaceAllString(text, "")))
-	var picked []int
-	seen := map[int]bool{}
-	budget := excerptLimit * 2 / 3
-	used := 0
-	for i, line := range lines {
-		if !reAnchor.MatchString(line) {
-			continue
-		}
-		for j := i; j < min(i+1+contextAfter, len(lines)); j++ {
-			if seen[j] {
-				continue
-			}
-			seen[j] = true
-			picked = append(picked, j)
-			used += runeLen(lines[j]) + 1
-		}
-		if used >= budget {
-			break
-		}
-	}
-	var tail []string
-	for j := max(len(lines)-tailLines, 0); j < len(lines); j++ {
-		if !seen[j] {
-			tail = append(tail, lines[j])
-		}
-	}
-	var body string
-	if len(picked) > 0 {
-		parts := make([]string, len(picked))
-		for k, j := range picked {
-			parts[k] = lines[j]
-		}
-		body = strings.Join(parts, "\n")
-		if len(tail) > 0 {
-			body += "\n--- tail ---\n" + strings.Join(tail, "\n")
-		}
-	} else {
-		body = strings.Join(lines[max(len(lines)-tailLines*2, 0):], "\n")
-	}
-	return clip(body, excerptLimit)
 }

@@ -36,7 +36,7 @@ var deps = map[string][]string{
 	"internal/tools":              {"internal/config"},
 	"internal/gitx":               {"internal/fsutil"},
 	"internal/isolate":            {"internal/gitx", "internal/config", "internal/paths"},
-	"internal/integrate":          {"internal/isolate"},
+	"internal/integrate":          {"internal/checks", "internal/isolate"},
 	"internal/shelf":              {"internal/gitx"},
 	"internal/sandbox":            {"internal/config", "internal/paths", "internal/gitx"},
 	"internal/srt":                {"internal/sandbox", "internal/tools"},
