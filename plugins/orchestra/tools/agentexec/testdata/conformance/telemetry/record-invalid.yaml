@@ -1,0 +1,20 @@
+description: record input errors exit 2 and write nothing
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      telemetry:
+        enabled: true
+    bad.json: "{not json"
+steps:
+  - argv: [telemetry, record]
+  - argv: [telemetry, record, --json]
+  - argv: [telemetry, record, --json, "{not json"]
+  - argv: [telemetry, record, --json, "[]"]
+  - argv: [telemetry, record, --json, '{"status": "ok"}']
+  - argv: [telemetry, record, --json, '{"event": "nope"}']
+  - argv: [telemetry, record, --file, bad.json]
+  - argv: [telemetry, record, --file, missing.json]
+  - argv: [telemetry, record, --bogus]
+    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]

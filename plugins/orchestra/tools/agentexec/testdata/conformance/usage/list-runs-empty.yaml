@@ -1,0 +1,10 @@
+description: >
+  --list-runs with nothing recorded
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+steps:
+  - argv: ["usage", "--list-runs"]
+  - argv: ["usage", "--list-runs", "--text"]

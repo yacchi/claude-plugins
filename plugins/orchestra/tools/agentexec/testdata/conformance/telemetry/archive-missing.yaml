@@ -1,0 +1,5 @@
+description: archive of a telemetry directory that does not exist fails with exit 1
+steps:
+  - argv: [telemetry, archive]
+  - argv: [telemetry, show]
+  - argv: [telemetry, show, --json]

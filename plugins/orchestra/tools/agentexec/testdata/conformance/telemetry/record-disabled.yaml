@@ -1,0 +1,14 @@
+description: a disabled telemetry (the default) records nothing, and a custom dir is honored
+normalize_keys: [os]
+setup:
+  files:
+    proj/.claude/orchestra.yaml: |
+      telemetry:
+        enabled: true
+        dir: <WORK>/custom-tel
+steps:
+  - argv: [telemetry, record, --json, '{"event": "dispatch", "status": "ok"}']
+    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+  - argv: [telemetry, record, --json, '{"event": "dispatch", "status": "ok"}']
+    cwd: proj
+    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl", "custom-tel/records.jsonl"]

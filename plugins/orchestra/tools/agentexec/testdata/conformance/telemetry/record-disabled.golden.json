@@ -1,0 +1,45 @@
+{
+  "scenario": "telemetry/record-disabled",
+  "steps": [
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--json",
+        "{\"event\": \"dispatch\", \"status\": \"ok\"}"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/telemetry/records.jsonl": null
+      }
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--json",
+        "{\"event\": \"dispatch\", \"status\": \"ok\"}"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "",
+      "files": {
+        "custom-tel/records.jsonl": {
+          "content": {
+            "event": "dispatch",
+            "os": "<OS>",
+            "schema_version": 2,
+            "status": "ok",
+            "ts": "<TS>"
+          },
+          "shape": "json-line"
+        },
+        "~/.claude/orchestra/telemetry/records.jsonl": null
+      }
+    }
+  ]
+}

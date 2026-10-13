@@ -1,0 +1,32 @@
+description: >
+  show (summary and raw JSONL), archive (default and --out) and clear, over a
+  Python-written records file with blank, malformed and non-object lines
+normalize_keys: [os]
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      telemetry:
+        enabled: true
+    ~/.claude/orchestra/telemetry/records.jsonl: |
+      {"event": "dispatch", "schema_version": 2, "ts": "2026-01-01T00:00:00+00:00", "os": "linux", "executor": "pi", "status": "ok", "usage": {"input_tokens": 10, "output_tokens": 20}}
+      not json at all
+
+      {"event": "dispatch", "schema_version": 2, "ts": "2026-01-02T00:00:00+00:00", "os": "linux", "executor": "claude", "status": "unavailable", "reason": "quota"}
+      [1, 2]
+      {"event": "run_summary", "schema_version": 2, "ts": "2026-01-03T00:00:00+00:00", "os": "linux", "task_count": 4}
+steps:
+  - argv: [telemetry, show]
+  - argv: [telemetry, show, --json]
+  - argv: [telemetry, show, --bogus]
+  - argv: [telemetry, archive, --out, out.tgz]
+  - argv: [telemetry, archive, --out]
+  - argv: [telemetry, archive, extra]
+  - argv: [telemetry, record, --json, '{"event": "dispatch", "executor": "pi", "status": "ok"}']
+    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+  - argv: [telemetry, show]
+  - argv: [telemetry, clear]
+    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+  - argv: [telemetry, show]
+  - argv: [telemetry, clear, whatever]

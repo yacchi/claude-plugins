@@ -1,0 +1,33 @@
+{
+  "scenario": "usage/window-telemetry-empty",
+  "steps": [
+    {
+      "argv": [
+        "usage",
+        "--all-projects",
+        "--text",
+        "--source",
+        "pi"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: window since=<TS> until=<TS>\npi       [unavailable] in=0 out=0 cached=0\n           note: no telemetry records file yet\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--all-projects",
+        "--text",
+        "--source",
+        "claude",
+        "--since",
+        "1d"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: window since=<TS> until=<TS>\nclaude   [empty]       in=0 out=0 cached=0\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    }
+  ]
+}

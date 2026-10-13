@@ -1,0 +1,61 @@
+description: >
+  --list-runs lists Claude workflow runs and ledger runs, ordinals from the current session, oldest activity first
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      telemetry:
+        enabled: true
+    ~/.claude/projects/-proj-a/s1.jsonl: |
+      {"type": "assistant", "timestamp": "2026-03-01T10:00:00.123Z", "message": {"id": "m1", "model": "claude-opus-5-5", "usage": {"input_tokens": 100, "output_tokens": 50, "cache_creation_input_tokens": 200, "cache_read_input_tokens": 1000, "cache_creation": {"ephemeral_1h_input_tokens": 50, "ephemeral_5m_input_tokens": 150}}}}
+      {"type": "assistant", "timestamp": "2026-03-01T10:00:00.123Z", "message": {"id": "m1", "model": "claude-opus-5-5", "usage": {"input_tokens": 100, "output_tokens": 50, "cache_creation_input_tokens": 200, "cache_read_input_tokens": 1000, "cache_creation": {"ephemeral_1h_input_tokens": 50, "ephemeral_5m_input_tokens": 150}}}}
+      {"type": "assistant", "timestamp": "2026-03-01T10:00:01Z", "message": {"id": "m1", "model": "claude-opus-5-5", "usage": {"input_tokens": 100, "output_tokens": 80, "cache_creation_input_tokens": 200, "cache_read_input_tokens": 1000, "cache_creation": {"ephemeral_1h_input_tokens": 50, "ephemeral_5m_input_tokens": 150}}}}
+      {"type": "assistant", "timestamp": "2026-03-01T11:00:00+00:00", "message": {"id": "m2", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 10, "output_tokens": 20, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 5}}, "isSidechain": true}
+      {"type": "assistant", "timestamp": "2026-03-01T12:00:00", "message": {"id": "m3", "model": "claude-mystery-9", "usage": {"input_tokens": 7, "output_tokens": 3, "cache_creation_input_tokens": 1, "cache_read_input_tokens": 2}}}
+      {"type": "assistant", "timestamp": "2026-03-01T13:00:00.5Z", "message": {"id": "m4", "model": "claude-haiku-4-5-20251001", "usage": {"input_tokens": 1000000, "output_tokens": 1000000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}}
+      {"type": "assistant", "timestamp": "2026-02-01T10:00:00Z", "message": {"id": "m5", "model": "claude-opus-5-5", "usage": {"input_tokens": 999, "output_tokens": 999, "cache_creation_input_tokens": 999, "cache_read_input_tokens": 999}}}
+      {"type": "assistant", "timestamp": "not a time", "message": {"id": "m6", "model": "claude-opus-5-5", "usage": {"input_tokens": 999, "output_tokens": 999, "cache_creation_input_tokens": 999, "cache_read_input_tokens": 999}}}
+      {"type": "assistant", "timestamp": "2026-03-01T14:00:00Z", "message": {"id": "m7", "model": "claude-opus-5-5", "usage": {"input_tokens": true, "output_tokens": -5, "cache_creation_input_tokens": "x", "cache_read_input_tokens": 2.5}}}
+      {"type": "user", "timestamp": "2026-03-01T10:00:00Z", "message": {"role": "user"}}
+      {broken json
+      
+      [1, 2, 3]
+    ~/.claude/projects/-proj-a/s1/subagents/agent-1.jsonl: |
+      {"type": "assistant", "timestamp": "2026-03-01T10:30:00Z", "message": {"id": "a1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 30, "output_tokens": 40, "cache_creation_input_tokens": 10, "cache_read_input_tokens": 20}}, "isSidechain": true}
+      {"type": "assistant", "timestamp": "2026-03-01T10:31:00Z", "message": {"id": "a2", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 1, "output_tokens": 2, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}, "isSidechain": true}
+    ~/.claude/projects/-proj-a/s1/subagents/workflows/wf_abc123/agent-2.jsonl: |
+      {"type": "assistant", "timestamp": "2026-03-02T09:00:00Z", "message": {"id": "w1", "model": "claude-opus-5-5", "usage": {"input_tokens": 500, "output_tokens": 600, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 700}}}
+      {"type": "assistant", "timestamp": "2026-03-02T09:05:00Z", "message": {"id": "w2", "model": "claude-opus-5-5", "usage": {"input_tokens": 1, "output_tokens": 1, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}}
+    ~/.claude/projects/-proj-a/s1/subagents/workflows/wf_def456/agent-3.jsonl: |
+      {"type": "assistant", "timestamp": "2026-03-03T09:00:00Z", "message": {"id": "v1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 11, "output_tokens": 12, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 13}}}
+    ~/.claude/projects/-proj-a/s1/subagents/workflows/wf_def456/agent-4.jsonl: |
+      {"type": "assistant", "timestamp": "2026-03-03T09:00:00Z", "message": {"id": "v1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 11, "output_tokens": 12, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 13}}}
+    ~/.claude/projects/-proj-a/s1/notes.jsonl: |
+      {"type": "assistant", "timestamp": "2026-03-01T15:00:00Z", "message": {"id": "n1", "model": "claude-opus-5-5", "usage": {"input_tokens": 1, "output_tokens": 1, "cache_creation_input_tokens": 1, "cache_read_input_tokens": 1}}}
+    ~/.claude/projects/-proj-b/s2.jsonl: |
+      {"type": "assistant", "timestamp": "2026-03-01T15:00:00Z", "message": {"id": "p1", "model": "claude-opus-5-5", "usage": {"input_tokens": 70, "output_tokens": 80, "cache_creation_input_tokens": 90, "cache_read_input_tokens": 100}}}
+    ~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-wf_abc123.jsonl: |
+      {"ts":"2026-03-01T10:00:00+00:00","executor":"pi","cls":"standard","model":"gpt-5.6-luna","status":"ok","input_tokens":100,"output_tokens":200,"cached_input_tokens":300,"cost_micro_usd":12345}
+      {"ts":"2026-03-01T10:05:00.250000+00:00","executor":"pi","status":"ok","input_tokens":1,"output_tokens":2,"cached_input_tokens":3,"cost_micro_usd":55}
+      {"ts":"2026-03-01T10:06:00+00:00","executor":"claude","status":"ok","input_tokens":9999}
+      garbage
+    ~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/002-wf_def456.jsonl: |
+      {"ts":"2026-03-04T10:00:00+00:00","executor":"pi","status":"error","input_tokens":7,"output_tokens":8,"cached_input_tokens":9}
+    ~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl: |
+      {"ts":"2026-03-05T10:00:00+00:00","executor":"pi","status":"ok","input_tokens":4,"output_tokens":5,"cached_input_tokens":6,"cost_micro_usd":1000000}
+    ~/.claude/orchestra/runs/other-session/001-wf_abc123.jsonl: |
+      {"ts":"2026-03-06T10:00:00+00:00","executor":"pi","status":"ok","input_tokens":1000,"output_tokens":2000,"cached_input_tokens":3000,"cost_micro_usd":2}
+    ~/.claude/orchestra/telemetry/records.jsonl: |
+      {"event": "dispatch", "schema_version": 2, "ts": "2026-03-01T10:00:00+00:00", "os": "linux", "executor": "pi", "status": "ok", "usage": {"input_tokens": 11, "output_tokens": 22, "cached_input_tokens": 33}}
+      {"event": "dispatch", "schema_version": 2, "ts": "2026-03-02T10:00:00Z", "os": "linux", "executor": "pi", "status": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}}
+      {"event": "dispatch", "schema_version": 2, "ts": "2026-01-01T10:00:00+00:00", "os": "linux", "executor": "pi", "status": "ok", "usage": {"input_tokens": 500}}
+      {"event": "dispatch", "schema_version": 2, "ts": "2026-03-02T10:00:00+00:00", "os": "linux", "executor": "claude", "status": "ok", "usage": {"input_tokens": 600}}
+      {"event": "run_summary", "schema_version": 2, "ts": "2026-03-02T10:00:00+00:00", "executor": "pi", "usage": {"input_tokens": 700}}
+      not json
+steps:
+  - argv: ["usage", "--list-runs", "--all-projects"]
+  - argv: ["usage", "--list-runs", "--all-projects", "--text"]
+  - argv: ["usage", "--list-runs", "--all-projects", "--source", "pi", "--text"]
+  - argv: ["usage", "--list-runs", "--all-projects", "--source", "claude"]
+  - argv: ["usage", "--list-runs", "--text"]

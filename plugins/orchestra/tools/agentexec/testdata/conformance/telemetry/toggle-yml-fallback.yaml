@@ -1,0 +1,17 @@
+description: >
+  .yaml wins when both exist; an existing .yml is edited when the .yaml is
+  absent; local .yml likewise
+setup:
+  keep_sandbox_default: true
+  files:
+    ~/.claude/orchestra.yaml: "telemetry:\n  enabled: false\n"
+    ~/.claude/orchestra.yml: "telemetry:\n  enabled: false\n"
+    .claude/orchestra.yml: "tiers: {light: sonnet}\n"
+    .claude/orchestra.local.yml: "telemetry:\n  enabled: false\n"
+steps:
+  - argv: [telemetry, enable]
+    snapshot: ["~/.claude/orchestra.yaml", "~/.claude/orchestra.yml"]
+  - argv: [telemetry, enable, --scope, project]
+    snapshot: [".claude/orchestra.yaml", ".claude/orchestra.yml"]
+  - argv: [telemetry, enable, --scope, local]
+    snapshot: [".claude/orchestra.local.yaml", ".claude/orchestra.local.yml"]

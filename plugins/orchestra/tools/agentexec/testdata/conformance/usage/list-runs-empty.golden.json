@@ -1,0 +1,28 @@
+{
+  "scenario": "usage/list-runs-empty",
+  "steps": [
+    {
+      "argv": [
+        "usage",
+        "--list-runs"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "runs": []
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--list-runs",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": ""
+    }
+  ]
+}

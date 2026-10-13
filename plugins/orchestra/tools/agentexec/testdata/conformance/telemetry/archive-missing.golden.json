@@ -1,0 +1,36 @@
+{
+  "scenario": "telemetry/archive-missing",
+  "steps": [
+    {
+      "argv": [
+        "telemetry",
+        "archive"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: directory does not exist: <HOME>/.claude/orchestra/telemetry\n"
+    },
+    {
+      "argv": [
+        "telemetry",
+        "show"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "total records: 0\nby event: {}\nby status: {}\nby reason: {}\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "telemetry",
+        "show",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": ""
+    }
+  ]
+}

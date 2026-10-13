@@ -1,0 +1,29 @@
+description: >
+  record sanitizes to the allowlist (free text, unknown keys and bad values
+  dropped), appends one line per record, from --json and from --file
+normalize_keys: [os]
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      telemetry:
+        enabled: true
+    in.json: '{"event": "run_summary", "lane": "express", "task_count": 3, "pass": 2, "fail": 1, "path": "/secret", "fallbacks": -1}'
+steps:
+  - argv:
+      - telemetry
+      - record
+      - --json
+      - >-
+        {"event": "dispatch", "status": "ok", "reason": "quota", "cls": "deep",
+        "executor": "pi", "resumed": true, "prompt": "secret", "orchestra_version": "1.2.3",
+        "usage": {"input_tokens": 5, "output_tokens": 7, "bogus": 3},
+        "classes": {"light": 2, "x": 1}, "executors_used": {"pi": 1, "claude": "no"},
+        "rounds": {"1": 2, "a": 3, "02": 4}, "external_enabled": {"pi": true, "x": false},
+        "sandbox_denials": 2, "sandbox_granted": true}
+    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+  - argv: [telemetry, record, --file, in.json]
+    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+  - argv: [telemetry, record, --json, '{"event": "dispatch", "status": "nope", "usage": {"input_tokens": 0}}']
+    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]

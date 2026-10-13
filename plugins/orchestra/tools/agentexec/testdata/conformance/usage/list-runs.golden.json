@@ -1,0 +1,100 @@
+{
+  "scenario": "usage/list-runs",
+  "steps": [
+    {
+      "argv": [
+        "usage",
+        "--list-runs",
+        "--all-projects"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "runs": [
+          {
+            "files": 2,
+            "first_ts": "<TS>",
+            "last_ts": "<TS>",
+            "ordinal": 2,
+            "run_id": "wf_def456"
+          },
+          {
+            "files": 1,
+            "first_ts": "<TS>",
+            "last_ts": "<TS>",
+            "ordinal": 1,
+            "run_id": "wf_abc123"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--list-runs",
+        "--all-projects",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "002 wf_def456 2 <TS> <TS>\n001 wf_abc123 1 <TS> <TS>\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--list-runs",
+        "--all-projects",
+        "--source",
+        "pi",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "002 wf_def456 0 <TS> <TS>\n001 wf_abc123 0 <TS> <TS>\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--list-runs",
+        "--all-projects",
+        "--source",
+        "claude"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "runs": [
+          {
+            "files": 1,
+            "first_ts": "<TS>",
+            "last_ts": "<TS>",
+            "ordinal": null,
+            "run_id": "wf_abc123"
+          },
+          {
+            "files": 2,
+            "first_ts": "<TS>",
+            "last_ts": "<TS>",
+            "ordinal": null,
+            "run_id": "wf_def456"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--list-runs",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "002 wf_def456 0 <TS> <TS>\n001 wf_abc123 0 <TS> <TS>\n",
+      "stderr": ""
+    }
+  ]
+}
