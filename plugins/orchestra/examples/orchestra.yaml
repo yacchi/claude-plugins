@@ -83,7 +83,7 @@ external_executors:
         effort: medium
 
 # Executor binaries orchestra installs at a pinned version into its own state
-# dir (`agent-exec tools status|install|path`); see references/config.md §6.
+# dir (`agent-exec tools status|install`); see references/config.md §6.
 # Resolution per tool: source auto (managed when valid, else the system binary
 # on PATH) | managed | system. Omit the section to use PATH binaries only.
 # tools:
