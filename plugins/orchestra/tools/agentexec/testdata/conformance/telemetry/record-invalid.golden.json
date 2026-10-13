@@ -1,0 +1,112 @@
+{
+  "scenario": "telemetry/record-invalid",
+  "steps": [
+    {
+      "argv": [
+        "telemetry",
+        "record"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: record requires --json or --file\n"
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--json"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: missing value for --json\n"
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--json",
+        "{not json"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: invalid JSON input\n"
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--json",
+        "[]"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: record missing valid 'event'\n"
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--json",
+        "{\"status\": \"ok\"}"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: record missing valid 'event'\n"
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--json",
+        "{\"event\": \"nope\"}"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: record missing valid 'event'\n"
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--file",
+        "bad.json"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: invalid JSON input\n"
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--file",
+        "missing.json"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: invalid JSON input\n"
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: telemetry: unknown option: --bogus\n",
+      "files": {
+        "~/.claude/orchestra/telemetry/records.jsonl": null
+      }
+    }
+  ]
+}

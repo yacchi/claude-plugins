@@ -1,0 +1,36 @@
+description: >
+  an existing telemetry block keeps every other line and comment; enabled
+  is rewritten in place (trailing comment, odd spacing, value forms), or
+  inserted with the block's own indent when missing
+setup:
+  keep_sandbox_default: true
+  files:
+    ~/.claude/orchestra.yaml: |
+      # my config
+      tiers:
+        light: sonnet   # cheap
+
+      telemetry:
+        enabled: false  # opt-in, anonymized
+        dir: ~/t
+      other: 1
+    .claude/orchestra.yaml: |
+      telemetry: # comment on the anchor
+          dir: /tmp/t
+          retention: 3
+      watchdog:
+        enabled: true
+    .claude/orchestra.local.yaml: "telemetry:\n\tdir: /tmp/t\n"
+steps:
+  - argv: [telemetry, enable]
+    snapshot: ["~/.claude/orchestra.yaml"]
+  - argv: [telemetry, disable]
+    snapshot: ["~/.claude/orchestra.yaml"]
+  - argv: [telemetry, enable, --scope, project]
+    snapshot: [".claude/orchestra.yaml"]
+  - argv: [telemetry, disable, --scope, project]
+    snapshot: [".claude/orchestra.yaml"]
+  - argv: [telemetry, enable, --scope, local]
+    snapshot: [".claude/orchestra.local.yaml"]
+  - argv: [telemetry, enable, --scope, local]
+    snapshot: [".claude/orchestra.local.yaml"]

@@ -1,0 +1,25 @@
+description: >
+  a file without a zero-indent telemetry key gets the template block
+  appended (after a newline if the last line lacks one); an indented or
+  commented telemetry key is not the anchor; an empty file just gets the block
+setup:
+  keep_sandbox_default: true
+  files:
+    ~/.claude/orchestra.yaml: "tiers:\n  light: sonnet"
+    .claude/orchestra.yaml: |
+      # telemetry:
+      #   enabled: false
+      sandbox:
+        telemetry:
+          enabled: false
+      tiers: {light: sonnet}
+    .claude/orchestra.local.yaml: ""
+steps:
+  - argv: [telemetry, enable]
+    snapshot: ["~/.claude/orchestra.yaml"]
+  - argv: [telemetry, enable, --scope, project]
+    snapshot: [".claude/orchestra.yaml"]
+  - argv: [telemetry, disable, --scope, project]
+    snapshot: [".claude/orchestra.yaml"]
+  - argv: [telemetry, enable, --scope, local]
+    snapshot: [".claude/orchestra.local.yaml"]

@@ -1,0 +1,461 @@
+{
+  "scenario": "usage/run-scope",
+  "steps": [
+    {
+      "argv": [
+        "usage",
+        "--run",
+        "wf_abc123"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cost": {
+          "components": {
+            "claude": 14164,
+            "pi": 12402
+          },
+          "estimated_micro_usd": 26566,
+          "price_list": {
+            "as_of": "2026-09-25",
+            "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+          },
+          "priced_sources": [
+            "claude",
+            "pi"
+          ],
+          "unpriced_sources": []
+        },
+        "scope": {
+          "kind": "run",
+          "run_ids": [
+            "wf_abc123"
+          ]
+        },
+        "sources": {
+          "claude": {
+            "by_model": {
+              "claude-opus-5-5": {
+                "cached_input_tokens": 700,
+                "input_tokens": 501,
+                "output_tokens": 601
+              }
+            },
+            "by_model_detail": {
+              "claude-opus-5-5": {
+                "cache_read": 700,
+                "cache_write_1h": 0,
+                "cache_write_5m": 0,
+                "fresh_input": 501,
+                "output": 601
+              }
+            },
+            "cost": {
+              "micro_usd": 14164,
+              "models": {
+                "claude-opus-5-5": {
+                  "cache_read": 700,
+                  "cache_write_1h": 0,
+                  "cache_write_5m": 0,
+                  "fresh_input": 501,
+                  "micro_usd": 14164,
+                  "output": 601
+                }
+              },
+              "price_list": {
+                "as_of": "2026-09-25",
+                "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+              },
+              "unpriced_models": {}
+            },
+            "main": {
+              "cached_input_tokens": 700,
+              "input_tokens": 501,
+              "output_tokens": 601
+            },
+            "records": 2,
+            "scope": "run",
+            "sessions": 1,
+            "sidechain": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "status": "ok",
+            "tokens": {
+              "cached_input_tokens": 700,
+              "input_tokens": 501,
+              "output_tokens": 601
+            }
+          },
+          "pi": {
+            "cost_micro_usd": 12402,
+            "records": 3,
+            "scope": "run",
+            "status": "ok",
+            "tokens": {
+              "cached_input_tokens": 3303,
+              "input_tokens": 1101,
+              "output_tokens": 2202
+            }
+          }
+        },
+        "totals": {
+          "cached_input_tokens": 4003,
+          "input_tokens": 1602,
+          "output_tokens": 2803
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--run",
+        "wf_abc123",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: run wf_abc123\nclaude   [ok]          in=501 out=601 cached=700\n           main: in=501 out=601 cached=700\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           sessions: 1\npi       [ok]          in=1101 out=2202 cached=3303\n           cost: $0.012402\ntotal                  in=1602 out=2803 cached=4003\ncost     ~$0.0266  (claude=$0.0142, pi=$0.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--run",
+        "1",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: run wf_abc123\nclaude   [ok]          in=501 out=601 cached=700\n           main: in=501 out=601 cached=700\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           sessions: 1\npi       [ok]          in=1101 out=2202 cached=3303\n           cost: $0.012402\ntotal                  in=1602 out=2803 cached=4003\ncost     ~$0.0266  (claude=$0.0142, pi=$0.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--run",
+        "002"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cost": {
+          "components": {
+            "claude": 145,
+            "pi": 0
+          },
+          "estimated_micro_usd": 145,
+          "price_list": {
+            "as_of": "2026-09-25",
+            "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+          },
+          "priced_sources": [
+            "claude",
+            "pi"
+          ],
+          "unpriced_sources": []
+        },
+        "scope": {
+          "kind": "run",
+          "run_ids": [
+            "wf_def456"
+          ]
+        },
+        "sources": {
+          "claude": {
+            "by_model": {
+              "claude-sonnet-5-5": {
+                "cached_input_tokens": 13,
+                "input_tokens": 11,
+                "output_tokens": 12
+              }
+            },
+            "by_model_detail": {
+              "claude-sonnet-5-5": {
+                "cache_read": 13,
+                "cache_write_1h": 0,
+                "cache_write_5m": 0,
+                "fresh_input": 11,
+                "output": 12
+              }
+            },
+            "cost": {
+              "micro_usd": 145,
+              "models": {
+                "claude-sonnet-5-5": {
+                  "cache_read": 13,
+                  "cache_write_1h": 0,
+                  "cache_write_5m": 0,
+                  "fresh_input": 11,
+                  "micro_usd": 145,
+                  "output": 12
+                }
+              },
+              "price_list": {
+                "as_of": "2026-09-25",
+                "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+              },
+              "unpriced_models": {}
+            },
+            "main": {
+              "cached_input_tokens": 13,
+              "input_tokens": 11,
+              "output_tokens": 12
+            },
+            "records": 1,
+            "scope": "run",
+            "sessions": 2,
+            "sidechain": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "status": "ok",
+            "tokens": {
+              "cached_input_tokens": 13,
+              "input_tokens": 11,
+              "output_tokens": 12
+            }
+          },
+          "pi": {
+            "cost_micro_usd": 0,
+            "records": 1,
+            "scope": "run",
+            "status": "ok",
+            "tokens": {
+              "cached_input_tokens": 9,
+              "input_tokens": 7,
+              "output_tokens": 8
+            }
+          }
+        },
+        "totals": {
+          "cached_input_tokens": 22,
+          "input_tokens": 18,
+          "output_tokens": 20
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--run",
+        "wf_abc123,wf_def456",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: run wf_abc123,wf_def456\nclaude   [ok]          in=512 out=613 cached=713\n           main: in=512 out=613 cached=713\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           claude-sonnet-5-5: in=11 out=12 cached=13\n             fresh=11 cache_write(5m)=0 cache_write(1h)=0 cache_read=13 out=12  ~$0.0001\n           sessions: 3\npi       [ok]          in=1108 out=2210 cached=3312\n           cost: $0.012402\ntotal                  in=1620 out=2823 cached=4025\ncost     ~$0.0267  (claude=$0.0143, pi=$0.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--run",
+        "wf_abc123",
+        "--run",
+        "wf_def456"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cost": {
+          "components": {
+            "claude": 14309,
+            "pi": 12402
+          },
+          "estimated_micro_usd": 26711,
+          "price_list": {
+            "as_of": "2026-09-25",
+            "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+          },
+          "priced_sources": [
+            "claude",
+            "pi"
+          ],
+          "unpriced_sources": []
+        },
+        "scope": {
+          "kind": "run",
+          "run_ids": [
+            "wf_abc123",
+            "wf_def456"
+          ]
+        },
+        "sources": {
+          "claude": {
+            "by_model": {
+              "claude-opus-5-5": {
+                "cached_input_tokens": 700,
+                "input_tokens": 501,
+                "output_tokens": 601
+              },
+              "claude-sonnet-5-5": {
+                "cached_input_tokens": 13,
+                "input_tokens": 11,
+                "output_tokens": 12
+              }
+            },
+            "by_model_detail": {
+              "claude-opus-5-5": {
+                "cache_read": 700,
+                "cache_write_1h": 0,
+                "cache_write_5m": 0,
+                "fresh_input": 501,
+                "output": 601
+              },
+              "claude-sonnet-5-5": {
+                "cache_read": 13,
+                "cache_write_1h": 0,
+                "cache_write_5m": 0,
+                "fresh_input": 11,
+                "output": 12
+              }
+            },
+            "cost": {
+              "micro_usd": 14309,
+              "models": {
+                "claude-opus-5-5": {
+                  "cache_read": 700,
+                  "cache_write_1h": 0,
+                  "cache_write_5m": 0,
+                  "fresh_input": 501,
+                  "micro_usd": 14164,
+                  "output": 601
+                },
+                "claude-sonnet-5-5": {
+                  "cache_read": 13,
+                  "cache_write_1h": 0,
+                  "cache_write_5m": 0,
+                  "fresh_input": 11,
+                  "micro_usd": 145,
+                  "output": 12
+                }
+              },
+              "price_list": {
+                "as_of": "2026-09-25",
+                "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+              },
+              "unpriced_models": {}
+            },
+            "main": {
+              "cached_input_tokens": 713,
+              "input_tokens": 512,
+              "output_tokens": 613
+            },
+            "records": 3,
+            "scope": "run",
+            "sessions": 3,
+            "sidechain": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "status": "ok",
+            "tokens": {
+              "cached_input_tokens": 713,
+              "input_tokens": 512,
+              "output_tokens": 613
+            }
+          },
+          "pi": {
+            "cost_micro_usd": 12402,
+            "records": 4,
+            "scope": "run",
+            "status": "ok",
+            "tokens": {
+              "cached_input_tokens": 3312,
+              "input_tokens": 1108,
+              "output_tokens": 2210
+            }
+          }
+        },
+        "totals": {
+          "cached_input_tokens": 4025,
+          "input_tokens": 1620,
+          "output_tokens": 2823
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--run",
+        "wf_unknown",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: run wf_unknown\nclaude: not attributable (no matching transcript data)\npi: not attributable (no matching run ledger data)\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--run",
+        "9",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: run 9\nclaude: not attributable (no matching transcript data)\npi: not attributable (no matching run ledger data)\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--run",
+        "wf_abc123",
+        "--source",
+        "pi"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cost": {
+          "components": {
+            "pi": 12402
+          },
+          "estimated_micro_usd": 12402,
+          "price_list": {
+            "as_of": "2026-09-25",
+            "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+          },
+          "priced_sources": [
+            "pi"
+          ],
+          "unpriced_sources": []
+        },
+        "scope": {
+          "kind": "run",
+          "run_ids": [
+            "wf_abc123"
+          ]
+        },
+        "sources": {
+          "pi": {
+            "cost_micro_usd": 12402,
+            "records": 3,
+            "scope": "run",
+            "status": "ok",
+            "tokens": {
+              "cached_input_tokens": 3303,
+              "input_tokens": 1101,
+              "output_tokens": 2202
+            }
+          }
+        },
+        "totals": {
+          "cached_input_tokens": 3303,
+          "input_tokens": 1101,
+          "output_tokens": 2202
+        }
+      },
+      "stderr": ""
+    }
+  ]
+}

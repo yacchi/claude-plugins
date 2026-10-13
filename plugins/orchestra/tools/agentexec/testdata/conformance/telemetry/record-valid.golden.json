@@ -1,0 +1,176 @@
+{
+  "scenario": "telemetry/record-valid",
+  "steps": [
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--json",
+        "{\"event\": \"dispatch\", \"status\": \"ok\", \"reason\": \"quota\", \"cls\": \"deep\", \"executor\": \"pi\", \"resumed\": true, \"prompt\": \"secret\", \"orchestra_version\": \"1.2.3\", \"usage\": {\"input_tokens\": 5, \"output_tokens\": 7, \"bogus\": 3}, \"classes\": {\"light\": 2, \"x\": 1}, \"executors_used\": {\"pi\": 1, \"claude\": \"no\"}, \"rounds\": {\"1\": 2, \"a\": 3, \"02\": 4}, \"external_enabled\": {\"pi\": true, \"x\": false}, \"sandbox_denials\": 2, \"sandbox_granted\": true}"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/telemetry/records.jsonl": {
+          "content": {
+            "classes": {
+              "light": 2
+            },
+            "cls": "deep",
+            "event": "dispatch",
+            "executor": "pi",
+            "executors_used": {
+              "pi": 1
+            },
+            "external_enabled": {
+              "pi": true
+            },
+            "orchestra_version": "1.2.3",
+            "os": "<OS>",
+            "reason": "quota",
+            "resumed": true,
+            "rounds": {
+              "1": 2
+            },
+            "sandbox_denials": 2,
+            "schema_version": 2,
+            "status": "ok",
+            "ts": "<TS>",
+            "usage": {
+              "input_tokens": 5,
+              "output_tokens": 7
+            }
+          },
+          "shape": "json-line"
+        }
+      }
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--file",
+        "in.json"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/telemetry/records.jsonl": {
+          "content": [
+            {
+              "classes": {
+                "light": 2
+              },
+              "cls": "deep",
+              "event": "dispatch",
+              "executor": "pi",
+              "executors_used": {
+                "pi": 1
+              },
+              "external_enabled": {
+                "pi": true
+              },
+              "orchestra_version": "1.2.3",
+              "os": "<OS>",
+              "reason": "quota",
+              "resumed": true,
+              "rounds": {
+                "1": 2
+              },
+              "sandbox_denials": 2,
+              "schema_version": 2,
+              "status": "ok",
+              "ts": "<TS>",
+              "usage": {
+                "input_tokens": 5,
+                "output_tokens": 7
+              }
+            },
+            {
+              "event": "run_summary",
+              "fail": 1,
+              "lane": "express",
+              "os": "<OS>",
+              "pass": 2,
+              "schema_version": 2,
+              "task_count": 3,
+              "ts": "<TS>"
+            }
+          ],
+          "shape": "jsonl"
+        }
+      }
+    },
+    {
+      "argv": [
+        "telemetry",
+        "record",
+        "--json",
+        "{\"event\": \"dispatch\", \"status\": \"nope\", \"usage\": {\"input_tokens\": 0}}"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/telemetry/records.jsonl": {
+          "content": [
+            {
+              "classes": {
+                "light": 2
+              },
+              "cls": "deep",
+              "event": "dispatch",
+              "executor": "pi",
+              "executors_used": {
+                "pi": 1
+              },
+              "external_enabled": {
+                "pi": true
+              },
+              "orchestra_version": "1.2.3",
+              "os": "<OS>",
+              "reason": "quota",
+              "resumed": true,
+              "rounds": {
+                "1": 2
+              },
+              "sandbox_denials": 2,
+              "schema_version": 2,
+              "status": "ok",
+              "ts": "<TS>",
+              "usage": {
+                "input_tokens": 5,
+                "output_tokens": 7
+              }
+            },
+            {
+              "event": "run_summary",
+              "fail": 1,
+              "lane": "express",
+              "os": "<OS>",
+              "pass": 2,
+              "schema_version": 2,
+              "task_count": 3,
+              "ts": "<TS>"
+            },
+            {
+              "event": "dispatch",
+              "os": "<OS>",
+              "schema_version": 2,
+              "ts": "<TS>",
+              "usage": {
+                "input_tokens": 0
+              }
+            }
+          ],
+          "shape": "jsonl"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "scenario": "usage/window-unavailable",
+  "steps": [
+    {
+      "argv": [
+        "usage",
+        "--all-projects",
+        "--since",
+        "2026-03-01T00:00:00Z"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cost": {
+          "components": {},
+          "estimated_micro_usd": 0,
+          "price_list": {
+            "as_of": "2026-09-25",
+            "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+          },
+          "priced_sources": [],
+          "unpriced_sources": []
+        },
+        "now": "<TS>",
+        "scope": {
+          "kind": "window",
+          "since": "<TS>",
+          "until": "<TS>"
+        },
+        "since": "<TS>",
+        "sources": {
+          "claude": {
+            "by_model": {},
+            "main": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "note": "no claude projects directory",
+            "records": 0,
+            "scope": "all-projects",
+            "sessions": 0,
+            "sidechain": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "status": "unavailable",
+            "tokens": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "pi": {
+            "note": "telemetry disabled; no pi usage is recorded",
+            "records": 0,
+            "scope": "global",
+            "status": "unavailable",
+            "tokens": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          }
+        },
+        "totals": {
+          "cached_input_tokens": 0,
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--all-projects",
+        "--text",
+        "--since",
+        "2026-03-01T00:00:00Z"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: window since=<TS> until=<TS>\nclaude   [unavailable] in=0 out=0 cached=0\n           note: no claude projects directory\npi       [unavailable] in=0 out=0 cached=0\n           note: telemetry disabled; no pi usage is recorded\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    }
+  ]
+}

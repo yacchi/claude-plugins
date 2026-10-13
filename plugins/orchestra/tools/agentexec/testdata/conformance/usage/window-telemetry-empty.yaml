@@ -1,0 +1,13 @@
+description: >
+  telemetry enabled but no records file yet, then a records file without a matching record
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      telemetry:
+        enabled: true
+    ~/.claude/projects/-p/s.jsonl: ""
+steps:
+  - argv: ["usage", "--all-projects", "--text", "--source", "pi"]
+  - argv: ["usage", "--all-projects", "--text", "--source", "claude", "--since", "1d"]

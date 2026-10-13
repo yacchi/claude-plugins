@@ -1,0 +1,22 @@
+description: >
+  enable/disable create a missing config file from the template, in each
+  scope (user under HOME, project and local under ./.claude of the cwd),
+  then edit the created file in place
+setup:
+  keep_sandbox_default: true
+  files:
+    sub/keep: ""
+steps:
+  - argv: [telemetry, enable]
+    snapshot: ["~/.claude/orchestra.yaml"]
+  - argv: [telemetry, disable, --scope, user]
+    snapshot: ["~/.claude/orchestra.yaml"]
+  - argv: [telemetry, enable, --scope, project]
+    snapshot: [".claude/orchestra.yaml"]
+  - argv: [telemetry, enable, --scope, local]
+    snapshot: [".claude/orchestra.local.yaml"]
+  - argv: [telemetry, disable, --scope, local]
+    snapshot: [".claude/orchestra.local.yaml"]
+  - argv: [telemetry, enable, --scope, project]
+    cwd: sub
+    snapshot: ["sub/.claude/orchestra.yaml"]

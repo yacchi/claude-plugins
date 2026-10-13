@@ -1,0 +1,90 @@
+{
+  "scenario": "usage/window-cwd",
+  "steps": [
+    {
+      "argv": [
+        "usage",
+        "--since",
+        "2026-03-01T00:00:00Z"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cost": {
+          "components": {
+            "pi": 0
+          },
+          "estimated_micro_usd": 0,
+          "price_list": {
+            "as_of": "2026-09-25",
+            "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+          },
+          "priced_sources": [
+            "pi"
+          ],
+          "unpriced_sources": []
+        },
+        "now": "<TS>",
+        "scope": {
+          "kind": "window",
+          "since": "<TS>",
+          "until": "<TS>"
+        },
+        "since": "<TS>",
+        "sources": {
+          "claude": {
+            "by_model": {},
+            "by_model_detail": {},
+            "main": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "records": 0,
+            "scope": "cwd",
+            "sessions": 0,
+            "sidechain": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "status": "empty",
+            "tokens": {
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "pi": {
+            "records": 2,
+            "scope": "global",
+            "status": "ok",
+            "tokens": {
+              "cached_input_tokens": 33,
+              "input_tokens": 12,
+              "output_tokens": 23
+            }
+          }
+        },
+        "totals": {
+          "cached_input_tokens": 33,
+          "input_tokens": 12,
+          "output_tokens": 23
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--text",
+        "--since",
+        "2026-03-01T00:00:00Z"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: window since=<TS> until=<TS>\nclaude   [empty]       in=0 out=0 cached=0\npi       [ok]          in=12 out=23 cached=33\n           cost: $0.000000\ntotal                  in=12 out=23 cached=33\ncost     ~$0.0000  (pi=$0.0000)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    }
+  ]
+}

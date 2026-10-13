@@ -1,0 +1,63 @@
+{
+  "scenario": "telemetry/toggle-yml-fallback",
+  "steps": [
+    {
+      "argv": [
+        "telemetry",
+        "enable"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "telemetry enabled -> <HOME>/.claude/orchestra.yaml\n",
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra.yaml": {
+          "content": "telemetry:\n  enabled: true\n",
+          "shape": "text"
+        },
+        "~/.claude/orchestra.yml": {
+          "content": "telemetry:\n  enabled: false\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "telemetry",
+        "enable",
+        "--scope",
+        "project"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "telemetry enabled -> <WORK>/.claude/orchestra.yml\n",
+      "stderr": "",
+      "files": {
+        ".claude/orchestra.yaml": null,
+        ".claude/orchestra.yml": {
+          "content": "tiers: {light: sonnet}\n\ntelemetry:\n  enabled: true  # opt-in, anonymized (see orchestra:run SKILL §10)\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "telemetry",
+        "enable",
+        "--scope",
+        "local"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "telemetry enabled -> <WORK>/.claude/orchestra.local.yml\n",
+      "stderr": "",
+      "files": {
+        ".claude/orchestra.local.yaml": null,
+        ".claude/orchestra.local.yml": {
+          "content": "telemetry:\n  enabled: true\n",
+          "shape": "text"
+        }
+      }
+    }
+  ]
+}

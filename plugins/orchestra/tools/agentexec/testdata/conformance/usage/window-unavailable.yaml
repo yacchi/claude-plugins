@@ -1,0 +1,10 @@
+description: >
+  no Claude projects directory, telemetry disabled or without a records file: sources are unavailable, never zero
+setup:
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+steps:
+  - argv: ["usage", "--all-projects", "--since", "2026-03-01T00:00:00Z"]
+  - argv: ["usage", "--all-projects", "--text", "--since", "2026-03-01T00:00:00Z"]

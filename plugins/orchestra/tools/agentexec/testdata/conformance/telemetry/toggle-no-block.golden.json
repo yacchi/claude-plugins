@@ -1,0 +1,75 @@
+{
+  "scenario": "telemetry/toggle-no-block",
+  "steps": [
+    {
+      "argv": [
+        "telemetry",
+        "enable"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "telemetry enabled -> <HOME>/.claude/orchestra.yaml\n",
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra.yaml": {
+          "content": "tiers:\n  light: sonnet\n\ntelemetry:\n  enabled: true  # opt-in, anonymized (see orchestra:run SKILL §10)\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "telemetry",
+        "enable",
+        "--scope",
+        "project"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "telemetry enabled -> <WORK>/.claude/orchestra.yaml\n",
+      "stderr": "",
+      "files": {
+        ".claude/orchestra.yaml": {
+          "content": "# telemetry:\n#   enabled: false\nsandbox:\n  telemetry:\n    enabled: false\ntiers: {light: sonnet}\n\ntelemetry:\n  enabled: true  # opt-in, anonymized (see orchestra:run SKILL §10)\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "telemetry",
+        "disable",
+        "--scope",
+        "project"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "telemetry disabled -> <WORK>/.claude/orchestra.yaml\n",
+      "stderr": "",
+      "files": {
+        ".claude/orchestra.yaml": {
+          "content": "# telemetry:\n#   enabled: false\nsandbox:\n  telemetry:\n    enabled: false\ntiers: {light: sonnet}\n\ntelemetry:\n  enabled: false  # opt-in, anonymized (see orchestra:run SKILL §10)\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "telemetry",
+        "enable",
+        "--scope",
+        "local"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "telemetry enabled -> <WORK>/.claude/orchestra.local.yaml\n",
+      "stderr": "",
+      "files": {
+        ".claude/orchestra.local.yaml": {
+          "content": "\ntelemetry:\n  enabled: true  # opt-in, anonymized (see orchestra:run SKILL §10)\n",
+          "shape": "text"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,176 @@
+{
+  "scenario": "usage/window-pricing",
+  "steps": [
+    {
+      "argv": [
+        "usage",
+        "--all-projects",
+        "--text",
+        "--since",
+        "2026-03-01T00:00:00Z"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "scope: window since=<TS> until=<TS>\nclaude   [ok]          in=1001031 out=1000838 cached=1840\n           main: in=1000980 out=1000776 cached=1815\n           sidechain: in=51 out=62 cached=25\n           claude-haiku-4-5-20251001: in=1000000 out=1000000 cached=0\n             fresh=1000000 cache_write(5m)=0 cache_write(1h)=0 cache_read=0 out=1000000  ~$6.0000\n           claude-mystery-9: in=8 out=3 cached=2\n             fresh=7 cache_write(5m)=1 cache_write(1h)=0 cache_read=2 out=3  ~$0.0000\n           claude-opus-5-5: in=961 out=761 cached=1800\n             fresh=671 cache_write(5m)=240 cache_write(1h)=50 cache_read=1800 out=761  ~$0.0205\n           claude-sonnet-5-5: in=62 out=74 cached=38\n             fresh=52 cache_write(5m)=10 cache_write(1h)=0 cache_read=38 out=74  ~$0.0009\n           sessions: 5\npi       [ok]          in=12 out=23 cached=33\n           cost: $0.000000\ntotal                  in=1001043 out=1000861 cached=1873\ncost     ~$6.0214  (claude=$6.0214, pi=$0.0000)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "usage",
+        "--all-projects",
+        "--source",
+        "claude",
+        "--since",
+        "2026-03-01T00:00:00Z"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cost": {
+          "components": {
+            "claude": 6021404
+          },
+          "estimated_micro_usd": 6021404,
+          "price_list": {
+            "as_of": "2026-09-25",
+            "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+          },
+          "priced_sources": [
+            "claude"
+          ],
+          "unpriced_sources": []
+        },
+        "now": "<TS>",
+        "scope": {
+          "kind": "window",
+          "since": "<TS>",
+          "until": "<TS>"
+        },
+        "since": "<TS>",
+        "sources": {
+          "claude": {
+            "by_model": {
+              "claude-haiku-4-5-20251001": {
+                "cached_input_tokens": 0,
+                "input_tokens": 1000000,
+                "output_tokens": 1000000
+              },
+              "claude-mystery-9": {
+                "cached_input_tokens": 2,
+                "input_tokens": 8,
+                "output_tokens": 3
+              },
+              "claude-opus-5-5": {
+                "cached_input_tokens": 1800,
+                "input_tokens": 961,
+                "output_tokens": 761
+              },
+              "claude-sonnet-5-5": {
+                "cached_input_tokens": 38,
+                "input_tokens": 62,
+                "output_tokens": 74
+              }
+            },
+            "by_model_detail": {
+              "claude-haiku-4-5-20251001": {
+                "cache_read": 0,
+                "cache_write_1h": 0,
+                "cache_write_5m": 0,
+                "fresh_input": 1000000,
+                "output": 1000000
+              },
+              "claude-mystery-9": {
+                "cache_read": 2,
+                "cache_write_1h": 0,
+                "cache_write_5m": 1,
+                "fresh_input": 7,
+                "output": 3
+              },
+              "claude-opus-5-5": {
+                "cache_read": 1800,
+                "cache_write_1h": 50,
+                "cache_write_5m": 240,
+                "fresh_input": 671,
+                "output": 761
+              },
+              "claude-sonnet-5-5": {
+                "cache_read": 38,
+                "cache_write_1h": 0,
+                "cache_write_5m": 10,
+                "fresh_input": 52,
+                "output": 74
+              }
+            },
+            "cost": {
+              "micro_usd": 6021404,
+              "models": {
+                "claude-haiku-4-5-20251001": {
+                  "cache_read": 0,
+                  "cache_write_1h": 0,
+                  "cache_write_5m": 0,
+                  "fresh_input": 1000000,
+                  "micro_usd": 6000000,
+                  "output": 1000000
+                },
+                "claude-mystery-9": {
+                  "cache_read": 2,
+                  "cache_write_1h": 0,
+                  "cache_write_5m": 1,
+                  "fresh_input": 7,
+                  "micro_usd": 45,
+                  "output": 3
+                },
+                "claude-opus-5-5": {
+                  "cache_read": 1800,
+                  "cache_write_1h": 50,
+                  "cache_write_5m": 240,
+                  "fresh_input": 671,
+                  "micro_usd": 20482,
+                  "output": 761
+                },
+                "claude-sonnet-5-5": {
+                  "cache_read": 38,
+                  "cache_write_1h": 0,
+                  "cache_write_5m": 10,
+                  "fresh_input": 52,
+                  "micro_usd": 877,
+                  "output": 74
+                }
+              },
+              "price_list": {
+                "as_of": "2026-09-25",
+                "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
+              },
+              "unpriced_models": {}
+            },
+            "main": {
+              "cached_input_tokens": 1815,
+              "input_tokens": 1000980,
+              "output_tokens": 1000776
+            },
+            "records": 11,
+            "scope": "all-projects",
+            "sessions": 5,
+            "sidechain": {
+              "cached_input_tokens": 25,
+              "input_tokens": 51,
+              "output_tokens": 62
+            },
+            "status": "ok",
+            "tokens": {
+              "cached_input_tokens": 1840,
+              "input_tokens": 1001031,
+              "output_tokens": 1000838
+            }
+          }
+        },
+        "totals": {
+          "cached_input_tokens": 1840,
+          "input_tokens": 1001031,
+          "output_tokens": 1000838
+        }
+      },
+      "stderr": ""
+    }
+  ]
+}
