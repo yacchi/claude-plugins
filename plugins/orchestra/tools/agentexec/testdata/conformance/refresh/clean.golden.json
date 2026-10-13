@@ -1,0 +1,546 @@
+{
+  "scenario": "refresh/clean",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [
+          "node_modules"
+        ],
+        "carried_files": [],
+        "carry_method": "clone",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t2"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/00000000/t2",
+        "carried": [
+          "node_modules"
+        ],
+        "carried_files": [],
+        "carry_method": "clone",
+        "path": "<WORK>-orchestra/00000000-t2",
+        "status": "created",
+        "task": "t2"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "legacy"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#3>",
+        "branch": "orchestra/legacy",
+        "carried": [
+          "node_modules"
+        ],
+        "carried_files": [],
+        "carry_method": "clone",
+        "path": "<WORK>-orchestra/legacy",
+        "status": "created",
+        "task": "legacy"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "boot"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#4>",
+        "branch": "orchestra/00000000/boot",
+        "carried": [
+          "node_modules"
+        ],
+        "carried_files": [],
+        "carry_method": "clone",
+        "path": "<WORK>-orchestra/00000000-boot",
+        "status": "created",
+        "task": "boot"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/00000000/t2",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t2",
+            "session": "00000000",
+            "task": "t2"
+          },
+          {
+            "branch": "orchestra/legacy",
+            "current": false,
+            "path": "<WORK>-orchestra/legacy",
+            "session": null,
+            "task": "legacy"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "boot",
+        "--into",
+        "prep",
+        "--verify",
+        "sh ../../prep.sh"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/prep",
+          "path": "<WORK>-orchestra/00000000-prep",
+          "task": "prep"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
+        "onto": "<SHA#4>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "boot"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#5>",
+        "branch": "orchestra/00000000/t1",
+        "conflicts": [],
+        "files": [
+          "a.txt",
+          "new.txt"
+        ],
+        "note": "moved 2 file(s) onto 170a819f106f",
+        "old_baseline": "<SHA#1>",
+        "patch_file": "<WORK>-orchestra/.patches/t1-be97c696226c-170a819f106f.patch",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "ok",
+        "task": "t1"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/00000000-t1/a.txt": {
+          "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT\n9\n",
+          "shape": "text"
+        },
+        "<ROOT>/work-orchestra/00000000-t1/new.txt": {
+          "content": "new\n",
+          "shape": "text"
+        },
+        "<ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js": {
+          "content": "module.exports = 1\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t1",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#5>",
+        "branch": "orchestra/00000000/t1",
+        "conflicts": [],
+        "files": [],
+        "note": "already on onto 170a819f106f",
+        "old_baseline": "<SHA#5>",
+        "patch_file": null,
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "unchanged",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "t1",
+        "--names-only"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#5>",
+        "branch": "orchestra/00000000/t1",
+        "files": [
+          "a.txt",
+          "new.txt"
+        ],
+        "path": "<WORK>-orchestra/00000000-t1",
+        "session": "00000000",
+        "status": "ok",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t2",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "refresh ok         task t2               onto 170a819f106f  worktree <WORK>-orchestra/00000000-t2\nnote: no work to carry for t2\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "legacy"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#5>",
+        "branch": "orchestra/legacy",
+        "conflicts": [],
+        "files": [
+          "l.txt"
+        ],
+        "note": "moved 1 file(s) onto 170a819f106f",
+        "old_baseline": "<SHA#3>",
+        "patch_file": "<WORK>-orchestra/.patches/legacy-a0e5c62075dc-170a819f106f.patch",
+        "path": "<WORK>-orchestra/legacy",
+        "status": "ok",
+        "task": "legacy"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/legacy/l.txt": {
+          "content": "legacy\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t1",
+        "--onto",
+        "HEAD~1",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "refresh ok         task t1               onto 172110381309  worktree <WORK>-orchestra/00000000-t1\n  a.txt\n  new.txt\n  patch: <WORK>-orchestra/.patches/t1-170a819f106f-172110381309.patch\nnote: moved 2 file(s) onto 172110381309\n",
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/00000000-t1/a.txt": {
+          "content": "1\nTWO\n3\n4\n5\n6\n7\n8\n9\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t1",
+        "--onto",
+        "nope"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": "orchestra/00000000/t1",
+        "conflicts": [],
+        "files": [],
+        "note": "could not resolve --onto ref 'nope' to a commit",
+        "old_baseline": null,
+        "patch_file": null,
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "error",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "ghost"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": null,
+        "conflicts": [],
+        "files": [],
+        "note": "no worktree for ghost",
+        "old_baseline": null,
+        "patch_file": null,
+        "path": null,
+        "status": "absent",
+        "task": "ghost"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "ghost",
+        "--text"
+      ],
+      "exit": 3,
+      "stdout_shape": "text",
+      "stdout": "refresh absent     task ghost            onto -  worktree -\nnote: no worktree for ghost\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t1"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": null,
+        "conflicts": [],
+        "files": [],
+        "note": "not a git repository",
+        "old_baseline": null,
+        "patch_file": null,
+        "path": null,
+        "status": "error",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/prep",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-prep",
+            "session": "00000000",
+            "task": "prep"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/00000000/t2",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t2",
+            "session": "00000000",
+            "task": "t2"
+          },
+          {
+            "branch": "orchestra/legacy",
+            "current": false,
+            "path": "<WORK>-orchestra/legacy",
+            "session": null,
+            "task": "legacy"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate refresh: missing required option: --task\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t1",
+        "--task",
+        "t2"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate refresh: duplicate option: --task\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t1",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate refresh: unknown option: --bogus\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t1",
+        "--onto"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate refresh: missing value for --onto\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "t1",
+        "--json",
+        "--text"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate refresh: --json and --text are mutually exclusive\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "//"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate refresh: task id '//' has no usable characters\n"
+    }
+  ]
+}

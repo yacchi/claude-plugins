@@ -1,0 +1,396 @@
+{
+  "scenario": "integrate/into-existing",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t2"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/00000000/t2",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t2",
+        "status": "created",
+        "task": "t2"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t3"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#3>",
+        "branch": "orchestra/00000000/t3",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t3",
+        "status": "created",
+        "task": "t3"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "boot"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#4>",
+        "branch": "orchestra/00000000/boot",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-boot",
+        "status": "created",
+        "task": "boot"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/00000000/t2",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t2",
+            "session": "00000000",
+            "task": "t2"
+          },
+          {
+            "branch": "orchestra/00000000/t3",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t3",
+            "session": "00000000",
+            "task": "t3"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "boot",
+        "--into",
+        "prep",
+        "--verify",
+        "sh ../../prep.sh"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/prep",
+          "path": "<WORK>-orchestra/00000000-prep",
+          "task": "prep"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
+        "onto": "<SHA#4>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "boot"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--into",
+        "int"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/int",
+          "path": "<WORK>-orchestra/00000000-int",
+          "task": "int"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'int' at <WORK>-orchestra/00000000-int",
+        "onto": "<SHA#1>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t1"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t2,t3",
+        "--into",
+        "int",
+        "--onto",
+        "HEAD"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/int",
+          "path": "<WORK>-orchestra/00000000-int",
+          "task": "int"
+        },
+        "note": "2 of 2 task(s) applied cleanly into worktree 'int' at <WORK>-orchestra/00000000-int",
+        "onto": "<SHA#1>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t2"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t3"
+          }
+        ]
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/00000000-int/a.txt": {
+          "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT\n9\n",
+          "shape": "text"
+        },
+        "<ROOT>/work-orchestra/00000000-int/c.txt": {
+          "content": "new\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--into",
+        "int",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "integrate ok  onto 97779c7ccad9  worktree <WORK>-orchestra/00000000-int\n  t1               applied    1 file(s)\nnote: 1 of 1 task(s) applied cleanly into worktree 'int' at <WORK>-orchestra/00000000-int\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "int",
+        "--names-only"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/int",
+        "files": [
+          "a.txt",
+          "c.txt"
+        ],
+        "path": "<WORK>-orchestra/00000000-int",
+        "session": "00000000",
+        "status": "ok",
+        "task": "int"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "int"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": "orchestra/00000000/int",
+        "conflicts": [],
+        "files": [],
+        "note": "refusing to refresh an integration worktree",
+        "old_baseline": null,
+        "patch_file": null,
+        "path": "<WORK>-orchestra/00000000-int",
+        "status": "error",
+        "task": "int"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "boot",
+        "--into",
+        "prep2",
+        "--verify",
+        "sh ../../build.sh"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/prep2",
+          "path": "<WORK>-orchestra/00000000-prep2",
+          "task": "prep2"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep2' at <WORK>-orchestra/00000000-prep2",
+        "onto": "<SHA#4>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "boot"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "int"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "digest": "9444c58b70c68346ee0ac61e680c7d61c88d243bf59eafc8c1c08a83432f0244",
+        "status": "collected",
+        "task": "int"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "int"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branch": "orchestra/00000000/int",
+        "path": "<WORK>-orchestra/00000000-int",
+        "session": "00000000",
+        "status": "removed",
+        "task": "int"
+      },
+      "stderr": ""
+    }
+  ]
+}

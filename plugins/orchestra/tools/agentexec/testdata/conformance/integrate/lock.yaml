@@ -1,0 +1,35 @@
+description: >
+  the per-target integrate lock: while another process holds it (a perl
+  flock holder started by the priming verify) --lock fail reports locked at
+  once (exit 6, JSON and --text, naming the holder), the default wait gives
+  up after --lock-timeout, and a different --into target is not blocked
+setup:
+  git: true
+  files:
+    a.txt: "1\n2\n3\n"
+    <ROOT>/prep.sh: |
+      set -e
+      printf '1\nTWO\n3\n' > <ROOT>/work-orchestra/00000000-t1/a.txt
+      mkdir -p <WORK>/.git/orchestra
+      perl -MFcntl=:flock -e '
+        open(my $f, "+>>", $ARGV[0]) or die; flock($f, LOCK_EX) or die;
+        truncate($f, 0); select((select($f), $| = 1)[0]); print $f "held-by-test\n";
+        open(my $r, ">", $ARGV[1]) or die; close($r); sleep 30' \
+        <WORK>/.git/orchestra/integrate-integrate.lock <ROOT>/held >/dev/null 2>&1 &
+      i=0
+      while [ ! -e <ROOT>/held ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done
+      test -e <ROOT>/held
+normalize_keys: [seconds]
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, boot]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, t1, --lock, fail]
+  - argv: [isolate, integrate, --tasks, t1, --lock, fail, --text]
+  - argv: [isolate, integrate, --tasks, t1, --lock-timeout, "0.3"]
+  - argv: [isolate, integrate, --tasks, t1, --into, other, --lock, fail]
+    snapshot:
+      - <WORK>/.git/orchestra/integrate-integrate.lock
+  - argv: [isolate, list]

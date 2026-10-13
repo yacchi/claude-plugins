@@ -1,0 +1,40 @@
+description: >
+  tasks touching disjoint hunks of one file, a new file, an empty task and a
+  missing one integrate cleanly (worker edits are made by a priming
+  integrate whose --verify runs <ROOT>/prep.sh); applied sources count as
+  collected; the integration tree is an ordinary listed worktree; --onto,
+  --text, an unresolvable --onto, outside a repository, every task missing
+setup:
+  git: true
+  files:
+    a.txt: "1\n2\n3\n4\n5\n6\n7\n8\n9\n"
+    <ROOT>/prep.sh: |
+      set -e
+      W=<ROOT>/work-orchestra
+      printf '1\nTWO\n3\n4\n5\n6\n7\n8\n9\n' > $W/00000000-t1/a.txt
+      printf '1\n2\n3\n4\n5\n6\n7\nEIGHT\n9\n' > $W/00000000-t2/a.txt
+      printf 'new\n' > $W/00000000-t2/c.txt
+normalize_keys: [seconds]
+steps:
+  - argv: [isolate, create, --task, t1]
+  - argv: [isolate, create, --task, t2]
+  - argv: [isolate, create, --task, t3]
+  - argv: [isolate, create, --task, boot]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, "t1, t2,t3,,ghost"]
+    snapshot:
+      - <ROOT>/work-orchestra/00000000-integrate/a.txt
+      - <ROOT>/work-orchestra/00000000-integrate/c.txt
+      - <WORK>/c.txt
+  - argv: [isolate, list]
+  - argv: [isolate, diff, --task, integrate, --names-only]
+  - argv: [isolate, remove, --task, t1]
+  - argv: [isolate, remove, --task, t3]
+  - argv: [isolate, integrate, --tasks, t2, --into, r2, --onto, main, --text]
+  - argv: [isolate, integrate, --tasks, t2, --into, r3, --onto, nope]
+  - argv: [isolate, integrate, --tasks, t2, --json]
+    cwd: "~"
+  - argv: [isolate, integrate, --tasks, ghost, --into, r4]
+  - argv: [isolate, integrate, --tasks, ghost, --into, r4, --text]

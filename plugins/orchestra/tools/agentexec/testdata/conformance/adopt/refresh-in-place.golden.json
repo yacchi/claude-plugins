@@ -1,0 +1,374 @@
+{
+  "scenario": "adopt/refresh-in-place",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "boot"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/boot",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-boot",
+        "status": "created",
+        "task": "boot"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "task": "boot"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "boot",
+        "--into",
+        "prep",
+        "--verify",
+        "sh ../../prep.sh"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/prep",
+          "path": "<WORK>-orchestra/00000000-prep",
+          "task": "prep"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
+        "onto": "<SHA#1>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "boot"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#2>",
+        "branch": "ext",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "adopted <ROOT>/ext as task x",
+        "path": "<ROOT>/ext",
+        "status": "adopted",
+        "task": "x"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "y",
+        "--path",
+        "../ext2",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "adopted task y                worktree <ROOT>/ext2\n  baseline: 20fcf9a12274\nnote: adopted <ROOT>/ext2 as task y\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "boot",
+        "--into",
+        "prep2",
+        "--verify",
+        "sh ../../move.sh"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/prep2",
+          "path": "<WORK>-orchestra/00000000-prep2",
+          "task": "prep2"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep2' at <WORK>-orchestra/00000000-prep2",
+        "onto": "<SHA#1>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "boot"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "x"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#3>",
+        "branch": "ext",
+        "conflicts": [],
+        "files": [
+          "a.txt"
+        ],
+        "in_place": true,
+        "note": "moved 1 file(s) onto 6e251b74ca30 in place",
+        "old_baseline": "<SHA#2>",
+        "patch_file": "<WORK>-orchestra/.patches/x-20fcf9a12274-6e251b74ca30.patch",
+        "path": "<ROOT>/ext",
+        "status": "ok",
+        "task": "x"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/ext/a.txt": {
+          "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT-MAIN\n9\n",
+          "shape": "text"
+        },
+        "<ROOT>/ext/cache/c.bin": {
+          "content": "kept\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "x",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "refresh unchanged  task x                onto 6e251b74ca30  worktree <ROOT>/ext\nnote: already on onto 6e251b74ca30\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "refresh",
+        "--task",
+        "y"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#3>",
+        "branch": "ext2",
+        "conflicts": [
+          {
+            "file": "a.txt",
+            "hunks": 1
+          }
+        ],
+        "files": [
+          "a.txt"
+        ],
+        "in_place": true,
+        "note": "1 file(s) conflicted; resolve in worktree at <ROOT>/ext2",
+        "old_baseline": "<SHA#2>",
+        "patch_file": "<WORK>-orchestra/.patches/y-20fcf9a12274-6e251b74ca30.patch",
+        "path": "<ROOT>/ext2",
+        "status": "conflicted",
+        "task": "y"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/ext2/a.txt": {
+          "content": "1\n2\n3\n4\n5\n6\n7\n<<<<<<< ours\nEIGHT-MAIN\n=======\nEIGHT-EXT2\n>>>>>>> theirs\n9\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "y",
+        "--names-only"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#3>",
+        "branch": "ext2",
+        "files": [
+          "a.txt"
+        ],
+        "path": "<ROOT>/ext2",
+        "session": null,
+        "status": "ok",
+        "task": "y"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--dry-run",
+        "--include-current",
+        "--include-live",
+        "--live-window",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [],
+        "dry_run": true,
+        "pruned": false,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 2,
+          "errors": 0,
+          "external": 2,
+          "removed": 0,
+          "skipped": 0,
+          "would_remove": 1
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "would-remove",
+            "task": "boot"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/prep",
+            "current": true,
+            "files": [
+              "hb/00000000"
+            ],
+            "path": "<WORK>-orchestra/00000000-prep",
+            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "dirty",
+            "task": "prep"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/prep2",
+            "current": true,
+            "files": [
+              "hb/00000000"
+            ],
+            "path": "<WORK>-orchestra/00000000-prep2",
+            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "dirty",
+            "task": "prep2"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "ext",
+            "current": false,
+            "path": "<ROOT>/ext",
+            "reason": "adopted external worktree; orchestra never removes it",
+            "session": "00000000",
+            "status": "external",
+            "task": "x"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "ext2",
+            "current": false,
+            "path": "<ROOT>/ext2",
+            "reason": "adopted external worktree; orchestra never removes it",
+            "session": "00000000",
+            "status": "external",
+            "task": "y"
+          }
+        ]
+      },
+      "stderr": ""
+    }
+  ]
+}

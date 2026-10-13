@@ -1,0 +1,43 @@
+description: >
+  refreshing an adopted tree happens in place: the path and the external
+  branch survive, the tree is reset onto the new base, untracked files are
+  cleared but ignored ones kept, the work re-applied uncommitted (and the
+  markers kept on a conflict, so the task still resolves)
+setup:
+  git: true
+  files:
+    a.txt: "1\n2\n3\n4\n5\n6\n7\n8\n9\n"
+    .gitignore: "cache/\n"
+    <ROOT>/prep.sh: |
+      set -e
+      cd <WORK>
+      git worktree add -q -b ext <ROOT>/ext
+      git worktree add -q -b ext2 <ROOT>/ext2
+      printf '1\nTWO\n3\n4\n5\n6\n7\n8\n9\n' > <ROOT>/ext/a.txt
+      printf '1\n2\n3\n4\n5\n6\n7\nEIGHT-EXT2\n9\n' > <ROOT>/ext2/a.txt
+    <ROOT>/move.sh: |
+      set -e
+      mkdir -p <ROOT>/ext/cache
+      printf 'kept\n' > <ROOT>/ext/cache/c.bin
+      cd <WORK>
+      printf '1\n2\n3\n4\n5\n6\n7\nEIGHT-MAIN\n9\n' > a.txt
+      git commit -qam "move main"
+normalize_keys: [seconds, age_days, session_idle_minutes]
+steps:
+  - argv: [isolate, create, --task, boot]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, adopt, --task, x, --path, ../ext]
+  - argv: [isolate, adopt, --task, y, --path, ../ext2, --text]
+  - argv: [isolate, integrate, --tasks, boot, --into, prep2, --verify, "sh ../../move.sh"]
+  - argv: [isolate, refresh, --task, x]
+    snapshot:
+      - <ROOT>/ext/a.txt
+      - <ROOT>/ext/cache/c.bin
+  - argv: [isolate, refresh, --task, x, --text]
+  - argv: [isolate, refresh, --task, y]
+    snapshot:
+      - <ROOT>/ext2/a.txt
+  - argv: [isolate, diff, --task, y, --names-only]
+  - argv: [isolate, sweep, --dry-run, --include-current, --include-live, --live-window, "0"]

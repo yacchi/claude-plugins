@@ -1,0 +1,1072 @@
+{
+  "scenario": "adopt/basic",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [
+          "node_modules"
+        ],
+        "carried_files": [
+          "CLAUDE.local.md"
+        ],
+        "carry_method": "clone",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "boot"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/00000000/boot",
+        "carried": [
+          "node_modules"
+        ],
+        "carried_files": [
+          "CLAUDE.local.md"
+        ],
+        "carry_method": "clone",
+        "path": "<WORK>-orchestra/00000000-boot",
+        "status": "created",
+        "task": "boot"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "boot",
+        "--into",
+        "prep",
+        "--verify",
+        "sh ../../prep.sh"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/prep",
+          "path": "<WORK>-orchestra/00000000-prep",
+          "task": "prep"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
+        "onto": "<SHA#2>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "boot"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#3>",
+        "branch": "ext",
+        "carried": [
+          "node_modules"
+        ],
+        "carried_files": [
+          "CLAUDE.local.md"
+        ],
+        "carry_method": "clone",
+        "note": "adopted <ROOT>/ext as task x",
+        "path": "<ROOT>/ext",
+        "status": "adopted",
+        "task": "x"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/ext/CLAUDE.local.md": {
+          "content": "local notes\n",
+          "shape": "text"
+        },
+        "<ROOT>/ext/node_modules/pkg/index.js": {
+          "content": "module.exports = 1\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#3>",
+        "branch": "ext",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "already adopted as x",
+        "path": "<ROOT>/ext",
+        "status": "exists",
+        "task": "x"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext",
+        "--baseline",
+        "main",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "exists task x                worktree <ROOT>/ext\n  baseline: dfe10529587e\nnote: already adopted as x\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext",
+        "--baseline",
+        "nope"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": "ext",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "could not resolve --baseline ref 'nope' to a commit",
+        "path": "<ROOT>/ext",
+        "status": "error",
+        "task": "x"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "y",
+        "--path",
+        "../ext"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": "ext",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "<ROOT>/ext is already adopted as task x",
+        "path": "<ROOT>/ext",
+        "status": "error",
+        "task": "y"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext2"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": "ext2",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "task x already resolves to <ROOT>/ext",
+        "path": "<ROOT>/ext2",
+        "status": "error",
+        "task": "x"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "t1",
+        "--path",
+        "../ext2"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": "ext2",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "task t1 already resolves to <WORK>-orchestra/00000000-t1",
+        "path": "<ROOT>/ext2",
+        "status": "error",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "z",
+        "--path",
+        "../nowhere"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": null,
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "<ROOT>/nowhere is not a worktree of this repository",
+        "path": "<ROOT>/nowhere",
+        "status": "error",
+        "task": "z"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "z",
+        "--path",
+        "."
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": "main",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "refusing to adopt the main worktree",
+        "path": "<WORK>",
+        "status": "error",
+        "task": "z"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "z",
+        "--path",
+        "../work-orchestra/00000000-t1",
+        "--text"
+      ],
+      "exit": 3,
+      "stdout_shape": "text",
+      "stdout": "error task z                worktree <WORK>-orchestra/00000000-t1\nnote: <WORK>-orchestra/00000000-t1 is an orchestra-created worktree; it already has a task\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "y",
+        "--path",
+        "../ext2"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "already_present": [
+          "node_modules"
+        ],
+        "baseline": "<SHA#3>",
+        "branch": "ext2",
+        "carried": [],
+        "carried_files": [
+          "CLAUDE.local.md"
+        ],
+        "carry_method": "none",
+        "note": "adopted <ROOT>/ext2 as task y",
+        "path": "<ROOT>/ext2",
+        "status": "adopted",
+        "task": "y"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/ext2/node_modules/own/x.js": {
+          "content": "own\n",
+          "shape": "text"
+        },
+        "<ROOT>/ext2/node_modules/pkg/index.js": null
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "d",
+        "--path",
+        "../det",
+        "--no-carry",
+        "--session",
+        "11111111-2222-4333-8444-555555555555"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#3>",
+        "branch": null,
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "adopted <ROOT>/det as task d",
+        "path": "<ROOT>/det",
+        "status": "adopted",
+        "task": "d"
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/det/node_modules/pkg/index.js": null
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/prep",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-prep",
+            "session": "00000000",
+            "task": "prep"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "x"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": "<SHA#3>",
+        "branch": "ext",
+        "files": [
+          "a.txt"
+        ],
+        "patch": "diff --git a/a.txt b/a.txt\nindex 01e79c3..230b143 100644\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n 1\n-2\n+TWO\n 3\n",
+        "path": "<ROOT>/ext",
+        "session": null,
+        "status": "ok",
+        "task": "x"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "collect",
+        "--task",
+        "y"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "digest": "fc2dc1c3493c43fa8bb578f20e77f7eaa29e57bd48ac34104fcdb8042391dc2c",
+        "status": "collected",
+        "task": "y"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--dry-run",
+        "--include-current",
+        "--include-live",
+        "--live-window",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [],
+        "dry_run": true,
+        "pruned": false,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 1,
+          "errors": 0,
+          "external": 3,
+          "removed": 0,
+          "skipped": 0,
+          "would_remove": 2
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "would-remove",
+            "task": "boot"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/prep",
+            "current": true,
+            "files": [
+              "hb/00000000"
+            ],
+            "path": "<WORK>-orchestra/00000000-prep",
+            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "dirty",
+            "task": "prep"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "would-remove",
+            "task": "t1"
+          },
+          {
+            "age_days": null,
+            "branch": null,
+            "current": false,
+            "path": "<ROOT>/det",
+            "reason": "adopted external worktree; orchestra never removes it",
+            "session": "11111111",
+            "status": "external",
+            "task": "d"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "ext",
+            "current": false,
+            "path": "<ROOT>/ext",
+            "reason": "adopted external worktree; orchestra never removes it",
+            "session": "00000000",
+            "status": "external",
+            "task": "x"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "ext2",
+            "current": false,
+            "path": "<ROOT>/ext2",
+            "reason": "adopted external worktree; orchestra never removes it",
+            "session": "00000000",
+            "status": "external",
+            "task": "y"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--include-current",
+        "--include-live",
+        "--older-than",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [],
+        "dry_run": false,
+        "pruned": true,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 1,
+          "errors": 0,
+          "external": 3,
+          "removed": 2,
+          "skipped": 0,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "removed",
+            "task": "boot"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/prep",
+            "current": true,
+            "files": [
+              "hb/00000000"
+            ],
+            "path": "<WORK>-orchestra/00000000-prep",
+            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "dirty",
+            "task": "prep"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "removed",
+            "task": "t1"
+          },
+          {
+            "age_days": null,
+            "branch": null,
+            "current": false,
+            "path": "<ROOT>/det",
+            "reason": "adopted external worktree; orchestra never removes it",
+            "session": "11111111",
+            "status": "external",
+            "task": "d"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "ext",
+            "current": false,
+            "path": "<ROOT>/ext",
+            "reason": "adopted external worktree; orchestra never removes it",
+            "session": "00000000",
+            "status": "external",
+            "task": "x"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "ext2",
+            "current": false,
+            "path": "<ROOT>/ext2",
+            "reason": "adopted external worktree; orchestra never removes it",
+            "session": "00000000",
+            "status": "external",
+            "task": "y"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "x,y,d",
+        "--into",
+        "ix"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/ix",
+          "path": "<WORK>-orchestra/00000000-ix",
+          "task": "ix"
+        },
+        "note": "1 of 3 task(s) applied cleanly (2 changed nothing) into worktree 'ix' at <WORK>-orchestra/00000000-ix",
+        "onto": "<SHA#3>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "x"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 0,
+            "status": "empty",
+            "task": "y"
+          },
+          {
+            "conflicts": [],
+            "files_changed": 0,
+            "status": "empty",
+            "task": "d"
+          }
+        ]
+      },
+      "stderr": "",
+      "files": {
+        "<ROOT>/work-orchestra/00000000-ix/a.txt": {
+          "content": "1\nTWO\n3\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "y"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "path": "<ROOT>/ext2",
+        "status": "unadopted",
+        "task": "y"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt",
+        "--task",
+        "x"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "path": "<ROOT>/ext",
+        "status": "unadopted",
+        "task": "x"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt",
+        "--task",
+        "x"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "path": null,
+        "status": "absent",
+        "task": "x"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "path": null,
+        "status": "absent",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt",
+        "--task",
+        "d",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "unadopted task d                worktree <ROOT>/det\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt",
+        "--task",
+        "y",
+        "--repo",
+        "../ext2",
+        "--no-carry"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "path": null,
+        "status": "absent",
+        "task": "y"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "x"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "files": [],
+        "patch": "",
+        "status": "absent",
+        "task": "x"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt",
+        "--task",
+        "ghost"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "path": null,
+        "status": "absent",
+        "task": "ghost"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "baseline": null,
+        "branch": null,
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "not a git repository",
+        "path": null,
+        "status": "error",
+        "task": "x"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--path",
+        "../ext"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate adopt: missing required option: --task\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate adopt: missing required option: --path\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext",
+        "--no-carry",
+        "--no-carry"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate adopt: duplicate option: --no-carry\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext",
+        "--json",
+        "--text"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate adopt: --json and --text are mutually exclusive\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "x",
+        "--path"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate adopt: missing value for --path\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt",
+        "--task",
+        "x",
+        "--path",
+        "../ext"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate unadopt: unknown option: --path\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate unadopt: missing required option: --task\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt",
+        "--task",
+        "//"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: isolate unadopt: task id '//' has no usable characters\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--include-current",
+        "--include-live",
+        "--live-window",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "branches": [],
+        "dry_run": false,
+        "pruned": true,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 2,
+          "errors": 0,
+          "external": 0,
+          "removed": 0,
+          "skipped": 0,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/ix",
+            "current": true,
+            "files": [
+              "a.txt"
+            ],
+            "path": "<WORK>-orchestra/00000000-ix",
+            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "dirty",
+            "task": "ix"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/prep",
+            "current": true,
+            "files": [
+              "hb/00000000"
+            ],
+            "path": "<WORK>-orchestra/00000000-prep",
+            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "dirty",
+            "task": "prep"
+          }
+        ]
+      },
+      "stderr": ""
+    }
+  ]
+}
