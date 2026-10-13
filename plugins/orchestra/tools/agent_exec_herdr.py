@@ -42,6 +42,8 @@ WARM_KEY = "_warm"  # registry key of the warm reader records; never a package i
 _STATUS_TIMEOUT = 15
 _CALL_TIMEOUT = 60
 _PROMPT_RETRY_WAIT = 2
+# Seconds to let Claude's TUI settle once its input box is drawn.
+_INPUT_SETTLE = 1
 _PERMISSION_MODES = frozenset(("acceptEdits", "auto", "default", "plan"))
 _TRUST_MARKERS = ("trust this folder", "is this a project you")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -508,8 +510,28 @@ class HerdrExecutor(object):
             except _HerdrError:
                 tail = ""
             raise _need("stalled", "folder-trust dialog did not accept: %s\n%s" % (exc, tail))
+        self._await_input(name)
         self._event(session["pkg"], "trust", name)
         return name
+
+    def _await_input(self, name):
+        """After the trust dialog, `agent wait --until idle` can return before
+        Claude has drawn its input box; a prompt sent then is swallowed while
+        herdr still reports it ok, and the run waits for a result that never
+        comes. Wait until the dialog is gone and the input box is on screen."""
+        deadline = self.clock() + float(self.cfg["startup_timeout"])
+        while True:
+            try:
+                screen = self._screen(name)
+            except _HerdrError:
+                screen = ""
+            if not _is_trust(screen) and _orca()._has_prompt_box(screen.splitlines()):
+                self.sleep(_INPUT_SETTLE)
+                return
+            if self.clock() >= deadline:
+                raise _need("stalled", "input box never appeared after the folder-trust "
+                                       "dialog:\n%s" % _tail(screen))
+            self.sleep(min(self.poll, 1.0) if self.poll else 0)
 
     def _close_agent(self, session):
         workspace = session.get("workspace")

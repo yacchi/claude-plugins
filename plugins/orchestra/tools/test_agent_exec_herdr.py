@@ -53,7 +53,7 @@ class FakeHerdr(object):
     walks through (the last value repeats)."""
 
     def __init__(self, running=False, not_ready=False, screen="", statuses=("idle",),
-                 on_prompt=None, stalls=0, fail_warm=False):
+                 on_prompt=None, stalls=0, fail_warm=False, after_keys=("❯ ",)):
         self.calls = []
         self.popens = []
         self.running = running
@@ -63,6 +63,10 @@ class FakeHerdr(object):
         self.on_prompt = on_prompt
         self.stalls = stalls  # the next N `agent prompt` calls stall
         self.fail_warm = fail_warm  # the warm reader's agent never starts
+        # Screens `agent read` shows after `send-keys`, one per read (the last
+        # repeats): Claude draws its input box only after the trust dialog.
+        self.after_keys = list(after_keys)
+        self.keys_sent = False
 
     def prompts(self):
         return [c for c in self.calls if c[3:5] == ["agent", "prompt"]]
@@ -102,8 +106,12 @@ class FakeHerdr(object):
                 return self._err("agent_not_ready")
             return self._ok({})
         if args[:2] == ["agent", "read"]:
+            if self.keys_sent and self.after_keys:
+                self.screen = self.after_keys.pop(0) if len(self.after_keys) > 1 \
+                    else self.after_keys[0]
             return self._ok({"result": {"text": self.screen}})
         if args[:2] == ["agent", "send-keys"]:
+            self.keys_sent = True
             self.not_ready = False
             return self._ok({})
         if args[:2] == ["agent", "wait"]:
@@ -406,6 +414,21 @@ class TrustTests(_Base):
         self.assertEqual(keys, [["agent", "send-keys", "p-a", "down", "enter"]])
         self.assertLess(fake.verbs().index(["agent", "send-keys"]),
                         fake.verbs().index(["agent", "wait"]))
+
+    def test_start_waits_for_the_input_box_after_trust(self):
+        fake = FakeHerdr(running=True, not_ready=True, screen=TRUST_SCREEN,
+                         after_keys=(TRUST_SCREEN, "", "❯ "))
+        self.start(fake, {"auto_trust": True})
+        keys = fake.verbs().index(["agent", "send-keys"])
+        reads = [v for v in fake.verbs()[keys:] if v == ["agent", "read"]]
+        self.assertEqual(len(reads), 3)
+
+    def test_input_box_that_never_appears_is_stalled(self):
+        fake = FakeHerdr(running=True, not_ready=True, screen=TRUST_SCREEN,
+                         after_keys=(TRUST_SCREEN,))
+        with self.assertRaises(agent_exec_orca.OrcaNeed) as ctx:
+            self.start(fake, {"auto_trust": True, "startup_timeout": 5})
+        self.assertEqual(ctx.exception.kind, "stalled")
 
     def test_other_not_ready_screen_is_an_error(self):
         fake = FakeHerdr(running=True, not_ready=True, screen="login required")
