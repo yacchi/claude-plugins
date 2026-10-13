@@ -1,0 +1,13 @@
+description: >
+  a shim in a known bindir that is not on PATH counts as installed but not
+  on PATH; the permission rule is picked up from the project settings too
+setup:
+  fakes: [pi]
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: "#!/bin/sh\n"
+    .claude/settings.local.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+steps:
+  - argv: [route, --class, standard]

@@ -1,0 +1,223 @@
+{
+  "scenario": "route/priority-custom",
+  "steps": [
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "bogus",
+          "ghost",
+          "pi",
+          "claude"
+        ],
+        "class": "light",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "cli",
+        "effort": "medium",
+        "executor": "pi",
+        "model": "openai-codex/gpt-5.6-luna",
+        "remaining": [
+          "claude"
+        ],
+        "skipped": [
+          {
+            "executor": "bogus",
+            "reason": "unknown-executor:bogus"
+          },
+          {
+            "executor": "ghost",
+            "reason": "unknown-executor:ghost"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "offexec",
+          "nopolicy",
+          "agentexec",
+          "weird",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "sonnet",
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "offexec",
+            "reason": "unknown-executor:offexec"
+          },
+          {
+            "executor": "nopolicy",
+            "reason": "unknown-executor:nopolicy"
+          },
+          {
+            "executor": "agentexec",
+            "reason": "unknown-executor:agentexec"
+          },
+          {
+            "executor": "weird",
+            "reason": "unknown-executor:weird"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard",
+        "--archetype",
+        "investigation"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "investigation",
+        "candidates": [
+          "offexec",
+          "nopolicy",
+          "agentexec",
+          "weird",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "sonnet",
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "offexec",
+            "reason": "unknown-executor:offexec"
+          },
+          {
+            "executor": "nopolicy",
+            "reason": "unknown-executor:nopolicy"
+          },
+          {
+            "executor": "agentexec",
+            "reason": "unknown-executor:agentexec"
+          },
+          {
+            "executor": "weird",
+            "reason": "unknown-executor:weird"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "deep",
+        "--exhausted",
+        "pi"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi"
+        ],
+        "class": "deep",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": null,
+        "effort": null,
+        "executor": null,
+        "model": null,
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "pi",
+            "reason": "exhausted"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "review"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "review",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "sonnet",
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "pi",
+            "reason": "no-class-policy"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: offexec, nopolicy, agentexec, weird, claude\nresolved: claude (dispatch=claude model=sonnet effort=None)\nskipped:\n  - offexec: unknown-executor:offexec\n  - nopolicy: unknown-executor:nopolicy\n  - agentexec: unknown-executor:agentexec\n  - weird: unknown-executor:weird\nsource: priority\n",
+      "stderr": ""
+    }
+  ]
+}

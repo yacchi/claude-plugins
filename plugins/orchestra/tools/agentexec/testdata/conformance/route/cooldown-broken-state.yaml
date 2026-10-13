@@ -1,0 +1,21 @@
+description: a corrupt or non-object state file never blocks routing
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra/executor-state.json: "{not json"
+    list/.claude/orchestra.yaml: |
+      cooldown: {path: "<WORK>/list-state.json"}
+    list-state.json: "[1, 2]"
+steps:
+  - argv: [route, --class, standard]
+  - argv: [route, --class, standard]
+    cwd: list

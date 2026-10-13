@@ -1,0 +1,160 @@
+{
+  "scenario": "route/exhausted",
+  "steps": [
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard",
+        "--exhausted",
+        "pi"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "sonnet",
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "pi",
+            "reason": "exhausted"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard",
+        "--exhausted",
+        "pi,claude"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": null,
+        "effort": null,
+        "executor": null,
+        "model": null,
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "pi",
+            "reason": "exhausted"
+          },
+          {
+            "executor": "claude",
+            "reason": "exhausted"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light",
+        "--exhausted",
+        "claude"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "claude",
+          "pi"
+        ],
+        "class": "light",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "cli",
+        "effort": "medium",
+        "executor": "pi",
+        "model": "openai-codex/gpt-5.6-luna",
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "claude",
+            "reason": "exhausted"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light",
+        "--exhausted",
+        "claude,,pi",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec route\n-----------------\nclass: light (archetype: default)\ncandidates: claude, pi\nresolved: UNROUTABLE\nskipped:\n  - claude: exhausted\n  - pi: exhausted\nsource: priority\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard",
+        "--exhausted",
+        ""
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "cli",
+        "effort": "medium",
+        "executor": "pi",
+        "model": "openai-codex/gpt-5.6-luna",
+        "remaining": [
+          "claude"
+        ],
+        "skipped": [],
+        "source": "priority"
+      },
+      "stderr": ""
+    }
+  ]
+}

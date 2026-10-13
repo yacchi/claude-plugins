@@ -1,0 +1,132 @@
+{
+  "scenario": "tools/status-managed",
+  "steps": [
+    {
+      "argv": [
+        "tools",
+        "status",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": [
+        {
+          "hint": null,
+          "name": "pi",
+          "path": "<HOME>/managed/pi",
+          "reason": null,
+          "source": "managed",
+          "version": "1.2.0",
+          "wanted": "1.2.0"
+        },
+        {
+          "hint": "run: agent-exec tools install herdr",
+          "name": "herdr",
+          "path": null,
+          "reason": "not-installed",
+          "source": null,
+          "version": null,
+          "wanted": "0.8.2"
+        },
+        {
+          "hint": "run: agent-exec tools install srt",
+          "name": "srt",
+          "path": null,
+          "reason": "not-installed",
+          "source": null,
+          "version": null,
+          "wanted": "0.0.79"
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tools",
+        "status"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "pi  managed  1.2.0  <HOME>/managed/pi\nherdr  -  -  -  not-installed  run: agent-exec tools install herdr\nsrt  -  -  -  not-installed  run: agent-exec tools install srt\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tools",
+        "status",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": [
+        {
+          "hint": "run: agent-exec tools install pi",
+          "name": "pi",
+          "path": "<HOME>/managed/pi",
+          "reason": "managed-stale",
+          "source": "managed",
+          "version": "1.2.0",
+          "wanted": "1.3.0"
+        },
+        {
+          "hint": "run: agent-exec tools install herdr",
+          "name": "herdr",
+          "path": null,
+          "reason": "not-installed",
+          "source": null,
+          "version": null,
+          "wanted": "0.8.2"
+        },
+        {
+          "hint": "run: agent-exec tools install srt",
+          "name": "srt",
+          "path": null,
+          "reason": "not-installed",
+          "source": null,
+          "version": null,
+          "wanted": "0.0.79"
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tools",
+        "status",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": [
+        {
+          "hint": "run: agent-exec tools install pi",
+          "name": "pi",
+          "path": null,
+          "reason": "managed-stale",
+          "source": null,
+          "version": null,
+          "wanted": "1.3.0"
+        },
+        {
+          "hint": "run: agent-exec tools install herdr",
+          "name": "herdr",
+          "path": null,
+          "reason": "not-installed",
+          "source": null,
+          "version": null,
+          "wanted": "0.8.2"
+        },
+        {
+          "hint": "run: agent-exec tools install srt",
+          "name": "srt",
+          "path": null,
+          "reason": "not-installed",
+          "source": null,
+          "version": null,
+          "wanted": "0.0.79"
+        }
+      ],
+      "stderr": ""
+    }
+  ]
+}

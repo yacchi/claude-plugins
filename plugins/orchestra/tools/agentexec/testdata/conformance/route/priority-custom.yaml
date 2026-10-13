@@ -1,0 +1,39 @@
+description: >
+  custom priority lists: unknown executors, unconfigured, disabled, missing
+  class policy, agent and unknown dispatch, an empty list falling back to
+  default
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    .claude/orchestra.yaml: |
+      priority:
+        light:
+          default: [bogus, ghost, pi, claude]
+        standard:
+          default: [offexec, nopolicy, agentexec, weird, claude]
+          investigation: []
+        deep:
+          default: [pi]
+        review:
+          default: [pi, claude]
+      external_executors:
+        offexec: {enabled: false, dispatch: cli}
+        nopolicy: {enabled: true, dispatch: cli}
+        agentexec: {enabled: true, dispatch: agent, agent_type: reviewer, class_policy: {standard: {model: m1, effort: high}}}
+        weird: {enabled: true, dispatch: telepathy, class_policy: {standard: {model: m2}}}
+steps:
+  - argv: [route, --class, light]
+  - argv: [route, --class, standard]
+  - argv: [route, --class, standard, --archetype, investigation]
+  - argv: [route, --class, deep, --exhausted, pi]
+  - argv: [route, --class, review]
+  - argv: [route, --class, standard, --text]

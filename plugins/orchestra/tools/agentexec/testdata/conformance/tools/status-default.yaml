@@ -1,0 +1,12 @@
+description: >
+  tools status lists the configured tools then known executors; text by
+  default, JSON with --json (--text wins); bare `tools` is status. Here the
+  fake pi is on PATH (system, with the install hint) and nothing is managed
+setup:
+  fakes: [pi]
+steps:
+  - argv: [tools]
+  - argv: [tools, status]
+  - argv: [tools, status, --json]
+  - argv: [tools, --json]
+  - argv: [tools, status, --json, --text]

@@ -1,0 +1,27 @@
+description: >
+  an active cooldown skips the executor, --no-cooldown ignores it, expired
+  and malformed entries are not active, cooldown.enabled false ignores the
+  file
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra/executor-state.json: |
+      {"pi": {"reason": "quota", "until": 4102444800.5}, "old": {"reason": "quota", "until": 1.5}, "bad": 3, "worse": {"reason": "quota"}}
+    off/.claude/orchestra.yaml: |
+      cooldown: {enabled: false}
+steps:
+  - argv: [route, --class, standard]
+  - argv: [route, --class, standard, --no-cooldown]
+  - argv: [route, --class, standard, --text]
+  - argv: [route, --class, light]
+  - argv: [route, --class, standard]
+    cwd: off

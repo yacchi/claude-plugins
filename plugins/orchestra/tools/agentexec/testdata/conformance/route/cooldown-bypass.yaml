@@ -1,0 +1,25 @@
+description: >
+  when every candidate is skipped and a cooldown was active, the walk is
+  repeated ignoring cooldowns (cooldown_bypassed); a custom state path and
+  the compact state format Python writes are honored
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    .claude/orchestra.yaml: |
+      cooldown: {path: "<WORK>/state/cd.json"}
+    state/cd.json: |
+      {"pi": {"reason": "rate-limit", "until": 4102444800.25}}
+steps:
+  - argv: [route, --class, independent-review]
+  - argv: [route, --class, independent-review, --text]
+  - argv: [route, --class, independent-review, --no-cooldown]
+  - argv: [route, --class, independent-review, --exhausted, pi]

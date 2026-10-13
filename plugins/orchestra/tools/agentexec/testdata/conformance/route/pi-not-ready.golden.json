@@ -1,0 +1,124 @@
+{
+  "scenario": "route/pi-not-ready",
+  "steps": [
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "sonnet",
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "pi",
+            "reason": "not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "deep"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "claude",
+          "pi"
+        ],
+        "class": "deep",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "opus",
+        "remaining": [
+          "pi"
+        ],
+        "skipped": [],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "independent-review"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi"
+        ],
+        "class": "independent-review",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": null,
+        "effort": null,
+        "executor": null,
+        "model": null,
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "pi",
+            "reason": "not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: claude (dispatch=claude model=sonnet effort=None)\nskipped:\n  - pi: not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable\nsource: priority\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "independent-review",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec route\n-----------------\nclass: independent-review (archetype: default)\ncandidates: pi\nresolved: UNROUTABLE\nskipped:\n  - pi: not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable\nsource: priority\n",
+      "stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "scenario": "tools/install-offline",
+  "steps": [
+    {
+      "argv": [
+        "tools",
+        "install",
+        "pi"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "pi  already  1.2.0  <HOME>/managed/pi\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "pi",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": [
+        {
+          "error": null,
+          "installer": "npm",
+          "name": "pi",
+          "path": "<HOME>/managed/pi",
+          "status": "already",
+          "version": "1.2.0"
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "pi",
+        "--installer",
+        "bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: tools: unknown installer: bogus\n"
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "pi",
+        "--force",
+        "--installer",
+        "npm",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-indent",
+      "stdout": [
+        {
+          "error": "[Errno 2] No such file or directory: 'npm'",
+          "installer": "npm",
+          "name": "pi",
+          "path": null,
+          "status": "failed",
+          "version": "1.2.0"
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "pi",
+        "--force",
+        "--installer",
+        "mise"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "pi  failed  1.2.0  -  [Errno 2] No such file or directory: 'mise'\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "pi",
+        "--force"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "pi  failed  1.2.0  -  [Errno 2] No such file or directory: 'npm'\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "nosuch"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: tools: unknown tool: nosuch\n"
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "--installer"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: tools: --installer needs a value\nusage: agent-exec tools [status] [--json|--text] | install [NAME ...] [--installer auto|mise|npm] [--force] [--json|--text] | path NAME\n"
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: tools: unknown option: --bogus\nusage: agent-exec tools [status] [--json|--text] | install [NAME ...] [--installer auto|mise|npm] [--force] [--json|--text] | path NAME\n"
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "pi",
+        "--installer",
+        "nonsense"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: tools: unknown installer: nonsense\n"
+    },
+    {
+      "argv": [
+        "tools",
+        "install"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tools",
+        "install",
+        "pi",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": [
+        {
+          "error": null,
+          "installer": null,
+          "name": "pi",
+          "path": null,
+          "status": "skipped",
+          "version": null
+        }
+      ],
+      "stderr": ""
+    }
+  ]
+}

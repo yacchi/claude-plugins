@@ -1,0 +1,24 @@
+description: >
+  every class resolves through its default priority list when pi is ready
+  (shim on PATH, permission rule, pi binary); the investigation archetype
+  has its own list for light and falls back to default elsewhere
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+steps:
+  - argv: [route, --class, light]
+  - argv: [route, --class, standard, --json]
+  - argv: [route, --class, deep]
+  - argv: [route, --class, review]
+  - argv: [route, --class, independent-review]
+  - argv: [route, --class, light, --archetype, investigation]
+  - argv: [route, --class, standard, --archetype, investigation]

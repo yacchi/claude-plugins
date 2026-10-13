@@ -1,0 +1,10 @@
+description: >
+  without the shim, the permission rule and the pi binary pi is not ready
+  and routing falls through to claude; independent-review has no claude
+  fallback and is unroutable
+steps:
+  - argv: [route, --class, standard]
+  - argv: [route, --class, deep]
+  - argv: [route, --class, independent-review]
+  - argv: [route, --class, standard, --text]
+  - argv: [route, --class, independent-review, --text]

@@ -1,0 +1,23 @@
+description: >
+  no pi anywhere: auto resolves to not-installed with the hint; source
+  system gives not-on-path, source managed gives managed-not-installed; an
+  extra tool without a spec has no hint
+setup:
+  files:
+    sys/.claude/orchestra.yaml: |
+      tools: {pi: {source: system}}
+    managed/.claude/orchestra.yaml: |
+      tools: {pi: {source: managed}}
+    extra/.claude/orchestra.yaml: |
+      tools:
+        mytool: {source: auto, bin: nosuchbin}
+        other: {version: 3, bin: git}
+steps:
+  - argv: [tools, status]
+  - argv: [tools, status, --json]
+  - argv: [tools, status, --json]
+    cwd: sys
+  - argv: [tools, status]
+    cwd: managed
+  - argv: [tools, status, --json]
+    cwd: extra

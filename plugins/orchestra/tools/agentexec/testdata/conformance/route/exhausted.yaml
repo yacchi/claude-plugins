@@ -1,0 +1,21 @@
+description: >
+  --exhausted removes candidates (comma separated, empty items ignored);
+  exhausting claude as well ends in unroutable instead of looping
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+steps:
+  - argv: [route, --class, standard, --exhausted, pi]
+  - argv: [route, --class, standard, --exhausted, "pi,claude"]
+  - argv: [route, --class, light, --exhausted, claude]
+  - argv: [route, --class, light, --exhausted, "claude,,pi", --text]
+  - argv: [route, --class, standard, --exhausted, ""]

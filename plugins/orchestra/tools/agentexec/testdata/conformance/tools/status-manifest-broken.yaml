@@ -1,0 +1,8 @@
+description: a corrupt manifest is empty; non-object records are ignored
+setup:
+  fakes: [pi]
+  files:
+    ~/.local/state/claude-orchestra/tools/manifest.json: "{oops"
+    other/.claude/orchestra.yaml: ""
+steps:
+  - argv: [tools, status, --json]

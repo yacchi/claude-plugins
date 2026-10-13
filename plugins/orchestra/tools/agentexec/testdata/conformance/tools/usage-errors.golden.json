@@ -1,0 +1,37 @@
+{
+  "scenario": "tools/usage-errors",
+  "steps": [
+    {
+      "argv": [
+        "tools",
+        "status",
+        "extra"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec tools [status] [--json|--text] | install [NAME ...] [--installer auto|mise|npm] [--force] [--json|--text] | path NAME\n"
+    },
+    {
+      "argv": [
+        "tools",
+        "bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: tools: unknown subcommand: bogus\nusage: agent-exec tools [status] [--json|--text] | install [NAME ...] [--installer auto|mise|npm] [--force] [--json|--text] | path NAME\n"
+    },
+    {
+      "argv": [
+        "tools",
+        "status",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: tools: unknown option: --bogus\nusage: agent-exec tools [status] [--json|--text] | install [NAME ...] [--installer auto|mise|npm] [--force] [--json|--text] | path NAME\n"
+    }
+  ]
+}

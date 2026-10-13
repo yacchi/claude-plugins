@@ -1,0 +1,65 @@
+{
+  "scenario": "route/cooldown-broken-state",
+  "steps": [
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "cli",
+        "effort": "medium",
+        "executor": "pi",
+        "model": "openai-codex/gpt-5.6-luna",
+        "remaining": [
+          "claude"
+        ],
+        "skipped": [],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "cli",
+        "effort": "medium",
+        "executor": "pi",
+        "model": "openai-codex/gpt-5.6-luna",
+        "remaining": [
+          "claude"
+        ],
+        "skipped": [],
+        "source": "priority"
+      },
+      "stderr": ""
+    }
+  ]
+}

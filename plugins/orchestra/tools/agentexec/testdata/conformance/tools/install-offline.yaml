@@ -1,0 +1,31 @@
+description: >
+  install: tools without spec are skipped, a valid managed record is
+  "already", an unknown installer is a failure row (exit 1), a missing
+  mise/npm is reported as Python's OSError text; no network is touched
+setup:
+  modes:
+    ~/managed/pi: "0755"
+  files:
+    ~/managed/pi: "#!/bin/sh\n"
+    ~/.local/state/claude-orchestra/tools/manifest.json: |
+      {"version": 1, "tools": {"pi": {"spec": "npm:@earendil-works/pi-coding-agent", "version": "1.2.0", "installer": "npm", "path": "<HOME>/managed/pi", "installed_at": "2026-01-01T00:00:00Z"}}}
+    nospec/.claude/orchestra.yaml: |
+      tools: {pi: {spec: null, version: null}, herdr: {spec: null, version: null}, srt: {spec: null, version: null}}
+steps:
+  - argv: [tools, install, pi]
+  - argv: [tools, install, pi, --json]
+  - argv: [tools, install, pi, --installer, bogus]
+  - argv: [tools, install, pi, --force, --installer, npm, --json]
+  - argv: [tools, install, pi, --force, --installer, mise]
+  - argv: [tools, install, pi, --force]
+  - argv: [tools, install, nosuch]
+  - argv: [tools, install, --installer]
+    stderr: ignore
+  - argv: [tools, install, --bogus]
+    stderr: prefix
+    stderr_prefix: "agent-exec: tools: unknown option: --bogus\n"
+  - argv: [tools, install, pi, --installer, nonsense]
+  - argv: [tools, install]
+    cwd: nospec
+  - argv: [tools, install, pi, --json]
+    cwd: nospec

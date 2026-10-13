@@ -1,0 +1,12 @@
+description: >
+  an invalid config layer is exit 1; --text puts the message on stderr
+  as the config loader wrote it (the parser's own message differs between implementations, so
+  only the prefix is pinned)
+setup:
+  files:
+    .claude/orchestra.yaml: |
+      tiers: [unclosed
+steps:
+  - argv: [route, --class, light, --text]
+    stderr: prefix
+    stderr_prefix: "agent-exec: invalid YAML in <WORK>/.claude/orchestra.yaml: "

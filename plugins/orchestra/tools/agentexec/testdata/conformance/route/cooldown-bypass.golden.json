@@ -1,0 +1,106 @@
+{
+  "scenario": "route/cooldown-bypass",
+  "steps": [
+    {
+      "argv": [
+        "route",
+        "--class",
+        "independent-review"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi"
+        ],
+        "class": "independent-review",
+        "cooldown_bypassed": true,
+        "cooldowns_applied": [],
+        "dispatch": "cli",
+        "effort": "medium",
+        "executor": "pi",
+        "model": "openai-codex/gpt-6.1-sol",
+        "remaining": [],
+        "skipped": [],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "independent-review",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec route\n-----------------\nclass: independent-review (archetype: default)\ncandidates: pi\nresolved: pi (dispatch=cli model=openai-codex/gpt-6.1-sol effort=medium)\ncooldown: BYPASSED (all candidates were cooled down)\nsource: priority\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "independent-review",
+        "--no-cooldown"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi"
+        ],
+        "class": "independent-review",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "cli",
+        "effort": "medium",
+        "executor": "pi",
+        "model": "openai-codex/gpt-6.1-sol",
+        "remaining": [],
+        "skipped": [],
+        "source": "priority"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "independent-review",
+        "--exhausted",
+        "pi"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi"
+        ],
+        "class": "independent-review",
+        "cooldown_bypassed": true,
+        "cooldowns_applied": [],
+        "dispatch": null,
+        "effort": null,
+        "executor": null,
+        "model": null,
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "pi",
+            "reason": "exhausted"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    }
+  ]
+}

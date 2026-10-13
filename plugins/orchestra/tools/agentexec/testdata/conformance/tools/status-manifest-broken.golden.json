@@ -1,0 +1,44 @@
+{
+  "scenario": "tools/status-manifest-broken",
+  "steps": [
+    {
+      "argv": [
+        "tools",
+        "status",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": [
+        {
+          "hint": "run: agent-exec tools install pi",
+          "name": "pi",
+          "path": "<ROOT>/bin/pi",
+          "reason": null,
+          "source": "system",
+          "version": null,
+          "wanted": "1.2.0"
+        },
+        {
+          "hint": "run: agent-exec tools install herdr",
+          "name": "herdr",
+          "path": null,
+          "reason": "not-installed",
+          "source": null,
+          "version": null,
+          "wanted": "0.8.2"
+        },
+        {
+          "hint": "run: agent-exec tools install srt",
+          "name": "srt",
+          "path": null,
+          "reason": "not-installed",
+          "source": null,
+          "version": null,
+          "wanted": "0.0.79"
+        }
+      ],
+      "stderr": ""
+    }
+  ]
+}

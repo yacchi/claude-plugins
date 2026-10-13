@@ -1,0 +1,107 @@
+{
+  "scenario": "route/usage-errors",
+  "steps": [
+    {
+      "argv": [
+        "route"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: route: missing required option: --class\n"
+    },
+    {
+      "argv": [
+        "route",
+        "--class"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: route: missing value for --class\n"
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light",
+        "--archetype"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: route: missing value for --archetype\n"
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light",
+        "--exhausted"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: route: missing value for --exhausted\n"
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: route: unknown option: --bogus\n"
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light",
+        "extra"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: route: unknown option: extra\n"
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light",
+        "--class",
+        "standard"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "sonnet",
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "pi",
+            "reason": "not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    }
+  ]
+}

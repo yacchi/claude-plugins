@@ -1,0 +1,38 @@
+{
+  "scenario": "route/pi-no-binary",
+  "steps": [
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "sonnet",
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "pi",
+            "reason": "not-ready:executor-binary-unavailable"
+          }
+        ],
+        "source": "priority"
+      },
+      "stderr": ""
+    }
+  ]
+}

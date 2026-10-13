@@ -1,0 +1,31 @@
+description: pi disabled, pi on agent dispatch, and pi on an unknown dispatch
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    off/.claude/orchestra.yaml: |
+      external_executors:
+        pi: {enabled: false}
+    agent/.claude/orchestra.yaml: |
+      external_executors:
+        pi: {dispatch: agent, agent_type: pi-worker}
+    weird/.claude/orchestra.yaml: |
+      external_executors:
+        pi: {dispatch: telepathy}
+steps:
+  - argv: [route, --class, standard]
+    cwd: off
+  - argv: [route, --class, standard]
+    cwd: agent
+  - argv: [route, --class, standard, --text]
+    cwd: agent
+  - argv: [route, --class, standard]
+    cwd: weird

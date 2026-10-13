@@ -1,0 +1,24 @@
+description: >
+  a manifest record matching the configured spec and version with an
+  executable path is a valid managed install; a different version is stale
+  (still used under auto, with the hint; unusable under managed); a record
+  whose binary is gone is stale and falls back to PATH
+setup:
+  fakes: [pi]
+  modes:
+    ~/managed/pi: "0755"
+  files:
+    ~/managed/pi: "#!/bin/sh\n"
+    ~/.local/state/claude-orchestra/tools/manifest.json: |
+      {"version": 1, "tools": {"pi": {"spec": "npm:@earendil-works/pi-coding-agent", "version": "1.2.0", "installer": "npm", "path": "<HOME>/managed/pi", "installed_at": "2026-01-01T00:00:00Z"}}}
+    stale/.claude/orchestra.yaml: |
+      tools: {pi: {version: "1.3.0"}}
+    strict/.claude/orchestra.yaml: |
+      tools: {pi: {version: "1.3.0", source: managed}}
+steps:
+  - argv: [tools, status, --json]
+  - argv: [tools, status]
+  - argv: [tools, status, --json]
+    cwd: stale
+  - argv: [tools, status, --json]
+    cwd: strict
