@@ -1,0 +1,30 @@
+description: >
+  checks run by phase (prepare lint type test heavy, ties in declaration
+  order); a failed ensure entry stops the run unless --all
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    .claude/orchestra.yaml: |
+      checks:
+        ensure:
+          - exists: "built/marker"
+            run: "echo FAIL building; exit 1"
+        items:
+          - name: t1
+            run: "echo t1"
+          - name: h1
+            phase: heavy
+            run: "echo h1"
+          - name: p1
+            phase: prepare
+            run: "echo p1"
+          - name: l1
+            phase: lint
+            run: "echo l1"
+  dirty:
+    a.txt: "a2\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, .]
+  - argv: [check, --path, ., --all, --text]

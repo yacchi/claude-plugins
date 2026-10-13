@@ -1,0 +1,80 @@
+{
+  "scenario": "check/phases",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        "."
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "FAIL building",
+            "exit": 1,
+            "name": "ensure:built/marker",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "p1",
+            "reason": "not run after earlier failure",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "l1",
+            "reason": "not run after earlier failure",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "t1",
+            "reason": "not run after earlier failure",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "h1",
+            "reason": "not run after earlier failure",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all",
+        "--text"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "ensure:built/marker fail 0.0s\np1 pass 0.0s\nl1 pass 0.0s\nt1 pass 0.0s\nh1 pass 0.0s\nFAIL building\n",
+      "stderr": ""
+    }
+  ]
+}

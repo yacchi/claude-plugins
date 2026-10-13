@@ -1,0 +1,74 @@
+{
+  "scenario": "check/junit",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all",
+        "--no-retry"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "pkg.A > breaks: expected 1 got 2\npkg.B > errors: boom happened\nFAIL pkg.A > breaks",
+            "exit": 1,
+            "name": "with-report",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "Error: kaboom",
+            "exit": 1,
+            "name": "bad-report",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "Error: still failed",
+            "exit": 1,
+            "name": "clean-report",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "error[E0001]: gone",
+            "exit": 2,
+            "name": "missing-report",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all",
+        "--no-retry",
+        "--text"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "with-report fail 0.0s\nbad-report fail 0.0s\nclean-report fail 0.0s\nmissing-report fail 0.0s\npkg.A > breaks: expected 1 got 2\npkg.B > errors: boom happened\nFAIL pkg.A > breaks\nError: kaboom\nError: still failed\nerror[E0001]: gone\n",
+      "stderr": ""
+    }
+  ]
+}

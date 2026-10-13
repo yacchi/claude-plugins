@@ -1,0 +1,248 @@
+description: >
+  plans that fail to load are exit 3 with the loader's message on stderr
+setup:
+  files:
+    "plan/specs/a.md": |
+      # a
+      do the thing
+    "plan/specs/b.md": |
+      # b
+      do the thing
+    "plan/specs/c.md": |
+      # c
+      do the thing
+    "plan/specs/d.md": |
+      # d
+      do the thing
+    "plan/specs/e.md": |
+      # e
+      do the thing
+    "plan/specs/f.md": |
+      # f
+      do the thing
+    "cycle.json": |
+      {
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light",
+            "depends_on": [
+              "c"
+            ]
+          },
+          {
+            "id": "b",
+            "spec": "plan/specs/b.md",
+            "cls": "light",
+            "depends_on": [
+              "a"
+            ]
+          },
+          {
+            "id": "c",
+            "spec": "plan/specs/c.md",
+            "cls": "light",
+            "depends_on": [
+              "b"
+            ]
+          },
+          {
+            "id": "d",
+            "spec": "plan/specs/d.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "self.json": |
+      {
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light",
+            "depends_on": [
+              "a"
+            ]
+          }
+        ]
+      }
+    "missing-dep.json": |
+      {
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light",
+            "depends_on": [
+              "ghost"
+            ]
+          }
+        ]
+      }
+    "dup.json": |
+      {
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light"
+          },
+          {
+            "id": "a",
+            "spec": "plan/specs/b.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "noid.json": |
+      {
+        "packages": [
+          {
+            "spec": "plan/specs/a.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "nospec.json": |
+      {
+        "packages": [
+          {
+            "id": "a",
+            "cls": "light"
+          }
+        ]
+      }
+    "nocls.json": |
+      {
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md"
+          }
+        ]
+      }
+    "badcls.json": |
+      {
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "huge"
+          }
+        ]
+      }
+    "specgone.json": |
+      {
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/nope.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "prea.json": |
+      {
+        "preamble": [
+          "nope.md"
+        ],
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "rules.json": |
+      {
+        "rules": [
+          {
+            "if": "x"
+          }
+        ],
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "rules-list.json": |
+      {
+        "rules": "x",
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "warm-abs.json": |
+      {
+        "warm_read": [
+          "/etc/passwd"
+        ],
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "warm-up.json": |
+      {
+        "warm_read": [
+          "a/../../x"
+        ],
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "warm-type.json": |
+      {
+        "warm_read": "README.md",
+        "packages": [
+          {
+            "id": "a",
+            "spec": "plan/specs/a.md",
+            "cls": "light"
+          }
+        ]
+      }
+    "nopackages.json": |
+      {"rules": []}
+    "list.json": |
+      [1, 2]
+    "broken.json": |
+      {not json
+steps:
+  - argv: ["wave", "lint", "--plan", "cycle.json"]
+  - argv: ["wave", "lint", "--plan", "self.json"]
+  - argv: ["wave", "lint", "--plan", "missing-dep.json"]
+  - argv: ["wave", "lint", "--plan", "dup.json"]
+  - argv: ["wave", "lint", "--plan", "noid.json"]
+  - argv: ["wave", "lint", "--plan", "nospec.json"]
+  - argv: ["wave", "lint", "--plan", "nocls.json"]
+  - argv: ["wave", "lint", "--plan", "badcls.json"]
+  - argv: ["wave", "lint", "--plan", "specgone.json"]
+  - argv: ["wave", "lint", "--plan", "prea.json"]
+  - argv: ["wave", "lint", "--plan", "rules.json"]
+  - argv: ["wave", "lint", "--plan", "rules-list.json"]
+  - argv: ["wave", "lint", "--plan", "warm-abs.json"]
+  - argv: ["wave", "lint", "--plan", "warm-up.json"]
+  - argv: ["wave", "lint", "--plan", "warm-type.json"]
+  - argv: ["wave", "lint", "--plan", "nopackages.json"]
+  - argv: ["wave", "lint", "--plan", "list.json"]
+  - argv: ["wave", "lint", "--plan", "broken.json"]
+    stderr: "prefix"
+    stderr_prefix: "agent-exec: wave lint: invalid JSON in plan broken.json: "
+  - argv: ["wave", "lint", "--plan", "missing.json"]

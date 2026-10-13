@@ -1,0 +1,51 @@
+{
+  "scenario": "check/no-checks",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        "."
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [],
+        "files": 1,
+        "status": "no-checks",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--files",
+        "a.txt, b.txt ,,"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [],
+        "files": 2,
+        "status": "no-checks",
+        "tree": "."
+      },
+      "stderr": ""
+    }
+  ]
+}

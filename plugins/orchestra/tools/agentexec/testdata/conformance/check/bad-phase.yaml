@@ -1,0 +1,18 @@
+description: an unknown phase fails as a "config" check before anything runs
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: ok
+            run: "echo ok"
+          - name: weird
+            phase: nightly
+            run: "echo weird"
+  dirty:
+    a.txt: "a2\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, .]

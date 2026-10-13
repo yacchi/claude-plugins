@@ -1,0 +1,79 @@
+{
+  "scenario": "check/baseline-preexisting",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--baseline"
+      ],
+      "exit": 4,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 1,
+            "name": "preexisting-one",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "preexisting",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "fine",
+            "reason": "not run after earlier failure",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "preexisting",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--baseline",
+        "--since",
+        "no-such-ref"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 1,
+            "name": "preexisting-one",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "fine",
+            "reason": "not run after earlier failure",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          }
+        ],
+        "files": 0,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    }
+  ]
+}

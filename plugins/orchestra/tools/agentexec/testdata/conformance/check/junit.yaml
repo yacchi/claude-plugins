@@ -1,0 +1,57 @@
+description: >
+  a junit report names the failing testcases ahead of the output excerpt; a
+  report that is missing, unparseable or without failures falls back to the
+  output excerpt
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    gen.sh: |
+      #!/bin/sh
+      mkdir -p reports
+      cat > reports/junit.xml <<'XML'
+      <?xml version="1.0"?>
+      <testsuites>
+        <testsuite name="s" tests="3">
+          <testcase classname="pkg.A" name="passes"/>
+          <testcase classname="pkg.A" name="breaks"><failure message="expected 1 got 2&#10;second line">trace</failure></testcase>
+          <testcase classname="pkg.B" name="errors"><error>boom happened
+      more</error></testcase>
+        </testsuite>
+      </testsuites>
+      XML
+      echo "FAIL pkg.A > breaks"
+      exit 1
+    garbage.sh: |
+      #!/bin/sh
+      mkdir -p reports
+      echo "<not-xml" > reports/bad.xml
+      echo "Error: kaboom"
+      exit 1
+    nofail.sh: |
+      #!/bin/sh
+      mkdir -p reports
+      echo '<testsuite><testcase classname="c" name="n"/></testsuite>' > reports/ok.xml
+      echo "Error: still failed"
+      exit 1
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: with-report
+            run: "sh gen.sh"
+            junit: reports/junit.xml
+          - name: bad-report
+            run: "sh garbage.sh"
+            junit: reports/bad.xml
+          - name: clean-report
+            run: "sh nofail.sh"
+            junit: reports/ok.xml
+          - name: missing-report
+            run: "echo 'error[E0001]: gone'; exit 2"
+            junit: reports/missing.xml
+  dirty:
+    a.txt: "a2\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, ., --all, --no-retry]
+  - argv: [check, --path, ., --all, --no-retry, --text]

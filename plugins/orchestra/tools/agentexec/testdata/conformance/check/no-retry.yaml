@@ -1,0 +1,22 @@
+description: --no-retry leaves the first failure in place; the second run (retry on) then passes since the marker exists
+setup:
+  git: true
+  files:
+    flaky.sh: |
+      #!/bin/sh
+      if [ -e "$TMPDIR/seen-$1" ]; then exit 0; fi
+      : > "$TMPDIR/seen-$1"
+      echo "FAIL $1"
+      exit 1
+    a.test.js: "a\n"
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: single
+            run: "sh flaky.sh {files}"
+  dirty:
+    a.test.js: "a2\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, ., --no-retry]
+  - argv: [check, --path, .]

@@ -1,0 +1,67 @@
+{
+  "scenario": "check/baseline",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all",
+        "--baseline"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 1,
+            "name": "preexisting-one",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "preexisting",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": 1,
+            "name": "mine",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "fine",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          }
+        ],
+        "files": 2,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all",
+        "--baseline",
+        "--since",
+        "HEAD",
+        "--text"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "preexisting-one preexisting 0.0s\nmine fail 0.0s\nfine pass 0.0s\n",
+      "stderr": ""
+    }
+  ]
+}

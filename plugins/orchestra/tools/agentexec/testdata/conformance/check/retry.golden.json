@@ -1,0 +1,101 @@
+{
+  "scenario": "check/retry",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 1,
+            "flaky": [
+              "a.test.js"
+            ],
+            "name": "single",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": 1,
+            "flaky": [
+              "b.test.js"
+            ],
+            "name": "custom",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "plain",
+            "reason": "no matching files",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          }
+        ],
+        "files": 2,
+        "status": "pass",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "single",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "custom",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "plain",
+            "reason": "no matching files",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          }
+        ],
+        "files": 2,
+        "status": "pass",
+        "tree": "."
+      },
+      "stderr": ""
+    }
+  ]
+}

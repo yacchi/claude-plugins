@@ -1,0 +1,31 @@
+{
+  "scenario": "check/bad-phase",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        "."
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "config",
+            "reason": "invalid phase: nightly",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    }
+  ]
+}

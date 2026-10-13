@@ -1,0 +1,57 @@
+{
+  "scenario": "check/ensure-ok",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        "."
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "needs-built",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "pass",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        "."
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "needs-built",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          }
+        ],
+        "files": 2,
+        "status": "pass",
+        "tree": "."
+      },
+      "stderr": ""
+    }
+  ]
+}

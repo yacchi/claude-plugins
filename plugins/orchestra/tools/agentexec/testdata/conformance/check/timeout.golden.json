@@ -1,0 +1,41 @@
+{
+  "scenario": "check/timeout",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "slow",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": true
+          },
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "after",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    }
+  ]
+}

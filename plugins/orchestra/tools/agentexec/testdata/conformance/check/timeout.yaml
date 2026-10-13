@@ -1,0 +1,18 @@
+description: a check over its timeout is killed and reported timed_out with no exit code
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    .claude/orchestra.yaml: |
+      checks:
+        items:
+          - name: slow
+            timeout: 1
+            run: "sleep 30"
+          - name: after
+            run: "echo after"
+  dirty:
+    a.txt: "a2\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, ., --all]

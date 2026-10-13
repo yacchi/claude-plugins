@@ -1,0 +1,117 @@
+description: >
+  wave stop writes the STOP file beside the state file (its content is the reason) and prints {"stop_requested": true}; the file need not exist yet and a second stop overwrites
+setup:
+  files:
+    "wave/state.json": |
+      {
+        "integration": {
+          "base": "abc123",
+          "path": "/tmp/x/int",
+          "task": "wave-int"
+        },
+        "needs": [
+          {
+            "at": 99999999996.5,
+            "detail": "needs wider scope\nmore detail",
+            "id": "d",
+            "kind": "scope"
+          },
+          {
+            "at": 99999999997.5,
+            "detail": "wave level need",
+            "id": null,
+            "kind": "environment"
+          }
+        ],
+        "packages": {
+          "a": {
+            "attempts": 1,
+            "commit": null,
+            "detail": "working on it",
+            "executor": "pi",
+            "files_changed": null,
+            "session": true,
+            "since": 99999999993.5,
+            "status": "implementing",
+            "tree": "/nonexistent/tree-a"
+          },
+          "b": {
+            "attempts": 2,
+            "commit": "deadbeef",
+            "detail": "done",
+            "executor": "claude",
+            "files_changed": 3,
+            "session": false,
+            "since": 99999999994.5,
+            "status": "integrated",
+            "tree": null
+          },
+          "c": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "gate failed\nsecond line",
+            "executor": null,
+            "files_changed": 0,
+            "session": false,
+            "since": 99999999995.5,
+            "status": "failed",
+            "tree": null
+          },
+          "d": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "needs wider scope\nmore detail",
+            "executor": null,
+            "files_changed": null,
+            "session": false,
+            "since": 99999999996.5,
+            "status": "needs",
+            "tree": null
+          },
+          "e": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "ünïcode detail",
+            "executor": "pi",
+            "files_changed": null,
+            "network_denials": [
+              {
+                "host": "api.anthropic.com",
+                "port": 443
+              }
+            ],
+            "session": false,
+            "since": 99999999999.5,
+            "status": "verifying",
+            "tree": null
+          },
+          "f": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "",
+            "executor": null,
+            "files_changed": null,
+            "session": false,
+            "since": 99999999990.5,
+            "status": "pending",
+            "tree": null
+          }
+        },
+        "plan": "plan.json",
+        "stopped": {
+          "at": 100000000000.5,
+          "reason": "by test"
+        },
+        "updated": 100000000001.5,
+        "version": 1,
+        "wave": 2
+      }
+normalize_keys: [updated_ago]
+steps:
+  - argv: ["wave", "stop", "--state", "wave/state.json", "--reason", "halt now"]
+    snapshot: ["wave/STOP"]
+  - argv: ["wave", "stop", "--state", "wave/state.json"]
+    snapshot: ["wave/STOP"]
+  - argv: ["wave", "stop", "--state", "fresh/dir/state.json", "--reason", "n\u00e4chste\nzeile"]
+    snapshot: ["fresh/dir/STOP", "wave/STOP"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--line"]

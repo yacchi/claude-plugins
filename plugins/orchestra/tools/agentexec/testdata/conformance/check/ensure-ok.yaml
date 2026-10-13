@@ -1,0 +1,21 @@
+description: an ensure entry whose target is missing runs first and, when it succeeds, is not reported; one whose target exists is not run
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    .claude/orchestra.yaml: |
+      checks:
+        ensure:
+          - exists: "built/marker"
+            run: "mkdir -p built && : > built/marker"
+          - exists: "a.txt"
+            run: "exit 1"
+        items:
+          - name: needs-built
+            run: "test -e built/marker"
+  dirty:
+    a.txt: "a2\n"
+normalize_keys: [seconds]
+steps:
+  - argv: [check, --path, .]
+  - argv: [check, --path, .]

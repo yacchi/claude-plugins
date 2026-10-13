@@ -1,0 +1,159 @@
+{
+  "scenario": "check/task",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--task",
+        "t1",
+        "--no-retry"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "show",
+            "reason": "no matching files",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          }
+        ],
+        "files": 0,
+        "status": "no-checks",
+        "tree": "<WORK>-orchestra/00000000-t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--task",
+        "t1",
+        "--files",
+        "a.txt",
+        "--no-retry"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "FAIL a.txt",
+            "exit": 1,
+            "name": "show",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "fail",
+        "tree": "<WORK>-orchestra/00000000-t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--task",
+        "t1",
+        "--files",
+        "a.txt",
+        "--no-retry",
+        "--baseline"
+      ],
+      "exit": 4,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "FAIL a.txt",
+            "exit": 1,
+            "name": "show",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "preexisting",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "preexisting",
+        "tree": "<WORK>-orchestra/00000000-t1"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--task",
+        "nope"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [],
+        "files": 0,
+        "status": "error",
+        "tree": null
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--task",
+        "nope",
+        "--text"
+      ],
+      "exit": 3,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--task",
+        "t1",
+        "--repo",
+        "../tmp"
+      ],
+      "exit": 3,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [],
+        "files": 0,
+        "status": "error",
+        "tree": null
+      },
+      "stderr": ""
+    }
+  ]
+}

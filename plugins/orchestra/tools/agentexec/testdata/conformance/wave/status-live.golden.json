@@ -1,0 +1,170 @@
+{
+  "scenario": "wave/status-live",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "wave/state.json",
+        "--live"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "wave 2  pending=1 implementing=1 fixing=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  2*  1\n  e  fixing  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "wave/state.json",
+        "--json",
+        "--live"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "base": "abc123",
+          "path": "/tmp/x/int",
+          "task": "wave-int"
+        },
+        "live_changes": {
+          "a": 2,
+          "e": null
+        },
+        "needs": [
+          {
+            "at": 99999999996.5,
+            "detail": "needs wider scope\nmore detail",
+            "id": "d",
+            "kind": "scope"
+          },
+          {
+            "at": 99999999997.5,
+            "detail": "wave level need",
+            "id": null,
+            "kind": "environment"
+          }
+        ],
+        "packages": {
+          "a": {
+            "attempts": 1,
+            "commit": null,
+            "detail": "working on it",
+            "executor": "pi",
+            "files_changed": null,
+            "session": true,
+            "since": 99999999993.5,
+            "status": "implementing",
+            "tree": "<WORK>/tree"
+          },
+          "b": {
+            "attempts": 2,
+            "commit": "deadbeef",
+            "detail": "done",
+            "executor": "claude",
+            "files_changed": 3,
+            "session": false,
+            "since": 99999999994.5,
+            "status": "integrated",
+            "tree": null
+          },
+          "c": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "gate failed\nsecond line",
+            "executor": null,
+            "files_changed": 0,
+            "session": false,
+            "since": 99999999995.5,
+            "status": "failed",
+            "tree": null
+          },
+          "d": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "needs wider scope\nmore detail",
+            "executor": null,
+            "files_changed": null,
+            "session": false,
+            "since": 99999999996.5,
+            "status": "needs",
+            "tree": null
+          },
+          "e": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "ünïcode detail",
+            "executor": "pi",
+            "files_changed": null,
+            "network_denials": [
+              {
+                "host": "api.anthropic.com",
+                "port": "<PORT>"
+              }
+            ],
+            "session": false,
+            "since": 99999999999.5,
+            "status": "fixing",
+            "tree": "<ROOT>/plain"
+          },
+          "f": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "",
+            "executor": null,
+            "files_changed": null,
+            "session": false,
+            "since": 99999999990.5,
+            "status": "pending",
+            "tree": null
+          }
+        },
+        "plan": "plan.json",
+        "stopped": {
+          "at": 100000000000.5,
+          "reason": "by test"
+        },
+        "updated": 100000000001.5,
+        "version": 1,
+        "wave": 2
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "wave/state.json",
+        "--line",
+        "--live"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "counts": {
+          "failed": 1,
+          "fixing": 1,
+          "implementing": 1,
+          "integrated": 1,
+          "needs": 1,
+          "pending": 1
+        },
+        "in_flight": 2,
+        "live_changes": {
+          "a": 2,
+          "e": null
+        },
+        "needs": 2,
+        "stopped": true,
+        "updated_ago": "<UPDATED_AGO>",
+        "wave": 2
+      },
+      "stderr": ""
+    }
+  ]
+}

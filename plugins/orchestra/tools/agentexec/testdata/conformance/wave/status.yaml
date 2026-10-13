@@ -1,0 +1,137 @@
+description: >
+  wave status renders a Python-written state.json and events.jsonl as text (default), json, or a one-line summary; the last format flag wins; --events adds recent events (a truncated last line is ignored); --live adds live change counts for in-flight trees that exist
+setup:
+  files:
+    "wave/state.json": |
+      {
+        "integration": {
+          "base": "abc123",
+          "path": "/tmp/x/int",
+          "task": "wave-int"
+        },
+        "needs": [
+          {
+            "at": 99999999996.5,
+            "detail": "needs wider scope\nmore detail",
+            "id": "d",
+            "kind": "scope"
+          },
+          {
+            "at": 99999999997.5,
+            "detail": "wave level need",
+            "id": null,
+            "kind": "environment"
+          }
+        ],
+        "packages": {
+          "a": {
+            "attempts": 1,
+            "commit": null,
+            "detail": "working on it",
+            "executor": "pi",
+            "files_changed": null,
+            "session": true,
+            "since": 99999999993.5,
+            "status": "implementing",
+            "tree": "/nonexistent/tree-a"
+          },
+          "b": {
+            "attempts": 2,
+            "commit": "deadbeef",
+            "detail": "done",
+            "executor": "claude",
+            "files_changed": 3,
+            "session": false,
+            "since": 99999999994.5,
+            "status": "integrated",
+            "tree": null
+          },
+          "c": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "gate failed\nsecond line",
+            "executor": null,
+            "files_changed": 0,
+            "session": false,
+            "since": 99999999995.5,
+            "status": "failed",
+            "tree": null
+          },
+          "d": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "needs wider scope\nmore detail",
+            "executor": null,
+            "files_changed": null,
+            "session": false,
+            "since": 99999999996.5,
+            "status": "needs",
+            "tree": null
+          },
+          "e": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "ünïcode detail",
+            "executor": "pi",
+            "files_changed": null,
+            "network_denials": [
+              {
+                "host": "api.anthropic.com",
+                "port": 443
+              }
+            ],
+            "session": false,
+            "since": 99999999999.5,
+            "status": "verifying",
+            "tree": null
+          },
+          "f": {
+            "attempts": 0,
+            "commit": null,
+            "detail": "",
+            "executor": null,
+            "files_changed": null,
+            "session": false,
+            "since": 99999999990.5,
+            "status": "pending",
+            "tree": null
+          }
+        },
+        "plan": "plan.json",
+        "stopped": {
+          "at": 100000000000.5,
+          "reason": "by test"
+        },
+        "updated": 100000000001.5,
+        "version": 1,
+        "wave": 2
+      }
+    "wave/state.events.jsonl": |
+      {"at": 99999999993.5, "pkg": "a", "from": "pending", "to": "implementing", "event": "status", "detail": "working on it"}
+      {"at": 99999999994.5, "pkg": "b", "from": "pending", "to": "integrated", "event": "status", "detail": "done"}
+      {"at": 99999999995.5, "pkg": "c", "from": "pending", "to": "failed", "event": "status", "detail": "gate failed\nsecond line"}
+      {"at": 99999999996.5, "pkg": "d", "from": "pending", "to": "needs", "event": "status", "detail": "needs wider scope\nmore detail"}
+      {"at": 99999999997.5, "pkg": null, "from": null, "to": null, "event": "need", "detail": "wave level need"}
+      {"at": 99999999999.5, "pkg": "e", "from": "pending", "to": "verifying", "event": "status", "detail": "ünïcode detail"}
+      {"at": 100000000000.5, "pkg": null, "from": null, "to": null, "event": "stop", "detail": "by test"}
+      {"at": 100000000001.5, "pkg": "f", "from": null, "to": null, "event": "custom", "detail": "free form\nsecond"}
+      {"at": 100000000002.5, "pkg": "a", "ev
+normalize_keys: [updated_ago]
+steps:
+  - argv: ["wave", "status", "--state", "wave/state.json"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--text"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--json"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--line"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--json", "--line"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--line", "--text"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--live"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--json", "--live"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--line", "--live"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--events", "3"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--events", "100"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--events", "0"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--events", "-2"]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--events", " 2 "]
+  - argv: ["wave", "status", "--state", "wave/state.json", "--live", "--events", "2"]
+  - argv: ["wave", "status", "--state", "wave/missing.json"]
+  - argv: ["wave", "status", "--state", "wave"]

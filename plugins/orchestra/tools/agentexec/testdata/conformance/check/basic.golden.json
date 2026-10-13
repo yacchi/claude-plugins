@@ -1,0 +1,247 @@
+{
+  "scenario": "check/basic",
+  "steps": [
+    {
+      "argv": [
+        "check",
+        "--path",
+        "."
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "lint",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "types",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "AssertionError: nope\nFAIL a.test.ts > case one",
+            "exit": 1,
+            "name": "unit",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "heavy",
+            "reason": "not run after earlier failure",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          }
+        ],
+        "files": 2,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "lint",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "types",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "AssertionError: nope\nFAIL a.test.ts > case one",
+            "exit": 1,
+            "name": "unit",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "heavy",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          }
+        ],
+        "files": 2,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--text"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "lint pass 0.0s\ntypes pass 0.0s\nunit fail 0.0s\nheavy skipped 0.0s\nAssertionError: nope\nFAIL a.test.ts > case one\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--all",
+        "--text"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "lint pass 0.0s\ntypes pass 0.0s\nunit fail 0.0s\nheavy pass 0.0s\nAssertionError: nope\nFAIL a.test.ts > case one\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--since",
+        "HEAD"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "lint",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "types",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "AssertionError: nope\nFAIL a.test.ts > case one",
+            "exit": 1,
+            "name": "unit",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "heavy",
+            "reason": "not run after earlier failure",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          }
+        ],
+        "files": 2,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "check",
+        "--path",
+        ".",
+        "--since",
+        "no-such-ref"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "checks": [
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "lint",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": 0,
+            "name": "types",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "pass",
+            "timed_out": false
+          },
+          {
+            "excerpt": "AssertionError: nope\nFAIL a.test.ts > case one",
+            "exit": 1,
+            "name": "unit",
+            "reason": "",
+            "seconds": "<SECONDS>",
+            "status": "fail",
+            "timed_out": false
+          },
+          {
+            "excerpt": "",
+            "exit": null,
+            "name": "heavy",
+            "reason": "not run after earlier failure",
+            "seconds": "<SECONDS>",
+            "status": "skipped",
+            "timed_out": false
+          }
+        ],
+        "files": 1,
+        "status": "fail",
+        "tree": "."
+      },
+      "stderr": ""
+    }
+  ]
+}

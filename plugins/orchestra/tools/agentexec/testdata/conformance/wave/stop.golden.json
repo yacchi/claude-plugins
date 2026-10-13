@@ -1,0 +1,100 @@
+{
+  "scenario": "wave/stop",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "stop",
+        "--state",
+        "wave/state.json",
+        "--reason",
+        "halt now"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "stop_requested": true
+      },
+      "stderr": "",
+      "files": {
+        "wave/STOP": {
+          "content": "halt now",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "stop",
+        "--state",
+        "wave/state.json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "stop_requested": true
+      },
+      "stderr": "",
+      "files": {
+        "wave/STOP": {
+          "content": null,
+          "shape": "empty"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "stop",
+        "--state",
+        "fresh/dir/state.json",
+        "--reason",
+        "nächste\nzeile"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "stop_requested": true
+      },
+      "stderr": "",
+      "files": {
+        "fresh/dir/STOP": {
+          "content": "nächste\nzeile",
+          "shape": "text"
+        },
+        "wave/STOP": {
+          "content": null,
+          "shape": "empty"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "wave/state.json",
+        "--line"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "counts": {
+          "failed": 1,
+          "implementing": 1,
+          "integrated": 1,
+          "needs": 1,
+          "pending": 1,
+          "verifying": 1
+        },
+        "in_flight": 2,
+        "needs": 2,
+        "stopped": true,
+        "updated_ago": "<UPDATED_AGO>",
+        "wave": 2
+      },
+      "stderr": ""
+    }
+  ]
+}
