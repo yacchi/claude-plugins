@@ -3186,6 +3186,29 @@ def _accumulate_int(target, key, value):
 # push) of a CLI run under srt.
 _SRT_TICK = 1.0
 
+# A failed srt-wrapped CLI run carries the end of its own stderr
+# (`stderr_tail`), bounded in lines and characters.
+_STDERR_TAIL_LINES = 20
+_STDERR_TAIL_CHARS = 2000
+
+
+def _stderr_tail(stderr_text):
+    """The last `_STDERR_TAIL_LINES` non-blank lines of a child's stderr,
+    srt's `[SandboxDebug]` lines left out, cut to its last
+    `_STDERR_TAIL_CHARS` characters; "" when nothing is left."""
+    lines = [line.rstrip() for line in (stderr_text or "").splitlines()
+             if line.strip() and not line.startswith("[SandboxDebug]")]
+    return "\n".join(lines[-_STDERR_TAIL_LINES:])[-_STDERR_TAIL_CHARS:]
+
+
+def _note_srt_failure(result, sandbox, exit_code, stderr_text):
+    """`stderr_tail` on the result of an srt-wrapped run that exited non-zero."""
+    if (sandbox or {}).get("backend") != "srt" or not exit_code:
+        return
+    tail = _stderr_tail(stderr_text)
+    if tail:
+        result["stderr_tail"] = tail
+
 
 def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None,
                    watchdog=None, executor=None, cls="standard", watchdog_result=None,
@@ -3532,6 +3555,7 @@ def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume
     exit_code, stdout_text, stderr_text = captured
     runaway = watchdog_result[0] if watchdog_result else None
     result = parse_codex_jsonl(stdout_text, stderr_text, exit_code, resumed=resume is not None)
+    _note_srt_failure(result, sandbox, exit_code, stderr_text)
     if network_result and network_result[0]:
         result["network_denials"] = network_result[0]
     if runaway is not None:
@@ -3762,6 +3786,7 @@ def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, o
     result = parse_pi_jsonl(
         stdout_text, stderr_text, exit_code, resumed=resume is not None
     )
+    _note_srt_failure(result, sandbox, exit_code, stderr_text)
     if network_result and network_result[0]:
         result["network_denials"] = network_result[0]
     if runaway is not None:

@@ -137,6 +137,71 @@ class SpawnTests(_StateBase):
                          [("t1", "example.com")] * 2 + [("t1", "mcp-proxy.anthropic.com")])
 
 
+    def test_failed_codex_run_carries_its_stderr_tail_without_srt_lines(self):
+        spec = sb.prepare("codex", self.tree, {"mode": "auto"}, probe_results=SEATBELT,
+                          network=self.network(srt=self.fake_srt()))
+        codex = os.path.join(self.tmp, "codex")
+        with open(codex, "w") as fh:
+            fh.write(textwrap.dedent("""\
+                #!/bin/sh
+                i=1
+                while [ $i -le 30 ]; do echo "codex err $i" >&2; i=$((i+1)); done
+                echo '{"type":"turn.failed","error":{"message":"boom"}}'
+                exit 1
+                """))
+        os.chmod(codex, 0o755)
+        with mock.patch.object(agent_exec, "_resolve_tool", return_value={"path": codex}):
+            code, result = agent_exec._run_codex_capture(
+                "codex", "m", None, self.tree, "hi", None, sandbox=spec)
+        self.assertEqual((code, result["exit_code"]), (0, 1))
+        tail = result["stderr_tail"].splitlines()
+        self.assertEqual(tail, ["codex err %d" % i for i in range(11, 31)])
+        self.assertNotIn("SandboxDebug", result["stderr_tail"])
+        self.assertNotIn("allowedHosts", result["stderr_tail"])
+
+    def test_stderr_tail_is_bounded_and_absent_on_success_or_without_srt(self):
+        long_line = "x" * 5000
+        tail = agent_exec._stderr_tail("[SandboxDebug] a\n\n" + long_line + "\n")
+        self.assertEqual(len(tail), agent_exec._STDERR_TAIL_CHARS)
+        for sandbox, code in (({"backend": "srt"}, 0), ({"backend": "seatbelt"}, 1),
+                              (None, 1)):
+            result = {}
+            agent_exec._note_srt_failure(result, sandbox, code, "err\n")
+            self.assertNotIn("stderr_tail", result)
+        result = {}
+        agent_exec._note_srt_failure(result, {"backend": "srt"}, 1, "[SandboxDebug] x\n")
+        self.assertNotIn("stderr_tail", result)
+
+
+class SrtChildEnvTests(unittest.TestCase):
+    """codex under srt on macOS cannot reach trustd: it is handed a PEM root
+    bundle unless the user already chose a CA file."""
+
+    def setUp(self):
+        fd, self.bundle = tempfile.mkstemp(suffix=".pem")
+        os.close(fd)
+        self.addCleanup(os.unlink, self.bundle)
+        self.srt = {"backend": "srt", "policy": {}}
+
+    def env(self, spec, base, platform="darwin", bundle=None):
+        return sb.child_env(spec, dict(base, TMPDIR="/tmp"), platform=platform,
+                            ca_bundle=bundle or self.bundle)
+
+    def test_srt_on_macos_points_codex_at_the_bundle(self):
+        self.assertEqual(self.env(self.srt, {})["CODEX_CA_CERTIFICATE"], self.bundle)
+
+    def test_the_bundle_is_not_set_elsewhere_or_over_a_user_choice(self):
+        for label, spec, base, platform, bundle in (
+                ("linux", self.srt, {}, "linux", None),
+                ("not srt", {"backend": "seatbelt", "policy": {}}, {}, "darwin", None),
+                ("missing bundle", self.srt, {}, "darwin", self.bundle + ".none"),
+                ("user SSL_CERT_FILE", self.srt, {"SSL_CERT_FILE": "/u.pem"}, "darwin", None)):
+            with self.subTest(label):
+                self.assertNotIn("CODEX_CA_CERTIFICATE",
+                                 self.env(spec, base, platform, bundle))
+        env = self.env(self.srt, {"CODEX_CA_CERTIFICATE": "/mine.pem"})
+        self.assertEqual(env["CODEX_CA_CERTIFICATE"], "/mine.pem")
+
 class SpawnPathTests(_StateBase):
     """Every spawn path wraps with srt when it applies."""
 

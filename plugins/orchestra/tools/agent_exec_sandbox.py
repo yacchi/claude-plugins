@@ -70,6 +70,14 @@ DEFAULT_DENY_READ = (
 # DEFAULT_DENY_READ entries the herdr host must be able to read (see host_policy).
 HOST_READABLE = ("~/Library/Keychains",)
 
+# srt's macOS profile denies mach-lookup of com.apple.trustd.agent (the
+# opt-in `enableWeakerNetworkIsolation` would open it, and with it an
+# exfiltration channel). codex verifies TLS through Security.framework,
+# which needs trustd: every request fails with "error sending request" and
+# the turn with "workspace routing discovery failed". Given a PEM bundle in
+# CODEX_CA_CERTIFICATE, codex verifies against that file instead.
+SRT_CA_BUNDLE = "/etc/ssl/cert.pem"
+
 # Package/build caches every toolchain a worker runs writes into.
 # NOT `~/.local/share/uv/tools`: that holds uv's INSTALLED tool environments,
 # code that runs later outside any sandbox. A sandboxed child gets
@@ -1372,13 +1380,17 @@ def bwrap_limits(policy, exists=os.path.exists):
     return limits
 
 
-def child_env(spec, env):
+def child_env(spec, env, platform=None, ca_bundle=SRT_CA_BUNDLE):
     """Env additions for a sandboxed child: `uvx` must build its throwaway
     tool envs in temp, never in `~/.local/share/uv/tools` (installed tools,
     run later unsandboxed). An explicit UV_TOOL_DIR is left alone. Under srt
     a Node child (pi) is told to use srt's HTTP(S)_PROXY: only the proxy is
-    reachable, and Node ignores the proxy variables unless asked."""
+    reachable, and Node ignores the proxy variables unless asked. Under srt
+    on macOS codex is pointed at the PEM root bundle `ca_bundle` (see
+    SRT_CA_BUNDLE); a CA file the user already chose (CODEX_CA_CERTIFICATE
+    or SSL_CERT_FILE) wins."""
     env = dict(env)
+    platform = platform or sys.platform
     backend = (spec or {}).get("backend")
     if backend in ("seatbelt", "bwrap", "landlock", "srt") \
             and spec.get("policy") is not None and "UV_TOOL_DIR" not in env:
@@ -1386,6 +1398,9 @@ def child_env(spec, env):
         env["UV_TOOL_DIR"] = os.path.join(os.path.realpath(tmp), UV_TOOL_DIR_NAME)
     if backend == "srt":
         env.setdefault("NODE_USE_ENV_PROXY", "1")
+        if platform == "darwin" and ca_bundle and os.path.isfile(ca_bundle) \
+                and not env.get("CODEX_CA_CERTIFICATE") and not env.get("SSL_CERT_FILE"):
+            env["CODEX_CA_CERTIFICATE"] = ca_bundle
     return env
 
 
