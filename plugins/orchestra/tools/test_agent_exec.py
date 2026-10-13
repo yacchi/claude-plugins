@@ -970,6 +970,14 @@ class ResolveRoutePathStubTests(unittest.TestCase):
     doctor_report), that a machine without the pi CLI resolves `standard`
     to claude/sonnet even though pi ships enabled: true by default."""
 
+    def setUp(self):
+        # Never read a managed install from the real orchestra state dir.
+        xdg = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, xdg, True)
+        patcher = mock.patch.dict(os.environ, {"XDG_STATE_HOME": xdg})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_machine_without_pi_resolves_standard_to_claude_sonnet(self):
         fake_home = tempfile.mkdtemp()
         tmp_project = tempfile.mkdtemp()

@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent_exec  # noqa: E402
 import agent_exec_checks  # noqa: E402
+import agent_exec_herdr  # noqa: E402
 import agent_exec_orca  # noqa: E402
 import agent_exec_ui  # noqa: E402
 import agent_exec_wave  # noqa: E402
@@ -207,11 +208,18 @@ def _first_line(text):
 
 
 class _Runner(object):
-    def __init__(self, opts, executor, clock, orca=None, sleep=time.sleep):
+    def __init__(self, opts, executor, clock, orca=None, sleep=time.sleep, host=None,
+                 herdr=None):
         self.opts = opts
         self.executor = executor
-        # OrcaExecutor, or None: Claude-tier packages stay `delegate` needs.
-        self.orca = orca
+        # The interactive host (OrcaExecutor, HerdrExecutor or any object with
+        # their interface), or None: Claude-tier packages stay `delegate`
+        # needs. The attribute keeps its historical name. An injected `host`
+        # wins over `orca`; `herdr` is a candidate for interactive_host
+        # selection when no host was injected.
+        self.orca = host if host is not None else orca
+        self.herdr = herdr if host is None else None
+        self.host_name = getattr(self.orca, "host_name", "orca")
         self.notes = {}
         self.clock = clock
         self.sleep = sleep
@@ -370,9 +378,55 @@ class _Runner(object):
                 else:
                     self.store.set_status(pid, "pending", detail="resumed without changes")
 
+    def _interactive_mode(self):
+        mode = self.opts.get("interactive_host")
+        if mode is None:
+            try:
+                resolved, _ = agent_exec.resolve_config()
+                mode = (resolved or {}).get("interactive_host")
+            except Exception:
+                mode = None
+        mode = str(mode).strip().lower() if mode is not None else "auto"
+        return mode if mode in ("auto", "herdr", "orca", "none") else "auto"
+
+    def _select_host(self):
+        """Pick the interactive host per `interactive_host` when herdr is a
+        candidate; with only one candidate injected it is that one."""
+        if self.herdr is None:
+            return
+        herdr, orca = self.herdr, self.orca
+        self.herdr = None
+        mode = self._interactive_mode()
+        self.orca, self.host_name = None, "orca"
+        if mode == "none":
+            return
+        if mode == "auto":
+            missing = []
+            for name, candidate in (("orca", orca), ("herdr", herdr)):
+                if candidate is None or candidate.enabled is False:
+                    continue
+                ok, reason = candidate.available()
+                if not ok and candidate.enabled is True:
+                    missing.append((name, reason))
+            for name, candidate in (("herdr", herdr), ("orca", orca)):
+                if (candidate is not None and candidate.enabled is not False
+                        and candidate.available()[0]):
+                    self.orca, self.host_name = candidate, name
+                    return
+            # No host at all: an `enabled: true` backend that is unreachable
+            # still stops the run, as it does without herdr in the picture.
+            if missing:
+                name, reason = missing[0]
+                self._stop("%s unavailable: %s" % (name, reason))
+            return
+        self.orca = herdr if mode == "herdr" else orca
+        self.host_name = mode
+
     def _init_orca(self):
-        """Keep self.orca only when it is enabled and reachable; `enabled:
-        true` with Orca unreachable stops the run before anything starts."""
+        """Select the interactive host and keep it only when it is enabled and
+        reachable; `enabled: true` with the host unreachable stops the run
+        before anything starts."""
+        self._select_host()
         if self.orca is None:
             return
         enabled = self.orca.enabled
@@ -383,12 +437,14 @@ class _Runner(object):
         if not ok:
             self.orca = None
             if enabled is True:
-                self._stop("orca unavailable: %s" % reason)
+                self._stop("%s unavailable: %s" % (self.host_name, reason))
             return
         rc, out = agent_exec._git(self.int_path, "rev-parse", "--abbrev-ref", "HEAD")
         self.int_branch = out.strip() if rc == 0 and out.strip() != "HEAD" else self.base
         self.orca.state_dir = self.state_dir
-        self.orca.on_event = lambda pkg, detail: self._emit("orca-session", pkg, detail)
+        name = self.host_name
+        self.orca.on_event = lambda pkg, detail: self._emit(
+            "orca-session", pkg, dict(detail, host=name))
         os.makedirs(os.path.join(self.state_dir, "orca"), exist_ok=True)
 
     # -- stop / select -------------------------------------------------------
@@ -584,14 +640,15 @@ class _Runner(object):
         detail = exc.detail
         if exc.kind == "stalled" and "dialog:" in detail:
             detail += (
-                "\napprove it in Orca (terminal %s), then run: agent-exec wave mark "
+                "\napprove it in %s (terminal %s), then run: agent-exec wave mark "
                 "--state %s --await %s"
-                "\nor add the directory to orca.add_dirs / set orca.permission_mode: "
+                "\nor add the directory to %s.add_dirs / set %s.permission_mode: "
                 "auto and re-dispatch with --status pending"
-                % (self._orca_handle(detail), self.state_path, pid or "ID")
+                % (self.host_name.capitalize(), self._orca_handle(detail), self.state_path,
+                   pid or "ID", self.host_name, self.host_name)
             )
         return {"status": "_orca_need", "kind": exc.kind, "detail": detail,
-                "token": token, "executor": "orca"}
+                "token": token, "executor": self.host_name}
 
     def _orca_handle(self, detail):
         match = re.search(r"\nterminal: ([^\n]+)", detail)
@@ -618,7 +675,7 @@ class _Runner(object):
                 self.opts.get("run_id"), self.state_dir, add_dirs=self._orca_add_dirs())
         except agent_exec_orca.OrcaNeed as exc:
             return self._orca_need(token, exc, pid)
-        self.store.update(pid, tree=session["worktree"], executor="orca", session=True)
+        self.store.update(pid, tree=session["worktree"], executor=self.host_name, session=True)
         if self._context_path(pid) in prompt_files:
             self._write_context(pid, self.notes.get(pid, ""))  # WORKING TREE = the Orca tree
         return self._orca_prompt(pid, session, prompt_files, token)
@@ -653,12 +710,21 @@ class _Runner(object):
                       if result["status"] == "escalate" else summary)
             return {
                 "status": "ok", "answer": answer, "session_id": session.get("terminal"),
-                "resumed": True, "executor": "orca",
+                "resumed": True, "executor": self.host_name,
                 "isolation": {"isolate": True, "path": session["worktree"],
                               "workdir": session["worktree"]},
             }
         except agent_exec_orca.OrcaNeed as exc:
             return self._orca_need(None, exc, pid)
+
+    def shutdown_host(self):
+        shutdown = getattr(self.orca, "shutdown", None)
+        if shutdown is None:
+            return
+        try:
+            shutdown()
+        except Exception as exc:
+            sys.stderr.write("agent-exec: %s: shutdown failed: %s\n" % (self.host_name, exc))
 
     def _orca_close(self, pid):
         if self.orca is None:
@@ -1377,7 +1443,8 @@ class _Runner(object):
             thread.join(_NOTIFY_TIMEOUT + 5)
 
 
-def run_wave(opts, executor=None, clock=time.time, orca=None, sleep=time.sleep):
+def run_wave(opts, executor=None, clock=time.time, orca=None, sleep=time.sleep, host=None,
+             herdr=None):
     """Drive the plan to done or stopped; returns the end report dict.
 
     A report with status "error" (plus "reason") means the loop never
@@ -1385,13 +1452,18 @@ def run_wave(opts, executor=None, clock=time.time, orca=None, sleep=time.sleep):
 
     `orca` is an agent_exec_orca.OrcaExecutor (or None). Left at None with
     the default executor it comes from config; an injected executor without
-    `orca` never touches Orca.
+    `orca` never touches Orca. `host` is any interactive-host executor
+    (OrcaExecutor, HerdrExecutor, a fake) and wins over `orca`; with neither
+    and the default executor, both backends come from config and
+    `interactive_host` picks one.
     """
     merged = default_opts()
     merged.update(opts)
-    if orca is None and executor is None:
+    if orca is None and host is None and executor is None:
         orca = agent_exec_orca.OrcaExecutor.from_config()
-    runner = _Runner(merged, executor or CliExecutor(), clock, orca=orca, sleep=sleep)
+        herdr = agent_exec_herdr.HerdrExecutor.from_config()
+    runner = _Runner(merged, executor or CliExecutor(), clock, orca=orca, sleep=sleep,
+                     host=host, herdr=herdr)
     try:
         runner.init()
     except agent_exec_wave_plan.PlanError as exc:
@@ -1413,6 +1485,7 @@ def run_wave(opts, executor=None, clock=time.time, orca=None, sleep=time.sleep):
         runner.loop()
     finally:
         sys.stdout = previous_stdout
+        runner.shutdown_host()
     report = runner.report()
     if report["status"] == "done":
         runner._notify("done", dict(report, event="done", at=clock()))
@@ -1533,7 +1606,8 @@ def cmd_wave_run(args):
         sys.stderr.write(_RUN_USAGE)
         return 2
     report = run_wave(opts, executor=CliExecutor(),
-                      orca=agent_exec_orca.OrcaExecutor.from_config())
+                      orca=agent_exec_orca.OrcaExecutor.from_config(),
+                      herdr=agent_exec_herdr.HerdrExecutor.from_config())
     if opts["text"]:
         print(format_report_text(report))
     else:
@@ -1629,9 +1703,14 @@ def cmd_wave_mark(args):
         if (entry is None or entry.get("status") != "needs" or not is_orca_need):
             sys.stderr.write("agent-exec: wave mark: --await requires an Orca stalled/timeout need\n")
             return 2
-        orca = agent_exec_orca.OrcaExecutor.from_config()
-        orca.state_dir = os.path.dirname(os.path.abspath(state_path))
-        session = orca._load_registry().get(await_pkg)
+        state_dir = os.path.dirname(os.path.abspath(state_path))
+        session = None
+        for host_cls in (agent_exec_herdr.HerdrExecutor, agent_exec_orca.OrcaExecutor):
+            host = host_cls.from_config()
+            host.state_dir = state_dir
+            session = host._load_registry().get(await_pkg)
+            if isinstance(session, dict) and session.get("terminal"):
+                break
         if (not isinstance(session, dict) or not session.get("terminal")
                 or not session.get("worktree")
                 or not os.path.isdir(session["worktree"])):

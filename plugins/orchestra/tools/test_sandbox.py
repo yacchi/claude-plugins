@@ -300,7 +300,8 @@ class DispatchPlumbingTests(unittest.TestCase):
             mock.patch.object(agent_exec, "resolve_route", return_value={
                 "executor": "pi", "dispatch": "cli", "model": "m", "effort": "low",
                 "agent_type": None}),
-            mock.patch.dict(os.environ, {sb.FORCE_ENV: "none"}),
+            mock.patch.dict(os.environ, {sb.FORCE_ENV: "none",
+                                         "XDG_STATE_HOME": self.tmp}),
         ]
         for p in patches:
             p.start()

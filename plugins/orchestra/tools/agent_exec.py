@@ -99,6 +99,12 @@ DEFAULTS = {
             "version": "1.2.0",
             "bin": "pi",
         },
+        "herdr": {
+            "source": "auto",
+            "spec": "aqua:herdrdev/herdr",
+            "version": "0.8.2",
+            "bin": "herdr",
+        },
     },
     "watchdog": {
         "enabled": True,
@@ -325,6 +331,24 @@ DEFAULTS = {
         "task_timeout": 3600,
         "keep_sessions": True,
         "setup": "skip",
+    },
+    # Which interactive host runs Claude-tier packages in `wave run`:
+    # auto = herdr when available, else Orca, else none; herdr | orca = that
+    # one only; none = never. Each backend's own `enabled` still applies.
+    "interactive_host": "auto",
+    # Same job as `orca`, hosted by herdr (agent_exec_herdr.py). `args` are
+    # the native claude arguments passed after `--`; the prompt/result
+    # directories and `add_dirs` are appended as --add-dir.
+    "herdr": {
+        "enabled": "auto",
+        "args": "--model {model} --permission-mode {permission_mode}",
+        "models": {"light": "sonnet", "standard": "opus", "deep": "opus"},
+        "permission_mode": "acceptEdits",
+        "add_dirs": [],
+        "auto_trust": False,
+        "startup_timeout": 90,
+        "task_timeout": 3600,
+        "keep_sessions": True,
     },
 }
 
