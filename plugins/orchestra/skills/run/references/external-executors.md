@@ -102,6 +102,8 @@ piが`--session`を持つのと同じ意味で、Codexも`exec resume <SESSION_I
 
 CLI実行役(pi)の子プロセスは、既定(`sandbox.mode: auto`)でOSのサンドボックスに包んで起動する。`required`では包めない環境で起動せず(`status: unavailable`、`reason: sandbox`、クールダウンなし)、`off`では包まない。codexは自前のSeatbelt/Landlock(`workspace-write`)で動くので二重には包まない(`backend: codex-native`)。
 
+**通信の許可リスト(srt)。** `sandbox.network.mode: allowlist`(既定)で`tools.srt`が見つかり(Linuxでは`bwrap`と`socat`も必要)、SeatbeltかbubblewrapがNGでないときは、piもcodexも`srt -d -s <state>/cli-srt/<タスクID>.json --control-fd 3 -c "<実行役のコマンド>"`で起動する(`backend: srt`)。srtが自前のSeatbelt/bubblewrapで同じ書き込み・読み取りの方針を強制するので、orchestraのサンドボックスとは重ねない。codexは自前のサンドボックスを切って(`--sandbox danger-full-access`、再開時は`-c sandbox_mode=danger-full-access`)srtの内側で動く。`~/.codex`はセッションや認証の更新のため書き込めるが、`config.toml` `managed_config.toml` `requirements.toml` `AGENTS.md` `AGENTS.override.md`と`prompts` `rules` `skills` `plugins` `bin`は書き込めない。設定の`allowedDomains`は`allowed_domains`、tracked なファイルから決まるパッケージレジストリ(`ecosystem`)、その実行役の`network_domains`(codexの既定は`chatgpt.com` `auth.openai.com` `api.openai.com`、piは未設定ならモデルのプロバイダ接頭辞から決まる)、承認済みドメインの和である(config.md参照)。Unixソケット・PTYは許可しない。srtのデバッグ出力は実行役の回答や標準エラーに混ぜず`<state>/cli-srt/<タスクID>.log`に分け、`Connection blocked to <host>:<port>`の行を`<state>/audit/network.jsonl`(`session`はタスクID)に追記し、結果に`network_denials: [{host, port}]`(重複なし、`quiet_domains`を除く)として返す。これだけでは`status`は変わらない。実行中に`agent-exec sandbox allow-domain <host>`で承認したドメインは、制御パイプ経由でその実行にも反映される。srtが使えないときは従来どおり(piはSeatbelt/bwrap/Landlock、codexは`codex-native`)で動き、`limits`と`reason`に`network not restricted: <理由>`が入る。
+
 | OS | バックエンド | 強制できること | `limits`に出る制約 |
 |---|---|---|---|
 | macOS | Seatbelt(`sandbox-exec`) | 書き込み範囲、秘密情報の読み取り拒否、サンドボックス外へのシグナル拒否 | なし |
@@ -120,7 +122,7 @@ Ubuntu 24.04以降は非特権のユーザー名前空間がAppArmorで塞がれ
 - それ以外への拒否で、実行役が失敗を報告したときは`status: needs-permission`を返す。指示役はスキル§8の方針で自分で判断する(ユーザーに聞くのは認証情報、リポジトリとツールチェーンのキャッシュ以外への書き込み、公開・デプロイ・プッシュに当たるもの、仕様との関係が不明なものだけ)。許可するなら`agent-exec sandbox allow <path> --reason TEXT`のあと同じタスクIDで再dispatchする(セッションが再開される)。wave実行中は`agent-exec approvals decide`を使う(許可・再開・監査記録を一度に行う)。
 - 実行役が成功を報告したときは`ok`のまま、`sandbox.denials`に拒否を添える(`auto: false`)。作業が実際に済んでいるかはレビューが判定し、不合格なら指示役が同じ方針で判断する。
 
-一覧・追加・削除・診断は`agent-exec sandbox list|allow|forget|probe`。
+一覧・追加・削除・診断は`agent-exec sandbox list|allow|forget|probe`、通信の承認は`agent-exec sandbox allow-domain <host> [--reason TEXT]`(`list`がドメインの許可を`source`・追加日時・理由つきで表示する)。
 
 ## 2b. 暴走対策(watchdog)
 

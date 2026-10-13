@@ -191,7 +191,7 @@ class ConfigUnionTests(unittest.TestCase):
         # (or the default) allowed
         self.assertEqual(cfg["sandbox"], {
             "mode": "off", "allow_write": ["~/a", "~/b"], "deny_read": ["~/s1"],
-            "network": {"mode": "off",
+            "network": {"mode": "off", "ecosystem": True,
                         "allowed_domains": ["api.anthropic.com", "registry.npmjs.org",
                                             "example.org"],
                         "denied_domains": ["bad.example.org"],

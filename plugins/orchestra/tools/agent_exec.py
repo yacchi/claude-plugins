@@ -51,6 +51,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agent_exec_checks  # noqa: E402
 import agent_exec_pricing  # noqa: E402
 import agent_exec_sandbox  # noqa: E402
+import agent_exec_srt  # noqa: E402
 import agent_exec_tools  # noqa: E402
 import agent_exec_watchdog  # noqa: E402
 import agent_exec_wave  # noqa: E402
@@ -148,6 +149,9 @@ DEFAULTS = {
             "enabled": True,
             "dispatch": "cli",
             "agent_type": "codex:codex-rescue",
+            # API hosts only codex's srt settings allow (sandbox.network);
+            # unioned across layers.
+            "network_domains": list(agent_exec_srt.EXECUTOR_NETWORK_DOMAINS["codex"]),
             "classes": ["standard", "deep", "review"],
             "class_policy": {
                 "standard": {"model": "gpt-5.6-luna", "effort": "medium"},
@@ -268,17 +272,21 @@ DEFAULTS = {
     # paths) are UNIONED across config layers -- an exception to the
     # list-replace rule, so a project layer cannot silently drop a path the
     # user layer protects or needs. See resolve_config().
-    # `network` restricts the herdr host's outbound connections through
-    # sandbox-runtime (srt): mode allowlist = only `allowed_domains` (plus
-    # domains granted with `agent-exec sandbox allow-domain`) are reachable;
-    # off = no network restriction. Both domain lists are UNIONED across
-    # layers like allow_write.
+    # `network` restricts the outbound connections of the herdr host and of
+    # the CLI executors through sandbox-runtime (srt): mode allowlist = only
+    # `allowed_domains` (plus domains granted with `agent-exec sandbox
+    # allow-domain`, the package registries of the tree when `ecosystem` is
+    # on, and a CLI executor's own `network_domains`) are reachable; off = no
+    # network restriction. The domain lists are UNIONED across layers like
+    # allow_write.
     "sandbox": {
         "mode": "auto",
         "allow_write": [],
         "deny_read": [],
         "network": {
             "mode": "allowlist",
+            # package-registry presets from the tree's tracked files
+            "ecosystem": True,
             "allowed_domains": ["api.anthropic.com"],
             "denied_domains": [],
             # blocked like any other host, but not surfaced as a denial
@@ -829,10 +837,11 @@ def cmd_dispatch(profile_name, args):
     if pass_cfg_err is not None or not isinstance(pass_cfg, dict):
         pass_cfg = DEFAULTS
     cwd = os.getcwd()
-    sandbox = _sandbox_spec(profile_name, cwd, pass_cfg)
+    sandbox = _sandbox_spec(profile_name, cwd, pass_cfg, _arg_value(final_args, "--model"))
     resolved = _resolve_tool(exec_name, pass_cfg)["path"]
     argv = agent_exec_sandbox.wrap_argv(
-        [resolved or exec_name] + final_args, cwd, sandbox
+        [resolved or exec_name] + _passthrough_args(profile_name, final_args, sandbox),
+        cwd, sandbox
     )
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
@@ -862,6 +871,7 @@ def cmd_dispatch(profile_name, args):
     env.update(profile_env)
     env.update(_executor_env_overrides(profile_name, pass_cfg))
     env = agent_exec_sandbox.child_env(sandbox, env)
+    agent_exec_srt.exec_prepare(sandbox)
     os.execvpe(argv[0], argv, env)  # never returns
 
 
@@ -1479,6 +1489,9 @@ def resolve_config():
     # defaults (a layer can add a domain, never drop api.anthropic.com).
     network_union = dict((key, list(DEFAULTS["sandbox"]["network"][key]))
                          for key in ("allowed_domains", "denied_domains", "quiet_domains"))
+    # `external_executors.<name>.network_domains` likewise, per executor,
+    # starting from its default (if any).
+    executor_domains = {}
     removed = []
 
     for path in _ordered_layer_paths():
@@ -1501,6 +1514,16 @@ def resolve_config():
                     if isinstance(values, list):
                         acc.extend(v for v in values
                                    if isinstance(v, str) and v not in acc)
+        layer_external = data.get("external_executors") if isinstance(data, dict) else None
+        if isinstance(layer_external, dict):
+            for name, ecfg in layer_external.items():
+                values = ecfg.get("network_domains") if isinstance(ecfg, dict) else None
+                if not isinstance(values, list):
+                    continue
+                default = (DEFAULTS["external_executors"].get(name) or {}).get(
+                    "network_domains") or []
+                acc = executor_domains.setdefault(name, list(default))
+                acc.extend(v for v in values if isinstance(v, str) and v not in acc)
         resolved = _deep_merge(resolved, data)
 
     if removed:
@@ -1512,6 +1535,9 @@ def resolve_config():
 
     external = resolved.get("external_executors") or {}
     if isinstance(external, dict):
+        for name, domains in executor_domains.items():
+            if isinstance(external.get(name), dict):
+                external[name]["network_domains"] = domains
         for name, cfg in external.items():
             if not isinstance(cfg, dict):
                 continue
@@ -1721,12 +1747,20 @@ def cmd_sandbox(args):
     if not args or args[0] in ("-h", "--help"):
         sys.stderr.write("usage: agent-exec sandbox list [--workdir D] [--json] | "
                          "allow <path> [--reason TEXT] [--json] | forget <path> | "
-                         "allow-domain <host-or-*.wildcard> [--json] | "
+                         "allow-domain <host-or-*.wildcard> [--reason TEXT] [--json] | "
                          "forget-domain <host> [--json] | probe [--json]\n")
         return 2 if not args else 0
     sub, rest = args[0], args[1:]
     as_json = "--json" in rest
     rest = [a for a in rest if a != "--json"]
+    grant_reason = None
+    if sub == "allow-domain" and "--reason" in rest:
+        at = rest.index("--reason")
+        if at + 1 >= len(rest):
+            sys.stderr.write("agent-exec: sandbox allow-domain: --reason needs a value\n")
+            return 2
+        grant_reason = rest[at + 1]
+        rest = rest[:at] + rest[at + 2:]
     cfg, err = resolve_config()
     if err is not None or not isinstance(cfg, dict):
         cfg = DEFAULTS
@@ -1753,6 +1787,14 @@ def cmd_sandbox(args):
         for g in info["learned"]:
             print("  %s  [%s, %s]" % (g["path"], g["source"], g.get("added")))
         if not info["learned"]:
+            print("  (none)")
+        print("domain grants:")
+        for d in info["domains"]:
+            line = "  %s  [%s, %s]" % (d["domain"], d.get("source") or "user", d.get("added"))
+            if d.get("reason"):
+                line += "  %s" % d["reason"]
+            print(line)
+        if not info["domains"]:
             print("  (none)")
         print("deny_read:")
         for r in info["deny_read"]:
@@ -1812,14 +1854,14 @@ def cmd_sandbox(args):
                 print("%s: %s" % ("removed" if removed else "no grant for", domain))
             return 0 if removed else 1
         try:
-            entry = agent_exec_sandbox.add_domain(domain)
+            entry = agent_exec_sandbox.add_domain(domain, reason=grant_reason)
         except (OSError, ValueError) as exc:
             sys.stderr.write("agent-exec: sandbox allow-domain: %s\n" % exc)
             return 1
         if as_json:
             print(json.dumps(entry, ensure_ascii=False))
         else:
-            print("allowed domain: %s (a running herdr host picks it up live)"
+            print("allowed domain: %s (running herdr hosts and CLI runs pick it up live)"
                   % entry["domain"])
         return 0
 
@@ -3140,8 +3182,14 @@ def _accumulate_int(target, key, value):
 # --- shared streaming spawn --------------------------------------------------
 
 
+# Seconds between two network ticks (blocked-host tailing, learned-domain
+# push) of a CLI run under srt.
+_SRT_TICK = 1.0
+
+
 def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None,
-                   watchdog=None, executor=None, cls="standard", watchdog_result=None):
+                   watchdog=None, executor=None, cls="standard", watchdog_result=None,
+                   network_result=None):
     """Run `argv`, feed `input_text` on stdin, and return
     `(exit_code, stdout_text, stderr_text)`.
 
@@ -3159,10 +3207,16 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None,
     `on_line`.
 
     `sandbox` is the spec from `agent_exec_sandbox.prepare`; the argv is
-    wrapped for it here, so every capture spawn is sandboxed the same way."""
+    wrapped for it here, so every capture spawn is sandboxed the same way.
+
+    Under backend `srt` the child gets srt's control pipe on fd 3, srt's
+    debug lines are split out of the shared stderr into the run's log
+    (never into the returned stderr), a ticker tails that log and pushes
+    learned-domain changes while the child lives, and the blocked hosts
+    (deduped, quiet domains left out) are appended to `network_result`."""
+    srt_run = agent_exec_srt.cli_run(sandbox, label="srt %s" % (executor or "cli"))
     argv = agent_exec_sandbox.wrap_argv(argv, cwd, sandbox)
-    proc = subprocess.Popen(
-        argv,
+    popen_kwargs = dict(
         cwd=cwd,
         env=env,
         stdin=subprocess.PIPE,
@@ -3170,6 +3224,18 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None,
         stderr=subprocess.PIPE,
         start_new_session=True,
     )
+    split = None
+    if srt_run is not None:
+        srt_run.open_log()
+        split = agent_exec_srt.StderrSplit(srt_run)
+        try:
+            proc = srt_run.spawn(subprocess.Popen, argv, **popen_kwargs)
+        except BaseException:
+            srt_run.close()
+            raise
+    else:
+        proc = subprocess.Popen(argv, **popen_kwargs)
+    ticking = threading.Event()
     guard = None
     if watchdog is not None:
         guard = agent_exec_watchdog.Watchdog(proc, watchdog, executor, cls)
@@ -3191,14 +3257,24 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None,
     def drain_stderr():
         try:
             for chunk in iter(lambda: proc.stderr.read(65536), b""):
-                stderr_chunks.append(chunk)
+                stderr_chunks.append(split.feed(chunk) if split else chunk)
         except (OSError, ValueError):
             pass
+        if split is not None:
+            stderr_chunks.append(split.flush())
+
+    def network_ticks():
+        while not ticking.wait(_SRT_TICK):
+            srt_run.tick()
 
     threads = [
         threading.Thread(target=feed_stdin, daemon=True),
         threading.Thread(target=drain_stderr, daemon=True),
     ]
+    ticker = None
+    if srt_run is not None:
+        ticker = threading.Thread(target=network_ticks, daemon=True)
+        ticker.start()
     stdout_chunks = []
     try:
         for t in threads:
@@ -3229,14 +3305,22 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None,
     finally:
         if guard is not None:
             guard.stop()
+        if ticker is not None:
+            ticking.set()
+            ticker.join()
         for stream in (proc.stdout, proc.stderr):
             try:
                 stream.close()
             except OSError:
                 pass
+        if srt_run is not None:
+            srt_run.close()
+            srt_run.tick()  # the lines written since the last tick
     runaway = guard.result() if guard is not None else None
     if watchdog_result is not None:
         watchdog_result.append(runaway)
+    if network_result is not None and srt_run is not None:
+        network_result.append(srt_run.denials())
     return (
         exit_code,
         b"".join(stdout_chunks).decode("utf-8", errors="replace"),
@@ -3256,9 +3340,21 @@ def _spawn_capture(argv, *, cwd, env, input_text, on_line=None, sandbox=None,
 # subcommand accepts. `-c sandbox_mode=workspace-write` is exactly equivalent
 # (the value fails to parse as TOML and is used as a literal string).
 _CODEX_SANDBOX = "workspace-write"
+# Under sandbox-runtime (backend `srt`) srt is the filesystem and network
+# boundary; codex's own Seatbelt/Landlock nested inside it fails, so codex
+# runs with its sandbox off -- only then.
+_CODEX_SANDBOX_UNDER_SRT = "danger-full-access"
 
 
-def _build_codex_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt):
+def _codex_sandbox_mode(sandbox):
+    """codex's own sandbox mode for a run under the spec `sandbox`."""
+    if (sandbox or {}).get("backend") == "srt":
+        return _CODEX_SANDBOX_UNDER_SRT
+    return _CODEX_SANDBOX
+
+
+def _build_codex_argv(exec_name, model, effort, workdir, prompt_value, resume, output_fmt,
+                      sandbox_mode=_CODEX_SANDBOX):
     """Build the `codex exec` argv for a single headless invocation.
 
     Fresh:   codex exec --json --sandbox workspace-write
@@ -3278,13 +3374,13 @@ def _build_codex_argv(exec_name, model, effort, workdir, prompt_value, resume, o
     The working directory is NOT a flag here. `codex exec` does have `-C`, but
     `codex exec resume` does not, so both forms are run with `cwd=workdir` by
     `_run_codex_capture` -- one mechanism for both, and the same one the
-    pi runner uses."""
+    pi runner uses. `sandbox_mode` is `_codex_sandbox_mode(spec)`."""
     del output_fmt, workdir  # see docstring: cwd= is set by the runner
     argv = [exec_name, "exec"]
     if resume is not None:
-        argv += ["resume", resume, "--json", "-c", "sandbox_mode=%s" % _CODEX_SANDBOX]
+        argv += ["resume", resume, "--json", "-c", "sandbox_mode=%s" % sandbox_mode]
     else:
-        argv += ["--json", "--sandbox", _CODEX_SANDBOX]
+        argv += ["--json", "--sandbox", sandbox_mode]
     if model:
         argv += ["-m", model]
     if effort:
@@ -3414,28 +3510,33 @@ def _run_codex_capture(profile_name, model, effort, workdir, prompt_text, resume
         return 127, None
 
     argv = _build_codex_argv(
-        resolved, model, effort, workdir, prompt_text, resume, output_fmt
+        resolved, model, effort, workdir, prompt_text, resume, output_fmt,
+        sandbox_mode=_codex_sandbox_mode(sandbox),
     )
     # The prompt is a positional argument, so stdin must be an empty, already
     # closed pipe: `codex exec` otherwise blocks reading stdin and appends
     # whatever it finds there to the prompt as a <stdin> block.
     watchdog_result = []
+    network_result = []
     spawn_kwargs = {"sandbox": sandbox}
     if watchdog is not None:
         spawn_kwargs.update(watchdog=watchdog, executor="codex", cls=cls,
                             watchdog_result=watchdog_result)
+    if (sandbox or {}).get("backend") == "srt":
+        spawn_kwargs["network_result"] = network_result
+    env = agent_exec_sandbox.child_env(sandbox, os.environ) \
+        if (sandbox or {}).get("backend") == "srt" else None
     captured = _spawn_capture(
-        argv, cwd=_existing_dir(workdir), env=None, input_text="", **spawn_kwargs
+        argv, cwd=_existing_dir(workdir), env=env, input_text="", **spawn_kwargs
     )
     exit_code, stdout_text, stderr_text = captured
     runaway = watchdog_result[0] if watchdog_result else None
+    result = parse_codex_jsonl(stdout_text, stderr_text, exit_code, resumed=resume is not None)
+    if network_result and network_result[0]:
+        result["network_denials"] = network_result[0]
     if runaway is not None:
-        result = parse_codex_jsonl(stdout_text, stderr_text, exit_code, resumed=resume is not None)
         result.update(status="runaway", reason=runaway["reason"], runaway=runaway)
-        return 0, result
-    return 0, parse_codex_jsonl(
-        stdout_text, stderr_text, exit_code, resumed=resume is not None
-    )
+    return 0, result
 
 
 # --- pi ---------------------------------------------------------------------
@@ -3646,10 +3747,13 @@ def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, o
     env.update(_executor_env_overrides(profile_name, pi_cfg))
     env = agent_exec_sandbox.child_env(sandbox, env)
     watchdog_result = []
+    network_result = []
     spawn_kwargs = {"sandbox": sandbox}
     if watchdog is not None:
         spawn_kwargs.update(watchdog=watchdog, executor="pi", cls=cls,
                             watchdog_result=watchdog_result)
+    if (sandbox or {}).get("backend") == "srt":
+        spawn_kwargs["network_result"] = network_result
     exit_code, stdout_text, stderr_text = _spawn_capture(
         argv, cwd=_existing_dir(workdir), env=env, input_text=prompt_text,
         **spawn_kwargs
@@ -3658,6 +3762,8 @@ def _run_pi_capture(profile_name, model, effort, workdir, prompt_text, resume, o
     result = parse_pi_jsonl(
         stdout_text, stderr_text, exit_code, resumed=resume is not None
     )
+    if network_result and network_result[0]:
+        result["network_denials"] = network_result[0]
     if runaway is not None:
         result.update(status="runaway", reason=runaway["reason"], runaway=runaway)
         return 0, result
@@ -3714,11 +3820,13 @@ def _registered(table, profile_name):
 
 
 def _build_executor_argv(profile_name, exec_name, model, effort, workdir,
-                         prompt_value, resume, output_fmt, cfg=None):
+                         prompt_value, resume, output_fmt, cfg=None, sandbox=None):
     builder = globals()[_registered(_ARGV_BUILDERS, profile_name)]
     extra = {}
     if profile_name == "pi" and cfg is not None:
         extra["context_files"] = agent_exec_tools.pi_context_files(cfg)
+    if profile_name == "codex" and (sandbox or {}).get("backend") == "srt":
+        extra["sandbox_mode"] = _codex_sandbox_mode(sandbox)
     return builder(
         exec_name, model, effort, workdir, prompt_value, resume, output_fmt,
         **extra
@@ -3735,15 +3843,66 @@ def _run_executor_capture(profile_name, model, effort, workdir, prompt_text,
     )
 
 
-def _sandbox_spec(executor, tree, cfg):
-    """Sandbox spec for one CLI executor run in `tree` under resolved `cfg`."""
+def _sandbox_spec(executor, tree, cfg, model=None, task=None):
+    """Sandbox spec for one CLI executor run in `tree` under resolved `cfg`:
+    under srt (network allowlist) when it is usable, with this executor's
+    API hosts (`model` picks pi's provider) and the tree's registry presets;
+    `task` names the run's srt settings/log and its audit session."""
     sandbox_cfg = cfg.get("sandbox") if isinstance(cfg, dict) else None
     env = None
     overrides = _executor_env_overrides(executor, cfg)
     if overrides:
         env = dict(os.environ)
         env.update(overrides)
-    return agent_exec_sandbox.prepare(executor, tree, sandbox_cfg, env=env)
+    network = None
+    if agent_exec_sandbox.normalize_config(sandbox_cfg)["mode"] != "off":
+        network = agent_exec_srt.cli_network(
+            cfg if isinstance(cfg, dict) else DEFAULTS, executor, tree, model, task)
+    return agent_exec_sandbox.prepare(executor, tree, sandbox_cfg, env=env,
+                                      network=network)
+
+
+def _merge_network_denials(a, b):
+    out = list(a or [])
+    for d in b or []:
+        if d not in out:
+            out.append(d)
+    return out
+
+
+def _arg_value(args, flag):
+    """The value of `flag` (`--flag V` or `--flag=V`) in raw args, or None."""
+    for i, arg in enumerate(args):
+        if arg == flag and i + 1 < len(args):
+            return args[i + 1]
+        if arg.startswith(flag + "="):
+            return arg[len(flag) + 1:]
+    return None
+
+
+def _passthrough_args(profile_name, args, sandbox):
+    """Raw passthrough args under `sandbox`: codex under srt gets its own
+    sandbox switched off (the generic config override every codex
+    subcommand accepts, and any explicit `--sandbox`/`-s` value replaced),
+    as `_build_codex_argv` does for run/dispatch."""
+    if profile_name != "codex" or (sandbox or {}).get("backend") != "srt":
+        return list(args)
+    mode = _codex_sandbox_mode(sandbox)
+    out = ["-c", "sandbox_mode=%s" % mode]
+    args = list(args)
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":  # the rest is the prompt
+            out.extend(args[i:])
+            break
+        if arg in ("--sandbox", "-s") and i + 1 < len(args):
+            out += [arg, mode]
+            i += 2
+            continue
+        out.append("--sandbox=" + mode if arg.startswith("--sandbox=") else arg)
+        i += 1
+    return out
 
 
 # At most this many auto-grant + resume cycles per dispatch.
@@ -3778,7 +3937,7 @@ def _merge_usage(a, b):
 
 def _capture_with_grants(profile_name, model, effort, workdir, prompt_text,
                          resume, sandbox, sandbox_tree, cfg, watchdog=None,
-                         cls="standard"):
+                         cls="standard", task=None):
     """Run one capture; on sandbox denials, auto-grant harmless cache paths,
     persist them, and resume the SAME session (<= _GRANT_CYCLE_CAP times).
 
@@ -3850,7 +4009,7 @@ def _capture_with_grants(profile_name, model, effort, workdir, prompt_text,
         if (not blocked and new_grants and cycles < _GRANT_CYCLE_CAP
                 and isinstance(session_id, str) and session_id):
             granted += new_grants
-            next_spec = _sandbox_spec(profile_name, sandbox_tree, cfg)
+            next_spec = _sandbox_spec(profile_name, sandbox_tree, cfg, model, task)
             if next_spec.get("refuse") or next_spec.get("policy") is None:
                 break
             sandbox = next_spec
@@ -3872,6 +4031,10 @@ def _capture_with_grants(profile_name, model, effort, workdir, prompt_text,
             usage = _merge_usage(usage, nxt.get("usage"))
             nxt["usage"] = usage
             nxt["resumed"] = True
+            denied = _merge_network_denials(result.get("network_denials"),
+                                            nxt.get("network_denials"))
+            if denied:
+                nxt["network_denials"] = denied
             result = nxt
             continue
         if not blocked and new_grants:
@@ -4009,14 +4172,14 @@ def cmd_run(args):
     def build_argv(prompt_value):
         return _build_executor_argv(
             profile_name, resolved_exec or exec_name, model, effort, workdir,
-            prompt_value, resume, output_fmt, cfg=run_cfg,
+            prompt_value, resume, output_fmt, cfg=run_cfg, sandbox=sandbox,
         )
 
     run_cfg, run_cfg_err = resolve_config()
     if run_cfg_err is not None or not isinstance(run_cfg, dict):
         run_cfg = DEFAULTS
     resolved_exec = _resolve_tool(exec_name, run_cfg)["path"]
-    sandbox = _sandbox_spec(profile_name, workdir, run_cfg)
+    sandbox = _sandbox_spec(profile_name, workdir, run_cfg, model)
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
         argv = agent_exec_sandbox.wrap_argv(
@@ -4101,6 +4264,7 @@ def cmd_run(args):
     env.update(profile["env"])
     env.update(_executor_env_overrides(profile_name, run_cfg))
     env = agent_exec_sandbox.child_env(sandbox, env)
+    agent_exec_srt.exec_prepare(sandbox)
 
     os.execvpe(argv[0], argv, env)  # never returns
 
@@ -4357,7 +4521,37 @@ def _build_doctor_report():
             "orca": str((doctor_cfg.get("orca") or {}).get("user_config")
                         or DEFAULTS["orca"]["user_config"]),
         },
+        "cli_network": _cli_network_report(doctor_cfg),
     }
+
+
+def _cli_network_report(cfg, cwd=None):
+    """Doctor view of the CLI executors' network for a run in `cwd`: the
+    registry presets of the tree and, per executor, whether srt would
+    restrict it (else why not) and its own API hosts (pi: for the model of
+    its `standard` class)."""
+    cwd = cwd or os.getcwd()
+    net = agent_exec_sandbox.normalize_config(cfg.get("sandbox"))["network"]
+    out = {"mode": net["mode"], "ecosystem": net["ecosystem"],
+           "preset_domains": (agent_exec_srt.ecosystem_domains(cwd)
+                              if net["ecosystem"] else []),
+           "executors": {}}
+    external = cfg.get("external_executors") or {}
+    for name in sorted(PROFILES):
+        ecfg = external.get(name) if isinstance(external.get(name), dict) else {}
+        policy = (ecfg.get("class_policy") or {}).get("standard") or {}
+        model = policy.get("model") if isinstance(policy, dict) else None
+        spec = _sandbox_spec(name, cwd, cfg, model)
+        notes = [n for n in spec.get("limits") or []
+                 if isinstance(n, str) and n.startswith("network not restricted")]
+        out["executors"][name] = {
+            "backend": spec["backend"],
+            "restricted": spec["backend"] == "srt",
+            "reason": notes[0] if notes else (
+                "" if spec["backend"] == "srt" else spec["reason"]),
+            "domains": agent_exec_srt.executor_domains(name, ecfg, model),
+        }
+    return out
 
 
 def _herdr_host_report(cfg):
@@ -4474,6 +4668,15 @@ def _print_doctor_text(report):
         print("  learned grants: %d (%s)" % (learned.get("count", 0), learned.get("path")))
         if learned.get("warning"):
             print("  WARNING: %s" % learned["warning"])
+        cli = report.get("cli_network") or {}
+        if cli:
+            print("CLI executors network: mode=%s presets=%s" % (
+                cli.get("mode"), ", ".join(cli.get("preset_domains") or []) or "-"))
+            for name, item in sorted((cli.get("executors") or {}).items()):
+                print("  - %s: restricted=%s backend=%s domains=%s%s" % (
+                    name, item.get("restricted"), item.get("backend"),
+                    ", ".join(item.get("domains") or []) or "-",
+                    ("  " + item["reason"]) if item.get("reason") else ""))
 
 
 def cmd_doctor(args):
@@ -8957,12 +9160,12 @@ def cmd_dispatch_route(args):
     # The sandbox confines the child to the task tree: the worktree root
     # when isolated (not the possibly-deeper workdir), else the workdir.
     sandbox_tree = isolation.get("path") if isolation.get("isolate") else workdir
-    sandbox = _sandbox_spec(profile_name, sandbox_tree, resolved)
+    sandbox = _sandbox_spec(profile_name, sandbox_tree, resolved, model, task)
 
     if os.environ.get("AGENT_EXEC_DRYRUN"):
         argv = agent_exec_sandbox.wrap_argv(_build_executor_argv(
             profile_name, exec_name, model, effort, workdir, prompt_text,
-            effective_resume, "json",
+            effective_resume, "json", sandbox=sandbox,
         ), _existing_dir(workdir), sandbox)
         print("PROFILE: %s" % profile_name)
         print("MODE: headless")
@@ -8982,7 +9185,7 @@ def cmd_dispatch_route(args):
         exit_code, result, sandbox = _capture_with_grants(
             profile_name, model, effort, workdir, prompt_text, effective_resume,
             sandbox, sandbox_tree, resolved,
-            watchdog=resolved.get("watchdog"), cls=cls,
+            watchdog=resolved.get("watchdog"), cls=cls, task=task,
         )
     if result is None:
         run_ledger_append(

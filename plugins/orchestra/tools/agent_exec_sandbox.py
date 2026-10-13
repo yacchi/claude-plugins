@@ -3,7 +3,8 @@ isolation).
 
 A sandboxed worker may only WRITE inside its task's tree (plus temp, caches
 and its own executor state), may not READ well-known secret stores, and may
-not signal processes outside its sandbox. Network stays open (model API).
+not signal processes outside its sandbox. Network stays open (model API)
+unless sandbox-runtime (srt) restricts it to an allowlist.
 
 One policy (`build_policy`) feeds every backend:
 
@@ -15,8 +16,12 @@ One policy (`build_policy`) feeds every backend:
   child restricts itself, then execs argv. Landlock cannot hide a subtree
   under a readable parent, so deny_read (and, below ABI 6, signal scoping)
   is reported in ``limits`` instead of being silently claimed.
+- ``srt``: sandbox-runtime applies its own Seatbelt/bubblewrap from the
+  same policy plus an outbound domain allowlist (``sandbox.network``); it
+  replaces the backends above, never wraps them, and codex then runs with
+  its own sandbox off (agent_exec_srt.py).
 - ``codex-native``: codex applies its own Seatbelt/Landlock and nesting
-  sandbox-exec fails, so it is never wrapped.
+  sandbox-exec fails, so it is never wrapped (when srt is not usable).
 - ``none``: mode off, or nothing usable on this host.
 
 Every path is realpath'd before it reaches a rule: on macOS ``/tmp`` is
@@ -29,6 +34,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -128,6 +134,12 @@ PI_DENY_SUBDIRS = ("extensions", "skills", "prompts", "themes", "packages",
                    "npm", "git", "bin", "install")
 PI_DENY_FILES = ("settings.json", "mcp.json", "models.json", "AGENTS.md",
                  "SYSTEM.md", "APPEND_SYSTEM.md", "keybindings.json")
+
+# The same for codex's state dir (~/.codex): its sessions, auth refresh and
+# logs stay writable under srt, its config, instructions and rules do not.
+CODEX_DENY_SUBDIRS = ("prompts", "rules", "skills", "plugins", "bin")
+CODEX_DENY_FILES = ("config.toml", "managed_config.toml", "requirements.toml",
+                    "AGENTS.md", "AGENTS.override.md")
 
 UV_TOOL_DIR_NAME = "orchestra-uv-tools"
 
@@ -447,20 +459,22 @@ def learned_domains(home=None):
 
 
 def add_domain(domain, home=None, source="user", reason=None):
-    """Persist one domain grant; returns the stored entry. Raises ValueError
-    when refused. Idempotent. `source` (who approved it) is stored, and
-    `reason` when given."""
+    """Persist one domain grant with its `source` (and `reason`, when
+    given); returns the stored entry. Raises ValueError when refused.
+    Idempotent: an existing grant is returned unchanged."""
     refusal = domain_refusal(domain)
     if refusal:
         raise ValueError(refusal)
+    if not isinstance(source, str) or not source.strip():
+        raise ValueError("a domain grant needs a source")
     text = domain.strip().lower()
     domains, _ = load_domains(home)
     for entry in domains:
         if entry["domain"].strip().lower() == text:
             return entry
-    entry = {"domain": text, "added": _now_iso(), "source": source}
-    if reason:
-        entry["reason"] = reason
+    entry = {"domain": text, "added": _now_iso(), "source": source.strip()}
+    if isinstance(reason, str) and reason.strip():
+        entry["reason"] = reason.strip()
     domains.append(entry)
     save_learned(None, home, domains=domains)
     return entry
@@ -477,9 +491,13 @@ def forget_domain(domain, home=None):
     return True
 
 
-# --- sandbox-runtime (srt) for the herdr host ---------------------------------
+# --- sandbox-runtime (srt) ----------------------------------------------------
 
 SRT_SETTINGS_DIR = "herdr-srt"
+# Settings and debug logs of CLI executor runs under srt.
+CLI_SRT_DIR = "cli-srt"
+# The fd srt reads live config lines from (`--control-fd`).
+SRT_CONTROL_FD = 3
 AUDIT_DIR = "audit"
 NETWORK_AUDIT = "network.jsonl"
 
@@ -519,8 +537,9 @@ def _regex_globs(rx):
     return [root + "/.claude/orchestra*.y*ml", root + "/**/.claude/orchestra*.y*ml"]
 
 
-def srt_settings(policy, sockets, allowed_domains, denied_domains, home=None):
-    """The sandbox-runtime settings for the herdr server, from `host_policy`.
+def srt_settings(policy, sockets, allowed_domains, denied_domains, home=None,
+                 allow_pty=True):
+    """The sandbox-runtime settings from a `host_policy` / `build_policy`.
     Paths are realpaths where they exist (srt follows no symlink for an
     allow); `writable_regex` (~/.claude.json and its siblings) becomes the
     glob `<home>/.claude.json*`; a `readonly` carve-out becomes a deny of
@@ -554,8 +573,15 @@ def srt_settings(policy, sockets, allowed_domains, denied_domains, home=None):
             "denyWrite": _dedupe(deny),
             "denyRead": _dedupe(_real(p) for p in policy.get("deny_read") or []),
         },
-        "allowPty": True,
+        "allowPty": bool(allow_pty),
     }
+
+
+def srt_argv(srt, settings_path, argv):
+    """The argv that runs `argv` under srt: debug output on (blocked
+    connections are parsed from it) and live config on the control fd."""
+    return [srt, "-d", "-s", settings_path, "--control-fd", str(SRT_CONTROL_FD),
+            "-c", shlex.join(list(argv))]
 
 
 # --- denial detection --------------------------------------------------------
@@ -708,13 +734,18 @@ def normalize_config(raw, union=None):
 def normalize_network(raw, union=None):
     """A well-formed `sandbox.network`: mode allowlist|off and the domain
     lists (already unioned across layers by the caller when `union` is set).
-    Missing lists fall back to the defaults (api.anthropic.com only)."""
+    Missing lists fall back to the defaults (api.anthropic.com only).
+    `ecosystem` (package-registry presets) is on unless explicitly off."""
     raw = raw if isinstance(raw, dict) else {}
     mode = raw.get("mode")
     if mode is False:  # YAML 1.1 `off`
         mode = "off"
     mode = mode.strip().lower() if isinstance(mode, str) else ""
     out = {"mode": mode if mode in NETWORK_MODES else "allowlist"}
+    ecosystem = raw.get("ecosystem", True)
+    if isinstance(ecosystem, str):
+        ecosystem = ecosystem.strip().lower() not in ("off", "false", "no", "0")
+    out["ecosystem"] = ecosystem is not False
     for key, default in (("allowed_domains", DEFAULT_ALLOWED_DOMAINS),
                          ("denied_domains", ()),
                          ("quiet_domains", DEFAULT_QUIET_DOMAINS)):
@@ -825,6 +856,12 @@ def pi_deny_paths(state_dir):
             + [os.path.join(state_dir, f) for f in PI_DENY_FILES])
 
 
+def codex_deny_paths(state_dir):
+    state_dir = os.path.realpath(state_dir)
+    return ([os.path.join(state_dir, d) for d in CODEX_DENY_SUBDIRS]
+            + [os.path.join(state_dir, f) for f in CODEX_DENY_FILES])
+
+
 def build_policy(tree, executor, cfg, home=None, env=None, platform=None,
                  learned=None):
     """The one policy every backend enforces.
@@ -867,6 +904,8 @@ def build_policy(tree, executor, cfg, home=None, env=None, platform=None,
         writable.append(state)
         if executor == "pi":
             deny_write += pi_deny_paths(state)
+        elif executor == "codex":
+            deny_write += codex_deny_paths(state)
     seeds = list(SEED_CACHE_WRITES)
     if platform == "darwin":
         seeds += SEED_CACHE_WRITES_DARWIN
@@ -1009,7 +1048,8 @@ def host_policy(repo, worktree_base, herdr_home, cfg, extra_writable=(), home=No
     deny_write += [os.path.join(state, "tools"), os.path.join(state, "pi-agent")]
     # The network sandbox's settings and its audit log: written by the
     # executor outside the sandbox, never by a pane.
-    deny_write += [os.path.join(state, SRT_SETTINGS_DIR), os.path.join(state, AUDIT_DIR)]
+    deny_write += [os.path.join(state, SRT_SETTINGS_DIR), os.path.join(state, CLI_SRT_DIR),
+                   os.path.join(state, AUDIT_DIR)]
     deny_write_regex = []
     for tree in (repo, base):
         root = _repo_root(tree) if os.path.isdir(tree) else None
@@ -1182,12 +1222,56 @@ def probes():
 # --- spec --------------------------------------------------------------------
 
 
-def prepare(executor, tree, cfg, probe_results=None, env=None):
+def _srt_spec(spec, executor, tree, cfg, results, env, network):
+    """Fill `spec` for an srt run and return None, or return why srt does
+    not apply (the network is then not restricted)."""
+    net = cfg["network"]
+    if net["mode"] != "allowlist":
+        return "sandbox.network.mode is off"
+    if not network.get("srt"):
+        return network.get("reason") or "srt not available"
+    if not (results["seatbelt"]["ok"] or results["bwrap"]["ok"]):
+        # srt confines through Seatbelt / bubblewrap itself.
+        return "srt needs a working Seatbelt or bubblewrap (%s)" % "; ".join(
+            "%s: %s" % (k, results[k]["detail"]) for k in ("seatbelt", "bwrap"))
+    policy = build_policy(tree, executor, cfg, env=env)
+    domains = _dedupe(network.get("domains") or [])
+    run_id = network.get("id") or "run"
+    directory = os.path.join(state_dir(), CLI_SRT_DIR)
+    spec.update(
+        backend="srt", enforced=True, policy=policy, writable=list(policy["writable"]),
+        reason="sandbox-runtime (srt): filesystem policy and network allowlist",
+        srt={"path": network["srt"], "id": run_id,
+             "session": network.get("session") or run_id,
+             "settings_path": os.path.join(directory, run_id + ".json"),
+             "log_path": os.path.join(directory, run_id + ".log"),
+             "domains": domains,
+             "quiet": list(net.get("quiet_domains") or []),
+             "settings": srt_settings(policy, [], domains, net["denied_domains"],
+                                      allow_pty=False)})
+    return None
+
+
+def _not_restricted(spec, why):
+    note = "network not restricted: %s" % why
+    spec["limits"] = list(spec.get("limits") or []) + [note]
+    spec["reason"] = ("%s; %s" % (spec["reason"], note)) if spec.get("reason") else note
+    return spec
+
+
+def prepare(executor, tree, cfg, probe_results=None, env=None, network=None):
     """Decide how `executor` will be sandboxed for a run in `tree`.
 
     Returns the internal spec; `report(spec)` is its public projection and
     `wrap_argv(argv, cwd, spec)` the argv to spawn. `spec["refuse"]` is True
-    when `mode: required` found no backend -- the caller must not spawn."""
+    when `mode: required` found no backend -- the caller must not spawn.
+
+    `network` ({srt, reason, domains, id, session}, see
+    agent_exec_srt.cli_network) asks for the srt backend: with
+    `sandbox.network.mode: allowlist`, a usable srt and a host where srt can
+    confine, the run gets backend `srt` with this executor's policy; else the
+    backend below and `network not restricted: <why>` in limits and reason.
+    None keeps the network question out (open network, no note)."""
     cfg = normalize_config(cfg)
     mode = cfg["mode"]
     spec = {"backend": "none", "enforced": False, "reason": "", "limits": [],
@@ -1195,13 +1279,27 @@ def prepare(executor, tree, cfg, probe_results=None, env=None):
     if mode == "off":
         spec["reason"] = "sandbox.mode is off"
         return spec
+    results = None
+    why = None
+    if network is not None:
+        results = probe_results if probe_results is not None else probes()
+        why = _srt_spec(spec, executor, tree, cfg, results, env, network)
+        if why is None:
+            return spec
     if executor == "codex":
         spec.update(backend="codex-native", enforced=True, writable=None,
                     reason="codex applies its own sandbox (workspace-write); "
                            "nesting another one fails")
-        return spec
+        return _not_restricted(spec, why) if why else spec
+    spec = _prepare_os(spec, executor, tree, cfg, probe_results, env, results)
+    return _not_restricted(spec, why) if why else spec
 
-    results = probe_results if probe_results is not None else probes()
+
+def _prepare_os(spec, executor, tree, cfg, probe_results, env, results):
+    """`prepare` with orchestra's own backends (Seatbelt, bwrap, Landlock)."""
+    mode = cfg["mode"]
+    if results is None:
+        results = probe_results if probe_results is not None else probes()
     policy = build_policy(tree, executor, cfg, env=env)
     if results["seatbelt"]["ok"]:
         spec.update(backend="seatbelt", enforced=True,
@@ -1277,12 +1375,17 @@ def bwrap_limits(policy, exists=os.path.exists):
 def child_env(spec, env):
     """Env additions for a sandboxed child: `uvx` must build its throwaway
     tool envs in temp, never in `~/.local/share/uv/tools` (installed tools,
-    run later unsandboxed). An explicit UV_TOOL_DIR is left alone."""
+    run later unsandboxed). An explicit UV_TOOL_DIR is left alone. Under srt
+    a Node child (pi) is told to use srt's HTTP(S)_PROXY: only the proxy is
+    reachable, and Node ignores the proxy variables unless asked."""
     env = dict(env)
-    if (spec or {}).get("backend") in ("seatbelt", "bwrap", "landlock") \
+    backend = (spec or {}).get("backend")
+    if backend in ("seatbelt", "bwrap", "landlock", "srt") \
             and spec.get("policy") is not None and "UV_TOOL_DIR" not in env:
         tmp = env.get("TMPDIR") or "/tmp"
         env["UV_TOOL_DIR"] = os.path.join(os.path.realpath(tmp), UV_TOOL_DIR_NAME)
+    if backend == "srt":
+        env.setdefault("NODE_USE_ENV_PROXY", "1")
     return env
 
 
@@ -1398,6 +1501,9 @@ def wrap_argv(argv, cwd, spec):
     (capture, exec, DRYRUN preview) goes through here."""
     backend = (spec or {}).get("backend")
     policy = (spec or {}).get("policy")
+    if backend == "srt" and policy is not None:
+        # srt confines by itself: never nested in Seatbelt/bwrap/Landlock.
+        return srt_argv(spec["srt"]["path"], spec["srt"]["settings_path"], argv)
     if policy is None or backend not in ("seatbelt", "bwrap", "landlock"):
         return list(argv)
     if backend == "seatbelt":
@@ -1568,5 +1674,6 @@ def list_section(cfg, workdir):
         "deny_write_regex": policy.get("deny_write_regex") or [],
         "learned": grants,
         "learned_path": learned_path(),
+        "domains": load_domains()[0],
         "warning": warning,
     }

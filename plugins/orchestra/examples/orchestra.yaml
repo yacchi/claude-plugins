@@ -62,6 +62,9 @@ external_executors:
     resume_command: >-
       agent-exec codex exec resume {session_id} --json --model {model} --config model_reasoning_effort={effort}
       --sandbox workspace-write --output-last-message {outfile} --cd {workdir} < {promptfile}
+    # API hosts only codex's srt settings allow (sandbox.network); unioned
+    # across layers, starting from these defaults.
+    network_domains: [chatgpt.com, auth.openai.com, api.openai.com]
     classes:
       - standard
       - deep
@@ -205,11 +208,17 @@ sandbox:
   mode: auto
   allow_write: []
   deny_read: []
-  # (v0.50.0) outbound allowlist for the herdr host, enforced by sandbox-runtime
-  # (tools.srt). Both lists are unioned across layers; approve more at run time
-  # with `agent-exec sandbox allow-domain <host>`. mode: "off" = unrestricted.
+  # Outbound allowlist for the herdr host (v0.50.0) and the CLI executors pi and
+  # codex, enforced by sandbox-runtime (tools.srt). Both lists are unioned across
+  # layers; approve more at run time with
+  # `agent-exec sandbox allow-domain <host> [--reason TEXT]`. mode: "off" =
+  # unrestricted. A CLI executor additionally reaches its own
+  # `external_executors.<name>.network_domains`.
   network:
     mode: allowlist
+    # package-registry hosts from the tree's tracked files (package.json,
+    # pyproject.toml, go.mod, Cargo.toml, ...; a tracked root .npmrc's registry)
+    ecosystem: true
     allowed_domains: [api.anthropic.com]
     denied_domains: []
     # quiet_domains: blocked and audited but never listed as a denial to approve
