@@ -454,6 +454,7 @@ class HappyPathTests(_OrcaRepo):
         terminal = self.calls("terminal create")[0]
         command = self.opt(terminal, "--command")
         self.assertIn("claude --model opus", command)
+        self.assertIn("--strict-mcp-config --setting-sources project,local --plugin-dir ", command)
         # Seen live: spec/preamble and the result file sit outside the
         # worktree, and without --add-dir the session stalls on a dialog.
         state_dir = os.path.dirname(os.path.abspath(self.state_path))
@@ -821,6 +822,17 @@ class AvailabilityTests(_OrcaRepo):
 
 
 class UnitTests(unittest.TestCase):
+
+    def test_isolation_flags(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(agent_exec_orca.__file__)))
+        flags = agent_exec_orca.isolation_flags({}, ["claude"])
+        self.assertEqual(flags, ["--strict-mcp-config", "--setting-sources", "project,local",
+                                 "--plugin-dir", root])
+        self.assertTrue(os.path.isfile(os.path.join(root, ".claude-plugin", "plugin.json")))
+        self.assertEqual(agent_exec_orca.isolation_flags({"user_config": "inherit"}, ["claude"]), [])
+        # Flags the user already passed are not added a second time.
+        self.assertEqual(agent_exec_orca.isolation_flags(
+            {}, ["claude", "--strict-mcp-config", "--setting-sources=user", "--plugin-dir", "/p"]), [])
     def test_normalize_enabled(self):
         self.assertIs(agent_exec_orca.normalize_enabled(True), True)
         self.assertIs(agent_exec_orca.normalize_enabled("false"), False)

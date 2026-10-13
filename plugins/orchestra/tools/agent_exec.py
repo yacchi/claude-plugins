@@ -344,6 +344,9 @@ DEFAULTS = {
         "command": "claude --model {model} --permission-mode {permission_mode}",
         "models": {"light": "sonnet", "standard": "opus", "deep": "opus"},
         "permission_mode": "auto",
+        # isolate = hosted Claude skips the user's MCP servers, hooks and
+        # plugins; inherit = it loads them as a plain `claude` would.
+        "user_config": "isolate",
         "add_dirs": [],
         "auto_trust": False,
         "startup_timeout": 90,
@@ -366,6 +369,7 @@ DEFAULTS = {
         "args": "--model {model} --permission-mode {permission_mode}",
         "models": {"light": "sonnet", "standard": "opus", "deep": "opus"},
         "permission_mode": "auto",
+        "user_config": "isolate",  # isolate | inherit, as for `orca`
         "add_dirs": [],
         "auto_trust": True,
         "startup_timeout": 90,
@@ -4330,6 +4334,12 @@ def _build_doctor_report():
         "cooldowns": {"path": doctor_state_path, "active": doctor_cooldowns},
         "sandbox": agent_exec_sandbox.doctor_section(doctor_cfg.get("sandbox")),
         "herdr_host": _herdr_host_report(doctor_cfg),
+        "user_config": {
+            "herdr": str((doctor_cfg.get("herdr") or {}).get("user_config")
+                         or DEFAULTS["herdr"]["user_config"]),
+            "orca": str((doctor_cfg.get("orca") or {}).get("user_config")
+                        or DEFAULTS["orca"]["user_config"]),
+        },
     }
 
 
@@ -4433,6 +4443,9 @@ def _print_doctor_text(report):
         host = report.get("herdr_host") or {}
         print("herdr host: home=%s sandboxed=%s (%s)" % (
             host.get("home"), host.get("sandboxed"), host.get("reason")))
+        user_config = report.get("user_config") or {}
+        print("herdr host: user_config=%s" % user_config.get("herdr"))
+        print("orca host: user_config=%s" % user_config.get("orca"))
         net = host.get("network") or {}
         if net:
             srt = net.get("srt") or {}

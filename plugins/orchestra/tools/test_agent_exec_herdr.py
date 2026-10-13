@@ -596,8 +596,46 @@ class BypassTests(_Base):
     def test_add_dirs_follow_the_native_args(self):
         executor = self.executor(FakeHerdr())
         args = executor._native_args({"model": "opus", "add_dirs": ["/x/state"]})
+        self.assertEqual(args[:6], ["--model", "opus", "--permission-mode", "auto",
+                                    "--add-dir", "/x/state"])
+
+    def test_inherit_is_the_plain_argv(self):
+        executor = self.executor(FakeHerdr(), {"user_config": "inherit"})
+        args = executor._native_args({"model": "opus", "add_dirs": ["/x/state"]})
         self.assertEqual(args, ["--model", "opus", "--permission-mode", "auto",
                                 "--add-dir", "/x/state"])
+
+
+class UserConfigIsolationTests(_Base):
+    def plugin_root(self):
+        return os.path.dirname(os.path.dirname(os.path.abspath(agent_exec_herdr.__file__)))
+
+    def test_isolate_adds_flags_with_plugin_root(self):
+        args = self.executor(FakeHerdr())._native_args({"model": "opus"})
+        self.assertEqual(args[4:], ["--strict-mcp-config", "--setting-sources", "project,local",
+                                    "--plugin-dir", self.plugin_root()])
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.plugin_root(), ".claude-plugin", "plugin.json")))
+
+    def test_flags_already_in_user_args_are_not_duplicated(self):
+        cfg = {"args": "--model {model} --strict-mcp-config --setting-sources=user "
+                       "--plugin-dir /mine"}
+        args = self.executor(FakeHerdr(), cfg)._native_args({"model": "opus"})
+        self.assertEqual(args.count("--strict-mcp-config"), 1)
+        self.assertNotIn("--setting-sources", args)
+        self.assertEqual(args.count("--plugin-dir"), 1)
+
+    def test_warm_reader_fork_and_reopen_carry_the_same_flags(self):
+        fake = FakeHerdr(running=True)
+        executor = WarmTests.warm_executor(self, fake)
+        WarmTests.start(self, executor, "a")
+        WarmTests.start(self, executor, "b")
+        flags = ["--strict-mcp-config", "--setting-sources", "project,local",
+                 "--plugin-dir", self.plugin_root()]
+        starts = fake.starts()
+        self.assertEqual(len(starts), 3)
+        for argv in starts:
+            self.assertEqual(argv[-5:], flags)
 
 
 class NetworkTests(_Base):

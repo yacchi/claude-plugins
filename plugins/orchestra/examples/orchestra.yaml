@@ -281,6 +281,8 @@ checks:
 #                          # true = required (the run stops without it); false = never
 #   command: "claude --model {model} --permission-mode acceptEdits"
 #   models: {light: sonnet, standard: opus, deep: opus}   # when the route names no model
+#   user_config: isolate   # isolate (default) = hosted Claude skips your MCP servers, user hooks and
+#                          # user plugins; inherit = loads them
 #   auto_trust: false      # true = accept Claude's folder-trust dialog, only for
 #                          # worktrees the executor itself created
 #   startup_timeout: 90    # seconds to reach the prompt box
@@ -298,6 +300,7 @@ checks:
 #   models: {light: sonnet, standard: opus, deep: opus}
 #   permission_mode: auto  # (v0.49.0) Claude's classifier approves tool calls; acceptEdits stalls on every Bash dialog
 #                          # (v0.50.0) bypassPermissions only under srt with the network allowlist enforced
+#   user_config: isolate   # isolate | inherit, as for `orca`
 #   auto_trust: true       # (v0.49.0) accept the folder-trust dialog, only for worktrees
 #                          # orchestra created AND while the herdr server is sandboxed
 #                          # (sandbox.mode off / no backend -> a `trust` need instead)

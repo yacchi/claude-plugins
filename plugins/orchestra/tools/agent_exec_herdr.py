@@ -874,7 +874,9 @@ class HerdrExecutor(object):
             args += ["--session-id", session["claude_session_id"]]
         if fork and session.get("warm_session"):
             args += ["--resume", session["warm_session"], "--fork-session"]
-        return args
+        # Every start (fresh, warm reader, fork, reopen) goes through here, so
+        # warm and fork share one flag set: the cache prefix includes the tools.
+        return args + _orca().isolation_flags(self.cfg, args)
 
     def _open_agent(self, session, fork=False):
         """Workspace + agent on the session's worktree, up to a usable

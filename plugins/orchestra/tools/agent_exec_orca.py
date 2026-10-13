@@ -111,6 +111,44 @@ def normalize_enabled(value):
     return "auto"
 
 
+_USER_CONFIG_MODES = ("isolate", "inherit")
+
+
+def user_config_mode(cfg):
+    mode = str((cfg or {}).get("user_config") or "isolate")
+    if mode not in _USER_CONFIG_MODES:
+        raise OrcaNeed("error", "invalid user_config: %s (isolate | inherit)" % mode)
+    return mode
+
+
+def isolation_flags(cfg, tokens):
+    """Claude flags that keep a hosted worker off the user's own setup.
+
+    `isolate` (default) adds --strict-mcp-config (no user MCP servers),
+    --setting-sources project,local (no user hooks or enabled plugins) and
+    --plugin-dir <orchestra plugin root>. The repo's own project/local
+    settings and the user's CLAUDE.md still apply; orchestra's own hooks and
+    agents come back through --plugin-dir. A flag already present in `tokens`
+    (the user's own args) is not added a second time. `inherit` adds nothing.
+    """
+    if user_config_mode(cfg) == "inherit":
+        return []
+
+    def has(flag):
+        return any(t == flag or t.startswith(flag + "=") for t in tokens)
+
+    flags = []
+    if not has("--strict-mcp-config"):
+        flags.append("--strict-mcp-config")
+    if not has("--setting-sources"):
+        flags += ["--setting-sources", "project,local"]
+    root = os.path.dirname(_HERE)
+    if not has("--plugin-dir") and os.path.isfile(
+            os.path.join(root, ".claude-plugin", "plugin.json")):
+        flags += ["--plugin-dir", root]
+    return flags
+
+
 def merged_config(cfg):
     """`cfg` over agent_exec.DEFAULTS["orca"] (the single source of the
     defaults), with `enabled` normalized."""
@@ -376,6 +414,8 @@ class OrcaExecutor(object):
         # dialog that nobody is there to answer.
         for directory in session.get("add_dirs") or ():
             command += " --add-dir " + shlex.quote(directory)
+        for flag in isolation_flags(self.cfg, shlex.split(command)):
+            command += " " + shlex.quote(flag)
         try:
             result = self._orca(["terminal", "create", "--worktree", "path:" + session["worktree"],
                                  "--title", "wave " + session["pkg"], "--command", command])
