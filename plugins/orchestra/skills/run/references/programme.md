@@ -61,7 +61,7 @@ A package's worktree is created when its dispatch runs, from the integration wor
 
 **When may a package start?** All of its `depends_on` are integrated, none of them failed (a failed dependency marks the package `blocked`, transitively), and — by default — no package whose `files_owned` overlaps it is in flight. That last rule is a deliberate exception to §12's "never serialize for file overlap": that rule is about function-sized tasks against a frozen contract. At programme scale the packages are session-sized, two of them owning the same files almost always means one should build on the other's actual code, and resolving a session-sized conflict costs a Sonnet session every time. Set `serializeOverlap: false` to get §12's behaviour back.
 
-**Integration is one serial queue with an integrator.** Approved packages queue up; one integrator at a time takes up to `batch` of them, runs `agent-exec isolate integrate`, resolves any `conflicted` files by reading both packages' specs, runs the targeted verification, and either commits an integration fix or takes one package back out with `git revert` of its `orchestra integrate <id>` commit — reporting per package, so one broken package never un-merges its batchmates. The integrator is the supervising layer (it may commit in the integration worktree; workers never do) and is pinned to Sonnet.
+**Integration is one serial queue with an integrator.** Approved packages queue up; one integrator at a time takes up to `batch` of them, runs `agent-exec isolate integrate`, resolves any `conflicted` files by reading both packages' specs, runs the targeted verification, and either commits an integration fix or takes one package back out with `git revert` of its `orchestra integrate <id>` commit — reporting per package, so one broken package never un-merges its batchmates. The integrator is the supervising layer (it may commit in the integration worktree; workers never do) and is pinned to Sonnet. `isolate integrate` takes an exclusive per-target lock (`--lock wait` by default, up to `--lock-timeout 900`; `--lock fail` does not wait; exit 6 = `locked`), so several workflows that share one integration target — parallel programmes, or a scheduler plus a manual integrate — serialize on it safely without a lock of their own.
 
 **Maintenance every N integrations.** A full verification of the integration tree every `verifyEvery` packages (a failure that one minimal fix cannot clear **pauses scheduling** and returns to you, rather than letting more packages land on a red tree), and a carry-over triage every `triageEvery` packages (§4).
 
@@ -96,7 +96,7 @@ const SERIALIZE_OVERLAP = P.serializeOverlap !== false
 
 const PKGS = P.packages
 const byId = new Map(PKGS.map(p => [p.id, p]))
-const state = {}                          // pending | running | approved | merged | failed | blocked
+const state = {}                          // pending | running | approved | merged | failed | blocked | stranded
 PKGS.forEach(p => { state[p.id] = P.state?.[p.id] || 'pending' })
 const results = {}
 let started = 0
@@ -123,7 +123,8 @@ function integratorPrompt(batch) {
   return treeLine(INT_PATH) +
     'You integrate approved packages into this integration worktree (branch orchestra/*; you may commit here). ' +
     'Specs: ' + ids.map(id => byId.get(id).workerPromptFile).join(', ') + '.\n' +
-    '1. Run `agent-exec isolate integrate --tasks ' + ids.join(',') + ' --into ' + INTO + ' --json` (exit 1 = some task conflicted; that is normal).\n' +
+    '1. Run `agent-exec isolate integrate --tasks ' + ids.join(',') + ' --into ' + INTO + ' --json` (exit 1 = some task conflicted; that is normal). ' +
+    'It holds a per-target lock and waits for another integrate into the same target (`--lock wait`, default timeout 900s); exit 6 = still locked: run it again once, never hand-roll a lock.\n' +
     '2. For each conflicted task: open each listed file, resolve the markers keeping BOTH packages\' intent (read both specs), then `git add -A && git commit -qm "orchestra resolve <id>"`.\n' +
     '3. Run the verification of every package in this batch: ' + batch.map(b => b.id + ': ' + byId.get(b.id).verification).join(' | ') + '.\n' +
     '4. A failure caused by the combination: fix it minimally (integration fixes only, no features) and commit "orchestra fix <id>". ' +
@@ -177,27 +178,65 @@ function enqueue(id) {
   return new Promise(done => { queue.push({ id, done }); if (!draining) draining = drain() })
 }
 
-// A RelayFailureError (skill §5) means the RELAY lost the JSON, not that the
-// package's work or review failed - `dispatchClass()` already retries the
-// relay call itself once, so seeing this here means it failed twice in a
-// row. Retry the whole package once more at this level before giving up;
-// only a failure that survives both retries becomes a real `failed` (which
-// is what cascades dependents to `blocked` below) - a relay hiccup must
-// never blocked-cascade an otherwise-healthy dependency chain.
-async function runPackage(p, relayRetry = 0) {
+// A RelayFailureError (skill §5) means the RELAY lost the dispatch's result,
+// not that the package's work or review failed - in the field the
+// implementation had almost always finished. Calling runTask() again would
+// re-implement finished work in the same worktree (20+ minutes of codex per
+// package, observed), so never do that. Recover in order:
+//   (a) resume waiting on the SAME token: `wait` is idempotent and returns
+//       the persisted result, however many earlier hops were garbled;
+//   (b) if that also fails, ask the package's worktree whether it holds
+//       changes: one relay hop runs `agent-exec isolate diff --task <id>
+//       --names-only`, whose JSON carries `path` (the worktree root - the
+//       same tree the dispatch's `isolation.path` names) and `files`.
+//       Non-empty -> rerun runTask with preimplementedPath = that path, so
+//       it starts at the review. Empty -> hand it back as needsInstructor.
+// The diff check runs only after the result record is unreachable; a
+// diff result also marks the tree collected, which is harmless here since
+// the review and integration that follow change or consume it anyway.
+// A relay failure parks the package as `stranded`, never `failed`: only
+// `failed` cascades dependents to `blocked`, and a relay hiccup must never
+// block an otherwise-healthy dependency chain - its dependents stay
+// `pending` and come back in the chunk's pending list.
+async function recoverPackage(p, err) {
+  log('relay failure on ' + p.id + ' (' + err.message + '); resuming wait on ' + err.token)
+  if (err.token) {
+    try {
+      const r = await awaitDispatch(err.token, (err.label || p.id) + '-resume')
+      const iso = r.isolation || {}
+      const path = iso.isolate ? (iso.workdir || iso.path) : null
+      if (r.status === 'ok' && path) return runTask({ ...p, preimplementedPath: path })
+    } catch (e) {
+      if (!(e instanceof RelayFailureError)) throw e
+    }
+  }
+  const d = await relayHop('agent-exec isolate diff --task ' + p.id + ' --names-only', 120000, p.id + '-diff-check')
+  if (d.status === 'ok' && d.path && (d.files || []).length) {
+    log(p.id + ': worktree holds ' + d.files.length + ' changed files - reviewing them instead of re-dispatching')
+    return runTask({ ...p, preimplementedPath: d.path })
+  }
+  return { id: p.id, pass: false, needsInstructor: true, relayFailure: true,
+           summary: 'relay lost the dispatch result and the worktree has no changes: ' + err.message }
+}
+
+async function runPackage(p) {
   state[p.id] = 'running'
   let verdict
   try {
     verdict = await runTask(p)                // two gates, class escalation, isolation: skill §5
   } catch (e) {
-    if (e instanceof RelayFailureError && relayRetry < 1) {
-      log('relay failure on ' + p.id + ', retrying package once: ' + e.message)
-      return runPackage(p, relayRetry + 1)
+    if (!(e instanceof RelayFailureError)) throw e
+    try {
+      verdict = await recoverPackage(p, e)
+    } catch (e2) {
+      // A second relay failure inside the recovered run: stop here, still
+      // without blaming the package.
+      if (!(e2 instanceof RelayFailureError)) throw e2
+      verdict = { id: p.id, pass: false, needsInstructor: true, relayFailure: true, summary: 'relay failed twice: ' + e2.message }
     }
-    throw e
   }
   results[p.id] = verdict
-  if (!verdict.pass) { state[p.id] = 'failed'; return }
+  if (!verdict.pass) { state[p.id] = verdict.relayFailure ? 'stranded' : 'failed'; return }
   state[p.id] = 'approved'
   await enqueue(p.id)
 }
@@ -242,6 +281,8 @@ return {
   state, results,
 }
 ```
+
+**A lost relay never costs the work twice.** When a dispatch's relay fails (`RelayFailureError`, skill §5), `runPackage` does not call `runTask` again from the start: it resumes waiting on the same token with the skill's `awaitDispatch()`, and if the result is unreachable it asks the package's worktree (`agent-exec isolate diff --task <id> --names-only`, one relay hop) whether the work is there. Changes present → `runTask` with `preimplementedPath` set to the `path` that diff reports, straight to review; no changes → the package comes back `needsInstructor` and is parked as `stranded`, which — unlike `failed` — does not block its dependents (they stay in `pending`). Watch long waits as they happen: `dispatchClass()` logs every wait hop (count, pid, seconds waited), and `agent-exec ui` shows, per token, dispatches that finished but were never collected and ones whose process died.
 
 The run-end sweep leaves the integration worktree alone (nothing ever collects it, so its work counts as uncollected) and leaves any package tree whose work never integrated, so a failed package can still be inspected. It reclaims every package tree that did integrate.
 

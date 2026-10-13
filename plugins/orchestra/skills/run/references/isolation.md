@@ -136,10 +136,13 @@ The base rule elsewhere in the skill (`authoring.md` §1) is *partition file own
 ```text
 agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>]
                 [--on-conflict keep|skip|stop] [--verify <cmd>] [--verify-timeout <sec>]
-                [--bisect] [--bisect-max <n>] [--json|--text]
+                [--bisect] [--bisect-max <n>] [--lock wait|fail]
+                [--lock-timeout <sec>] [--json|--text]
 ```
 
 `--tasks` is required and takes comma-separated orchestra task IDs, applied in that order. `--repo` defaults to cwd; `--onto` defaults to the first task's baseline sha (falling back to HEAD); `--into` names the integration worktree's own task id (default `"integrate"`) and is an ordinary orchestra worktree — `agent-exec isolate list` shows it, `agent-exec isolate remove --task <id>` cleans it up. `--json` (default) or `--text`; passing both is a usage error. Same-file edits are not a reason to serialize. The only legitimate reason to serialize is a real dependency in which a later task must consume an earlier task's output or state.
+
+**`--lock`** serializes integrations into one target. Every integrate holds an exclusive `fcntl.flock` on `<git common dir>/orchestra/integrate-<sanitized --into id>.lock` for its whole run, verify and bisect included; the file's content (holder pid and ISO time) is informational only. `--lock wait` (default) blocks up to `--lock-timeout` seconds (default `900`); `--lock fail` does not wait at all. Failing to acquire returns status `"locked"` — JSON `{"status": "locked", "into": "<id>", "holder": "<lock file content or null>", ...}`, one line with `--text` — and **exit code `6`**. Parallel workflows, a programme scheduler and a hand-run integrate can therefore share one integration target without corrupting it; do not add `mkdir`-style locks in integrator prompts.
 
 **`--on-conflict`** controls what a conflicting task's apply leaves behind (default `keep`, unchanged from the base behaviour above): `keep` commits the conflict markers and moves on (nothing here changes the JSON shape). `skip` instead rolls the integration tree back to the commit just before that task's apply (a hard reset plus a clean, never a stash) and continues with the next task — the conflicting task's `status` stays `"conflicted"` but gains `"rolled_back": true`, and its source worktree is *not* marked collected, since its work never actually landed. `stop` does the same rollback and then marks every task after it `"status": "skipped"` without attempting them.
 

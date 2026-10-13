@@ -24,10 +24,13 @@ Usage:
   agent-exec -h | --help          show this help
 """
 
+import contextlib
 import copy
 import glob
 import hashlib
+import io
 import json
+import math
 import os
 import platform
 import re
@@ -431,15 +434,27 @@ Usage:
                                   result). All other dispatch flags may be
                                   combined with --detach.
   agent-exec dispatch wait --token dsp-<12 lowercase hex> [--max-wait N]
+                  [--summary]
                                   polls a --detach'd run for up to N seconds
                                   (default 560, chosen to fit under a common
                                   600s foreground-call timeout) and returns
                                   its normalized result once it exits, or
-                                  {{"status": "running", token, pid}} if it is
-                                  still going — call `wait` again to keep
-                                  polling. A malformed/undecodable captured
-                                  output reports {{"status": "relay-failed",
-                                  token, raw}} instead of raising.
+                                  {{"status": "running", token, pid, waited_s,
+                                  wait_calls}} if it is still going — call
+                                  `wait` again to keep polling. The final
+                                  result is persisted, so repeated `wait`
+                                  calls return the identical result; a
+                                  non-empty `answer` is also saved in full to
+                                  `answer_path`. A token that was never
+                                  detached reports {{"status":
+                                  "unknown-token", token}}. A malformed/
+                                  undecodable captured output reports
+                                  {{"status": "relay-failed", token, raw}}
+                                  instead of raising. --summary prints one
+                                  compact JSON line with `answer` cut to 400
+                                  characters (`answer_truncated`: true); it is
+                                  also accepted by `dispatch --token T
+                                  --capture`.
   agent-exec isolate create --task ID [--repo P] [--backend auto|gtr|git]
                   [--no-carry]
                                   create (or return) that task's worktree,
@@ -457,7 +472,7 @@ Usage:
                   [--into ID] [--on-conflict keep|skip|stop]
                   [--verify CMD] [--verify-timeout SEC]
                   [--bisect] [--bisect-max N] [--progress-jsonl PATH]
-                  [--json|--text]
+                  [--lock wait|fail] [--lock-timeout SEC] [--json|--text]
                                   replay each task's diff, in that order, onto
                                   one integration worktree (default task id
                                   `integrate`, started from the first task's
@@ -664,6 +679,14 @@ Usage:
                                   start (or reuse) the local zero-token
                                   dashboard on 127.0.0.1 and print its
                                   tokenized URL; --stop ends it
+  agent-exec write-file --path P [--expect-chars N]
+                                  read stdin as UTF-8, write it atomically
+                                  to P, creating parent dirs as needed. If
+                                  --expect-chars N is specified, verify that
+                                  the content (after removing one trailing
+                                  newline if present) has exactly N Unicode
+                                  code points; on mismatch, do not write and
+                                  exit 1. Success exits 0 with JSON output.
   agent-exec <profile> [args...] dispatch: inject profile env, exec the
                                   target CLI with args passed through verbatim
   agent-exec -h | --help          show this help
@@ -1106,19 +1129,61 @@ def _cmd_telemetry_toggle(value, args):
     return 0
 
 
+_PROJECT_CONFIG_FILES = (
+    "orchestra.yaml", "orchestra.yml",
+    "orchestra.local.yaml", "orchestra.local.yml",
+)
+
+
+def _project_config_base():
+    """Directory whose `.claude/` holds the project config layers. An explicit
+    ORCHESTRA_CONFIG_ROOT (set from a dispatch token's `config_root`) wins.
+    Otherwise walk up from the cwd to the git toplevel (inclusive) and pick the
+    nearest directory containing a project layer file; fall back to the cwd."""
+    forced = os.environ.get("ORCHESTRA_CONFIG_ROOT")
+    if forced and os.path.isdir(forced):
+        return os.path.abspath(forced)
+    cwd = os.getcwd()
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            universal_newlines=True, cwd=cwd, timeout=10,
+        )
+        top = out.stdout.strip() if out.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        top = ""
+    if not top:
+        return cwd
+    top = os.path.realpath(top)
+    current = os.path.realpath(cwd)
+    while True:
+        for name in _PROJECT_CONFIG_FILES:
+            if os.path.isfile(os.path.join(current, ".claude", name)):
+                return current
+        if current == top:
+            break
+        parent = os.path.dirname(current)
+        if parent == current or not (current + os.sep).startswith(top + os.sep):
+            break
+        current = parent
+    return cwd
+
+
 def _ordered_layer_paths():
     """Ordered, de-duplicated orchestra config layer files (user, project,
     project-local), lowest->highest precedence. When two logical layers resolve
     to the same physical file (e.g. cwd is $HOME, so ./.claude == ~/.claude),
     the file is included once, at its first (lower-precedence) position."""
+    base = _project_config_base()
     raw = []
     for directory in (os.path.expanduser("~/.claude"),
-                      os.path.join(".", ".claude")):
+                      os.path.join(base, ".claude")):
         p = _config_layer_path(directory)
         if p is not None:
             raw.append(p)
     for local_name in ("orchestra.local.yaml", "orchestra.local.yml"):
-        p = os.path.join(".", ".claude", local_name)
+        p = os.path.join(base, ".claude", local_name)
         if os.path.isfile(p):
             raw.append(p)
             break
@@ -1928,8 +1993,35 @@ def _sweep_retention(cfg):
                 candidate = os.path.join(directory, name)
                 if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
                     os.remove(candidate)
+        _sweep_detach_files(cfg, cutoff)
     except Exception:
         pass
+
+
+def _sweep_detach_files(cfg, cutoff):
+    """Delete old `detach/<T>.*` files whose detached child is gone."""
+    directory = _detach_dir_from_cfg(cfg)
+    if not os.path.isdir(directory):
+        return
+    pids = {}
+    for name in os.listdir(directory):
+        token = name.split(".", 1)[0]
+        if token not in pids:
+            pid = None
+            try:
+                with open(os.path.join(directory, token + ".json"), "r", encoding="utf-8") as handle:
+                    pid = json.load(handle).get("pid")
+            except (OSError, ValueError, AttributeError):
+                pass
+            pids[token] = pid
+        if _pid_alive(pids[token]):
+            continue
+        candidate = os.path.join(directory, name)
+        try:
+            if os.path.isfile(candidate) and os.path.getmtime(candidate) < cutoff:
+                os.remove(candidate)
+        except OSError:
+            pass
 
 
 def _mint_dispatch_token():
@@ -2077,13 +2169,17 @@ def cmd_dispatch_prepare(args):
         "isolate": isolate_mode,
         "task": task,
         "prompt_files": [os.path.abspath(path) for path in prompt_files],
+        "config_root": os.path.abspath(_project_config_base()),
     }
     try:
         token = _write_dispatch_token(resolved, spec)
     except OSError as exc:
         sys.stderr.write("agent-exec: dispatch: %s\n" % exc)
         return 1
-    print(json.dumps({"token": token}, ensure_ascii=False))
+    config_layers = [os.path.abspath(p) for p in _ordered_layer_paths()]
+    print(json.dumps(
+        {"token": token, "config_layers": config_layers}, ensure_ascii=False
+    ))
     return 0
 
 
@@ -3842,6 +3938,7 @@ def _build_doctor_report():
         )
     config_section = {
         "layers_found": [],
+        "config_root": os.path.abspath(_project_config_base()),
         "resolved": err is None,
         "error": err,
         "warnings": _detect_config_warnings(),
@@ -5984,10 +6081,11 @@ def _parse_integrate_args(args):
         "tasks": None, "repo": os.getcwd(), "onto": None, "into": "integrate",
         "json": False, "text": False, "on_conflict": "keep", "verify": None,
         "verify_timeout": 3600, "bisect": False, "bisect_max": 3,
-        "progress_jsonl": None,
+        "progress_jsonl": None, "lock": "wait", "lock_timeout": 900,
     }
     seen = set()
     value_flags = {
+        "--lock": "lock", "--lock-timeout": "lock_timeout",
         "--tasks": "tasks", "--repo": "repo", "--onto": "onto", "--into": "into",
         "--on-conflict": "on_conflict", "--verify": "verify",
         "--verify-timeout": "verify_timeout", "--bisect-max": "bisect_max",
@@ -6035,7 +6133,58 @@ def _parse_integrate_args(args):
         return None, "invalid --bisect-max value: %s" % opts["bisect_max"]
     if opts["bisect"] and opts["verify"] is None:
         return None, "--bisect requires --verify"
+    if opts["lock"] not in ("wait", "fail"):
+        return None, "invalid --lock value: %s" % opts["lock"]
+    try:
+        opts["lock_timeout"] = float(opts["lock_timeout"])
+        if not math.isfinite(opts["lock_timeout"]) or opts["lock_timeout"] < 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return None, "invalid --lock-timeout value: %s" % opts["lock_timeout"]
     return opts, None
+
+
+def _integrate_lock_path(repo, into):
+    """Lock file path for one integration target, shared by all worktrees of the repo.
+
+    Returns None when `repo` is not a git repo (the integrate itself then
+    reports the real error).
+    """
+    code, out = _git(repo, "rev-parse", "--git-common-dir")
+    if code != 0 or not out.strip():
+        return None
+    common = out.strip()
+    if not os.path.isabs(common):
+        common = os.path.join(repo, common)
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", into) or "_"
+    return os.path.join(os.path.abspath(common), "orchestra", "integrate-%s.lock" % safe)
+
+
+def _acquire_integrate_lock(path, mode, timeout):
+    """flock `path` exclusively. Returns (fh, None) or (None, holder_info)."""
+    import fcntl
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fh = open(path, "a+", encoding="utf-8")
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            if mode == "fail" or time.monotonic() >= deadline:
+                try:
+                    fh.seek(0)
+                    holder = fh.read().strip() or None
+                except OSError:
+                    holder = None
+                fh.close()
+                return None, holder
+            time.sleep(0.1)
+    fh.seek(0)
+    fh.truncate()
+    fh.write("%d %s\n" % (os.getpid(), datetime.now(timezone.utc).isoformat()))
+    fh.flush()
+    return fh, None
 
 
 def cmd_isolate_integrate(args):
@@ -6053,6 +6202,22 @@ def cmd_isolate_integrate(args):
             os.makedirs(parent, exist_ok=True)
             with open(progress_path, "a", encoding="utf-8") as fh:
                 fh.write(line + "\n")
+    lock_fh = None
+    lock_path = _integrate_lock_path(opts["repo"], opts["into"])
+    if lock_path is not None:
+        lock_fh, holder = _acquire_integrate_lock(
+            lock_path, opts["lock"], opts["lock_timeout"])
+        if lock_fh is None:
+            if opts["text"]:
+                print("integrate locked  into %s  holder %s" % (
+                    opts["into"], holder or "-"))
+            else:
+                print(json.dumps({
+                    "status": "locked", "into": opts["into"], "holder": holder,
+                    "lock": lock_path,
+                    "note": "another integrate holds the lock for this target",
+                }, ensure_ascii=False))
+            return 6
     try:
         result = isolate_integrate(
             opts["repo"], opts["tasks"], onto=opts["onto"], into=opts["into"],
@@ -6063,6 +6228,9 @@ def cmd_isolate_integrate(args):
     except ValueError as exc:
         sys.stderr.write("agent-exec: isolate integrate: %s\n" % exc)
         return 2
+    finally:
+        if lock_fh is not None:
+            lock_fh.close()
     if opts["text"]:
         print(format_integrate_text(result))
     else:
@@ -7609,7 +7777,7 @@ def list_detached_dispatches(cfg):
     except OSError:
         return result
     for name in names:
-        if not name.endswith(".json"):
+        if not name.endswith(".json") or name.endswith(".result.json"):
             continue
         path = os.path.join(directory, name)
         try:
@@ -7617,14 +7785,26 @@ def list_detached_dispatches(cfg):
                 state = json.load(handle)
             token = state.get("token") or name[:-5]
             pid = state.get("pid")
+            alive = _pid_alive(pid)
+            result_present = os.path.exists(_detach_result_path(cfg, token))
+            if not result_present and not alive:
+                try:
+                    out_file = state.get("out") or _detach_out_path(cfg, token)
+                    result_present = os.path.getsize(out_file) > 0
+                except OSError:
+                    pass
             spec = None
             try:
                 spec = _load_dispatch_token(cfg, token)
             except (ValueError, OSError):
                 pass
             result.append({
-                "token": token, "pid": pid, "alive": _pid_alive(pid),
+                "token": token, "pid": pid, "alive": alive,
                 "started": state.get("started"),
+                "result_present": bool(result_present),
+                "collected": state.get("collected") is True,
+                "finished": state.get("finished"),
+                "wait_calls": state.get("wait_calls") if isinstance(state.get("wait_calls"), int) else 0,
                 "executor": (spec or {}).get("executor", state.get("executor")),
                 "model": (spec or {}).get("model", state.get("model")),
                 "class": (spec or {}).get("class", state.get("class")),
@@ -7637,6 +7817,63 @@ def list_detached_dispatches(cfg):
 
 def _detach_out_path(cfg, token):
     return os.path.join(_detach_dir_from_cfg(cfg), "%s.out" % token)
+
+
+def _detach_result_path(cfg, token):
+    return os.path.join(_detach_dir_from_cfg(cfg), "%s.result.json" % token)
+
+
+def _detach_answer_path(cfg, token):
+    return os.path.join(_detach_dir_from_cfg(cfg), "%s.answer.txt" % token)
+
+
+_SUMMARY_ANSWER_CHARS = 400
+
+
+def _atomic_write_text(path, text):
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _attach_answer_path(cfg, token, result):
+    """Persist a non-empty string `answer` to its file; add `answer_path`."""
+    answer = result.get("answer") if isinstance(result, dict) else None
+    if isinstance(answer, str) and answer:
+        path = os.path.abspath(_detach_answer_path(cfg, token))
+        try:
+            _atomic_write_text(path, answer)
+            result["answer_path"] = path
+        except OSError:
+            pass
+    return result
+
+
+def _summarize_result(result):
+    """Copy of `result` with `answer` cut to its first 400 code points."""
+    summary = dict(result)
+    answer = summary.get("answer")
+    if isinstance(answer, str) and len(answer) > _SUMMARY_ANSWER_CHARS:
+        summary["answer"] = answer[:_SUMMARY_ANSWER_CHARS]
+        summary["answer_truncated"] = True
+    return summary
+
+
+def _print_result(result, summary):
+    if summary and isinstance(result, dict):
+        print(json.dumps(_summarize_result(result), ensure_ascii=False, separators=(",", ":")))
+    else:
+        print(json.dumps(result, ensure_ascii=False))
 
 
 def _pid_alive(pid):
@@ -7696,8 +7933,20 @@ def cmd_dispatch_detach(cfg, token, delegated_args):
                 ensure_ascii=False,
             ))
             return 0
-        print(json.dumps({"status": "done", "token": token}, ensure_ascii=False))
-        return 0
+        if state.get("collected") is not True:
+            print(json.dumps({"status": "done", "token": token}, ensure_ascii=False))
+            return 0
+        # The final result was already returned by `wait`: this is a
+        # deliberate re-dispatch. Drop the old artifacts and start afresh.
+        for stale in (
+            _detach_result_path(cfg, token),
+            _detach_answer_path(cfg, token),
+            out_path,
+        ):
+            try:
+                os.remove(stale)
+            except OSError:
+                pass
 
     # `delegated_args` is the resolved-from-token, --token-FREE flag set
     # (--class/--archetype/--workdir/--isolate/--prompt-file/...) built by
@@ -7717,7 +7966,8 @@ def cmd_dispatch_detach(cfg, token, delegated_args):
         )
     with open(state_path, "w", encoding="utf-8") as f:
         json.dump(
-            {"pid": proc.pid, "token": token, "started": time.time(), "out": out_path},
+            {"pid": proc.pid, "token": token, "started": time.time(),
+             "wait_calls": 0, "out": out_path},
             f,
         )
     print(json.dumps(
@@ -7729,13 +7979,117 @@ def cmd_dispatch_detach(cfg, token, delegated_args):
 _DEFAULT_DISPATCH_WAIT_SECONDS = 560
 
 
+def cmd_write_file(args):
+    """Write stdin to a file atomically, with optional character count verification.
+
+    Usage:
+        agent-exec write-file --path P [--expect-chars N]
+
+    Reads all of stdin as UTF-8 and writes it atomically to --path P.
+    Creates parent directories as needed.
+
+    If --expect-chars N is specified, verifies that the content (after removing
+    one trailing newline if present) has exactly N Unicode code points.
+    On mismatch, does not write the file and exits with code 1.
+    """
+    path = None
+    expect_chars = None
+    i = 0
+
+    while i < len(args):
+        tok = args[i]
+        if tok == "--path":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: write-file: missing value for --path\n")
+                return 2
+            path = args[i + 1]
+            i += 2
+        elif tok == "--expect-chars":
+            if i + 1 >= len(args):
+                sys.stderr.write("agent-exec: write-file: missing value for --expect-chars\n")
+                return 2
+            try:
+                expect_chars = int(args[i + 1])
+            except ValueError:
+                sys.stderr.write("agent-exec: write-file: --expect-chars must be an integer\n")
+                return 2
+            i += 2
+        elif tok in ("-h", "--help"):
+            print_usage()
+            return 0
+        else:
+            sys.stderr.write("agent-exec: write-file: unknown option: %s\n" % tok)
+            return 2
+
+    if path is None:
+        sys.stderr.write("agent-exec: write-file: missing required option: --path\n")
+        return 2
+
+    # Read all of stdin
+    content = sys.stdin.read()
+
+    # Convert path to absolute
+    abs_path = os.path.abspath(path)
+
+    # Count characters: remove one trailing newline if present, then count Unicode code points
+    count_content = content
+    if count_content.endswith("\n"):
+        count_content = count_content[:-1]
+    char_count = len(count_content)
+
+    # Check character count if expected
+    if expect_chars is not None:
+        if char_count != expect_chars:
+            sys.stdout.write(json.dumps({
+                "status": "mismatch",
+                "path": abs_path,
+                "chars": char_count,
+                "expected": expect_chars,
+            }, ensure_ascii=False) + "\n")
+            return 1
+
+    # Create parent directories
+    parent_dir = os.path.dirname(abs_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+
+    # Write atomically: temp file + os.replace
+    try:
+        fd, temp_path = tempfile.mkstemp(dir=parent_dir if parent_dir else None)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(content)
+            os.replace(temp_path, abs_path)
+        except:
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+            raise
+    except Exception as e:
+        sys.stderr.write("agent-exec: write-file: failed to write %s: %s\n" % (abs_path, e))
+        return 2
+
+    # Success
+    sys.stdout.write(json.dumps({
+        "status": "ok",
+        "path": abs_path,
+        "chars": char_count,
+    }, ensure_ascii=False) + "\n")
+    return 0
+
+
 def cmd_dispatch_wait_cli(args):
     token = None
     max_wait = _DEFAULT_DISPATCH_WAIT_SECONDS
+    summary = False
     i = 0
     while i < len(args):
         tok = args[i]
-        if tok == "--token":
+        if tok == "--summary":
+            summary = True
+            i += 1
+        elif tok == "--token":
             if i + 1 >= len(args):
                 sys.stderr.write("agent-exec: dispatch: missing value for --token\n")
                 return 2
@@ -7766,24 +8120,58 @@ def cmd_dispatch_wait_cli(args):
         sys.stderr.write(err + "\n")
         return 1
 
-    state_path = _detach_state_path(resolved, token)
-    if not os.path.exists(state_path):
-        sys.stderr.write(
-            "agent-exec: dispatch: no detached run for token: %s "
-            "(use `dispatch --token %s --detach` first)\n" % (token, token)
-        )
+    if not _DISPATCH_TOKEN_RE.fullmatch(token):
+        sys.stderr.write("agent-exec: dispatch: invalid token: %s\n" % token)
         return 2
-    with open(state_path, "r", encoding="utf-8") as f:
-        state = json.load(f)
+
+    state_path = _detach_state_path(resolved, token)
+    result_path = _detach_result_path(resolved, token)
+    state = None
+    try:
+        with open(state_path, "r", encoding="utf-8") as f:
+            state = json.load(f)
+        if not isinstance(state, dict):
+            state = None
+    except (OSError, ValueError):
+        state = None
+    if state is not None:
+        calls = state.get("wait_calls")
+        state["wait_calls"] = (calls if isinstance(calls, int) else 0) + 1
+        _write_detach_state(state_path, state)
+
+    # A finished run's result is persisted, so every later `wait` returns
+    # the identical object instead of losing it to a retry.
+    cached = None
+    try:
+        with open(result_path, "r", encoding="utf-8") as f:
+            cached = json.load(f)
+    except (OSError, ValueError):
+        cached = None
+    if cached is not None:
+        if state is not None and state.get("collected") is not True:
+            state["collected"] = True
+            state.setdefault("finished", _iso_now())
+            _write_detach_state(state_path, state)
+        _print_result(cached, summary)
+        return 0
+    if state is None:
+        print(json.dumps({"status": "unknown-token", "token": token}, ensure_ascii=False))
+        return 0
+
     pid = state.get("pid")
     out_path = state.get("out", _detach_out_path(resolved, token))
 
-    deadline = time.time() + max(0, max_wait)
+    started_wait = time.time()
+    deadline = started_wait + max(0, max_wait)
     while _pid_alive(pid) and time.time() < deadline:
-        time.sleep(2)
+        time.sleep(min(2, max(0.05, deadline - time.time())))
 
     if _pid_alive(pid):
-        print(json.dumps({"status": "running", "token": token, "pid": pid}, ensure_ascii=False))
+        print(json.dumps({
+            "status": "running", "token": token, "pid": pid,
+            "waited_s": int(time.time() - started_wait),
+            "wait_calls": state["wait_calls"],
+        }, ensure_ascii=False))
         return 0
 
     try:
@@ -7792,22 +8180,45 @@ def cmd_dispatch_wait_cli(args):
     except OSError:
         raw = ""
     result = _extract_json_object(raw)
-    try:
-        os.remove(state_path)
-    except OSError:
-        pass
+    if not isinstance(result, dict):
+        result = {"status": "relay-failed", "token": token, "raw": raw[-2000:]}
+    _attach_answer_path(resolved, token, result)
+    _atomic_write_text(result_path, json.dumps(result, ensure_ascii=False))
+    state["finished"] = _iso_now()
+    state["collected"] = True
+    _write_detach_state(state_path, state)
     try:
         os.remove(out_path)
     except OSError:
         pass
-    if result is None:
-        print(json.dumps(
-            {"status": "relay-failed", "token": token, "raw": raw[-2000:]},
-            ensure_ascii=False,
-        ))
-        return 0
-    print(json.dumps(result, ensure_ascii=False))
+    _print_result(result, summary)
     return 0
+
+
+def _iso_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _write_detach_state(path, state):
+    try:
+        _atomic_write_text(path, json.dumps(state))
+    except OSError:
+        pass
+
+
+def _dispatch_summary(cfg, token, delegated_args):
+    """Run the token dispatch synchronously; print one compact summary line."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = cmd_dispatch_route(delegated_args)
+    raw = buffer.getvalue()
+    result = _extract_json_object(raw)
+    if not isinstance(result, dict):
+        sys.stdout.write(raw)
+        return code
+    _attach_answer_path(cfg, token, result)
+    _print_result(result, True)
+    return code
 
 
 def cmd_dispatch_route(args):
@@ -7839,12 +8250,16 @@ def cmd_dispatch_route(args):
     token = None
     no_resume = False
     detach = False
+    summary = False
 
     i = 0
     while i < len(args):
         tok = args[i]
         if tok == "--capture":
             capture = True
+            i += 1
+        elif tok == "--summary":
+            summary = True
             i += 1
         elif tok == "--detach":
             detach = True
@@ -7963,6 +8378,15 @@ def cmd_dispatch_route(args):
         except ValueError:
             sys.stderr.write("agent-exec: dispatch: invalid token: %s\n" % token)
             return 2
+        token_root = spec.get("config_root")
+        if isinstance(token_root, str) and os.path.isabs(token_root):
+            # Pin the project-layer base recorded at prepare time; the env var
+            # is inherited by the detached child and the delegated dispatch.
+            os.environ["ORCHESTRA_CONFIG_ROOT"] = token_root
+            resolved, err = resolve_config()
+            if err is not None:
+                sys.stderr.write(err + "\n")
+                return 1
         delegated_args = [
             # --class may be passed alongside --token to escalate the class
             # of an already-prepared token (e.g. light -> deep after a
@@ -7986,10 +8410,15 @@ def cmd_dispatch_route(args):
             delegated_args.extend(["--exhausted", ",".join(exhausted)])
         if detach:
             return cmd_dispatch_detach(resolved, token, delegated_args)
+        if summary:
+            return _dispatch_summary(resolved, token, delegated_args)
         return cmd_dispatch_route(delegated_args)
 
     if detach:
         sys.stderr.write("agent-exec: dispatch: --detach requires --token\n")
+        return 2
+    if summary:
+        sys.stderr.write("agent-exec: dispatch: --summary requires --token\n")
         return 2
     if cls is None:
         sys.stderr.write("agent-exec: dispatch: missing required option: --class\n")
@@ -10041,6 +10470,9 @@ def main(argv):
     if tok == "ui":
         import agent_exec_ui
         return agent_exec_ui.cmd_ui(argv[1:])
+
+    if tok == "write-file":
+        return cmd_write_file(argv[1:])
 
     return cmd_dispatch(tok, argv[1:])
 

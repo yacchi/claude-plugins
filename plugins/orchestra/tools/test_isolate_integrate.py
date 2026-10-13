@@ -910,5 +910,94 @@ class ProgressJsonlCliTests(_IntegrateRepo):
         self.assertEqual(out, "")
 
 
+class IntegrateLockTests(_IntegrateRepo):
+    """`--lock` serializes integrates per target via flock in the git common dir."""
+
+    def _lock_path(self, into="integrate"):
+        return agent_exec._integrate_lock_path(self.repo, into)
+
+    @contextlib.contextmanager
+    def _held(self, into="integrate"):
+        import fcntl
+        path = self._lock_path(into)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a+") as fh:
+            fh.write("4242 2026-01-01T00:00:00+00:00\n")
+            fh.flush()
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+    def test_fail_mode_reports_locked_with_holder(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        with self._held():
+            rc, out = self._cli("integrate", "--tasks", "alpha", "--repo", self.repo,
+                                "--lock", "fail")
+        self.assertEqual(rc, 6)
+        data = json.loads(out)
+        self.assertEqual(data["status"], "locked")
+        self.assertEqual(data["into"], "integrate")
+        self.assertIn("4242", data["holder"])
+
+    def test_fail_mode_text_output(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        with self._held():
+            rc, out = self._cli("integrate", "--tasks", "alpha", "--repo", self.repo,
+                                "--lock", "fail", "--text")
+        self.assertEqual(rc, 6)
+        self.assertEqual(len(out.strip().splitlines()), 1)
+        self.assertIn("locked", out)
+
+    def test_wait_mode_times_out(self):
+        import time
+        self._make_task("alpha", {2: "ALPHA\n"})
+        with self._held():
+            start = time.monotonic()
+            rc, out = self._cli("integrate", "--tasks", "alpha", "--repo", self.repo,
+                                "--lock", "wait", "--lock-timeout", "1")
+            elapsed = time.monotonic() - start
+        self.assertEqual(rc, 6)
+        self.assertEqual(json.loads(out)["status"], "locked")
+        self.assertGreaterEqual(elapsed, 0.9)
+        self.assertLess(elapsed, 10)
+
+    def test_free_lock_integrates_and_releases(self):
+        import fcntl
+        self._make_task("alpha", {2: "ALPHA\n"})
+        rc, out = self._cli("integrate", "--tasks", "alpha", "--repo", self.repo)
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "ok")
+        path = self._lock_path()
+        self.assertTrue(os.path.exists(path))
+        with open(path, "a+") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def test_different_into_ids_do_not_block(self):
+        self._make_task("alpha", {2: "ALPHA\n"})
+        with self._held("other"):
+            rc, out = self._cli("integrate", "--tasks", "alpha", "--repo", self.repo,
+                                "--lock", "fail")
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "ok")
+
+    def test_bad_lock_value_is_usage_error(self):
+        rc, out = self._cli("integrate", "--tasks", "a", "--lock", "maybe")
+        self.assertEqual(rc, 2)
+        self.assertEqual(out, "")
+
+    def test_bad_lock_timeout_is_usage_error(self):
+        rc, out = self._cli("integrate", "--tasks", "a", "--lock-timeout", "soon")
+        self.assertEqual(rc, 2)
+        self.assertEqual(out, "")
+
+    def test_non_finite_lock_timeout_is_usage_error(self):
+        for bad in ("nan", "inf", "-inf"):
+            rc, out = self._cli("integrate", "--tasks", "a", "--lock-timeout", bad)
+            self.assertEqual(rc, 2, bad)
+            self.assertEqual(out, "", bad)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

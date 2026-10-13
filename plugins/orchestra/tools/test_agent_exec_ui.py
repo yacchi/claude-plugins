@@ -17,6 +17,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -397,11 +398,34 @@ class RunningSnapshotTests(ListDetachedTests):
             json.dump([{"wave_state": state, "pkg": "A-1", "terminal": "term-1",
                         "worktree": "/wt/a1"}], fh)
         running = self.snapshot(self.start())["running"]
-        self.assertEqual([d["token"] for d in running["dispatches"]], ["dsp-00000000000a"])
+        self.assertEqual({d["token"]: d["state"] for d in running["dispatches"]},
+                         {"dsp-00000000000a": "running", "dsp-00000000000b": "dead-no-result"})
         self.assertEqual(running["by_executor"], {"codex": 1})
         self.assertEqual(running["orca_sessions"], [{
             "wave_state": state, "pkg": "A-1", "terminal": "term-1", "worktree": "/wt/a1"}])
         self.assertEqual(running["waves_in_flight"], 1)
+
+    def test_state_derivation(self):
+        entries = [
+            {"token": "a", "alive": True},
+            {"token": "b", "alive": False, "result_present": True, "collected": False,
+             "finished": "2026-01-01T00:00:00", "wait_calls": 2},
+            {"token": "c", "alive": False, "result_present": False},
+            {"token": "d", "alive": False, "result_present": True, "collected": True},
+            {"token": "e", "alive": False},
+        ]
+        with mock.patch.object(self.agent_exec, "list_detached_dispatches",
+                               return_value=entries), \
+                mock.patch.object(agent_exec_ui, "_resolved_config", return_value={}):
+            running = agent_exec_ui._running_snapshot([])
+        states = {d["token"]: d["state"] for d in running["dispatches"]}
+        self.assertEqual(states, {"a": "running", "b": "done-uncollected",
+                                  "c": "dead-no-result", "e": "dead-no-result"})
+        by_token = {d["token"]: d for d in running["dispatches"]}
+        self.assertEqual(by_token["b"]["wait_calls"], 2)
+        self.assertEqual(by_token["a"]["wait_calls"], 0)
+        self.assertEqual(by_token["b"]["finished"], "2026-01-01T00:00:00")
+        json.dumps(running)
 
 
 class LiveSnapshotTests(V1Base):

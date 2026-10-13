@@ -305,8 +305,19 @@ def _running_snapshot(entries):
         dispatches = {"error": str(exc) or exc.__class__.__name__}
     if not isinstance(dispatches, list):
         dispatches = []
-    alive = [item for item in dispatches if item.get("alive")]
-    alive.sort(key=lambda item: item.get("started") or 0, reverse=True)
+    rows = []
+    for item in dispatches:
+        if item.get("alive"):
+            state = "running"
+        elif not item.get("result_present", False):
+            state = "dead-no-result"
+        elif not item.get("collected", False):
+            state = "done-uncollected"
+        else:
+            continue
+        rows.append(dict(item, state=state, wait_calls=item.get("wait_calls") or 0,
+                         finished=item.get("finished")))
+    rows.sort(key=lambda item: item.get("started") or 0, reverse=True)
     sessions = []
     in_flight = 0
     by_executor = {}
@@ -327,11 +338,11 @@ def _running_snapshot(entries):
                     sessions[-1]["wave_state"] = sessions[-1]["wave_state"] or entry["state"]
         except (OSError, ValueError, TypeError):
             pass
-    for item in alive:
+    for item in rows:
         name = item.get("executor")
-        if name:
+        if name and item["state"] == "running":
             by_executor[name] = by_executor.get(name, 0) + 1
-    return {"dispatches": alive, "orca_sessions": sessions,
+    return {"dispatches": rows, "orca_sessions": sessions,
             "by_executor": by_executor, "waves_in_flight": in_flight}
 
 
@@ -1035,18 +1046,21 @@ function renderErr(v) {
   return v && v.error ? el("div", { "class": "e-fail" }, [txt(v.error)]) : null;
 }
 
+var STATE_LABEL = { "done-uncollected": "終わっているが結果未回収", "dead-no-result": "実装役が結果なしで終了" };
 function render(snap) {
   if (!snap) return;
   last = snap;
   var kids = [];
   var running = snap.running || {};
   var runRows = (running.dispatches || []).map(function (d) {
-    return [txt(d.executor), txt(d.model), txt(d.task), txt(d.pid)];
+    var label = STATE_LABEL[d.state];
+    var stateCell = label ? el("span", { "class": "e-warn" }, [d.state + " " + label]) : txt(d.state);
+    return [stateCell, txt(d.executor), txt(d.model), txt(d.task), txt(d.pid), txt(d.wait_calls)];
   });
   kids.push(el("section", null, [
     el("h2", null, ["Running"]),
     el("div", { "class": "muted" }, [txt(running.waves_in_flight) + " packages in flight"]),
-    table(["executor", "model", "task", "pid"], runRows)
+    table(["state", "executor", "model", "task", "pid", "waits"], runRows)
   ]));
   if (renderErr(snap.waves)) kids.push(el("section", null, [renderErr(snap.waves)]));
   else if (!snap.waves.length) kids.push(el("section", { "class": "muted" }, ["No waves registered yet."]));
