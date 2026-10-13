@@ -1,0 +1,23 @@
+{
+ "_warm": {
+  "opus": {
+   "base_ref": "main",
+   "base_rev": "0123456789abcdef0123456789abcdef01234567",
+   "created_at": 1760000000.123456,
+   "files": [
+    "README.md",
+    "docs/plan.md"
+   ],
+   "last_used": 100000.0,
+   "repo": "/repo",
+   "requested": [
+    "README.md",
+    "docs/plan.md",
+    "gone.md"
+   ],
+   "session_id": "1b4e28ba-2fa1-41d2-883f-0016d3cca427",
+   "task": "warm-opus",
+   "worktree": "/repo/.claude/worktrees/warm-opus"
+  }
+ }
+}

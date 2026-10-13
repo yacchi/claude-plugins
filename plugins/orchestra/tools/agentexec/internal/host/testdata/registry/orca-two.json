@@ -1,0 +1,32 @@
+{
+ "A": {
+  "add_dirs": [
+   "/repo",
+   "/plans <x>&\"q\""
+  ],
+  "branch": "wave-run1-a",
+  "cls": "standard",
+  "model": "opus",
+  "pkg": "A",
+  "repo": "/repo",
+  "request_ids": [
+   "r1",
+   "r2"
+  ],
+  "state_dir": "orca",
+  "terminal": "term-1",
+  "worktree": "/orca/workspaces/repo/wave-run1-a"
+ },
+ "B": {
+  "add_dirs": [],
+  "branch": null,
+  "cls": "light",
+  "model": "sonnet",
+  "pkg": "B",
+  "repo": "/repo",
+  "request_ids": [],
+  "state_dir": "orca",
+  "terminal": null,
+  "worktree": "/orca/workspaces/repo/wave-run1-b"
+ }
+}

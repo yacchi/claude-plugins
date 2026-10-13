@@ -1,0 +1,21 @@
+{
+ "a": {
+  "add_dirs": [
+   "/repo",
+   "herdr-start"
+  ],
+  "branch": "orchestra/abcdef12/pkg-a",
+  "cls": "standard",
+  "created": true,
+  "herdr_session": "orchestra-abcdef12",
+  "model": "opus",
+  "net_mark": 0,
+  "pane": null,
+  "pkg": "a",
+  "repo": "/repo",
+  "state_dir": "herdr-start",
+  "terminal": null,
+  "workspace": null,
+  "worktree": "/repo/.claude/worktrees/pkg-a"
+ }
+}

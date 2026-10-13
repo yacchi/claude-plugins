@@ -1,0 +1,43 @@
+{
+ "a": {
+  "add_dirs": [
+   "/repo",
+   "herdr-start"
+  ],
+  "branch": "orchestra/abcdef12/pkg-a",
+  "cls": "standard",
+  "created": true,
+  "herdr_session": "orchestra-abcdef12",
+  "model": "opus",
+  "net_mark": 0,
+  "pane": "w1:p1",
+  "pkg": "a",
+  "repo": "/repo",
+  "state_dir": "herdr-start",
+  "terminal": "p-a",
+  "warm_session": "1b4e28ba-2fa1-41d2-883f-0016d3cca427",
+  "warm_worktree": "/repo/.claude/worktrees/warm-opus",
+  "workspace": "w1",
+  "worktree": "/repo/.claude/worktrees/pkg-a"
+ },
+ "b-ünï": {
+  "add_dirs": [
+   "/repo",
+   "herdr-start"
+  ],
+  "branch": "orchestra/abcdef12/pkg-b-ünï",
+  "cls": "light",
+  "created": false,
+  "fork_first": true,
+  "herdr_session": "orchestra-abcdef12",
+  "model": "sonnet",
+  "net_mark": 3,
+  "pane": null,
+  "pkg": "b-ünï",
+  "repo": "/repo",
+  "state_dir": "herdr-start",
+  "terminal": null,
+  "workspace": null,
+  "worktree": "/repo/.claude/worktrees/pkg-b-ünï"
+ }
+}
