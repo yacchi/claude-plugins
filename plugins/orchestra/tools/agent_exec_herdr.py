@@ -726,7 +726,10 @@ class HerdrExecutor(object):
     def network_denials(self, mark=0):
         """Blocked (host, port) pairs logged since `mark`, de-duplicated."""
         out, seen = [], set()
+        quiet = self._net_cfg().get("quiet_domains") or ()
         for host, port in self._net_denials[int(mark or 0):]:
+            if _sandbox().domain_matches(host, quiet):
+                continue
             if (host, port) not in seen:
                 seen.add((host, port))
                 out.append({"host": host, "port": port})
@@ -1238,6 +1241,9 @@ class HerdrExecutor(object):
         if not session.get("terminal"):
             self._event(session["pkg"], "start", self._open_agent(session))
         name = session["terminal"]
+        # A domain approved since the last wait poll must reach the server
+        # before this prompt runs, or the retried command hits the old list.
+        self.network_tick()
         if resumed:
             self._event(session["pkg"], "reuse", name)
 

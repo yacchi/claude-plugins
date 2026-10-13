@@ -212,6 +212,8 @@ sandbox:
     mode: allowlist
     allowed_domains: [api.anthropic.com]
     denied_domains: []
+    # quiet_domains: blocked and audited but never listed as a denial to approve
+    # (defaults: Claude/herdr background traffic such as mcp-proxy.anthropic.com)
 
 # Runaway protection. The watchdog kills wall-clock, idle/tool-idle, or repeat
 # runaway work and returns a structured `runaway` dispatch status.

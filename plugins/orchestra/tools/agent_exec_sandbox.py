@@ -40,6 +40,14 @@ MODES = ("auto", "required", "off")
 NETWORK_MODES = ("allowlist", "off")
 # The only host a hosted Claude Code session needs.
 DEFAULT_ALLOWED_DOMAINS = ("api.anthropic.com",)
+# Background traffic of Claude Code and herdr that no worker task needs
+# (MCP connector proxy, auto-update, telemetry, herdr's update check). Still
+# blocked and still in the audit log, but never surfaced as a denial to
+# approve - listing them would invite granting them.
+DEFAULT_QUIET_DOMAINS = (
+    "mcp-proxy.anthropic.com", "downloads.claude.ai", "statsig.anthropic.com",
+    "datadoghq.com", "*.datadoghq.com", "sentry.io", "*.sentry.io", "herdr.dev",
+)
 
 # Secret stores no worker has a reason to read.
 DEFAULT_DENY_READ = (
@@ -698,11 +706,24 @@ def normalize_network(raw, union=None):
     mode = mode.strip().lower() if isinstance(mode, str) else ""
     out = {"mode": mode if mode in NETWORK_MODES else "allowlist"}
     for key, default in (("allowed_domains", DEFAULT_ALLOWED_DOMAINS),
-                         ("denied_domains", ())):
+                         ("denied_domains", ()),
+                         ("quiet_domains", DEFAULT_QUIET_DOMAINS)):
         values = (union or {}).get(key, raw.get(key, list(default)))
         out[key] = _dedupe(v.strip().lower() for v in (values or [])
                            if isinstance(v, str) and v.strip())
     return out
+
+
+def domain_matches(host, patterns):
+    """`host` equals a pattern, or a `*.suffix` pattern matches a subdomain."""
+    host = (host or "").strip().lower().rstrip(".")
+    for pattern in patterns or ():
+        if pattern.startswith("*."):
+            if host.endswith(pattern[1:]):
+                return True
+        elif host == pattern:
+            return True
+    return False
 
 
 # --- policy ------------------------------------------------------------------

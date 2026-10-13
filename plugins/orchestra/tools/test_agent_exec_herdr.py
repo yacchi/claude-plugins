@@ -762,6 +762,35 @@ class NetworkTests(_Base):
                          + [("2001:db8::1", 8443, "blocked", SESSION)])
         self.assertEqual(os.stat(os.path.dirname(audit)).st_mode & 0o777, 0o700)
 
+    def test_background_traffic_is_audited_but_not_surfaced(self):
+        fake = FakeHerdr(on_prompt=lambda: (self.srt_log(
+            "[SandboxDebug] Connection blocked to mcp-proxy.anthropic.com:443",
+            "[SandboxDebug] Connection blocked to http-intake.logs.datadoghq.com:443",
+            "[SandboxDebug] Connection blocked to example.com:443"), self.write_result()))
+        executor = self.srt_executor(fake)
+        session = self.start(executor)
+        out = executor.prompt(session, ["/p/one.md"], self.result, 60)
+        self.assertEqual(out["network_denials"], [{"host": "example.com", "port": 443}])
+        audit = os.path.join(self.xstate, "claude-orchestra", "audit", "network.jsonl")
+        with open(audit) as fh:
+            self.assertEqual(len(fh.readlines()), 3)
+
+    def test_a_domain_approved_between_waits_is_pushed_before_the_next_prompt(self):
+        import agent_exec_sandbox
+        executor = self.srt_executor(FakeHerdr(on_prompt=self.write_result))
+        session = self.start(executor)
+        agent_exec_sandbox.add_domain("registry.npmjs.org")
+        pushed_at_prompt = []
+        original = executor._call
+
+        def call(args, *a, **kw):
+            if list(args[:2]) == ["agent", "prompt"]:
+                pushed_at_prompt.append(len(self.lines()))
+            return original(args, *a, **kw)
+        executor._call = call
+        executor.prompt(session, ["/p/one.md"], self.result, 60)
+        self.assertEqual(pushed_at_prompt[:1], [1])
+
     def test_bypass_needs_srt_with_the_allowlist_and_the_host_sandbox(self):
         for label, cfg_key, value in (
                 ("permission_mode", "permission_mode", "bypassPermissions"),

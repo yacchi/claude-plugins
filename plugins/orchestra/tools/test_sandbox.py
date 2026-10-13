@@ -194,7 +194,8 @@ class ConfigUnionTests(unittest.TestCase):
             "network": {"mode": "off",
                         "allowed_domains": ["api.anthropic.com", "registry.npmjs.org",
                                             "example.org"],
-                        "denied_domains": ["bad.example.org"]},
+                        "denied_domains": ["bad.example.org"],
+                        "quiet_domains": list(sb.DEFAULT_QUIET_DOMAINS)},
         })
 
 

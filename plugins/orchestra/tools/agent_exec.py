@@ -281,6 +281,8 @@ DEFAULTS = {
             "mode": "allowlist",
             "allowed_domains": ["api.anthropic.com"],
             "denied_domains": [],
+            # blocked like any other host, but not surfaced as a denial
+            "quiet_domains": list(agent_exec_sandbox.DEFAULT_QUIET_DOMAINS),
         },
     },
     "telemetry": {
@@ -1463,7 +1465,7 @@ def resolve_config():
     # Network domain lists are unioned the same way, starting from the
     # defaults (a layer can add a domain, never drop api.anthropic.com).
     network_union = dict((key, list(DEFAULTS["sandbox"]["network"][key]))
-                         for key in ("allowed_domains", "denied_domains"))
+                         for key in ("allowed_domains", "denied_domains", "quiet_domains"))
     removed = []
 
     for path in _ordered_layer_paths():
