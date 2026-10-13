@@ -363,7 +363,7 @@ func (r *runner) fullFlaky(res integrate.VerifyResult) bool {
 		return false
 	}
 	c := r.checksConfig()
-	status, failed := rerunFailedAlone(res.Excerpt, r.opts.FullRetry, r.intPath, c.slotDir, c.maxParallel, r.opts.FullTimeout)
+	status, failed := checks.RerunFailedAlone(res.Excerpt, r.opts.FullRetry, r.intPath, c.slotDir, c.maxParallel, r.opts.FullTimeout)
 	r.cleanIntegration("full-retry")
 	if status != "pass" {
 		return false

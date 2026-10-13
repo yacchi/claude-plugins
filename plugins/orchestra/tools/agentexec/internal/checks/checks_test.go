@@ -346,6 +346,23 @@ func TestRetryNotApplicable(t *testing.T) {
 	}
 }
 
+func TestRerunFailedAloneNoTimeoutAndStatuses(t *testing.T) {
+	tree := t.TempDir()
+	slots := filepath.Join(t.TempDir(), "slots")
+	out := " FAIL  tests/a.test.ts\n"
+	// timeout 0 is no limit (an unset --full-timeout), not an instant expiry.
+	status, failed := RerunFailedAlone(out, "sleep 0.2; test -n {failed}", tree, slots, 2, 0)
+	if status != "pass" || !reflect.DeepEqual(failed, []string{"tests/a.test.ts"}) {
+		t.Fatalf("pass: %s %v", status, failed)
+	}
+	if status, _ := RerunFailedAlone(out, "test {failed} = x", tree, slots, 2, 0); status != "fail" {
+		t.Fatalf("fail: %s", status)
+	}
+	if status, failed := RerunFailedAlone("boom\n", "true", tree, slots, 2, 0); status != "skipped" || failed != nil {
+		t.Fatalf("skipped: %s %v", status, failed)
+	}
+}
+
 func TestResultStatus(t *testing.T) {
 	mk := func(ss ...string) Result {
 		var r Result

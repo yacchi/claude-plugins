@@ -186,11 +186,11 @@ func Run(root string, items []Item, o Options) Result {
 				template = strings.ReplaceAll(it.Run, "{files}", "{failed}")
 			}
 			if template != "" {
-				retry := rerunFailedAlone(raw, template, root, o.SlotDir, o.MaxParallel, timeoutOf(it.Timeout))
-				if retry.status == "pass" {
+				status, failed := RerunFailedAlone(raw, template, root, o.SlotDir, o.MaxParallel, timeoutOf(it.Timeout))
+				if status == "pass" {
 					res.Status = "pass"
 					res.Excerpt = ""
-					res.Flaky = retry.failed
+					res.Flaky = failed
 				}
 			}
 		}
@@ -317,9 +317,13 @@ func runShell(command, cwd string, timeout time.Duration, slotDir string, maxPar
 	go func() { done <- cmd.Wait() }()
 	timedOut := false
 	var err error
+	var expired <-chan time.Time // timeout <= 0: no limit
+	if timeout > 0 {
+		expired = time.After(timeout)
+	}
 	select {
 	case err = <-done:
-	case <-time.After(timeout):
+	case <-expired:
 		timedOut = true
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		err = <-done
@@ -360,17 +364,14 @@ func acquireSlot(dir string, maxParallel int) func() {
 	}
 }
 
-type retryResult struct {
-	status string
-	failed []string
-}
-
-// rerunFailedAlone re-runs the failing files named in output while holding
-// every concurrency slot, so the retry is not disturbed by other checks.
-func rerunFailedAlone(output, template, cwd, slotDir string, maxParallel int, timeout time.Duration) retryResult {
-	failed := ParseFailedFiles(output)
+// RerunFailedAlone re-runs the failing files output names with template
+// ({failed} = the shell-quoted files) while holding every concurrency
+// slot, so the retry is not disturbed by other checks. status is pass,
+// fail, or skipped (no file named); timeout <= 0 means no limit.
+func RerunFailedAlone(output, template, cwd, slotDir string, maxParallel int, timeout time.Duration) (status string, failed []string) {
+	failed = ParseFailedFiles(output)
 	if len(failed) == 0 {
-		return retryResult{status: "skipped"}
+		return "skipped", nil
 	}
 	command := strings.ReplaceAll(template, "{failed}", quoteFiles(failed))
 	if maxParallel > 0 {
@@ -401,7 +402,7 @@ func rerunFailedAlone(output, template, cwd, slotDir string, maxParallel int, ti
 	}
 	sh := runShell(command, cwd, timeout, slotDir, 0)
 	if sh.exit != nil && *sh.exit == 0 && !sh.timedOut {
-		return retryResult{status: "pass", failed: failed}
+		return "pass", failed
 	}
-	return retryResult{status: "fail", failed: failed}
+	return "fail", failed
 }
