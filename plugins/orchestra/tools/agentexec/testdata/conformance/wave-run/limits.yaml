@@ -1,0 +1,62 @@
+description: >
+  stopping rules, each a stopped report (exit 5) with the rest pending:
+  --max-packages caps what starts, --stop-at in the past starts nothing,
+  --max-waves caps the scheduling rounds, and a STOP file written while a
+  package runs (here by the package itself) lets it finish and integrate
+  but starts nothing new; wave status shows the stop
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      interactive_host: none
+    shared.txt: "base\n"
+    ~/wave/specs/A.md: |
+      COMMANDS:
+      printf 'a\n' > a.txt
+    ~/wave/specs/B.md: |
+      COMMANDS:
+      printf 'b\n' > b.txt
+    ~/wave/specs/C.md: |
+      COMMANDS:
+      printf 'c\n' > c.txt
+      printf 'enough' > <HOME>/wave/STOP
+    ~/wave/specs/D.md: |
+      COMMANDS:
+      printf 'd\n' > d.txt
+    ~/wave/plan.json: |
+      {"packages": [
+         {"id": "A", "spec": "specs/A.md", "cls": "standard", "files_owned": ["a.txt"]},
+         {"id": "B", "spec": "specs/B.md", "cls": "standard", "files_owned": ["b.txt"]},
+         {"id": "C", "spec": "specs/C.md", "cls": "standard", "files_owned": ["c.txt"]},
+         {"id": "D", "spec": "specs/D.md", "cls": "standard", "files_owned": ["d.txt"]}
+       ]}
+normalize_keys: [since, updated, at, registered_at]
+normalize_text:
+  - pattern: '"(seconds|until)": [0-9.e+-]+'
+    replace: '"$1": <N>'
+  - pattern: '\b[0-9]+[hm][0-9]{2}[ms]\b'
+    replace: '<ELAPSED>'
+steps:
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1", --max-packages, "1"]
+    cwd: "~"
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1", --stop-at, "1"]
+    cwd: "~"
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1", --max-waves, "1", --run-id, run-1]
+    cwd: "~"
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1", --text]
+    cwd: "~"
+    snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl", "~/wave/STOP"]
+  - argv: [wave, status, --state, wave/state.json]
+    cwd: "~"

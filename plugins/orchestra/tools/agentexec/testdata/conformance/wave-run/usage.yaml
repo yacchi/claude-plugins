@@ -1,0 +1,37 @@
+description: >
+  wave usage errors: the bare or unknown wave subcommand prints the wave
+  usage (exit 2); wave run argument errors print their reason plus the run
+  usage (exit 2); a plan that does not load is an error report with kind
+  plan (exit 2), a --repo that is not a repository one with kind
+  environment (exit 3)
+setup:
+  files:
+    plan.json: |
+      {"packages": [{"id": "A", "spec": "a.md", "cls": "light", "files_owned": ["a.txt"]}]}
+    a.md: "spec\n"
+steps:
+  - argv: [wave]
+  - argv: [wave, bogus]
+  - argv: [wave, --help]
+  - argv: [wave, run]
+  - argv: [wave, run, --plan, plan.json]
+  - argv: [wave, run, --plan]
+  - argv: [wave, run, --plan, p, --plan, p]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --bogus]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --after-green, "true"]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, stray]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --max-in-flight, "0"]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --max-in-flight, x]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --max-packages, "-1"]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --stop-at, soon]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --full-timeout, "-2"]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --full-every, "0"]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --run-id, "bad id"]
+  - argv: [wave, run, --plan, p, --state, s, --into, i, --json, --text]
+  - argv: [wave, run, --plan, missing.json, --state, s.json, --into, i]
+  - argv: [wave, run, --plan, plan.json, --state, s.json, --into, i, --text]
+  - argv: [wave, run, --plan, plan.json, --state, s.json, --into, i, --repo, "."]
+  - argv: [wave, mark]
+  - argv: [wave, mark, --state]
+  - argv: [wave, mark, --await]
+  - argv: [wave, mark, --bogus]

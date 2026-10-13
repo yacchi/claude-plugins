@@ -1,0 +1,448 @@
+{
+  "scenario": "wave-run/needs",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "wave/state.json",
+        "--into",
+        "wave-int",
+        "--repo",
+        "../work",
+        "--max-in-flight",
+        "1"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "approvals": 1,
+        "blocked": [
+          "B"
+        ],
+        "flaky_tests": [],
+        "integrated": [],
+        "needs": [
+          {
+            "id": "A",
+            "kind": "escalate"
+          },
+          {
+            "id": "C",
+            "kind": "network"
+          },
+          {
+            "id": "D",
+            "kind": "scope"
+          }
+        ],
+        "network_denials": [
+          {
+            "host": "files.example.com",
+            "id": "C",
+            "port": "<PORT>"
+          }
+        ],
+        "pending": [],
+        "reason": null,
+        "state": "<HOME>/wave/state.json",
+        "status": "done",
+        "waves": 3
+      },
+      "stderr": "max-in-flight: 1 (option)\n",
+      "files": {
+        "~/wave/state.events.jsonl": {
+          "content": [
+            {
+              "at": "<AT>",
+              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "event": "max-in-flight",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "A",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "A",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ESCALATE: the spec is unclear",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "A",
+              "to": "needs"
+            },
+            {
+              "at": "<AT>",
+              "detail": "C",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "C",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"denials\": [{\"host\": \"files.example.com\", \"port\": 443}]}",
+              "event": "network-denied",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "C",
+              "to": "needs"
+            },
+            {
+              "at": "<AT>",
+              "detail": "D",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "D",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "D",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "D",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ESCALATE: blocked by src/other.py, see naming. e.g. later\n--- outside files_owned ---\nsrc/other.py",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "D",
+              "to": "needs"
+            }
+          ],
+          "shape": "jsonl"
+        },
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#1>",
+              "path": "<WORK>-orchestra/00000000-wave-int",
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "ESCALATE: the spec is unclear",
+                "id": "A",
+                "kind": "escalate"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+                "id": "C",
+                "kind": "network"
+              },
+              {
+                "at": "<AT>",
+                "detail": "ESCALATE: blocked by src/other.py, see naming. e.g. later\n--- outside files_owned ---\nsrc/other.py",
+                "id": "D",
+                "kind": "scope"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "ESCALATE: the spec is unclear",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "C": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+                "executor": "pi",
+                "files_changed": null,
+                "network_denials": [
+                  {
+                    "host": "files.example.com",
+                    "port": "<PORT>"
+                  }
+                ],
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C"
+              },
+              "D": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "ESCALATE: blocked by src/other.py, see naming. e.g. later\n--- outside files_owned ---\nsrc/other.py",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 3
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "approvals",
+        "--state",
+        "wave/state.json"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "net:files.example.com  ports=443  packages=C(needs)\ndecide: agent-exec approvals decide --state wave/state.json ITEM allow|deny --reason TEXT\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "net:files.example.com",
+        "deny",
+        "--reason",
+        "not needed for the spec"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "deny net:files.example.com: files.example.com  resumed: C\n",
+      "stderr": "",
+      "files": {
+        "~/wave/approvals.json": {
+          "content": {
+            "allowed": {},
+            "declined": {
+              "files.example.com": {
+                "by": "instructor",
+                "reason": "not needed for the spec"
+              }
+            }
+          },
+          "shape": "json-indent"
+        },
+        "~/wave/corrections/C.approvals.md": {
+          "content": "# Approval decisions for C\n\n- network access to files.example.com was declined: not needed for the spec. Finish without it or ESCALATE.\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "wave/state.json",
+        "--into",
+        "wave-int",
+        "--repo",
+        "../work",
+        "--max-in-flight",
+        "1",
+        "--text"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "wave run done  waves=1\n  blocked: B\n  needs: A(escalate), D(scope), C(network)\n  network denied: C(files.example.com:443)\n",
+      "stderr": "max-in-flight: 1 (option)\n",
+      "files": {
+        "~/wave/corrections/C.approvals.md": null,
+        "~/wave/corrections/C.approvals.sent.md": {
+          "content": "# Approval decisions for C\n\n- network access to files.example.com was declined: not needed for the spec. Finish without it or ESCALATE.\n",
+          "shape": "text"
+        },
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#1>",
+              "path": "<WORK>-orchestra/00000000-wave-int",
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "ESCALATE: the spec is unclear",
+                "id": "A",
+                "kind": "escalate"
+              },
+              {
+                "at": "<AT>",
+                "detail": "ESCALATE: blocked by src/other.py, see naming. e.g. later\n--- outside files_owned ---\nsrc/other.py",
+                "id": "D",
+                "kind": "scope"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+                "id": "C",
+                "kind": "network"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "ESCALATE: the spec is unclear",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "C": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+                "executor": "pi",
+                "files_changed": null,
+                "network_denials": [
+                  {
+                    "host": "files.example.com",
+                    "port": "<PORT>"
+                  }
+                ],
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C"
+              },
+              "D": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "ESCALATE: blocked by src/other.py, see naming. e.g. later\n--- outside files_owned ---\nsrc/other.py",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 4
+          },
+          "shape": "json-indent"
+        }
+      }
+    }
+  ]
+}

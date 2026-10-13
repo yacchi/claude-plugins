@@ -1,0 +1,52 @@
+description: >
+  verify_mode gated with an explicit --gate: a gate that goes red once B
+  lands is bisected to B, whose integrate commit is reverted (a
+  post-integration need, exit 1) while A stays integrated; a gate that is
+  red even before the wave stops the run (exit 5); --gate true integrates
+  everything (exit 0)
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      interactive_host: none
+      wave:
+        verify_mode: gated
+    shared.txt: "base\n"
+    ~/wave/specs/A.md: |
+      Write a.txt.
+      COMMANDS:
+      printf 'a\n' > a.txt
+    ~/wave/specs/B.md: |
+      Write b.txt.
+      COMMANDS:
+      printf 'b\n' > b.txt
+    ~/wave/plan.json: |
+      {"packages": [
+         {"id": "A", "spec": "specs/A.md", "cls": "standard", "files_owned": ["a.txt"]},
+         {"id": "B", "spec": "specs/B.md", "cls": "standard", "files_owned": ["b.txt"]}
+       ]}
+normalize_keys: [since, updated, at, registered_at]
+normalize_text:
+  - pattern: '"(seconds|until)": [0-9.e+-]+'
+    replace: '"$1": <N>'
+steps:
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1", --gate, "! test -f b.txt"]
+    cwd: "~"
+    snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl"]
+  - argv: [wave, run, --plan, wave/plan.json, --state, red/state.json, --into, red-int, --repo, ../work, --max-in-flight, "1", --gate, "false", --text]
+    cwd: "~"
+    snapshot: ["~/red/state.json"]
+  - argv: [wave, run, --plan, wave/plan.json, --state, green/state.json, --into, green-int, --repo, ../work, --gate, "true"]
+    cwd: "~"

@@ -1,0 +1,62 @@
+description: >
+  a worker's ESCALATE answer becomes a need instead of an integration: a
+  plain one is `escalate` (its dependent is blocked), one naming paths
+  outside files_owned is `scope`, `ESCALATE: network <host>` is a `network`
+  need whose host is a pending approval; denying it hands the package back
+  with a decision note that the next dispatch carries (then sets aside);
+  the run ends done with needs (exit 1)
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      interactive_host: none
+    shared.txt: "base\n"
+    ~/wave/specs/A.md: |
+      FAKEPI-ANSWER: ESCALATE: the spec is unclear
+      COMMANDS:
+      printf 'a\n' > a.txt
+    ~/wave/specs/B.md: |
+      COMMANDS:
+      printf 'b\n' > b.txt
+    ~/wave/specs/C.md: |
+      FAKEPI-ANSWER: ESCALATE: network files.example.com
+      FAKEPI-ANSWER: the download is blocked
+    ~/wave/specs/D.md: |
+      FAKEPI-ANSWER: ESCALATE: blocked by src/other.py, see naming. e.g. later
+      COMMANDS:
+      printf 'd\n' > d.txt
+    ~/wave/plan.json: |
+      {"packages": [
+         {"id": "A", "spec": "specs/A.md", "cls": "standard", "files_owned": ["a.txt"]},
+         {"id": "B", "spec": "specs/B.md", "cls": "standard", "depends_on": ["A"], "files_owned": ["b.txt"]},
+         {"id": "C", "spec": "specs/C.md", "cls": "standard", "files_owned": ["c.txt"]},
+         {"id": "D", "spec": "specs/D.md", "cls": "standard", "files_owned": ["d.txt"]}
+       ]}
+normalize_keys: [since, updated, at, registered_at]
+normalize_text:
+  - pattern: '"(seconds|until)": [0-9.e+-]+'
+    replace: '"$1": <N>'
+steps:
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1"]
+    cwd: "~"
+    snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl"]
+  - argv: [approvals, --state, wave/state.json]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "net:files.example.com", deny, --reason, "not needed for the spec"]
+    cwd: "~"
+    snapshot: ["~/wave/corrections/C.approvals.md", "~/wave/approvals.json"]
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1", --text]
+    cwd: "~"
+    snapshot: ["~/wave/state.json", "~/wave/corrections/C.approvals.md", "~/wave/corrections/C.approvals.sent.md"]

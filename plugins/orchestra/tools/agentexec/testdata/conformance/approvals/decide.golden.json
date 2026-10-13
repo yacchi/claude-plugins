@@ -1,0 +1,996 @@
+{
+  "scenario": "approvals/decide",
+  "steps": [
+    {
+      "argv": [
+        "approvals"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "--state",
+        "wave/nope.json"
+      ],
+      "exit": 3,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: approvals: no state file at wave/nope.json\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "--state",
+        "wave/state.json",
+        "stray"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "--state",
+        "wave/state.json",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: approvals: unknown option: --bogus\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "--state"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: approvals: missing value for --state\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "--help"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "approvals",
+        "--state",
+        "wave/state.json",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": [
+        {
+          "first_seen": null,
+          "host": "10.0.0.1",
+          "id": "net:10.0.0.1",
+          "kind": "net",
+          "packages": [
+            {
+              "id": "A",
+              "spec": "<HOME>/wave/specs/A.md",
+              "status": "needs"
+            }
+          ],
+          "ports": [
+            443
+          ],
+          "spec": "<HOME>/wave/specs/A.md"
+        },
+        {
+          "first_seen": 6.5,
+          "host": "files.example.com",
+          "id": "net:files.example.com",
+          "kind": "net",
+          "packages": [
+            {
+              "id": "A",
+              "spec": "<HOME>/wave/specs/A.md",
+              "status": "needs"
+            },
+            {
+              "id": "B",
+              "spec": "<HOME>/wave/specs/B.md",
+              "status": "implementing"
+            }
+          ],
+          "ports": [
+            80,
+            443
+          ],
+          "spec": "<HOME>/wave/specs/A.md"
+        },
+        {
+          "first_seen": 5.5,
+          "host": "other.example.org",
+          "id": "net:other.example.org",
+          "kind": "net",
+          "packages": [
+            {
+              "id": "B",
+              "spec": "<HOME>/wave/specs/B.md",
+              "status": "implementing"
+            }
+          ],
+          "ports": [
+            8443
+          ],
+          "spec": "<HOME>/wave/specs/B.md"
+        },
+        {
+          "grant_candidate": "<HOME>/.toolcache",
+          "id": "path:C:0",
+          "kind": "path",
+          "path": "<HOME>/.toolcache/f",
+          "pkg": "C",
+          "spec": "<HOME>/wave/specs/C.md",
+          "why": "not cache"
+        },
+        {
+          "grant_candidate": null,
+          "id": "path:D:0",
+          "kind": "path",
+          "path": "<HOME>/.claude/settings.json",
+          "pkg": "D",
+          "spec": "<HOME>/wave/specs/D.md",
+          "why": "config"
+        },
+        {
+          "dialog": "Allow write to /x?\n  1. Yes\n  2. No",
+          "host": "orca",
+          "id": "dialog:E",
+          "kind": "dialog",
+          "pkg": "E",
+          "spec": "<HOME>/wave/specs/E.md",
+          "terminal": "term-E"
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "approvals",
+        "--state",
+        "wave/state.json"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "net:10.0.0.1  ports=443  packages=A(needs)\nnet:files.example.com  ports=80,443  packages=A(needs),B(implementing)\nnet:other.example.org  ports=8443  packages=B(implementing)\npath:C:0  <HOME>/.toolcache/f  grant=<HOME>/.toolcache  why=not cache\npath:D:0  <HOME>/.claude/settings.json  grant=None  why=config\ndialog:E  orca terminal=term-E  Allow write to /x? /   1. Yes /   2. No\ndecide: agent-exec approvals decide --state wave/state.json ITEM allow|deny --reason TEXT\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "wave/state.json"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "wave 1  implementing=1 needs=4  running: 1 in flight\n  B  implementing  <ELAPSED>  pi  -  0\n  A  needs  <ELAPSED>  pi  -  0\n  C  needs  <ELAPSED>  pi  -  0\n  D  needs  <ELAPSED>  pi  -  0\n  E  needs  <ELAPSED>  orca  -  0\nneeds:\n  A  network  {\"hosts\": [\"files.example.com\", \"10.0.0.1\"], \"answer\": \"ESCALATE: network files.example.com 10.0.0.1\"}\n  C  permission  {\"denials\": [{\"path\": \"<HOME>/.toolcache/f\", \"grant_candidate\": \"<HOME>/.toolcache\", \"why\": \"not cache\"}]}\n  D  permission  {\"denials\": [{\"path\": \"<HOME>/.claude/settings.json\", \"grant_candidate\": null, \"why\": \"config\"}, \"junk\"]}\n  E  delegate  {\"orca\": \"stalled\", \"detail\": \"dialog:\\nAllow write to /x?\\n  1. Yes\\n  2. No\\nterminal: term-E\\nworktree: /x\\nresult: /r\"}\nnetwork denied:\n  B  files.example.com:80\n  B  Other.Example.ORG.:8443\n  A  files.example.com:443\n  A  api.anthropic.com:443\n  A  10.0.0.1:443\n  A  statsig.anthropic.com:443\napprovals: 6 pending — agent-exec approvals --state wave/state.json\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "path:C:0",
+        "allow"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "path:C:0",
+        "maybe",
+        "--reason",
+        "r"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "path:C:0",
+        "allow",
+        "--reason",
+        "r",
+        "--by",
+        "robot"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "net:nope.example.com",
+        "allow",
+        "--reason",
+        "r"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: approvals decide: no pending approval net:nope.example.com\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "net:10.0.0.1",
+        "allow",
+        "--reason",
+        "r",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "applied": false,
+        "by": "instructor",
+        "decision": "allow",
+        "error": "refused: refusing an IP literal: 10.0.0.1",
+        "item": "net:10.0.0.1",
+        "kind": "net",
+        "packages": [
+          "A"
+        ],
+        "reason": "r",
+        "resumed": [],
+        "state": "<HOME>/wave/state.json",
+        "subject": "10.0.0.1",
+        "ts": "<TS>"
+      },
+      "stderr": "agent-exec: approvals decide: refused: refusing an IP literal: 10.0.0.1\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "net:files.example.com",
+        "allow",
+        "--reason",
+        "  needed for the download  ",
+        "--by",
+        "user",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "applied": true,
+        "by": "user",
+        "decision": "allow",
+        "item": "net:files.example.com",
+        "kind": "net",
+        "packages": [
+          "A",
+          "B"
+        ],
+        "reason": "needed for the download",
+        "resumed": [],
+        "state": "<HOME>/wave/state.json",
+        "subject": "files.example.com",
+        "ts": "<TS>"
+      },
+      "stderr": "",
+      "files": {
+        "~/.local/state/claude-orchestra/sandbox-learned.json": {
+          "content": {
+            "domains": [
+              {
+                "added": "<TS>",
+                "domain": "files.example.com",
+                "reason": "needed for the download",
+                "source": "user"
+              }
+            ],
+            "grants": [],
+            "version": 1
+          },
+          "shape": "json-indent"
+        },
+        "~/wave/approvals.json": {
+          "content": {
+            "allowed": {
+              "files.example.com": {
+                "by": "user",
+                "reason": "needed for the download"
+              }
+            },
+            "declined": {}
+          },
+          "shape": "json-indent"
+        },
+        "~/wave/corrections/A.approvals.md": {
+          "content": "# Approval decisions for A\n\n- network access to files.example.com is now allowed (needed for the download). Continue the task.\n",
+          "shape": "text"
+        },
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": null,
+              "path": null,
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "{\"hosts\": [\"files.example.com\", \"10.0.0.1\"], \"answer\": \"ESCALATE: network files.example.com 10.0.0.1\"}",
+                "id": "A",
+                "kind": "network"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"denials\": [{\"path\": \"<HOME>/.toolcache/f\", \"grant_candidate\": \"<HOME>/.toolcache\", \"why\": \"not cache\"}]}",
+                "id": "C",
+                "kind": "permission"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"denials\": [{\"path\": \"<HOME>/.claude/settings.json\", \"grant_candidate\": null, \"why\": \"config\"}, \"junk\"]}",
+                "id": "D",
+                "kind": "permission"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"orca\": \"stalled\", \"detail\": \"dialog:\\nAllow write to /x?\\n  1. Yes\\n  2. No\\nterminal: term-E\\nworktree: /x\\nresult: /r\"}",
+                "id": "E",
+                "kind": "delegate"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "pi",
+                "files_changed": null,
+                "network_denials": [
+                  {
+                    "host": "files.example.com",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "api.anthropic.com",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "10.0.0.1",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "statsig.anthropic.com",
+                    "port": "<PORT>"
+                  }
+                ],
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "pi",
+                "files_changed": null,
+                "network_denials": [
+                  {
+                    "host": "files.example.com",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "Other.Example.ORG.",
+                    "port": "<PORT>"
+                  }
+                ],
+                "session": false,
+                "since": "<SINCE>",
+                "status": "implementing",
+                "tree": null
+              },
+              "C": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              },
+              "D": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              },
+              "E": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "orca",
+                "files_changed": null,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "net:10.0.0.1",
+        "deny",
+        "--reason",
+        "no raw IPs"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "deny net:10.0.0.1: 10.0.0.1  resumed: A\n",
+      "stderr": "",
+      "files": {
+        "~/wave/corrections/A.approvals.md": {
+          "content": "# Approval decisions for A\n\n- network access to files.example.com is now allowed (needed for the download). Continue the task.\n- network access to 10.0.0.1 was declined: no raw IPs. Finish without it or ESCALATE.\n",
+          "shape": "text"
+        },
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": null,
+              "path": null,
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "{\"denials\": [{\"path\": \"<HOME>/.toolcache/f\", \"grant_candidate\": \"<HOME>/.toolcache\", \"why\": \"not cache\"}]}",
+                "id": "C",
+                "kind": "permission"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"denials\": [{\"path\": \"<HOME>/.claude/settings.json\", \"grant_candidate\": null, \"why\": \"config\"}, \"junk\"]}",
+                "id": "D",
+                "kind": "permission"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"orca\": \"stalled\", \"detail\": \"dialog:\\nAllow write to /x?\\n  1. Yes\\n  2. No\\nterminal: term-E\\nworktree: /x\\nresult: /r\"}",
+                "id": "E",
+                "kind": "delegate"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "network 10.0.0.1 declined",
+                "executor": "pi",
+                "files_changed": null,
+                "network_denials": [
+                  {
+                    "host": "files.example.com",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "api.anthropic.com",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "10.0.0.1",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "statsig.anthropic.com",
+                    "port": "<PORT>"
+                  }
+                ],
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "pi",
+                "files_changed": null,
+                "network_denials": [
+                  {
+                    "host": "files.example.com",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "Other.Example.ORG.",
+                    "port": "<PORT>"
+                  }
+                ],
+                "session": false,
+                "since": "<SINCE>",
+                "status": "implementing",
+                "tree": null
+              },
+              "C": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              },
+              "D": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              },
+              "E": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "orca",
+                "files_changed": null,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "net:other.example.org",
+        "deny",
+        "--reason",
+        "unrelated"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "deny net:other.example.org: other.example.org\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "path:D:0",
+        "allow",
+        "--reason",
+        "r"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: approvals decide: refused: refusing to grant anything under ~/.claude\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "path:D:0",
+        "deny",
+        "--reason",
+        "stay out",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "applied": true,
+        "by": "instructor",
+        "decision": "deny",
+        "item": "path:D:0",
+        "kind": "path",
+        "packages": [
+          "D"
+        ],
+        "reason": "stay out",
+        "resumed": [
+          "D"
+        ],
+        "state": "<HOME>/wave/state.json",
+        "subject": "<HOME>/.claude/settings.json",
+        "ts": "<TS>"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "path:C:0",
+        "allow",
+        "--reason",
+        "cache dir"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "allow path:C:0: <HOME>/.toolcache  resumed: C\n",
+      "stderr": "",
+      "files": {
+        "~/.local/state/claude-orchestra/sandbox-learned.json": {
+          "content": {
+            "domains": [
+              {
+                "added": "<TS>",
+                "domain": "files.example.com",
+                "reason": "needed for the download",
+                "source": "user"
+              }
+            ],
+            "grants": [
+              {
+                "added": "<TS>",
+                "example": "<HOME>/.toolcache",
+                "path": "<HOME>/.toolcache",
+                "reason": "cache dir",
+                "source": "instructor"
+              }
+            ],
+            "version": 1
+          },
+          "shape": "json-indent"
+        },
+        "~/wave/corrections/C.approvals.md": {
+          "content": "# Approval decisions for C\n\n- <HOME>/.toolcache is now granted (cache dir). Continue the task.\n",
+          "shape": "text"
+        },
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": null,
+              "path": null,
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "{\"orca\": \"stalled\", \"detail\": \"dialog:\\nAllow write to /x?\\n  1. Yes\\n  2. No\\nterminal: term-E\\nworktree: /x\\nresult: /r\"}",
+                "id": "E",
+                "kind": "delegate"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "network 10.0.0.1 declined",
+                "executor": "pi",
+                "files_changed": null,
+                "network_denials": [
+                  {
+                    "host": "files.example.com",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "api.anthropic.com",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "10.0.0.1",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "statsig.anthropic.com",
+                    "port": "<PORT>"
+                  }
+                ],
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "pi",
+                "files_changed": null,
+                "network_denials": [
+                  {
+                    "host": "files.example.com",
+                    "port": "<PORT>"
+                  },
+                  {
+                    "host": "Other.Example.ORG.",
+                    "port": "<PORT>"
+                  }
+                ],
+                "session": false,
+                "since": "<SINCE>",
+                "status": "implementing",
+                "tree": null
+              },
+              "C": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "permission <HOME>/.toolcache granted",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "D": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "permission <HOME>/.claude/settings.json declined",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "E": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "orca",
+                "files_changed": null,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "approvals",
+        "decide",
+        "--state",
+        "wave/state.json",
+        "dialog:E",
+        "allow",
+        "--reason",
+        "r"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: approvals decide: no key injection into Orca here; approve it in Orca (terminal term-E), then run: agent-exec wave mark --state wave/state.json --await E\n"
+    },
+    {
+      "argv": [
+        "approvals",
+        "--state",
+        "wave/state.json",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": [
+        {
+          "dialog": "Allow write to /x?\n  1. Yes\n  2. No",
+          "host": "orca",
+          "id": "dialog:E",
+          "kind": "dialog",
+          "pkg": "E",
+          "spec": "<HOME>/wave/specs/E.md",
+          "terminal": "term-E"
+        }
+      ],
+      "stderr": "",
+      "files": {
+        "~/.local/state/claude-orchestra/audit/decisions.jsonl": {
+          "content": [
+            {
+              "applied": false,
+              "by": "instructor",
+              "decision": "allow",
+              "item": "net:10.0.0.1",
+              "kind": "net",
+              "packages": [
+                "A"
+              ],
+              "reason": "r",
+              "state": "<HOME>/wave/state.json",
+              "subject": "10.0.0.1",
+              "ts": "<TS>"
+            },
+            {
+              "applied": true,
+              "by": "user",
+              "decision": "allow",
+              "item": "net:files.example.com",
+              "kind": "net",
+              "packages": [
+                "A",
+                "B"
+              ],
+              "reason": "needed for the download",
+              "state": "<HOME>/wave/state.json",
+              "subject": "files.example.com",
+              "ts": "<TS>"
+            },
+            {
+              "applied": true,
+              "by": "instructor",
+              "decision": "deny",
+              "item": "net:10.0.0.1",
+              "kind": "net",
+              "packages": [
+                "A"
+              ],
+              "reason": "no raw IPs",
+              "state": "<HOME>/wave/state.json",
+              "subject": "10.0.0.1",
+              "ts": "<TS>"
+            },
+            {
+              "applied": true,
+              "by": "instructor",
+              "decision": "deny",
+              "item": "net:other.example.org",
+              "kind": "net",
+              "packages": [
+                "B"
+              ],
+              "reason": "unrelated",
+              "state": "<HOME>/wave/state.json",
+              "subject": "other.example.org",
+              "ts": "<TS>"
+            },
+            {
+              "applied": false,
+              "by": "instructor",
+              "decision": "allow",
+              "item": "path:D:0",
+              "kind": "path",
+              "packages": [
+                "D"
+              ],
+              "reason": "r",
+              "state": "<HOME>/wave/state.json",
+              "subject": "<HOME>/.claude/settings.json",
+              "ts": "<TS>"
+            },
+            {
+              "applied": true,
+              "by": "instructor",
+              "decision": "deny",
+              "item": "path:D:0",
+              "kind": "path",
+              "packages": [
+                "D"
+              ],
+              "reason": "stay out",
+              "state": "<HOME>/wave/state.json",
+              "subject": "<HOME>/.claude/settings.json",
+              "ts": "<TS>"
+            },
+            {
+              "applied": true,
+              "by": "instructor",
+              "decision": "allow",
+              "item": "path:C:0",
+              "kind": "path",
+              "packages": [
+                "C"
+              ],
+              "reason": "cache dir",
+              "state": "<HOME>/wave/state.json",
+              "subject": "<HOME>/.toolcache",
+              "ts": "<TS>"
+            },
+            {
+              "applied": false,
+              "by": "instructor",
+              "decision": "allow",
+              "item": "dialog:E",
+              "kind": "dialog",
+              "packages": [
+                "E"
+              ],
+              "reason": "r",
+              "state": "<HOME>/wave/state.json",
+              "subject": "Allow write to /x?\n  1. Yes\n  2. No",
+              "ts": "<TS>"
+            }
+          ],
+          "shape": "jsonl"
+        }
+      }
+    }
+  ]
+}

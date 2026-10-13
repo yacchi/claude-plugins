@@ -1,0 +1,400 @@
+{
+  "scenario": "wave-run/delegate-mark",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "wave/state.json",
+        "--into",
+        "wave-int",
+        "--repo",
+        "../work",
+        "--max-in-flight",
+        "1",
+        "--no-ui"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "approvals": 0,
+        "blocked": [
+          "B"
+        ],
+        "flaky_tests": [],
+        "integrated": [],
+        "needs": [
+          {
+            "id": "A",
+            "kind": "delegate"
+          },
+          {
+            "id": "C",
+            "kind": "delegate"
+          }
+        ],
+        "network_denials": [],
+        "pending": [],
+        "reason": null,
+        "state": "<HOME>/wave/state.json",
+        "status": "done",
+        "waves": 2
+      },
+      "stderr": "max-in-flight: 1 (option)\n",
+      "files": {
+        "~/wave/state.events.jsonl": {
+          "content": [
+            {
+              "at": "<AT>",
+              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "event": "max-in-flight",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "A",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "A",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"light\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"claude\", \"seconds\": <N>, \"status\": \"delegate\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "A",
+              "to": "needs"
+            },
+            {
+              "at": "<AT>",
+              "detail": "C",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "C",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"light\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"claude\", \"seconds\": <N>, \"status\": \"delegate\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "C",
+              "to": "needs"
+            }
+          ],
+          "shape": "jsonl"
+        },
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#1>",
+              "path": "<WORK>-orchestra/00000000-wave-int",
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+                "id": "A",
+                "kind": "delegate"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
+                "id": "C",
+                "kind": "delegate"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+                "executor": "claude",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A"
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "C": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
+                "executor": "claude",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C"
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 2
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--pkg",
+        "A",
+        "--status",
+        "ready"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "pkg": "A",
+        "status": "verifying"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--pkg",
+        "C",
+        "--status",
+        "failed",
+        "--detail",
+        "given up"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "pkg": "C",
+        "status": "failed"
+      },
+      "stderr": "",
+      "files": {
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#1>",
+              "path": "<WORK>-orchestra/00000000-wave-int",
+              "task": "wave-int"
+            },
+            "needs": [],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "marked by the instructor",
+                "executor": "claude",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "verifying",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A"
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "C": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "given up",
+                "executor": "claude",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "failed",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C"
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 2
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "wave/state.json",
+        "--into",
+        "wave-int",
+        "--repo",
+        "../work",
+        "--max-in-flight",
+        "1"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "approvals": 0,
+        "blocked": [],
+        "flaky_tests": [],
+        "integrated": [
+          "A"
+        ],
+        "needs": [
+          {
+            "id": "B",
+            "kind": "delegate"
+          }
+        ],
+        "network_denials": [],
+        "pending": [],
+        "reason": null,
+        "state": "<HOME>/wave/state.json",
+        "status": "done",
+        "waves": 2
+      },
+      "stderr": "max-in-flight: 1 (option)\n",
+      "files": {
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#1>",
+              "path": "<WORK>-orchestra/00000000-wave-int",
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "{\"token\": \"<TOKEN#3>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B\"}",
+                "id": "B",
+                "kind": "delegate"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "changed nothing",
+                "executor": "claude",
+                "files_changed": 0,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A"
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "{\"token\": \"<TOKEN#3>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B\"}",
+                "executor": "claude",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B"
+              },
+              "C": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "given up",
+                "executor": "claude",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "failed",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C"
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 4
+          },
+          "shape": "json-indent"
+        }
+      }
+    }
+  ]
+}

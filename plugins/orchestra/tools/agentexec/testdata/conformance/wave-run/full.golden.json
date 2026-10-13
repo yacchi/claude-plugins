@@ -1,0 +1,1070 @@
+{
+  "scenario": "wave-run/full",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "gated/state.json",
+        "--into",
+        "gated-int",
+        "--repo",
+        "../work",
+        "--max-in-flight",
+        "1",
+        "--gate",
+        "true",
+        "--full",
+        "test -f a.txt",
+        "--full-every",
+        "1",
+        "--full-timeout",
+        "60",
+        "--on-green",
+        "printf '%s %s\\n' {sha} \"$WAVE_GREEN_SHA\" >> \"$HOME/green.out\"; pwd -P >> \"$HOME/green.out\""
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "approvals": 0,
+        "blocked": [],
+        "flaky_tests": [],
+        "integrated": [
+          "A",
+          "B"
+        ],
+        "needs": [],
+        "network_denials": [],
+        "pending": [],
+        "reason": null,
+        "state": "<HOME>/gated/state.json",
+        "status": "done",
+        "waves": 2
+      },
+      "stderr": "max-in-flight: 1 (option)\n",
+      "files": {
+        "~/gated/green.json": {
+          "content": {
+            "at": "<AT>",
+            "sha": "<SHA#1>"
+          },
+          "shape": "json-line"
+        },
+        "~/gated/state.events.jsonl": {
+          "content": [
+            {
+              "at": "<AT>",
+              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "event": "max-in-flight",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "A",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "A",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "A",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A\"}",
+              "event": "check-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"no-checks\"}",
+              "event": "check-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "A",
+              "to": "ready"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"tasks\": [\"A\"]}",
+              "event": "integrate-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"applied\"}",
+              "event": "integrate-task",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"at_commit\": \"<SHA#2>\"}",
+              "event": "verify-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "event": "verify-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"ok\"}",
+              "event": "integrate-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'gated-int' at <WORK>-orchestra/00000000-gated-int",
+              "event": "integrate",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "ready",
+              "pkg": "A",
+              "to": "integrated"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{}",
+              "event": "full-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "event": "full-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "pass exit=0\n",
+              "event": "full",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"exit\": 0, \"seconds\": <N>, \"sha\": \"<SHA#2>\"}",
+              "event": "on-green",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "B",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "B",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "B",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-B\"}",
+              "event": "check-start",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"no-checks\"}",
+              "event": "check-end",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "B",
+              "to": "ready"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"tasks\": [\"B\"]}",
+              "event": "integrate-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"applied\"}",
+              "event": "integrate-task",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"at_commit\": \"<SHA#1>\"}",
+              "event": "verify-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "event": "verify-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"ok\"}",
+              "event": "integrate-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'gated-int' at <WORK>-orchestra/00000000-gated-int",
+              "event": "integrate",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "ready",
+              "pkg": "B",
+              "to": "integrated"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{}",
+              "event": "full-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "event": "full-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "pass exit=0\n",
+              "event": "full",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"exit\": 0, \"seconds\": <N>, \"sha\": \"<SHA#1>\"}",
+              "event": "on-green",
+              "from": null,
+              "pkg": null,
+              "to": null
+            }
+          ],
+          "shape": "jsonl"
+        },
+        "~/gated/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#3>",
+              "path": "<WORK>-orchestra/00000000-gated-int",
+              "task": "gated-int"
+            },
+            "needs": [],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": "<SHA#2>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A"
+              },
+              "B": {
+                "attempts": 0,
+                "commit": "<SHA#1>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-B"
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 2
+          },
+          "shape": "json-indent"
+        },
+        "~/green.out": {
+          "content": "<SHA#2> <SHA#2>\n<HOME>/gated/green-tree\n<SHA#1> <SHA#1>\n<HOME>/gated/green-tree\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "red/state.json",
+        "--into",
+        "red-int",
+        "--repo",
+        "../work",
+        "--max-in-flight",
+        "1",
+        "--gate",
+        "true",
+        "--full",
+        "false"
+      ],
+      "exit": 5,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "approvals": 0,
+        "blocked": [],
+        "flaky_tests": [],
+        "integrated": [
+          "A"
+        ],
+        "needs": [],
+        "network_denials": [],
+        "pending": [
+          "B"
+        ],
+        "reason": "full verification red at the last green SHA",
+        "state": "<HOME>/red/state.json",
+        "status": "stopped",
+        "waves": 1
+      },
+      "stderr": "max-in-flight: 1 (option)\n",
+      "files": {
+        "~/red/green.json": {
+          "content": {
+            "at": "<AT>",
+            "sha": "<SHA#3>"
+          },
+          "shape": "json-line"
+        },
+        "~/red/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#3>",
+              "path": "<WORK>-orchestra/00000000-red-int",
+              "task": "red-int"
+            },
+            "needs": [],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": "<SHA#2>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A"
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": {
+              "at": "<AT>",
+              "reason": "full verification red at the last green SHA"
+            },
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "final/state.json",
+        "--into",
+        "final-int",
+        "--repo",
+        "../work",
+        "--max-in-flight",
+        "1",
+        "--full",
+        "echo boom; exit 1"
+      ],
+      "exit": 5,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "approvals": 0,
+        "blocked": [],
+        "flaky_tests": [],
+        "integrated": [
+          "A",
+          "B"
+        ],
+        "needs": [
+          {
+            "id": "fix-1",
+            "kind": "delegate"
+          },
+          {
+            "id": "fix-2",
+            "kind": "delegate"
+          },
+          {
+            "id": null,
+            "kind": "post-integration"
+          }
+        ],
+        "network_denials": [],
+        "pending": [],
+        "reason": "full checks red after 2 convergence round(s)",
+        "state": "<HOME>/final/state.json",
+        "status": "stopped",
+        "waves": 4
+      },
+      "stderr": "max-in-flight: 1 (option)\n",
+      "files": {
+        "~/final/fixups.json": {
+          "content": {
+            "next": 3,
+            "packages": [
+              {
+                "cls": "deep",
+                "depends_on": [],
+                "files_owned": [
+                  "**"
+                ],
+                "id": "fix-1",
+                "prio": 0,
+                "spec": "<HOME>/final/fixups/fix-1.md"
+              },
+              {
+                "cls": "deep",
+                "depends_on": [],
+                "files_owned": [
+                  "**"
+                ],
+                "id": "fix-2",
+                "prio": 0,
+                "spec": "<HOME>/final/fixups/fix-2.md"
+              }
+            ],
+            "rounds": 2
+          },
+          "shape": "json-indent"
+        },
+        "~/final/fixups/fix-1.md": {
+          "content": "# Fix-up fix-1 (convergence round 1)\n\nEvery package is integrated, but these full checks are red on the integration tree. Make them pass; stay inside files_owned; do not commit.\n\n## full\n\nboom\n\nNo package's changes match these failures.\n",
+          "shape": "text"
+        },
+        "~/final/state.events.jsonl": {
+          "content": [
+            {
+              "at": "<AT>",
+              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "event": "max-in-flight",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "A",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "A",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "A",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "A",
+              "to": "ready"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"tasks\": [\"A\"]}",
+              "event": "integrate-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"applied\"}",
+              "event": "integrate-task",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"ok\"}",
+              "event": "integrate-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'final-int' at <WORK>-orchestra/00000000-final-int",
+              "event": "integrate",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "ready",
+              "pkg": "A",
+              "to": "integrated"
+            },
+            {
+              "at": "<AT>",
+              "detail": "B",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "B",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "B",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "B",
+              "to": "ready"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"tasks\": [\"B\"]}",
+              "event": "integrate-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"applied\"}",
+              "event": "integrate-task",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"ok\"}",
+              "event": "integrate-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'final-int' at <WORK>-orchestra/00000000-final-int",
+              "event": "integrate",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "ready",
+              "pkg": "B",
+              "to": "integrated"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"mode\": \"final\"}",
+              "event": "full-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"mode\": \"final\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "event": "full-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "fail\nfull: boom",
+              "event": "full",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"checks\": [\"full\"], \"cls\": \"deep\", \"for\": null, \"round\": 1}",
+              "event": "fixup",
+              "from": null,
+              "pkg": "fix-1",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "convergence round 1",
+              "event": "status",
+              "from": "pending",
+              "pkg": "fix-1",
+              "to": "pending"
+            },
+            {
+              "at": "<AT>",
+              "detail": "fix-1",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "fix-1",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"deep\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "fix-1",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"claude\", \"seconds\": <N>, \"status\": \"delegate\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "fix-1",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "fix-1",
+              "to": "needs"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"mode\": \"final\"}",
+              "event": "full-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"mode\": \"final\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "event": "full-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "fail\nfull: boom",
+              "event": "full",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"checks\": [\"full\"], \"cls\": \"deep\", \"for\": null, \"round\": 2}",
+              "event": "fixup",
+              "from": null,
+              "pkg": "fix-2",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "convergence round 2",
+              "event": "status",
+              "from": "pending",
+              "pkg": "fix-2",
+              "to": "pending"
+            },
+            {
+              "at": "<AT>",
+              "detail": "fix-2",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "fix-2",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"deep\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "fix-2",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"claude\", \"seconds\": <N>, \"status\": \"delegate\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "fix-2",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "fix-2",
+              "to": "needs"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"mode\": \"final\"}",
+              "event": "full-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"mode\": \"final\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "event": "full-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "fail\nfull: boom",
+              "event": "full",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "full checks still red after 2 convergence round(s):\n## full\nboom",
+              "event": "need",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "full checks red after 2 convergence round(s)",
+              "event": "stop",
+              "from": null,
+              "pkg": null,
+              "to": null
+            }
+          ],
+          "shape": "jsonl"
+        },
+        "~/final/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#3>",
+              "path": "<WORK>-orchestra/00000000-final-int",
+              "task": "final-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+                "id": "fix-1",
+                "kind": "delegate"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+                "id": "fix-2",
+                "kind": "delegate"
+              },
+              {
+                "at": "<AT>",
+                "detail": "full checks still red after 2 convergence round(s):\n## full\nboom",
+                "id": null,
+                "kind": "post-integration"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": "<SHA#2>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A"
+              },
+              "B": {
+                "attempts": 0,
+                "commit": "<SHA#1>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-B"
+              },
+              "fix-1": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+                "executor": "claude",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": "<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1"
+              },
+              "fix-2": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+                "executor": "claude",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": "<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2"
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": {
+              "at": "<AT>",
+              "reason": "full checks red after 2 convergence round(s)"
+            },
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 4
+          },
+          "shape": "json-indent"
+        }
+      }
+    }
+  ]
+}
