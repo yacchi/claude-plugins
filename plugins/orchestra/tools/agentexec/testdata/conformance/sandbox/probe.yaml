@@ -1,0 +1,23 @@
+description: >
+  sandbox probe: mode, the backend a pi run would get, the probes and the
+  learned store; forced-unavailable backends (the test hook) with mode
+  off, auto (runs unsandboxed) and required (would refuse)
+setup:
+  files:
+    ~/.local/state/claude-orchestra/sandbox-learned.json: |
+      {"version": 1, "grants": [{"path": "<HOME>/.cache/x", "source": "auto"}, {"path": "rel", "source": "user"}]}
+    auto/.claude/orchestra.yaml: |
+      sandbox: {mode: auto}
+    required/.claude/orchestra.yaml: |
+      sandbox: {mode: required}
+  env:
+    AGENT_EXEC_SANDBOX_BACKEND: none
+steps:
+  - argv: [sandbox, probe, --json]
+  - argv: [sandbox, probe]
+  - argv: [sandbox, probe, --json]
+    cwd: auto
+  - argv: [sandbox, probe]
+    cwd: auto
+  - argv: [sandbox, probe, --json, --workdir, ignored]
+    cwd: required

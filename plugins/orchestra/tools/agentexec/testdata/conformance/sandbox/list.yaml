@@ -1,0 +1,33 @@
+description: >
+  sandbox list (macOS): the effective writable set of a pi run (tree, git
+  pieces, temp, pi state, caches, allow_write, learned grants), deny_read,
+  the tamper denies and the repo-config regex, learned grants and domains;
+  text and JSON, --workdir, Seatbelt chosen for real or no backend
+platforms: [darwin]
+setup:
+  git: true
+  keep_sandbox_default: true
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        allow_write: [~/extra, ~/extra]
+        deny_read: [~/private-notes]
+    src/keep.txt: "x\n"
+    ~/.local/state/claude-orchestra/sandbox-learned.json: |
+      {"version": 1, "grants": [
+        {"path": "<HOME>/.pub-cache", "source": "auto", "added": "2026-01-01T00:00:00Z", "example": "<HOME>/.pub-cache/x"},
+        {"path": "<HOME>/granted", "source": "user", "reason": "tests"},
+        {"path": "<HOME>/.ssh/x", "source": "user"}
+      ], "domains": [{"domain": "registry.npmjs.org", "added": "2026-01-01T00:00:00Z", "source": "user", "reason": "npm"}, {"domain": "b.example.org"}]}
+steps:
+  - argv: [sandbox, list, --json]
+  - argv: [sandbox, list]
+  - argv: [sandbox, list, --workdir, src, --json]
+  - argv: [sandbox, list, --json]
+    env:
+      AGENT_EXEC_SANDBOX_BACKEND: none
+  - argv: [sandbox, list]
+    env:
+      AGENT_EXEC_SANDBOX_BACKEND: none
+  - argv: [sandbox, list, --workdir]
+  - argv: [sandbox, list, extra]

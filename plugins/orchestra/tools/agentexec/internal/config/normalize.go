@@ -125,7 +125,7 @@ func normalizeSandbox(raw *jsonx.Object, u *union) *jsonx.Object {
 			mode = "off" // YAML 1.1 loads a bareword `off` as false
 		}
 	case string:
-		if s := strings.ToLower(strings.TrimSpace(x)); contains(sandboxModes, s) {
+		if s := PyLower(strings.TrimSpace(x)); contains(sandboxModes, s) {
 			mode = s
 		}
 	}
@@ -145,7 +145,7 @@ func normalizeNetwork(raw *jsonx.Object, u *union) *jsonx.Object {
 			mode = "off"
 		}
 	case string:
-		if strings.ToLower(strings.TrimSpace(x)) == "off" {
+		if PyLower(strings.TrimSpace(x)) == "off" {
 			mode = "off"
 		}
 	}
@@ -154,7 +154,7 @@ func normalizeNetwork(raw *jsonx.Object, u *union) *jsonx.Object {
 	case bool:
 		ecosystem = !ok || x
 	case string:
-		switch strings.ToLower(strings.TrimSpace(x)) {
+		switch PyLower(strings.TrimSpace(x)) {
 		case "off", "false", "no", "0":
 			ecosystem = false
 		}
@@ -163,7 +163,7 @@ func normalizeNetwork(raw *jsonx.Object, u *union) *jsonx.Object {
 	for _, key := range []string{"allowed_domains", "denied_domains", "quiet_domains"} {
 		var norm []string
 		for _, v := range u.network[key] {
-			if s := strings.ToLower(strings.TrimSpace(v)); s != "" {
+			if s := PyLower(strings.TrimSpace(v)); s != "" {
 				norm = append(norm, s)
 			}
 		}
@@ -177,7 +177,7 @@ func isOff(v any) bool {
 	case bool:
 		return !x
 	case string:
-		return strings.ToLower(strings.TrimSpace(x)) == "off"
+		return PyLower(strings.TrimSpace(x)) == "off"
 	}
 	return false
 }
