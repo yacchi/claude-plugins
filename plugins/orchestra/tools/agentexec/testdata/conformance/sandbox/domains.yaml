@@ -1,0 +1,37 @@
+description: >
+  sandbox allow-domain / forget-domain: domains are normalized (trim,
+  lower case), stored with source user and an optional reason, idempotent,
+  kept apart from the path grants; wildcards, TLD wildcards, IP literals,
+  localhost and junk are refused
+setup:
+  files:
+    ~/cache-dir/keep.txt: "x\n"
+steps:
+  - argv: [sandbox, allow-domain, " Registry.NPMJS.org "]
+  - argv: [sandbox, allow-domain, registry.npmjs.org, --json]
+  - argv: [sandbox, allow-domain, "*.github.com", --reason, " CI mirrors ", --json]
+  - argv: [sandbox, allow-domain, "pypi.org:443", --reason, ""]
+    snapshot: ["~/.local/state/claude-orchestra/sandbox-learned.json"]
+  - argv: [sandbox, allow, ~/cache-dir, --reason, both lists]
+    snapshot: ["~/.local/state/claude-orchestra/sandbox-learned.json"]
+  - argv: [sandbox, allow-domain, "*"]
+  - argv: [sandbox, allow-domain, "*.com"]
+  - argv: [sandbox, allow-domain, "*.dev:443"]
+  - argv: [sandbox, allow-domain, 10.0.0.1]
+  - argv: [sandbox, allow-domain, "[::1]:443"]
+  - argv: [sandbox, allow-domain, "fe80::1"]
+  - argv: [sandbox, allow-domain, "LOCALHOST:8080"]
+  - argv: [sandbox, allow-domain, "*.localhost"]
+  - argv: [sandbox, allow-domain, "a b.com"]
+  - argv: [sandbox, allow-domain, "http://x.com"]
+  - argv: [sandbox, allow-domain, "1.2.3"]
+  - argv: [sandbox, allow-domain, " "]
+  - argv: [sandbox, allow-domain]
+  - argv: [sandbox, allow-domain, a.example.org, --reason]
+  - argv: [sandbox, forget-domain, REGISTRY.npmjs.org, --json]
+  - argv: [sandbox, forget-domain, registry.npmjs.org, --json]
+  - argv: [sandbox, forget-domain, "*.github.com"]
+  - argv: [sandbox, forget-domain, nothing.example.org]
+    snapshot: ["~/.local/state/claude-orchestra/sandbox-learned.json"]
+  - argv: [sandbox, forget, ~/cache-dir]
+    snapshot: ["~/.local/state/claude-orchestra/sandbox-learned.json"]

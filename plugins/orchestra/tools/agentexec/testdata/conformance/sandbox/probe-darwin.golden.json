@@ -1,0 +1,53 @@
+{
+  "scenario": "sandbox/probe-darwin",
+  "steps": [
+    {
+      "argv": [
+        "sandbox",
+        "probe",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "backend": "seatbelt",
+        "enforced": true,
+        "learned": {
+          "count": 0,
+          "path": "<HOME>/.local/state/claude-orchestra/sandbox-learned.json",
+          "warning": null
+        },
+        "limits": [],
+        "mode": "auto",
+        "probes": {
+          "bwrap": {
+            "detail": "not Linux",
+            "ok": false
+          },
+          "landlock": {
+            "abi": 0,
+            "detail": "not Linux",
+            "ok": false
+          },
+          "seatbelt": {
+            "detail": "sandbox-exec probe ok",
+            "ok": true
+          }
+        },
+        "reason": "macOS Seatbelt (sandbox-exec)",
+        "would_refuse": false
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "probe"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "mode=auto backend=seatbelt enforced=True (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\n",
+      "stderr": ""
+    }
+  ]
+}

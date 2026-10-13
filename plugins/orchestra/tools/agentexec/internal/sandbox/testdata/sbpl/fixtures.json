@@ -1,0 +1,2027 @@
+{
+ "argv": [
+  "pi",
+  "-p",
+  "--mode",
+  "json",
+  "--model",
+  "openai-codex/gpt-5.6-luna",
+  "it's a \"prompt\" with $vars"
+ ],
+ "now": "2026-01-02T03:04:05Z",
+ "cases": [
+  {
+   "name": "workdir-only",
+   "kind": "seatbelt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "tmp"
+    },
+    {
+     "op": "mkdir",
+     "path": "work/tree"
+    }
+   ],
+   "tree": "work/tree",
+   "cwd": "work/tree",
+   "cfg": {},
+   "env": {
+    "TMPDIR": "<ROOT>/tmp/"
+   },
+   "want": {
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec)",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/work/tree",
+     "-D",
+     "W1=<ROOT>/tmp",
+     "-D",
+     "W2=/private/tmp",
+     "-D",
+     "W3=/dev",
+     "-D",
+     "W4=<ROOT>/home/.pi/agent",
+     "-D",
+     "W5=<ROOT>/home/.cache",
+     "-D",
+     "W6=<ROOT>/home/.npm",
+     "-D",
+     "W7=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W8=<ROOT>/home/Library/Caches",
+     "-D",
+     "R0=<ROOT>/home/.ssh",
+     "-D",
+     "R1=<ROOT>/home/.aws",
+     "-D",
+     "R2=<ROOT>/home/.gnupg",
+     "-D",
+     "R3=<ROOT>/home/.config/gh",
+     "-D",
+     "R4=<ROOT>/home/.netrc",
+     "-D",
+     "R5=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R6=<ROOT>/home/.kube",
+     "-D",
+     "R7=<ROOT>/home/Library/Keychains",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.pi/agent/extensions",
+     "-D",
+     "D10=<ROOT>/home/.pi/agent/skills",
+     "-D",
+     "D11=<ROOT>/home/.pi/agent/prompts",
+     "-D",
+     "D12=<ROOT>/home/.pi/agent/themes",
+     "-D",
+     "D13=<ROOT>/home/.pi/agent/packages",
+     "-D",
+     "D14=<ROOT>/home/.pi/agent/npm",
+     "-D",
+     "D15=<ROOT>/home/.pi/agent/git",
+     "-D",
+     "D16=<ROOT>/home/.pi/agent/bin",
+     "-D",
+     "D17=<ROOT>/home/.pi/agent/install",
+     "-D",
+     "D18=<ROOT>/home/.pi/agent/settings.json",
+     "-D",
+     "D19=<ROOT>/home/.pi/agent/mcp.json",
+     "-D",
+     "D20=<ROOT>/home/.pi/agent/models.json",
+     "-D",
+     "D21=<ROOT>/home/.pi/agent/AGENTS.md",
+     "-D",
+     "D22=<ROOT>/home/.pi/agent/SYSTEM.md",
+     "-D",
+     "D23=<ROOT>/home/.pi/agent/APPEND_SYSTEM.md",
+     "-D",
+     "D24=<ROOT>/home/.pi/agent/keybindings.json",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\")) (subpath (param \"W8\"))))) (deny file-read* (subpath (param \"R0\")) (subpath (param \"R1\")) (subpath (param \"R2\")) (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "linked-worktree",
+   "kind": "seatbelt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "tmp"
+    },
+    {
+     "op": "mkdir",
+     "path": "repo"
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "init",
+      "-q",
+      "-b",
+      "main"
+     ]
+    },
+    {
+     "op": "write",
+     "path": "repo/a.txt",
+     "data": "a\n"
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "add",
+      "a.txt"
+     ]
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "commit",
+      "-qm",
+      "init"
+     ]
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "worktree",
+      "add",
+      "-q",
+      "-b",
+      "t1",
+      "<ROOT>/repo-orchestra/t1"
+     ]
+    },
+    {
+     "op": "mkdir",
+     "path": "repo-orchestra/t1/pkg/.claude"
+    }
+   ],
+   "tree": "repo-orchestra/t1",
+   "cwd": "repo-orchestra/t1/pkg",
+   "cfg": {},
+   "env": {
+    "TMPDIR": "<ROOT>/tmp"
+   },
+   "want": {
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec)",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/repo-orchestra/t1",
+     "-D",
+     "W1=<ROOT>/repo/.git/worktrees/t1",
+     "-D",
+     "W2=<ROOT>/repo/.git/objects",
+     "-D",
+     "W3=<ROOT>/tmp",
+     "-D",
+     "W4=/private/tmp",
+     "-D",
+     "W5=/dev",
+     "-D",
+     "W6=<ROOT>/home/.pi/agent",
+     "-D",
+     "W7=<ROOT>/home/.cache",
+     "-D",
+     "W8=<ROOT>/home/.npm",
+     "-D",
+     "W9=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W10=<ROOT>/home/Library/Caches",
+     "-D",
+     "R0=<ROOT>/home/.ssh",
+     "-D",
+     "R1=<ROOT>/home/.aws",
+     "-D",
+     "R2=<ROOT>/home/.gnupg",
+     "-D",
+     "R3=<ROOT>/home/.config/gh",
+     "-D",
+     "R4=<ROOT>/home/.netrc",
+     "-D",
+     "R5=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R6=<ROOT>/home/.kube",
+     "-D",
+     "R7=<ROOT>/home/Library/Keychains",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.pi/agent/extensions",
+     "-D",
+     "D10=<ROOT>/home/.pi/agent/skills",
+     "-D",
+     "D11=<ROOT>/home/.pi/agent/prompts",
+     "-D",
+     "D12=<ROOT>/home/.pi/agent/themes",
+     "-D",
+     "D13=<ROOT>/home/.pi/agent/packages",
+     "-D",
+     "D14=<ROOT>/home/.pi/agent/npm",
+     "-D",
+     "D15=<ROOT>/home/.pi/agent/git",
+     "-D",
+     "D16=<ROOT>/home/.pi/agent/bin",
+     "-D",
+     "D17=<ROOT>/home/.pi/agent/install",
+     "-D",
+     "D18=<ROOT>/home/.pi/agent/settings.json",
+     "-D",
+     "D19=<ROOT>/home/.pi/agent/mcp.json",
+     "-D",
+     "D20=<ROOT>/home/.pi/agent/models.json",
+     "-D",
+     "D21=<ROOT>/home/.pi/agent/AGENTS.md",
+     "-D",
+     "D22=<ROOT>/home/.pi/agent/SYSTEM.md",
+     "-D",
+     "D23=<ROOT>/home/.pi/agent/APPEND_SYSTEM.md",
+     "-D",
+     "D24=<ROOT>/home/.pi/agent/keybindings.json",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\")) (subpath (param \"W8\")) (subpath (param \"W9\")) (subpath (param \"W10\"))))) (deny file-read* (subpath (param \"R0\")) (subpath (param \"R1\")) (subpath (param \"R2\")) (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")) (regex #\"^<ROOT>/repo-orchestra/t1/(.*/)?\\.claude/orchestra[^/]*\\.y[^/]*ml$\"))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "checkout-carve-out",
+   "kind": "seatbelt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "repo"
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "init",
+      "-q",
+      "-b",
+      "main"
+     ]
+    },
+    {
+     "op": "write",
+     "path": "repo/a.txt",
+     "data": "a\n"
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "add",
+      "a.txt"
+     ]
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "commit",
+      "-qm",
+      "init"
+     ]
+    }
+   ],
+   "tree": "repo",
+   "cwd": "repo",
+   "cfg": {
+    "allow_write": [
+     "<ROOT>/repo/.git/hooks-x"
+    ]
+   },
+   "env": {},
+   "want": {
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec)",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/repo",
+     "-D",
+     "W1=<ROOT>/repo/.git/objects",
+     "-D",
+     "W2=/private/tmp",
+     "-D",
+     "W3=/dev",
+     "-D",
+     "W4=<ROOT>/home/.pi/agent",
+     "-D",
+     "W5=<ROOT>/home/.cache",
+     "-D",
+     "W6=<ROOT>/home/.npm",
+     "-D",
+     "W7=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W8=<ROOT>/home/Library/Caches",
+     "-D",
+     "W9=<ROOT>/repo/.git/hooks-x",
+     "-D",
+     "RO0=<ROOT>/repo/.git",
+     "-D",
+     "RW0=<ROOT>/repo/.git/objects",
+     "-D",
+     "RW1=<ROOT>/repo/.git/hooks-x",
+     "-D",
+     "R3=<ROOT>/home/.ssh",
+     "-D",
+     "R4=<ROOT>/home/.aws",
+     "-D",
+     "R5=<ROOT>/home/.gnupg",
+     "-D",
+     "R6=<ROOT>/home/.config/gh",
+     "-D",
+     "R7=<ROOT>/home/.netrc",
+     "-D",
+     "R8=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R9=<ROOT>/home/.kube",
+     "-D",
+     "R10=<ROOT>/home/Library/Keychains",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.pi/agent/extensions",
+     "-D",
+     "D10=<ROOT>/home/.pi/agent/skills",
+     "-D",
+     "D11=<ROOT>/home/.pi/agent/prompts",
+     "-D",
+     "D12=<ROOT>/home/.pi/agent/themes",
+     "-D",
+     "D13=<ROOT>/home/.pi/agent/packages",
+     "-D",
+     "D14=<ROOT>/home/.pi/agent/npm",
+     "-D",
+     "D15=<ROOT>/home/.pi/agent/git",
+     "-D",
+     "D16=<ROOT>/home/.pi/agent/bin",
+     "-D",
+     "D17=<ROOT>/home/.pi/agent/install",
+     "-D",
+     "D18=<ROOT>/home/.pi/agent/settings.json",
+     "-D",
+     "D19=<ROOT>/home/.pi/agent/mcp.json",
+     "-D",
+     "D20=<ROOT>/home/.pi/agent/models.json",
+     "-D",
+     "D21=<ROOT>/home/.pi/agent/AGENTS.md",
+     "-D",
+     "D22=<ROOT>/home/.pi/agent/SYSTEM.md",
+     "-D",
+     "D23=<ROOT>/home/.pi/agent/APPEND_SYSTEM.md",
+     "-D",
+     "D24=<ROOT>/home/.pi/agent/keybindings.json",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\")) (subpath (param \"W8\")) (subpath (param \"W9\"))))) (deny file-write* (require-all (subpath (param \"RO0\")) (require-not (require-any (subpath (param \"RW0\")) (subpath (param \"RW1\")))))) (deny file-read* (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\")) (subpath (param \"R8\")) (subpath (param \"R9\")) (subpath (param \"R10\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")) (regex #\"^<ROOT>/repo/(.*/)?\\.claude/orchestra[^/]*\\.y[^/]*ml$\"))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "grants-and-config",
+   "kind": "seatbelt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home/.cache/uv"
+    },
+    {
+     "op": "mkdir",
+     "path": "tmp"
+    },
+    {
+     "op": "mkdir",
+     "path": "home/real-pi"
+    },
+    {
+     "op": "write",
+     "path": "home/real-pi/auth.json",
+     "data": "{}"
+    },
+    {
+     "op": "mkdir",
+     "path": "home/.local/state/claude-orchestra/pi-agent"
+    },
+    {
+     "op": "symlink",
+     "path": "home/.local/state/claude-orchestra/pi-agent/auth.json",
+     "target": "<ROOT>/home/real-pi/auth.json"
+    },
+    {
+     "op": "mkdir",
+     "path": "home/sp ace"
+    },
+    {
+     "op": "symlink",
+     "path": "home/linked",
+     "target": "<ROOT>/home/sp ace"
+    },
+    {
+     "op": "write",
+     "path": "home/.local/state/claude-orchestra/sandbox-learned.json",
+     "data": "{\"version\": 1, \"grants\": [{\"path\": \"<ROOT>/home/.cache/uv\", \"source\": \"auto\", \"added\": \"x\"}, {\"path\": \"<ROOT>/home/.pub-cache/v3\", \"source\": \"auto\"}, {\"path\": \"<ROOT>/home/granted\", \"source\": \"user\", \"reason\": \"r\"}, {\"path\": \"<ROOT>/home/.ssh/k\", \"source\": \"user\"}, {\"path\": \"<ROOT>/home/.config/x\", \"source\": \"auto\"}, {\"path\": \"<ROOT>/home/approved\", \"source\": \"instructor\"}]}"
+    },
+    {
+     "op": "mkdir",
+     "path": "work/tree"
+    }
+   ],
+   "tree": "work/tree",
+   "cwd": "work/tree",
+   "cfg": {
+    "mode": "required",
+    "allow_write": [
+     "~/extra",
+     "~/linked/x",
+     "~/extra/",
+     "~/q\"uote"
+    ],
+    "deny_read": [
+     "~/notes",
+     "~/.ssh",
+     "/etc/secret"
+    ]
+   },
+   "env": {
+    "TMPDIR": "<ROOT>/tmp",
+    "PI_CODING_AGENT_DIR": "<ROOT>/home/.local/state/claude-orchestra/pi-agent"
+   },
+   "want": {
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec)",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/work/tree",
+     "-D",
+     "W1=<ROOT>/tmp",
+     "-D",
+     "W2=/private/tmp",
+     "-D",
+     "W3=/dev",
+     "-D",
+     "W4=<ROOT>/home/.local/state/claude-orchestra/pi-agent",
+     "-D",
+     "W5=<ROOT>/home/real-pi",
+     "-D",
+     "W6=<ROOT>/home/.cache",
+     "-D",
+     "W7=<ROOT>/home/.npm",
+     "-D",
+     "W8=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W9=<ROOT>/home/Library/Caches",
+     "-D",
+     "W10=<ROOT>/home/extra",
+     "-D",
+     "W11=<ROOT>/home/sp ace/x",
+     "-D",
+     "W12=<ROOT>/home/q\"uote",
+     "-D",
+     "W13=<ROOT>/home/.cache/uv",
+     "-D",
+     "W14=<ROOT>/home/.pub-cache/v3",
+     "-D",
+     "W15=<ROOT>/home/granted",
+     "-D",
+     "W16=<ROOT>/home/approved",
+     "-D",
+     "R0=<ROOT>/home/.ssh",
+     "-D",
+     "R1=<ROOT>/home/.aws",
+     "-D",
+     "R2=<ROOT>/home/.gnupg",
+     "-D",
+     "R3=<ROOT>/home/.config/gh",
+     "-D",
+     "R4=<ROOT>/home/.netrc",
+     "-D",
+     "R5=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R6=<ROOT>/home/.kube",
+     "-D",
+     "R7=<ROOT>/home/Library/Keychains",
+     "-D",
+     "R8=<ROOT>/home/notes",
+     "-D",
+     "R9=/private/etc/secret",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.local/state/claude-orchestra/pi-agent/extensions",
+     "-D",
+     "D10=<ROOT>/home/.local/state/claude-orchestra/pi-agent/skills",
+     "-D",
+     "D11=<ROOT>/home/.local/state/claude-orchestra/pi-agent/prompts",
+     "-D",
+     "D12=<ROOT>/home/.local/state/claude-orchestra/pi-agent/themes",
+     "-D",
+     "D13=<ROOT>/home/.local/state/claude-orchestra/pi-agent/packages",
+     "-D",
+     "D14=<ROOT>/home/.local/state/claude-orchestra/pi-agent/npm",
+     "-D",
+     "D15=<ROOT>/home/.local/state/claude-orchestra/pi-agent/git",
+     "-D",
+     "D16=<ROOT>/home/.local/state/claude-orchestra/pi-agent/bin",
+     "-D",
+     "D17=<ROOT>/home/.local/state/claude-orchestra/pi-agent/install",
+     "-D",
+     "D18=<ROOT>/home/.local/state/claude-orchestra/pi-agent/settings.json",
+     "-D",
+     "D19=<ROOT>/home/.local/state/claude-orchestra/pi-agent/mcp.json",
+     "-D",
+     "D20=<ROOT>/home/.local/state/claude-orchestra/pi-agent/models.json",
+     "-D",
+     "D21=<ROOT>/home/.local/state/claude-orchestra/pi-agent/AGENTS.md",
+     "-D",
+     "D22=<ROOT>/home/.local/state/claude-orchestra/pi-agent/SYSTEM.md",
+     "-D",
+     "D23=<ROOT>/home/.local/state/claude-orchestra/pi-agent/APPEND_SYSTEM.md",
+     "-D",
+     "D24=<ROOT>/home/.local/state/claude-orchestra/pi-agent/keybindings.json",
+     "-D",
+     "D25=<ROOT>/home/real-pi/extensions",
+     "-D",
+     "D26=<ROOT>/home/real-pi/skills",
+     "-D",
+     "D27=<ROOT>/home/real-pi/prompts",
+     "-D",
+     "D28=<ROOT>/home/real-pi/themes",
+     "-D",
+     "D29=<ROOT>/home/real-pi/packages",
+     "-D",
+     "D30=<ROOT>/home/real-pi/npm",
+     "-D",
+     "D31=<ROOT>/home/real-pi/git",
+     "-D",
+     "D32=<ROOT>/home/real-pi/bin",
+     "-D",
+     "D33=<ROOT>/home/real-pi/install",
+     "-D",
+     "D34=<ROOT>/home/real-pi/settings.json",
+     "-D",
+     "D35=<ROOT>/home/real-pi/mcp.json",
+     "-D",
+     "D36=<ROOT>/home/real-pi/models.json",
+     "-D",
+     "D37=<ROOT>/home/real-pi/AGENTS.md",
+     "-D",
+     "D38=<ROOT>/home/real-pi/SYSTEM.md",
+     "-D",
+     "D39=<ROOT>/home/real-pi/APPEND_SYSTEM.md",
+     "-D",
+     "D40=<ROOT>/home/real-pi/keybindings.json",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\")) (subpath (param \"W8\")) (subpath (param \"W9\")) (subpath (param \"W10\")) (subpath (param \"W11\")) (subpath (param \"W12\")) (subpath (param \"W13\")) (subpath (param \"W14\")) (subpath (param \"W15\")) (subpath (param \"W16\"))))) (deny file-read* (subpath (param \"R0\")) (subpath (param \"R1\")) (subpath (param \"R2\")) (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\")) (subpath (param \"R8\")) (subpath (param \"R9\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")) (subpath (param \"D25\")) (subpath (param \"D26\")) (subpath (param \"D27\")) (subpath (param \"D28\")) (subpath (param \"D29\")) (subpath (param \"D30\")) (subpath (param \"D31\")) (subpath (param \"D32\")) (subpath (param \"D33\")) (subpath (param \"D34\")) (subpath (param \"D35\")) (subpath (param \"D36\")) (subpath (param \"D37\")) (subpath (param \"D38\")) (subpath (param \"D39\")) (subpath (param \"D40\")))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "denied-paths-metachars",
+   "kind": "seatbelt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "re+po (x)[1]{2}.^$|"
+    },
+    {
+     "op": "git",
+     "cwd": "re+po (x)[1]{2}.^$|",
+     "args": [
+      "init",
+      "-q",
+      "-b",
+      "main"
+     ]
+    },
+    {
+     "op": "write",
+     "path": "re+po (x)[1]{2}.^$|/a.txt",
+     "data": "a\n"
+    },
+    {
+     "op": "git",
+     "cwd": "re+po (x)[1]{2}.^$|",
+     "args": [
+      "add",
+      "a.txt"
+     ]
+    },
+    {
+     "op": "git",
+     "cwd": "re+po (x)[1]{2}.^$|",
+     "args": [
+      "commit",
+      "-qm",
+      "init"
+     ]
+    }
+   ],
+   "tree": "re+po (x)[1]{2}.^$|",
+   "cwd": "re+po (x)[1]{2}.^$|",
+   "cfg": {
+    "deny_read": [
+     "~/.config/other",
+     "~/sec ret"
+    ]
+   },
+   "env": {},
+   "want": {
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec)",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/re+po (x)[1]{2}.^$|",
+     "-D",
+     "W1=<ROOT>/re+po (x)[1]{2}.^$|/.git/objects",
+     "-D",
+     "W2=/private/tmp",
+     "-D",
+     "W3=/dev",
+     "-D",
+     "W4=<ROOT>/home/.pi/agent",
+     "-D",
+     "W5=<ROOT>/home/.cache",
+     "-D",
+     "W6=<ROOT>/home/.npm",
+     "-D",
+     "W7=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W8=<ROOT>/home/Library/Caches",
+     "-D",
+     "RO0=<ROOT>/re+po (x)[1]{2}.^$|/.git",
+     "-D",
+     "RW0=<ROOT>/re+po (x)[1]{2}.^$|/.git/objects",
+     "-D",
+     "R2=<ROOT>/home/.ssh",
+     "-D",
+     "R3=<ROOT>/home/.aws",
+     "-D",
+     "R4=<ROOT>/home/.gnupg",
+     "-D",
+     "R5=<ROOT>/home/.config/gh",
+     "-D",
+     "R6=<ROOT>/home/.netrc",
+     "-D",
+     "R7=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R8=<ROOT>/home/.kube",
+     "-D",
+     "R9=<ROOT>/home/Library/Keychains",
+     "-D",
+     "R10=<ROOT>/home/.config/other",
+     "-D",
+     "R11=<ROOT>/home/sec ret",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.pi/agent/extensions",
+     "-D",
+     "D10=<ROOT>/home/.pi/agent/skills",
+     "-D",
+     "D11=<ROOT>/home/.pi/agent/prompts",
+     "-D",
+     "D12=<ROOT>/home/.pi/agent/themes",
+     "-D",
+     "D13=<ROOT>/home/.pi/agent/packages",
+     "-D",
+     "D14=<ROOT>/home/.pi/agent/npm",
+     "-D",
+     "D15=<ROOT>/home/.pi/agent/git",
+     "-D",
+     "D16=<ROOT>/home/.pi/agent/bin",
+     "-D",
+     "D17=<ROOT>/home/.pi/agent/install",
+     "-D",
+     "D18=<ROOT>/home/.pi/agent/settings.json",
+     "-D",
+     "D19=<ROOT>/home/.pi/agent/mcp.json",
+     "-D",
+     "D20=<ROOT>/home/.pi/agent/models.json",
+     "-D",
+     "D21=<ROOT>/home/.pi/agent/AGENTS.md",
+     "-D",
+     "D22=<ROOT>/home/.pi/agent/SYSTEM.md",
+     "-D",
+     "D23=<ROOT>/home/.pi/agent/APPEND_SYSTEM.md",
+     "-D",
+     "D24=<ROOT>/home/.pi/agent/keybindings.json",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\")) (subpath (param \"W8\"))))) (deny file-write* (require-all (subpath (param \"RO0\")) (require-not (require-any (subpath (param \"RW0\")))))) (deny file-read* (subpath (param \"R2\")) (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\")) (subpath (param \"R8\")) (subpath (param \"R9\")) (subpath (param \"R10\")) (subpath (param \"R11\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")) (regex #\"^<ROOT>/re\\+po \\(x\\)\\[1\\]\\{2\\}\\.\\^\\$\\|/(.*/)?\\.claude/orchestra[^/]*\\.y[^/]*ml$\"))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "denied-paths-quote",
+   "kind": "seatbelt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "we\"ird"
+    },
+    {
+     "op": "git",
+     "cwd": "we\"ird",
+     "args": [
+      "init",
+      "-q",
+      "-b",
+      "main"
+     ]
+    },
+    {
+     "op": "write",
+     "path": "we\"ird/a.txt",
+     "data": "a\n"
+    },
+    {
+     "op": "git",
+     "cwd": "we\"ird",
+     "args": [
+      "add",
+      "a.txt"
+     ]
+    },
+    {
+     "op": "git",
+     "cwd": "we\"ird",
+     "args": [
+      "commit",
+      "-qm",
+      "init"
+     ]
+    }
+   ],
+   "tree": "we\"ird",
+   "cwd": "we\"ird",
+   "cfg": {},
+   "env": {},
+   "want": {
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec)",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/we\"ird",
+     "-D",
+     "W1=<ROOT>/we\"ird/.git/objects",
+     "-D",
+     "W2=/private/tmp",
+     "-D",
+     "W3=/dev",
+     "-D",
+     "W4=<ROOT>/home/.pi/agent",
+     "-D",
+     "W5=<ROOT>/home/.cache",
+     "-D",
+     "W6=<ROOT>/home/.npm",
+     "-D",
+     "W7=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W8=<ROOT>/home/Library/Caches",
+     "-D",
+     "RO0=<ROOT>/we\"ird/.git",
+     "-D",
+     "RW0=<ROOT>/we\"ird/.git/objects",
+     "-D",
+     "R2=<ROOT>/home/.ssh",
+     "-D",
+     "R3=<ROOT>/home/.aws",
+     "-D",
+     "R4=<ROOT>/home/.gnupg",
+     "-D",
+     "R5=<ROOT>/home/.config/gh",
+     "-D",
+     "R6=<ROOT>/home/.netrc",
+     "-D",
+     "R7=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R8=<ROOT>/home/.kube",
+     "-D",
+     "R9=<ROOT>/home/Library/Keychains",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.pi/agent/extensions",
+     "-D",
+     "D10=<ROOT>/home/.pi/agent/skills",
+     "-D",
+     "D11=<ROOT>/home/.pi/agent/prompts",
+     "-D",
+     "D12=<ROOT>/home/.pi/agent/themes",
+     "-D",
+     "D13=<ROOT>/home/.pi/agent/packages",
+     "-D",
+     "D14=<ROOT>/home/.pi/agent/npm",
+     "-D",
+     "D15=<ROOT>/home/.pi/agent/git",
+     "-D",
+     "D16=<ROOT>/home/.pi/agent/bin",
+     "-D",
+     "D17=<ROOT>/home/.pi/agent/install",
+     "-D",
+     "D18=<ROOT>/home/.pi/agent/settings.json",
+     "-D",
+     "D19=<ROOT>/home/.pi/agent/mcp.json",
+     "-D",
+     "D20=<ROOT>/home/.pi/agent/models.json",
+     "-D",
+     "D21=<ROOT>/home/.pi/agent/AGENTS.md",
+     "-D",
+     "D22=<ROOT>/home/.pi/agent/SYSTEM.md",
+     "-D",
+     "D23=<ROOT>/home/.pi/agent/APPEND_SYSTEM.md",
+     "-D",
+     "D24=<ROOT>/home/.pi/agent/keybindings.json",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\")) (subpath (param \"W8\"))))) (deny file-write* (require-all (subpath (param \"RO0\")) (require-not (require-any (subpath (param \"RW0\")))))) (deny file-read* (subpath (param \"R2\")) (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\")) (subpath (param \"R8\")) (subpath (param \"R9\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "deep-tree",
+   "kind": "seatbelt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "tmp"
+    },
+    {
+     "op": "mkdir",
+     "path": "deep/repo"
+    },
+    {
+     "op": "git",
+     "cwd": "deep/repo",
+     "args": [
+      "init",
+      "-q",
+      "-b",
+      "main"
+     ]
+    },
+    {
+     "op": "write",
+     "path": "deep/repo/a.txt",
+     "data": "a\n"
+    },
+    {
+     "op": "git",
+     "cwd": "deep/repo",
+     "args": [
+      "add",
+      "a.txt"
+     ]
+    },
+    {
+     "op": "git",
+     "cwd": "deep/repo",
+     "args": [
+      "commit",
+      "-qm",
+      "init"
+     ]
+    },
+    {
+     "op": "mkdir",
+     "path": "deep/repo/a/b/c/d/e"
+    },
+    {
+     "op": "symlink",
+     "path": "shortcut",
+     "target": "deep/repo/a/b"
+    }
+   ],
+   "tree": "shortcut/c/../c/d",
+   "cwd": "shortcut/c/d/e",
+   "cfg": {
+    "allow_write": [
+     "~/x/../y"
+    ]
+   },
+   "env": {
+    "TMPDIR": "<ROOT>/shortcut/c"
+   },
+   "want": {
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec)",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/deep/repo/a/b/c/d",
+     "-D",
+     "W1=<ROOT>/deep/repo/.git/objects",
+     "-D",
+     "W2=<ROOT>/deep/repo/a/b/c",
+     "-D",
+     "W3=/private/tmp",
+     "-D",
+     "W4=/dev",
+     "-D",
+     "W5=<ROOT>/home/.pi/agent",
+     "-D",
+     "W6=<ROOT>/home/.cache",
+     "-D",
+     "W7=<ROOT>/home/.npm",
+     "-D",
+     "W8=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W9=<ROOT>/home/Library/Caches",
+     "-D",
+     "W10=<ROOT>/home/y",
+     "-D",
+     "R0=<ROOT>/home/.ssh",
+     "-D",
+     "R1=<ROOT>/home/.aws",
+     "-D",
+     "R2=<ROOT>/home/.gnupg",
+     "-D",
+     "R3=<ROOT>/home/.config/gh",
+     "-D",
+     "R4=<ROOT>/home/.netrc",
+     "-D",
+     "R5=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R6=<ROOT>/home/.kube",
+     "-D",
+     "R7=<ROOT>/home/Library/Keychains",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.pi/agent/extensions",
+     "-D",
+     "D10=<ROOT>/home/.pi/agent/skills",
+     "-D",
+     "D11=<ROOT>/home/.pi/agent/prompts",
+     "-D",
+     "D12=<ROOT>/home/.pi/agent/themes",
+     "-D",
+     "D13=<ROOT>/home/.pi/agent/packages",
+     "-D",
+     "D14=<ROOT>/home/.pi/agent/npm",
+     "-D",
+     "D15=<ROOT>/home/.pi/agent/git",
+     "-D",
+     "D16=<ROOT>/home/.pi/agent/bin",
+     "-D",
+     "D17=<ROOT>/home/.pi/agent/install",
+     "-D",
+     "D18=<ROOT>/home/.pi/agent/settings.json",
+     "-D",
+     "D19=<ROOT>/home/.pi/agent/mcp.json",
+     "-D",
+     "D20=<ROOT>/home/.pi/agent/models.json",
+     "-D",
+     "D21=<ROOT>/home/.pi/agent/AGENTS.md",
+     "-D",
+     "D22=<ROOT>/home/.pi/agent/SYSTEM.md",
+     "-D",
+     "D23=<ROOT>/home/.pi/agent/APPEND_SYSTEM.md",
+     "-D",
+     "D24=<ROOT>/home/.pi/agent/keybindings.json",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\")) (subpath (param \"W8\")) (subpath (param \"W9\")) (subpath (param \"W10\"))))) (deny file-read* (subpath (param \"R0\")) (subpath (param \"R1\")) (subpath (param \"R2\")) (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")) (regex #\"^<ROOT>/deep/repo/(.*/)?\\.claude/orchestra[^/]*\\.y[^/]*ml$\"))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "mode-off",
+   "kind": "seatbelt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "work"
+    }
+   ],
+   "tree": "work",
+   "cwd": "work",
+   "cfg": {
+    "mode": "off"
+   },
+   "env": {},
+   "want": {
+    "backend": "none",
+    "reason": "sandbox.mode is off",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "network-srt",
+   "kind": "srt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "tmp"
+    },
+    {
+     "op": "mkdir",
+     "path": "repo"
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "init",
+      "-q",
+      "-b",
+      "main"
+     ]
+    },
+    {
+     "op": "write",
+     "path": "repo/a.txt",
+     "data": "a\n"
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "add",
+      "a.txt"
+     ]
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "commit",
+      "-qm",
+      "init"
+     ]
+    },
+    {
+     "op": "mkdir",
+     "path": "repo/.git/info/x"
+    }
+   ],
+   "tree": "repo",
+   "cwd": "repo",
+   "cfg": {
+    "network": {
+     "denied_domains": [
+      "Bad.example.org"
+     ]
+    }
+   },
+   "env": {
+    "TMPDIR": "<ROOT>/tmp"
+   },
+   "network": {
+    "srt": "/opt/srt bin/srt",
+    "reason": "",
+    "id": "task-1",
+    "session": "task-1",
+    "domains": [
+     "api.anthropic.com",
+     "registry.npmjs.org",
+     "api.anthropic.com"
+    ]
+   },
+   "want": {
+    "srt_settings": {
+     "network": {
+      "allowedDomains": [
+       "api.anthropic.com",
+       "registry.npmjs.org"
+      ],
+      "deniedDomains": [
+       "bad.example.org"
+      ],
+      "allowUnixSockets": [],
+      "allowAllUnixSockets": false
+     },
+     "filesystem": {
+      "allowWrite": [
+       "<ROOT>/repo",
+       "<ROOT>/repo/.git/objects",
+       "<ROOT>/tmp",
+       "/private/tmp",
+       "/dev",
+       "<ROOT>/home/.pi/agent",
+       "<ROOT>/home/.cache",
+       "<ROOT>/home/.npm",
+       "<ROOT>/home/go/pkg/mod",
+       "<ROOT>/home/Library/Caches"
+      ],
+      "denyWrite": [
+       "<ROOT>/home/.claude/orchestra.yaml",
+       "<ROOT>/home/.claude/orchestra.yml",
+       "<ROOT>/home/.claude/orchestra/executor-state.json",
+       "<ROOT>/home/.local/share/uv/tools",
+       "<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+       "<ROOT>/home/.local/state/claude-orchestra/tools",
+       "<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+       "<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+       "<ROOT>/home/.local/state/claude-orchestra/audit",
+       "<ROOT>/home/.pi/agent/extensions",
+       "<ROOT>/home/.pi/agent/skills",
+       "<ROOT>/home/.pi/agent/prompts",
+       "<ROOT>/home/.pi/agent/themes",
+       "<ROOT>/home/.pi/agent/packages",
+       "<ROOT>/home/.pi/agent/npm",
+       "<ROOT>/home/.pi/agent/git",
+       "<ROOT>/home/.pi/agent/bin",
+       "<ROOT>/home/.pi/agent/install",
+       "<ROOT>/home/.pi/agent/settings.json",
+       "<ROOT>/home/.pi/agent/mcp.json",
+       "<ROOT>/home/.pi/agent/models.json",
+       "<ROOT>/home/.pi/agent/AGENTS.md",
+       "<ROOT>/home/.pi/agent/SYSTEM.md",
+       "<ROOT>/home/.pi/agent/APPEND_SYSTEM.md",
+       "<ROOT>/home/.pi/agent/keybindings.json",
+       "<ROOT>/repo/.claude/orchestra*.y*ml",
+       "<ROOT>/repo/**/.claude/orchestra*.y*ml",
+       "<ROOT>/repo/.git/COMMIT_EDITMSG",
+       "<ROOT>/repo/.git/HEAD",
+       "<ROOT>/repo/.git/config",
+       "<ROOT>/repo/.git/description",
+       "<ROOT>/repo/.git/hooks",
+       "<ROOT>/repo/.git/index",
+       "<ROOT>/repo/.git/info",
+       "<ROOT>/repo/.git/logs",
+       "<ROOT>/repo/.git/refs"
+      ],
+      "denyRead": [
+       "<ROOT>/home/.ssh",
+       "<ROOT>/home/.aws",
+       "<ROOT>/home/.gnupg",
+       "<ROOT>/home/.config/gh",
+       "<ROOT>/home/.netrc",
+       "<ROOT>/home/.docker/config.json",
+       "<ROOT>/home/.kube",
+       "<ROOT>/home/Library/Keychains"
+      ]
+     },
+     "allowPty": false
+    },
+    "srt_settings_path": "<ROOT>/home/.local/state/claude-orchestra/cli-srt/task-1.json",
+    "backend": "srt",
+    "reason": "sandbox-runtime (srt): filesystem policy and network allowlist",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "/opt/srt bin/srt",
+     "-d",
+     "-s",
+     "<ROOT>/home/.local/state/claude-orchestra/cli-srt/task-1.json",
+     "--control-fd",
+     "3",
+     "-c",
+     "pi -p --mode json --model openai-codex/gpt-5.6-luna 'it'\"'\"'s a \"prompt\" with $vars'"
+    ]
+   }
+  },
+  {
+   "name": "network-off",
+   "kind": "srt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "work"
+    }
+   ],
+   "tree": "work",
+   "cwd": "work",
+   "cfg": {
+    "network": {
+     "mode": "off"
+    }
+   },
+   "env": {},
+   "network": {
+    "srt": "/opt/srt",
+    "reason": "",
+    "id": "t",
+    "session": "t",
+    "domains": []
+   },
+   "want": {
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec); network not restricted: sandbox.network.mode is off",
+    "limits": [
+     "network not restricted: sandbox.network.mode is off"
+    ],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/work",
+     "-D",
+     "W1=/private/tmp",
+     "-D",
+     "W2=/dev",
+     "-D",
+     "W3=<ROOT>/home/.pi/agent",
+     "-D",
+     "W4=<ROOT>/home/.cache",
+     "-D",
+     "W5=<ROOT>/home/.npm",
+     "-D",
+     "W6=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W7=<ROOT>/home/Library/Caches",
+     "-D",
+     "R0=<ROOT>/home/.ssh",
+     "-D",
+     "R1=<ROOT>/home/.aws",
+     "-D",
+     "R2=<ROOT>/home/.gnupg",
+     "-D",
+     "R3=<ROOT>/home/.config/gh",
+     "-D",
+     "R4=<ROOT>/home/.netrc",
+     "-D",
+     "R5=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R6=<ROOT>/home/.kube",
+     "-D",
+     "R7=<ROOT>/home/Library/Keychains",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.pi/agent/extensions",
+     "-D",
+     "D10=<ROOT>/home/.pi/agent/skills",
+     "-D",
+     "D11=<ROOT>/home/.pi/agent/prompts",
+     "-D",
+     "D12=<ROOT>/home/.pi/agent/themes",
+     "-D",
+     "D13=<ROOT>/home/.pi/agent/packages",
+     "-D",
+     "D14=<ROOT>/home/.pi/agent/npm",
+     "-D",
+     "D15=<ROOT>/home/.pi/agent/git",
+     "-D",
+     "D16=<ROOT>/home/.pi/agent/bin",
+     "-D",
+     "D17=<ROOT>/home/.pi/agent/install",
+     "-D",
+     "D18=<ROOT>/home/.pi/agent/settings.json",
+     "-D",
+     "D19=<ROOT>/home/.pi/agent/mcp.json",
+     "-D",
+     "D20=<ROOT>/home/.pi/agent/models.json",
+     "-D",
+     "D21=<ROOT>/home/.pi/agent/AGENTS.md",
+     "-D",
+     "D22=<ROOT>/home/.pi/agent/SYSTEM.md",
+     "-D",
+     "D23=<ROOT>/home/.pi/agent/APPEND_SYSTEM.md",
+     "-D",
+     "D24=<ROOT>/home/.pi/agent/keybindings.json",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\"))))) (deny file-read* (subpath (param \"R0\")) (subpath (param \"R1\")) (subpath (param \"R2\")) (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "network-srt-missing",
+   "kind": "srt",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home"
+    },
+    {
+     "op": "mkdir",
+     "path": "work"
+    }
+   ],
+   "tree": "work",
+   "cwd": "work",
+   "cfg": {},
+   "env": {},
+   "network": {
+    "srt": null,
+    "reason": "srt not found (not-installed)",
+    "id": "t",
+    "session": "t",
+    "domains": []
+   },
+   "want": {
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec); network not restricted: srt not found (not-installed)",
+    "limits": [
+     "network not restricted: srt not found (not-installed)"
+    ],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/work",
+     "-D",
+     "W1=/private/tmp",
+     "-D",
+     "W2=/dev",
+     "-D",
+     "W3=<ROOT>/home/.pi/agent",
+     "-D",
+     "W4=<ROOT>/home/.cache",
+     "-D",
+     "W5=<ROOT>/home/.npm",
+     "-D",
+     "W6=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W7=<ROOT>/home/Library/Caches",
+     "-D",
+     "R0=<ROOT>/home/.ssh",
+     "-D",
+     "R1=<ROOT>/home/.aws",
+     "-D",
+     "R2=<ROOT>/home/.gnupg",
+     "-D",
+     "R3=<ROOT>/home/.config/gh",
+     "-D",
+     "R4=<ROOT>/home/.netrc",
+     "-D",
+     "R5=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R6=<ROOT>/home/.kube",
+     "-D",
+     "R7=<ROOT>/home/Library/Keychains",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.pi/agent/extensions",
+     "-D",
+     "D10=<ROOT>/home/.pi/agent/skills",
+     "-D",
+     "D11=<ROOT>/home/.pi/agent/prompts",
+     "-D",
+     "D12=<ROOT>/home/.pi/agent/themes",
+     "-D",
+     "D13=<ROOT>/home/.pi/agent/packages",
+     "-D",
+     "D14=<ROOT>/home/.pi/agent/npm",
+     "-D",
+     "D15=<ROOT>/home/.pi/agent/git",
+     "-D",
+     "D16=<ROOT>/home/.pi/agent/bin",
+     "-D",
+     "D17=<ROOT>/home/.pi/agent/install",
+     "-D",
+     "D18=<ROOT>/home/.pi/agent/settings.json",
+     "-D",
+     "D19=<ROOT>/home/.pi/agent/mcp.json",
+     "-D",
+     "D20=<ROOT>/home/.pi/agent/models.json",
+     "-D",
+     "D21=<ROOT>/home/.pi/agent/AGENTS.md",
+     "-D",
+     "D22=<ROOT>/home/.pi/agent/SYSTEM.md",
+     "-D",
+     "D23=<ROOT>/home/.pi/agent/APPEND_SYSTEM.md",
+     "-D",
+     "D24=<ROOT>/home/.pi/agent/keybindings.json",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\"))))) (deny file-read* (subpath (param \"R0\")) (subpath (param \"R1\")) (subpath (param \"R2\")) (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  },
+  {
+   "name": "herdr-host",
+   "kind": "host",
+   "layout": [
+    {
+     "op": "mkdir",
+     "path": "home/.config/shared/projects"
+    },
+    {
+     "op": "mkdir",
+     "path": "home/.config/shared/skills"
+    },
+    {
+     "op": "mkdir",
+     "path": "home/.claude/plugins/data/other"
+    },
+    {
+     "op": "mkdir",
+     "path": "home/.claude/plugins/cache"
+    },
+    {
+     "op": "write",
+     "path": "home/.config/shared/history.jsonl",
+     "data": ""
+    },
+    {
+     "op": "symlink",
+     "path": "home/.claude/projects",
+     "target": "<ROOT>/home/.config/shared/projects"
+    },
+    {
+     "op": "symlink",
+     "path": "home/.claude/skills",
+     "target": "<ROOT>/home/.config/shared/skills"
+    },
+    {
+     "op": "symlink",
+     "path": "home/.claude/history.jsonl",
+     "target": "<ROOT>/home/.config/shared/history.jsonl"
+    },
+    {
+     "op": "mkdir",
+     "path": "tmp"
+    },
+    {
+     "op": "mkdir",
+     "path": "repo"
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "init",
+      "-q",
+      "-b",
+      "main"
+     ]
+    },
+    {
+     "op": "write",
+     "path": "repo/a.txt",
+     "data": "a\n"
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "add",
+      "a.txt"
+     ]
+    },
+    {
+     "op": "git",
+     "cwd": "repo",
+     "args": [
+      "commit",
+      "-qm",
+      "init"
+     ]
+    }
+   ],
+   "tree": "repo",
+   "cwd": "repo",
+   "cfg": {
+    "allow_write": [
+     "~/extra"
+    ],
+    "deny_read": [
+     "~/notes"
+    ]
+   },
+   "env": {
+    "TMPDIR": "<ROOT>/tmp"
+   },
+   "host": {
+    "repo": "repo",
+    "worktree_base": "repo-orchestra",
+    "herdr_home": "home/hx",
+    "extra_writable": [
+     "<ROOT>/home/.local/state/claude-orchestra/pi-agent"
+    ]
+   },
+   "want": {
+    "srt_settings": {
+     "network": {
+      "allowedDomains": [
+       "api.anthropic.com"
+      ],
+      "deniedDomains": [
+       "bad.example.org"
+      ],
+      "allowUnixSockets": [
+       "/tmp/x.sock"
+      ],
+      "allowAllUnixSockets": false
+     },
+     "filesystem": {
+      "allowWrite": [
+       "<ROOT>/repo-orchestra",
+       "<ROOT>/home/.local/state/claude-orchestra",
+       "<ROOT>/home/hx",
+       "<ROOT>/home/.local/state/claude-orchestra/pi-agent",
+       "<ROOT>/repo/.git/worktrees",
+       "<ROOT>/repo/.git/objects",
+       "<ROOT>/home/.claude",
+       "<ROOT>/home/.config/shared/history.jsonl",
+       "<ROOT>/home/.config/shared/projects",
+       "<ROOT>/home/.config/shared/skills",
+       "<ROOT>/home/.claude/plugins/data/orchestra-inline",
+       "<ROOT>/home/.local/state/claude",
+       "<ROOT>/home/.cache",
+       "<ROOT>/home/.npm",
+       "<ROOT>/home/go/pkg/mod",
+       "<ROOT>/home/Library/Caches",
+       "<ROOT>/tmp",
+       "/private/tmp",
+       "/dev",
+       "<ROOT>/home/extra",
+       "<ROOT>/home/.claude.json*"
+      ],
+      "denyWrite": [
+       "<ROOT>/home/.claude/orchestra.yaml",
+       "<ROOT>/home/.claude/orchestra.yml",
+       "<ROOT>/home/.claude/orchestra/executor-state.json",
+       "<ROOT>/home/.local/share/uv/tools",
+       "<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+       "<ROOT>/home/.local/state/claude-orchestra/tools",
+       "<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+       "<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+       "<ROOT>/home/.local/state/claude-orchestra/audit",
+       "<ROOT>/home/.claude/settings.json",
+       "<ROOT>/home/.claude/settings.local.json",
+       "<ROOT>/home/.claude/hooks",
+       "<ROOT>/home/.config/shared/skills",
+       "<ROOT>/home/.claude/commands",
+       "<ROOT>/home/.claude/agents",
+       "<ROOT>/home/.claude/CLAUDE.md",
+       "<ROOT>/home/.config/shared/settings.json",
+       "<ROOT>/home/.config/shared/settings.local.json",
+       "<ROOT>/home/.config/shared/hooks",
+       "<ROOT>/home/.config/shared/commands",
+       "<ROOT>/home/.config/shared/agents",
+       "<ROOT>/home/.config/shared/plugins",
+       "<ROOT>/home/.config/shared/CLAUDE.md",
+       "<ROOT>/home/.claude/plugins/cache",
+       "<ROOT>/home/.claude/plugins/marketplaces",
+       "<ROOT>/home/.claude/plugins/repos",
+       "<ROOT>/home/.claude/plugins/installed_plugins.json",
+       "<ROOT>/home/.claude/plugins/known_marketplaces.json",
+       "<ROOT>/home/.claude/plugins/config.json",
+       "<ROOT>/home/.local/state/claude-orchestra/pi-agent",
+       "<ROOT>/repo/.claude/orchestra*.y*ml",
+       "<ROOT>/repo/**/.claude/orchestra*.y*ml",
+       "<ROOT>/repo-orchestra/.claude/orchestra*.y*ml",
+       "<ROOT>/repo-orchestra/**/.claude/orchestra*.y*ml",
+       "<ROOT>/home/.claude/plugins/data/other"
+      ],
+      "denyRead": [
+       "<ROOT>/home/.ssh",
+       "<ROOT>/home/.aws",
+       "<ROOT>/home/.gnupg",
+       "<ROOT>/home/.config/gh",
+       "<ROOT>/home/.netrc",
+       "<ROOT>/home/.docker/config.json",
+       "<ROOT>/home/.kube",
+       "<ROOT>/home/notes"
+      ]
+     },
+     "allowPty": true
+    },
+    "backend": "seatbelt",
+    "reason": "macOS Seatbelt (sandbox-exec)",
+    "limits": [],
+    "refuse": false,
+    "argv": [
+     "/usr/bin/sandbox-exec",
+     "-D",
+     "W0=<ROOT>/repo-orchestra",
+     "-D",
+     "W1=<ROOT>/home/.local/state/claude-orchestra",
+     "-D",
+     "W2=<ROOT>/home/hx",
+     "-D",
+     "W3=<ROOT>/home/.local/state/claude-orchestra/pi-agent",
+     "-D",
+     "W4=<ROOT>/repo/.git/worktrees",
+     "-D",
+     "W5=<ROOT>/repo/.git/objects",
+     "-D",
+     "W6=<ROOT>/home/.claude",
+     "-D",
+     "W7=<ROOT>/home/.config/shared/history.jsonl",
+     "-D",
+     "W8=<ROOT>/home/.config/shared/projects",
+     "-D",
+     "W9=<ROOT>/home/.config/shared/skills",
+     "-D",
+     "W10=<ROOT>/home/.claude/plugins/data/orchestra-inline",
+     "-D",
+     "W11=<ROOT>/home/.local/state/claude",
+     "-D",
+     "W12=<ROOT>/home/.cache",
+     "-D",
+     "W13=<ROOT>/home/.npm",
+     "-D",
+     "W14=<ROOT>/home/go/pkg/mod",
+     "-D",
+     "W15=<ROOT>/home/Library/Caches",
+     "-D",
+     "W16=<ROOT>/tmp",
+     "-D",
+     "W17=/private/tmp",
+     "-D",
+     "W18=/dev",
+     "-D",
+     "W19=<ROOT>/home/extra",
+     "-D",
+     "RO0=<ROOT>/home/.claude/plugins",
+     "-D",
+     "RW0=<ROOT>/home/.claude/plugins/data/orchestra-inline",
+     "-D",
+     "R2=<ROOT>/home/.ssh",
+     "-D",
+     "R3=<ROOT>/home/.aws",
+     "-D",
+     "R4=<ROOT>/home/.gnupg",
+     "-D",
+     "R5=<ROOT>/home/.config/gh",
+     "-D",
+     "R6=<ROOT>/home/.netrc",
+     "-D",
+     "R7=<ROOT>/home/.docker/config.json",
+     "-D",
+     "R8=<ROOT>/home/.kube",
+     "-D",
+     "R9=<ROOT>/home/notes",
+     "-D",
+     "D0=<ROOT>/home/.claude/orchestra.yaml",
+     "-D",
+     "D1=<ROOT>/home/.claude/orchestra.yml",
+     "-D",
+     "D2=<ROOT>/home/.claude/orchestra/executor-state.json",
+     "-D",
+     "D3=<ROOT>/home/.local/share/uv/tools",
+     "-D",
+     "D4=<ROOT>/home/.local/state/claude-orchestra/sandbox-learned.json",
+     "-D",
+     "D5=<ROOT>/home/.local/state/claude-orchestra/tools",
+     "-D",
+     "D6=<ROOT>/home/.local/state/claude-orchestra/herdr-srt",
+     "-D",
+     "D7=<ROOT>/home/.local/state/claude-orchestra/cli-srt",
+     "-D",
+     "D8=<ROOT>/home/.local/state/claude-orchestra/audit",
+     "-D",
+     "D9=<ROOT>/home/.claude/settings.json",
+     "-D",
+     "D10=<ROOT>/home/.claude/settings.local.json",
+     "-D",
+     "D11=<ROOT>/home/.claude/hooks",
+     "-D",
+     "D12=<ROOT>/home/.claude/skills",
+     "-D",
+     "D13=<ROOT>/home/.config/shared/skills",
+     "-D",
+     "D14=<ROOT>/home/.claude/commands",
+     "-D",
+     "D15=<ROOT>/home/.claude/agents",
+     "-D",
+     "D16=<ROOT>/home/.claude/CLAUDE.md",
+     "-D",
+     "D17=<ROOT>/home/.config/shared/settings.json",
+     "-D",
+     "D18=<ROOT>/home/.config/shared/settings.local.json",
+     "-D",
+     "D19=<ROOT>/home/.config/shared/hooks",
+     "-D",
+     "D20=<ROOT>/home/.config/shared/commands",
+     "-D",
+     "D21=<ROOT>/home/.config/shared/agents",
+     "-D",
+     "D22=<ROOT>/home/.config/shared/plugins",
+     "-D",
+     "D23=<ROOT>/home/.config/shared/CLAUDE.md",
+     "-D",
+     "D24=<ROOT>/home/.claude/plugins/cache",
+     "-D",
+     "D25=<ROOT>/home/.claude/plugins/marketplaces",
+     "-D",
+     "D26=<ROOT>/home/.claude/plugins/repos",
+     "-D",
+     "D27=<ROOT>/home/.claude/plugins/installed_plugins.json",
+     "-D",
+     "D28=<ROOT>/home/.claude/plugins/known_marketplaces.json",
+     "-D",
+     "D29=<ROOT>/home/.claude/plugins/config.json",
+     "-D",
+     "D30=<ROOT>/home/.local/state/claude-orchestra/pi-agent",
+     "-p",
+     "(version 1) (allow default) (deny file-write* (require-not (require-any (subpath (param \"W0\")) (subpath (param \"W1\")) (subpath (param \"W2\")) (subpath (param \"W3\")) (subpath (param \"W4\")) (subpath (param \"W5\")) (subpath (param \"W6\")) (subpath (param \"W7\")) (subpath (param \"W8\")) (subpath (param \"W9\")) (subpath (param \"W10\")) (subpath (param \"W11\")) (subpath (param \"W12\")) (subpath (param \"W13\")) (subpath (param \"W14\")) (subpath (param \"W15\")) (subpath (param \"W16\")) (subpath (param \"W17\")) (subpath (param \"W18\")) (subpath (param \"W19\")) (regex #\"^<ROOT>/home/\\.claude\\.json.*$\")))) (deny file-write* (require-all (subpath (param \"RO0\")) (require-not (require-any (subpath (param \"RW0\")))))) (deny file-read* (subpath (param \"R2\")) (subpath (param \"R3\")) (subpath (param \"R4\")) (subpath (param \"R5\")) (subpath (param \"R6\")) (subpath (param \"R7\")) (subpath (param \"R8\")) (subpath (param \"R9\"))) (deny signal (require-not (target same-sandbox))) (deny file-write* (subpath (param \"D0\")) (subpath (param \"D1\")) (subpath (param \"D2\")) (subpath (param \"D3\")) (subpath (param \"D4\")) (subpath (param \"D5\")) (subpath (param \"D6\")) (subpath (param \"D7\")) (subpath (param \"D8\")) (subpath (param \"D9\")) (subpath (param \"D10\")) (subpath (param \"D11\")) (subpath (param \"D12\")) (subpath (param \"D13\")) (subpath (param \"D14\")) (subpath (param \"D15\")) (subpath (param \"D16\")) (subpath (param \"D17\")) (subpath (param \"D18\")) (subpath (param \"D19\")) (subpath (param \"D20\")) (subpath (param \"D21\")) (subpath (param \"D22\")) (subpath (param \"D23\")) (subpath (param \"D24\")) (subpath (param \"D25\")) (subpath (param \"D26\")) (subpath (param \"D27\")) (subpath (param \"D28\")) (subpath (param \"D29\")) (subpath (param \"D30\")) (regex #\"^<ROOT>/repo/(.*/)?\\.claude/orchestra[^/]*\\.y[^/]*ml$\") (regex #\"^<ROOT>/repo-orchestra/(.*/)?\\.claude/orchestra[^/]*\\.y[^/]*ml$\"))",
+     "--",
+     "pi",
+     "-p",
+     "--mode",
+     "json",
+     "--model",
+     "openai-codex/gpt-5.6-luna",
+     "it's a \"prompt\" with $vars"
+    ]
+   }
+  }
+ ],
+ "learned": [
+  {
+   "after": "auto",
+   "content": "{\n  \"version\": 1,\n  \"grants\": [\n    {\n      \"path\": \"<ROOT>/home/.cache/uv/archive/x\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"auto\",\n      \"example\": \"<ROOT>/home/.cache/uv/archive/x\"\n    }\n  ]\n}\n"
+  },
+  {
+   "after": "user",
+   "content": "{\n  \"version\": 1,\n  \"grants\": [\n    {\n      \"path\": \"<ROOT>/home/.cache/uv/archive/x\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"auto\",\n      \"example\": \"<ROOT>/home/.cache/uv/archive/x\"\n    },\n    {\n      \"path\": \"<ROOT>/home/Données ü\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"user\",\n      \"example\": \"<ROOT>/home/Données ü\",\n      \"reason\": \"naïve – ünïcode\"\n    }\n  ]\n}\n"
+  },
+  {
+   "after": "domain",
+   "content": "{\n  \"version\": 1,\n  \"grants\": [\n    {\n      \"path\": \"<ROOT>/home/.cache/uv/archive/x\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"auto\",\n      \"example\": \"<ROOT>/home/.cache/uv/archive/x\"\n    },\n    {\n      \"path\": \"<ROOT>/home/Données ü\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"user\",\n      \"example\": \"<ROOT>/home/Données ü\",\n      \"reason\": \"naïve – ünïcode\"\n    }\n  ],\n  \"domains\": [\n    {\n      \"domain\": \"registry.npmjs.org\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"user\",\n      \"reason\": \"npm\"\n    }\n  ]\n}\n"
+  },
+  {
+   "after": "forget",
+   "content": "{\n  \"version\": 1,\n  \"grants\": [\n    {\n      \"path\": \"<ROOT>/home/Données ü\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"user\",\n      \"example\": \"<ROOT>/home/Données ü\",\n      \"reason\": \"naïve – ünïcode\"\n    },\n    {\n      \"path\": \"<ROOT>/home/approved\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"instructor\",\n      \"example\": \"<ROOT>/home/approved\",\n      \"reason\": \"approved\"\n    }\n  ],\n  \"domains\": [\n    {\n      \"domain\": \"registry.npmjs.org\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"user\",\n      \"reason\": \"npm\"\n    }\n  ]\n}\n"
+  },
+  {
+   "after": "forget-domain",
+   "content": "{\n  \"version\": 1,\n  \"grants\": [\n    {\n      \"path\": \"<ROOT>/home/Données ü\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"user\",\n      \"example\": \"<ROOT>/home/Données ü\",\n      \"reason\": \"naïve – ünïcode\"\n    },\n    {\n      \"path\": \"<ROOT>/home/approved\",\n      \"added\": \"2026-01-02T03:04:05Z\",\n      \"source\": \"instructor\",\n      \"example\": \"<ROOT>/home/approved\",\n      \"reason\": \"approved\"\n    }\n  ]\n}\n"
+  }
+ ]
+}

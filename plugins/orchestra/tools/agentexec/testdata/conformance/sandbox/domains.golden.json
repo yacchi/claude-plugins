@@ -1,0 +1,396 @@
+{
+  "scenario": "sandbox/domains",
+  "steps": [
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        " Registry.NPMJS.org "
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "allowed domain: registry.npmjs.org (running herdr hosts and CLI runs pick it up live)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "registry.npmjs.org",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "added": "<TS>",
+        "domain": "registry.npmjs.org",
+        "source": "user"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "*.github.com",
+        "--reason",
+        " CI mirrors ",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "added": "<TS>",
+        "domain": "*.github.com",
+        "reason": "CI mirrors",
+        "source": "user"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "pypi.org:443",
+        "--reason",
+        ""
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "allowed domain: pypi.org:443 (running herdr hosts and CLI runs pick it up live)\n",
+      "stderr": "",
+      "files": {
+        "~/.local/state/claude-orchestra/sandbox-learned.json": {
+          "content": {
+            "domains": [
+              {
+                "added": "<TS>",
+                "domain": "registry.npmjs.org",
+                "source": "user"
+              },
+              {
+                "added": "<TS>",
+                "domain": "*.github.com",
+                "reason": "CI mirrors",
+                "source": "user"
+              },
+              {
+                "added": "<TS>",
+                "domain": "pypi.org:443",
+                "source": "user"
+              }
+            ],
+            "grants": [],
+            "version": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow",
+        "~/cache-dir",
+        "--reason",
+        "both lists"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "granted: <HOME>/cache-dir\n",
+      "stderr": "",
+      "files": {
+        "~/.local/state/claude-orchestra/sandbox-learned.json": {
+          "content": {
+            "domains": [
+              {
+                "added": "<TS>",
+                "domain": "registry.npmjs.org",
+                "source": "user"
+              },
+              {
+                "added": "<TS>",
+                "domain": "*.github.com",
+                "reason": "CI mirrors",
+                "source": "user"
+              },
+              {
+                "added": "<TS>",
+                "domain": "pypi.org:443",
+                "source": "user"
+              }
+            ],
+            "grants": [
+              {
+                "added": "<TS>",
+                "example": "<HOME>/cache-dir",
+                "path": "<HOME>/cache-dir",
+                "reason": "both lists",
+                "source": "user"
+              }
+            ],
+            "version": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "*"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing the wildcard *\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "*.com"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing a top-level-domain wildcard: *.com\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "*.dev:443"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing a top-level-domain wildcard: *.dev\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "10.0.0.1"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing an IP literal: 10.0.0.1\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "[::1]:443"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing an IP literal: [::1]:443\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "fe80::1"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing an IP literal: fe80::1\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "LOCALHOST:8080"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing localhost\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "*.localhost"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing localhost\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "a b.com"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: not a host name or *.wildcard: a b.com\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "http://x.com"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: not a host name or *.wildcard: http://x.com\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "1.2.3"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing an IP literal: 1.2.3\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        " "
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: refusing an empty domain\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: expected one domain\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "allow-domain",
+        "a.example.org",
+        "--reason"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: sandbox allow-domain: --reason needs a value\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "forget-domain",
+        "REGISTRY.npmjs.org",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "domain": "registry.npmjs.org",
+        "removed": true
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "forget-domain",
+        "registry.npmjs.org",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "domain": "registry.npmjs.org",
+        "removed": false
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "forget-domain",
+        "*.github.com"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "removed: *.github.com\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "forget-domain",
+        "nothing.example.org"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "no grant for: nothing.example.org\n",
+      "stderr": "",
+      "files": {
+        "~/.local/state/claude-orchestra/sandbox-learned.json": {
+          "content": {
+            "domains": [
+              {
+                "added": "<TS>",
+                "domain": "pypi.org:443",
+                "source": "user"
+              }
+            ],
+            "grants": [
+              {
+                "added": "<TS>",
+                "example": "<HOME>/cache-dir",
+                "path": "<HOME>/cache-dir",
+                "reason": "both lists",
+                "source": "user"
+              }
+            ],
+            "version": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "sandbox",
+        "forget",
+        "~/cache-dir"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "removed: <HOME>/cache-dir\n",
+      "stderr": "",
+      "files": {
+        "~/.local/state/claude-orchestra/sandbox-learned.json": {
+          "content": {
+            "domains": [
+              {
+                "added": "<TS>",
+                "domain": "pypi.org:443",
+                "source": "user"
+              }
+            ],
+            "grants": [],
+            "version": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    }
+  ]
+}

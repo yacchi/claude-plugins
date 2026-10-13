@@ -1,0 +1,9 @@
+description: >
+  sandbox probe on macOS with the real probes: Seatbelt is chosen, bwrap
+  and Landlock report "not Linux"
+platforms: [darwin]
+setup:
+  keep_sandbox_default: true
+steps:
+  - argv: [sandbox, probe, --json]
+  - argv: [sandbox, probe]

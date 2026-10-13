@@ -1,0 +1,30 @@
+description: >
+  a store written by hand or an older version: invalid grants (relative,
+  unknown source, refused paths, ineligible auto grants) are dropped on the
+  next write, eligible auto grants and unknown keys survive, the domain
+  list is kept as it is when only the path grants change, invalid domains
+  are never trusted; a corrupt store is replaced
+setup:
+  files:
+    ~/.local/state/claude-orchestra/sandbox-learned.json: |
+      {"version": 1, "extra": "dropped", "grants": [
+        {"path": "<HOME>/.cache/uv", "source": "auto", "added": "2026-01-01T00:00:00Z", "example": "<HOME>/.cache/uv/x", "note": 7},
+        {"path": "<HOME>/.config/x", "source": "auto"},
+        {"path": "relative/path", "source": "user"},
+        {"path": "<HOME>", "source": "user"},
+        {"path": "<HOME>/ok", "source": "instructor", "reason": "approved"},
+        {"path": "<HOME>/other", "source": "nobody"},
+        "not an object"
+      ], "domains": [{"domain": "*"}, {"domain": "Ok.Example.org", "source": "user"}, 5]}
+    <ROOT>/corrupt/claude-orchestra/sandbox-learned.json: "{not json\n"
+steps:
+  - argv: [config]
+  - argv: [sandbox, allow, ~/fresh]
+    snapshot: ["~/.local/state/claude-orchestra/sandbox-learned.json"]
+  - argv: [sandbox, allow-domain, new.example.org]
+    snapshot: ["~/.local/state/claude-orchestra/sandbox-learned.json"]
+  - argv: [sandbox, forget-domain, ok.example.org, --json]
+  - argv: [sandbox, allow, ~/fresh2, --json]
+    env:
+      XDG_STATE_HOME: <ROOT>/corrupt
+    snapshot: ["<ROOT>/corrupt/claude-orchestra/sandbox-learned.json"]

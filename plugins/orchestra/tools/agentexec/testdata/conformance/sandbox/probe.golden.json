@@ -1,0 +1,141 @@
+{
+  "scenario": "sandbox/probe",
+  "steps": [
+    {
+      "argv": [
+        "sandbox",
+        "probe",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "backend": "none",
+        "enforced": false,
+        "learned": {
+          "count": 1,
+          "path": "<HOME>/.local/state/claude-orchestra/sandbox-learned.json",
+          "warning": "learned sandbox grants: ignored 1 invalid entry in <HOME>/.local/state/claude-orchestra/sandbox-learned.json"
+        },
+        "limits": [],
+        "mode": "off",
+        "probes": {
+          "bwrap": {
+            "detail": "forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+            "ok": false
+          },
+          "landlock": {
+            "abi": 0,
+            "detail": "forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+            "ok": false
+          },
+          "seatbelt": {
+            "detail": "forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+            "ok": false
+          }
+        },
+        "reason": "sandbox.mode is off",
+        "would_refuse": false
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "probe"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "mode=off backend=none enforced=False (sandbox.mode is off)\n  - seatbelt: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - bwrap: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - landlock: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "probe",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "backend": "none",
+        "enforced": false,
+        "learned": {
+          "count": 1,
+          "path": "<HOME>/.local/state/claude-orchestra/sandbox-learned.json",
+          "warning": "learned sandbox grants: ignored 1 invalid entry in <HOME>/.local/state/claude-orchestra/sandbox-learned.json"
+        },
+        "limits": [],
+        "mode": "auto",
+        "probes": {
+          "bwrap": {
+            "detail": "forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+            "ok": false
+          },
+          "landlock": {
+            "abi": 0,
+            "detail": "forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+            "ok": false
+          },
+          "seatbelt": {
+            "detail": "forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+            "ok": false
+          }
+        },
+        "reason": "no sandbox backend usable; running unsandboxed (seatbelt: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; bwrap: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; landlock: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)",
+        "would_refuse": false
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "probe"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "mode=auto backend=none enforced=False (no sandbox backend usable; running unsandboxed (seatbelt: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; bwrap: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; landlock: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none))\n  - seatbelt: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - bwrap: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - landlock: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "sandbox",
+        "probe",
+        "--json",
+        "--workdir",
+        "ignored"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "backend": "none",
+        "enforced": false,
+        "learned": {
+          "count": 1,
+          "path": "<HOME>/.local/state/claude-orchestra/sandbox-learned.json",
+          "warning": "learned sandbox grants: ignored 1 invalid entry in <HOME>/.local/state/claude-orchestra/sandbox-learned.json"
+        },
+        "limits": [],
+        "mode": "required",
+        "probes": {
+          "bwrap": {
+            "detail": "forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+            "ok": false
+          },
+          "landlock": {
+            "abi": 0,
+            "detail": "forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+            "ok": false
+          },
+          "seatbelt": {
+            "detail": "forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none",
+            "ok": false
+          }
+        },
+        "reason": "sandbox.mode is required and no backend is usable (seatbelt: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; bwrap: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; landlock: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)",
+        "would_refuse": true
+      },
+      "stderr": ""
+    }
+  ]
+}
