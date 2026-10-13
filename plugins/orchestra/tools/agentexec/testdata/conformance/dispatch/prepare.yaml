@@ -1,0 +1,29 @@
+description: >
+  `dispatch prepare` mints an opaque token whose spec file pins class,
+  archetype, absolute workdir/prompt paths, isolate mode, task, run id and the
+  project config root, and lists the config layers in effect; a prompt file
+  that does not exist yet is accepted. Invalid input is a usage error that
+  writes no token.
+setup:
+  git: true
+  files:
+    .claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+    sub/keep.txt: "x\n"
+steps:
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, prompt.md, --workdir, ., --task, t-1, --run-id, run-1, --json]
+    save: {TOK: token}
+    snapshot: ["~/.claude/orchestra/tokens/<@TOK>.json"]
+  - argv: [dispatch, prepare, --class, light, --prompt-file, a.md, --prompt-file, later/b.md, --workdir, sub, --archetype, investigation, --isolate, never]
+    cwd: sub
+    save: {TOK2: token}
+    snapshot: ["~/.claude/orchestra/tokens/<@TOK2>.json"]
+  - argv: [dispatch, prepare, --prompt-file, p.md, --workdir, .]
+  - argv: [dispatch, prepare, --class, light, --workdir, .]
+  - argv: [dispatch, prepare, --class, light, --prompt-file, p.md]
+  - argv: [dispatch, prepare, --class, light, --prompt-file, p.md, --workdir, ., --isolate, sometimes]
+  - argv: [dispatch, prepare, --class, light, --prompt-file, p.md, --workdir, ., --run-id, "bad id"]
+  - argv: [dispatch, prepare, --class, light, --prompt-file, p.md, --workdir, ., --bogus]
+  - argv: [dispatch, prepare, --class]
+  - argv: [dispatch, prepare, --class, light, --prompt-file, p.md, --workdir, ., --task]

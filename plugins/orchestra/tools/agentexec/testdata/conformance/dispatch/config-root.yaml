@@ -1,0 +1,31 @@
+description: >
+  a token pins the project config root it was prepared under: dispatching
+  it from another cwd still reads that project's layers (here a priority
+  list that sends standard to claude), while a fresh dispatch from the
+  other cwd does not; a token without config_root (older format) still
+  works, and a spec with an invalid isolate mode or a relative prompt path
+  is an invalid token
+setup:
+  git: true
+  files:
+    proj/.claude/orchestra.yaml: |
+      priority:
+        standard:
+          default: [claude]
+    proj/p.md: "work\n"
+    ~/.claude/orchestra/tokens/dsp-0123456789ab.json: |
+      {"class":"light","archetype":"default","workdir":"<WORK>/proj","run_id":null,"isolate":"never","task":null,"prompt_files":["<WORK>/proj/p.md"]}
+    ~/.claude/orchestra/tokens/dsp-0123456789ac.json: |
+      {"class":"light","archetype":"default","workdir":"<WORK>/proj","run_id":null,"isolate":"sometimes","task":null,"prompt_files":["<WORK>/proj/p.md"]}
+    ~/.claude/orchestra/tokens/dsp-0123456789ad.json: |
+      {"class":"light","archetype":"default","workdir":"<WORK>/proj","run_id":null,"isolate":"never","task":null,"prompt_files":["relative.md"]}
+steps:
+  - argv: [dispatch, --token, dsp-0123456789ab]
+  - argv: [dispatch, --token, dsp-0123456789ac]
+  - argv: [dispatch, --token, dsp-0123456789ad]
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, .]
+    cwd: proj
+    save: {TOK: token}
+    snapshot: ["~/.claude/orchestra/tokens/<@TOK>.json"]
+  - argv: [dispatch, --token, "<@TOK>"]
+  - argv: [dispatch, --class, standard, --prompt-file, proj/p.md, --workdir, proj]

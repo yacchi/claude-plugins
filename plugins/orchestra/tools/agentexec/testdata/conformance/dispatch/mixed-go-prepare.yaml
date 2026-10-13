@@ -1,0 +1,34 @@
+description: >
+  pre-cutover mix, the other way: a token (with its recorded config root)
+  minted by the implementation under test is dispatched and waited on by
+  Python, and Python resumes the session the implementation under test
+  stored
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    proj/.claude/orchestra.yaml: |
+      priority:
+        standard:
+          default: [pi]
+    proj/p.md: |
+      FAKEPI-ANSWER: from the other side
+steps:
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-g, --isolate, never]
+    cwd: proj
+    save: {TOK: token}
+  - argv: [dispatch, --token, "<@TOK>"]
+    impl: python
+  - argv: [dispatch, --token, "<@TOK>"]
+  - argv: [dispatch, --token, "<@TOK>", --detach]
+  - argv: [dispatch, wait, --token, "<@TOK>", --max-wait, "60"]
+    impl: python

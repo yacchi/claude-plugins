@@ -1,0 +1,34 @@
+description: >
+  macOS Seatbelt (default sandbox mode): DRYRUN shows the sandbox-exec argv
+  with its SBPL profile confined to the task tree; a run that writes outside
+  the tree is blocked, the denial is not auto-grantable, so the result is
+  `needs-permission` (reason sandbox) with the denial listed; the session is
+  kept for the resume after the user decides
+platforms: [darwin]
+setup:
+  git: true
+  fakes: [pi]
+  keep_sandbox_default: true
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    p.md: |
+      COMMANDS:
+      touch inside.txt
+      touch ../outside.txt
+      FAKEPI-EXIT: 1
+steps:
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-p]
+    env: {AGENT_EXEC_DRYRUN: "1"}
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-p]
+    snapshot:
+      - inside.txt
+      - ../outside.txt
+      - "~/.claude/orchestra/sessions/pi-t-p.json"

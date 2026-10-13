@@ -1,0 +1,40 @@
+description: >
+  write-file writes stdin byte-for-byte (CRLF kept) to --path, creating
+  missing parent directories, and reports the absolute path and the code
+  point count without one trailing newline; --expect-chars must match that
+  count or nothing is written (exit 1, mismatch); usage errors are exit 2
+setup:
+  files:
+    existing.txt: "old content\n"
+steps:
+  - argv: [write-file, --path, out.txt]
+    stdin: "hello world"
+    snapshot: [out.txt]
+  - argv: [write-file, --path, deep/nested/dir/out.md, --expect-chars, "4"]
+    stdin: "日本語。\n"
+    snapshot: [deep/nested/dir/out.md]
+  - argv: [write-file, --path, crlf.txt, --expect-chars, "13"]
+    stdin: "line1\r\nline2\r\n"
+    snapshot: [crlf.txt]
+  - argv: [write-file, --path, existing.txt, --expect-chars, "3"]
+    stdin: "new content\n\n"
+    snapshot: [existing.txt]
+  - argv: [write-file, --path, existing.txt, --expect-chars, "-1"]
+    stdin: ""
+    snapshot: [existing.txt]
+  - argv: [write-file, --path, empty.txt, --expect-chars, "0"]
+    stdin: "\n"
+    snapshot: [empty.txt]
+  - argv: [write-file, --path, emoji.txt, --expect-chars, "3"]
+    stdin: "é😀"
+    snapshot: [emoji.txt]
+  - argv: [write-file, --path, sub/../abs.txt]
+    stdin: "x"
+    snapshot: [abs.txt]
+  - argv: [write-file]
+    stdin: "x"
+  - argv: [write-file, --path]
+  - argv: [write-file, --path, x.txt, --expect-chars]
+  - argv: [write-file, --path, x.txt, --expect-chars, ten]
+  - argv: [write-file, --path, x.txt, --verbose]
+  - argv: [write-file, --path, x.txt, extra]

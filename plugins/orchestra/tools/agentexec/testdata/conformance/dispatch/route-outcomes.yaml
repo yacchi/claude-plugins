@@ -1,0 +1,18 @@
+description: >
+  outcomes that spawn nothing: a claude route is `delegate` (agent_type,
+  model, an unwrapped sandbox report and the isolation decision), pi not
+  ready falls back to claude, an exhausted candidate list is `unroutable`
+  with the route; --capture is accepted (even twice)
+setup:
+  git: true
+  files:
+    p.md: "work\n"
+steps:
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, .]
+  - argv: [dispatch, --class, deep, --prompt-file, p.md, --workdir, ., --archetype, investigation]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, .]
+  - argv: [dispatch, --class, review, --prompt-file, p.md, --workdir, ., --exhausted, claude]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --exhausted, "claude,,pi"]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --isolate, always]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --isolate, never, --task, t-1]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --capture, --capture]

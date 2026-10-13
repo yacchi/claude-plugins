@@ -1,0 +1,339 @@
+{
+  "scenario": "dispatch/usage-errors",
+  "steps": [
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "."
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "config_layers": [
+          "<HOME>/.claude/orchestra.yaml"
+        ],
+        "token": "<TOKEN#1>"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "<@TOK>",
+        "--workdir",
+        "."
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: --token conflicts with --workdir\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "<@TOK>",
+        "--no-cooldown",
+        "--resume",
+        "abc",
+        "--task",
+        "t",
+        "--isolate",
+        "never",
+        "--run-id",
+        "r",
+        "--archetype",
+        "a",
+        "--workdir",
+        ".",
+        "--prompt-file",
+        "p.md"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: --token conflicts with --prompt-file, --workdir, --archetype, --run-id, --isolate, --task, --resume, --no-cooldown\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--detach",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "."
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: --detach requires --token\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--summary",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "."
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: --summary requires --token\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "."
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing required option: --class\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--workdir",
+        "."
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing required option: --prompt-file\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing required option: --workdir\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "missing.md",
+        "--workdir",
+        "."
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: could not read prompt file: missing.md\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--isolate",
+        "maybe"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: --isolate must be auto|always|never\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--run-id",
+        "../x"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: invalid --run-id: ../x\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--frobnicate"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: unknown option: --frobnicate\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing value for --class\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "dsp-XYZ"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: invalid token: dsp-XYZ\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "dsp-000000000000"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: invalid token: <TOKEN#2>\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "../../etc/passwd"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: invalid token: ../../etc/passwd\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "wait"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing required option: --token\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "wait",
+        "--token"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: missing value for --token\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "wait",
+        "--token",
+        "dsp-000000000000",
+        "--max-wait",
+        "soon"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: --max-wait must be an integer\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "wait",
+        "--token",
+        "not-a-token"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: invalid token: not-a-token\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "wait",
+        "--token",
+        "dsp-000000000000",
+        "--bogus"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: dispatch: unknown option: --bogus\n"
+    },
+    {
+      "argv": [
+        "dispatch",
+        "wait",
+        "--token",
+        "dsp-000000000000",
+        "--max-wait",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "status": "unknown-token",
+        "token": "<TOKEN#2>"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "wait",
+        "--token",
+        "<@TOK>",
+        "--max-wait",
+        "0",
+        "--summary"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "status": "unknown-token",
+        "token": "<TOKEN#1>"
+      },
+      "stderr": ""
+    }
+  ]
+}

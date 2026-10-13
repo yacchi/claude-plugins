@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -123,19 +124,40 @@ func setupEnv() (string, error) {
 		}
 		env.impl = []string{bin}
 	case "python":
-		py, err := pythonWithYAML()
+		py, err := pythonImpl()
 		if err != nil {
 			return dir, err
 		}
-		script, err := filepath.Abs(filepath.Join(toolsDir, "agent_exec.py"))
-		if err != nil {
-			return dir, err
-		}
-		env.impl = []string{py, script}
+		env.impl = py
 	default:
 		return dir, fmt.Errorf("-impl must be go or python, not %q", *implFlag)
 	}
 	return dir, nil
+}
+
+var python struct {
+	once sync.Once
+	argv []string
+	err  error
+}
+
+// pythonImpl is the Python implementation's argv prefix, resolved once and
+// only when needed (-impl=python, or a mixed scenario's `impl: python` step).
+func pythonImpl() ([]string, error) {
+	python.once.Do(func() {
+		py, err := pythonWithYAML()
+		if err != nil {
+			python.err = err
+			return
+		}
+		script, err := filepath.Abs(filepath.Join(toolsDir, "agent_exec.py"))
+		if err != nil {
+			python.err = err
+			return
+		}
+		python.argv = []string{py, script}
+	})
+	return python.argv, python.err
 }
 
 // pythonWithYAML asks uv (with the caller's real environment, so its cache
@@ -186,10 +208,43 @@ func runScenario(t *testing.T, sc *Scenario) Golden {
 	s := newSandbox(t, sc)
 	n := newNormalizer(s, sc.NormalizeKeys)
 	g := Golden{Scenario: sc.ID()}
+	vars := map[string]string{}
 	for _, st := range sc.Steps {
-		g.Steps = append(g.Steps, n.step(st, s.run(t, env.impl, st)))
+		impl, argv := env.impl, st.Argv
+		switch {
+		case st.Impl == "python":
+			py, err := pythonImpl()
+			if err != nil {
+				t.Fatal(err)
+			}
+			impl = py
+		case *implFlag == "go" && len(st.ArgvGo) > 0:
+			argv = st.ArgvGo
+		}
+		raw := s.run(t, impl, argv, st, vars)
+		for name, key := range st.Save {
+			vars[name] = savedValue(t, raw.stdout, key)
+		}
+		s.snapshot(st, vars, &raw)
+		g.Steps = append(g.Steps, n.step(st, raw))
 	}
 	return g
+}
+
+// savedValue is the string at key in the step's JSON stdout (its last line,
+// the line a caller parses).
+func savedValue(t *testing.T, stdout, key string) string {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &doc); err != nil {
+		t.Fatalf("save %s: stdout is not a JSON object: %q", key, stdout)
+	}
+	v, ok := doc[key].(string)
+	if !ok {
+		t.Fatalf("save %s: no string %q in %q", key, key, stdout)
+	}
+	return v
 }
 
 func writeGolden(t *testing.T, path string, g Golden) {

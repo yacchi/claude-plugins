@@ -1,0 +1,40 @@
+description: >
+  isolation before the hand-off: auto isolates a dirty tree (task worktree,
+  created then reused), always forces it and maps a --workdir subdirectory
+  into the worktree (isolation.path = worktree root, isolation.workdir = the
+  mapped subdirectory, which is also the session-store workdir), a
+  subdirectory missing from the fresh worktree falls back to its root with
+  the reason, no --task or an unusable task id degrades to the shared tree,
+  never stays shared, and a directory outside any repository cannot isolate
+  (a clean auto is in route-outcomes)
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    .gitignore: "scratch/\n"
+    sub/keep.txt: "x\n"
+    p.md: |
+      FAKEPI-ANSWER: isolated
+  dirty:
+    scratch/tmp.txt: "ignored\n"
+    wip.txt: "uncommitted\n"
+steps:
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-dirty]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-dirty]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, sub, --task, t-sub, --isolate, always]
+    snapshot: ["~/.claude/orchestra/sessions/pi-t-sub.json"]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, sub, --task, t-sub, --isolate, always]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, scratch, --task, t-scratch, --isolate, always]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --isolate, always]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --task, "///", --isolate, always]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --task, t-never, --isolate, never]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ../tmp, --task, t-norepo, --isolate, always]

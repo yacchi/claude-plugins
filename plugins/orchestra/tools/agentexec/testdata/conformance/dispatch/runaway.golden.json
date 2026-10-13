@@ -1,0 +1,86 @@
+{
+  "scenario": "dispatch/runaway",
+  "steps": [
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-w"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": null,
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": -15,
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": "wall",
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "runaway": {
+          "elapsed_s": "<ELAPSED_S>",
+          "last_tool": null,
+          "reason": "wall",
+          "repeat_count": 0,
+          "runtime_s": "<RUNTIME_S>"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "runaway",
+        "usage": null
+      },
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/executor-state.json": null,
+        "~/.claude/orchestra/sessions/pi-t-w.json": {
+          "content": {
+            "executor": "pi",
+            "session_id": "<UUID#1>",
+            "task": "t-w",
+            "updated": "<TS>",
+            "workdir": "<WORK>"
+          },
+          "shape": "json-line"
+        }
+      }
+    }
+  ]
+}

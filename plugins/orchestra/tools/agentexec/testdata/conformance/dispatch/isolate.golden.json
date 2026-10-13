@@ -1,0 +1,610 @@
+{
+  "scenario": "dispatch/isolate",
+  "steps": [
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-dirty"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "isolated",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "backend": "git",
+          "branch": "orchestra/00000000/t-dirty",
+          "carried": [],
+          "created": true,
+          "isolate": true,
+          "mode": "auto",
+          "path": "<WORK>-orchestra/00000000-t-dirty",
+          "reason": "working tree is dirty; the user's uncommitted work must not be reachable by a worker",
+          "workdir": "<WORK>-orchestra/00000000-t-dirty"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-dirty"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "isolated",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "backend": "existing",
+          "branch": "orchestra/00000000/t-dirty",
+          "carried": [],
+          "created": false,
+          "isolate": true,
+          "mode": "auto",
+          "path": "<WORK>-orchestra/00000000-t-dirty",
+          "reason": "working tree is dirty; the user's uncommitted work must not be reachable by a worker",
+          "workdir": "<WORK>-orchestra/00000000-t-dirty"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": true,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "sub",
+        "--task",
+        "t-sub",
+        "--isolate",
+        "always"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "isolated",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "backend": "git",
+          "branch": "orchestra/00000000/t-sub",
+          "carried": [],
+          "created": true,
+          "isolate": true,
+          "mode": "always",
+          "path": "<WORK>-orchestra/00000000-t-sub",
+          "reason": "isolation forced (--isolate always)",
+          "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": "",
+      "files": {
+        "~/.claude/orchestra/sessions/pi-t-sub.json": {
+          "content": {
+            "executor": "pi",
+            "session_id": "<UUID#1>",
+            "task": "t-sub",
+            "updated": "<TS>",
+            "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
+          },
+          "shape": "json-line"
+        }
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "sub",
+        "--task",
+        "t-sub",
+        "--isolate",
+        "always"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "answer": "isolated",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "backend": "existing",
+          "branch": "orchestra/00000000/t-sub",
+          "carried": [],
+          "created": false,
+          "isolate": true,
+          "mode": "always",
+          "path": "<WORK>-orchestra/00000000-t-sub",
+          "reason": "isolation forced (--isolate always)",
+          "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": true,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "scratch",
+        "--task",
+        "t-scratch",
+        "--isolate",
+        "always"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "backend": "git",
+          "branch": "orchestra/00000000/t-scratch",
+          "carried": [],
+          "created": true,
+          "isolate": true,
+          "mode": "always",
+          "path": "<WORK>-orchestra/00000000-t-scratch",
+          "reason": "isolation forced (--isolate always); --workdir's subdirectory (scratch) does not exist in the fresh worktree; using the worktree root instead",
+          "workdir": "<WORK>-orchestra/00000000-t-scratch"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude",
+            "pi"
+          ],
+          "class": "light",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [
+            "pi"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--isolate",
+        "always"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "always",
+          "reason": "isolation wanted (isolation forced (--isolate always)) but no --task id was given; an id is what lets retry rounds share one worktree"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude",
+            "pi"
+          ],
+          "class": "light",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [
+            "pi"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "///",
+        "--isolate",
+        "always"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "always",
+          "reason": "could not isolate (task id '///' has no usable characters); running in the shared tree"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude",
+            "pi"
+          ],
+          "class": "light",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [
+            "pi"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-never",
+        "--isolate",
+        "never"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "never",
+          "reason": "isolation disabled (--isolate never)"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude",
+            "pi"
+          ],
+          "class": "light",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [
+            "pi"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "light",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "../tmp",
+        "--task",
+        "t-norepo",
+        "--isolate",
+        "always"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "always",
+          "reason": "not a git repository, cannot isolate"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude",
+            "pi"
+          ],
+          "class": "light",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [
+            "pi"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      },
+      "stderr": ""
+    }
+  ]
+}

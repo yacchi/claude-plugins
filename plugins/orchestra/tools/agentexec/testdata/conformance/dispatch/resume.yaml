@@ -1,0 +1,37 @@
+description: >
+  per-task session continuity without a token: the first ok round writes the
+  (executor, task) store record; the next round resumes it (resumed: true,
+  same session id); --no-resume starts cold; an explicit --resume wins; a
+  record whose workdir is another tree is ignored (and replaced), as is a
+  malformed record
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra/sessions/pi-t-foreign.json: |
+      {"executor":"pi","task":"t-foreign","session_id":"11111111-2222-4333-a444-555555555555","workdir":"/somewhere/else","updated":"2026-01-01T00:00:00Z"}
+    ~/.claude/orchestra/sessions/pi-t-bad.json: |
+      {"executor":"pi","task":"t-bad","session_id":"","workdir":"<WORK>","updated":"2026-01-01T00:00:00Z"}
+    p.md: |
+      COMMANDS:
+      echo hi
+      FAKEPI-ANSWER: round
+steps:
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-1]
+    snapshot: ["~/.claude/orchestra/sessions/pi-t-1.json"]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-1]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-1, --no-resume]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-1, --resume, 99999999-8888-4777-a666-555555555555]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-foreign]
+    snapshot: ["~/.claude/orchestra/sessions/pi-t-foreign.json"]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-bad]
+  - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --resume, 99999999-8888-4777-a666-555555555555]

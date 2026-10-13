@@ -1,0 +1,33 @@
+description: >
+  dispatch / dispatch wait usage errors: --token conflicts with every
+  prepare-time flag (named in argv order of the check), --detach and
+  --summary need a token, missing required options, a prompt file that
+  cannot be read, malformed and unknown tokens, and wait's own options
+setup:
+  files:
+    p.md: "hello\n"
+steps:
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, .]
+    save: {TOK: token}
+  - argv: [dispatch, --token, "<@TOK>", --workdir, .]
+  - argv: [dispatch, --token, "<@TOK>", --no-cooldown, --resume, abc, --task, t, --isolate, never, --run-id, r, --archetype, a, --workdir, ., --prompt-file, p.md]
+  - argv: [dispatch, --detach, --class, light, --prompt-file, p.md, --workdir, .]
+  - argv: [dispatch, --summary, --class, light, --prompt-file, p.md, --workdir, .]
+  - argv: [dispatch, --prompt-file, p.md, --workdir, .]
+  - argv: [dispatch, --class, light, --workdir, .]
+  - argv: [dispatch, --class, light, --prompt-file, p.md]
+  - argv: [dispatch, --class, light, --prompt-file, missing.md, --workdir, .]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --isolate, maybe]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --run-id, "../x"]
+  - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --frobnicate]
+  - argv: [dispatch, --class]
+  - argv: [dispatch, --token, dsp-XYZ]
+  - argv: [dispatch, --token, dsp-000000000000]
+  - argv: [dispatch, --token, ../../etc/passwd]
+  - argv: [dispatch, wait]
+  - argv: [dispatch, wait, --token]
+  - argv: [dispatch, wait, --token, dsp-000000000000, --max-wait, soon]
+  - argv: [dispatch, wait, --token, not-a-token]
+  - argv: [dispatch, wait, --token, dsp-000000000000, --bogus]
+  - argv: [dispatch, wait, --token, dsp-000000000000, --max-wait, "0"]
+  - argv: [dispatch, wait, --token, "<@TOK>", --max-wait, "0", --summary]
