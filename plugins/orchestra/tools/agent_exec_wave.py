@@ -40,7 +40,7 @@ IN_FLIGHT = frozenset({"implementing", "verifying", "fixing", "ready"})
 
 NEED_KINDS = (
     "escalate", "conflict", "post-integration", "self-verify", "delegate", "dispatch-error",
-    "empty-after-refresh", "scope", "environment", "permission", "runaway",
+    "empty-after-refresh", "scope", "environment", "permission", "runaway", "network",
 )
 _NEED_KIND_SET = frozenset(NEED_KINDS)
 
@@ -429,8 +429,9 @@ def live_changes(state):
     return result
 
 
-def render_status(state, now, plan_titles=None, events=None, live=False):
-    """Human-readable status text: header, per-package rows, needs, recent events."""
+def render_status(state, now, plan_titles=None, events=None, live=False, approvals=None):
+    """Human-readable status text: header, per-package rows, needs, recent
+    events. `approvals` is (pending count, state path) when known."""
     lines = []
 
     counts = {}
@@ -484,9 +485,12 @@ def render_status(state, now, plan_titles=None, events=None, live=False):
 
     denied = [(pid, d) for pid, pkg in items for d in pkg.get("network_denials") or []]
     if denied:
-        lines.append("network denied (approve: agent-exec sandbox allow-domain HOST):")
+        lines.append("network denied:")
         for pid, d in denied:
             lines.append("  %s  %s:%s" % (pid, d.get("host"), d.get("port")))
+
+    if approvals and approvals[0]:
+        lines.append("approvals: %d pending — agent-exec approvals --state %s" % approvals)
 
     if events:
         lines.append("recent:")
@@ -518,6 +522,15 @@ def status_line(state, now, live=False):
 
 
 # --- CLI ---------------------------------------------------------------------
+
+
+def _approvals(state_path):
+    """(pending approvals, state path); (0, ...) when they cannot be read."""
+    try:
+        import agent_exec_approvals
+        return len(agent_exec_approvals.pending_items(state_path)), state_path
+    except Exception:
+        return 0, state_path
 
 
 def _cmd_status(args):
@@ -584,7 +597,8 @@ def _cmd_status(args):
         if fmt == "line":
             return status_line(state, now, live=live)
         events = read_events(state_path, events_limit) if events_limit else None
-        return render_status(state, now, events=events, live=live)
+        return render_status(state, now, events=events, live=live,
+                             approvals=_approvals(state_path))
 
     if watch is None:
         output = render_once()

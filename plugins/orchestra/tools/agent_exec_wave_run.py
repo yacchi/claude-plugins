@@ -43,6 +43,7 @@ import yaml
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent_exec  # noqa: E402
+import agent_exec_approvals  # noqa: E402
 import agent_exec_checks  # noqa: E402
 import agent_exec_herdr  # noqa: E402
 import agent_exec_orca  # noqa: E402
@@ -669,6 +670,12 @@ class _Runner(object):
             "If the task cannot be done as specified, reply with a first line "
             "`ESCALATE: <reason>` and change nothing further.",
             "",
+            "Network access goes through an allowlist. A blocked request (proxy 403, "
+            "\"blocked by network allowlist\", connection refused to an external host) "
+            "must not be worked around: no other mirrors, no proxy or environment "
+            "changes, no hand-vendoring. If the task cannot be finished without it, "
+            "reply with a first line `ESCALATE: network <host>[, <host>...]`.",
+            "",
             "Do not commit: leave every change uncommitted in the working tree.",
         ])
         if refresh_note:
@@ -683,7 +690,20 @@ class _Runner(object):
                  + [self.pkgs[pid]["spec"]])
         if self._post_full_correction(pid):
             files.append(self._correction_path(pid))
+        notes = agent_exec_approvals.note_path(self.state_dir, pid)
+        if os.path.isfile(notes):
+            files.append(notes)
         return files
+
+    def _approval_notes_sent(self, pid, files):
+        """Set sent approval-decision notes aside so they are never resent."""
+        notes = agent_exec_approvals.note_path(self.state_dir, pid)
+        if notes not in files:
+            return
+        try:
+            os.replace(notes, notes[:-len(".md")] + ".sent.md")
+        except OSError:
+            pass
 
     def _post_full_correction(self, pid):
         """True when corrections/<id>.md is a not-yet-sent post-full one."""
@@ -904,7 +924,11 @@ class _Runner(object):
             answer = result.get("answer") or ""
             self.answers[pid] = answer
             if _first_line(answer).startswith("ESCALATE"):
-                self._escalate_need(pid, answer)
+                hosts = agent_exec_approvals.network_escalate_hosts(answer)
+                if hosts:
+                    self._network_need(pid, answer, hosts, tree, result.get("executor"))
+                else:
+                    self._escalate_need(pid, answer)
                 return False
             if not isolation.get("isolate") or not tree:
                 self._need(pid, "dispatch-error", "dispatch did not run isolated: %s"
@@ -950,6 +974,18 @@ class _Runner(object):
             ensure_ascii=False)
         self._need(pid, "dispatch-error", agent_exec_checks.failure_excerpt(str(detail)))
         return False
+
+    def _network_need(self, pid, answer, hosts, tree, executor):
+        """`ESCALATE: network <host>...`: the hosts join the package's
+        network_denials (so they are `net:` approvals) and the package waits
+        on a `network` need until each is decided."""
+        if tree:
+            self.store.update(pid, tree=tree, executor=executor)
+        self._network_denials(pid, {"network_denials": hosts})
+        self._need(pid, "network", json.dumps({
+            "hosts": [h["host"] for h in hosts],
+            "answer": "\n".join(answer.strip().splitlines()[:10])[:2000],
+        }, ensure_ascii=False))
 
     def _escalate_need(self, pid, answer):
         detail = answer
@@ -1148,12 +1184,14 @@ class _Runner(object):
                 self._write_context(pid, refresh_note)
                 self.store.set_status(pid, "implementing")
                 post_full = self._post_full_correction(pid)
+                files = self._full_files(pid)
                 token, result = self._dispatch(
-                    pid, self._full_files(pid),
+                    pid, files,
                     no_resume=post_full or bool(
                         (self.refresh_info.get(pid) or {}).get("fresh")))
                 if post_full:
                     self._post_full_sent(pid)
+                self._approval_notes_sent(pid, files)
                 if not self._handle(pid, token, result):
                     return
             self._verify(pid)
@@ -1930,10 +1968,16 @@ class _Runner(object):
                 files = []
             for path in files:
                 flaky[path] = flaky.get(path, 0) + 1
+        try:
+            approvals = len(agent_exec_approvals.pending_items(self.state_path))
+        except Exception:
+            approvals = 0
         return {
             "status": "stopped" if self.stop_reason is not None else "done",
             "reason": self.stop_reason,
             "waves": self.waves,
+            "approvals": approvals,
+            "state": self.state_path,
             "integrated": with_status("integrated"),
             "needs": [{"id": n.get("id"), "kind": n.get("kind")}
                       for n in state.get("needs") or []],
@@ -2029,9 +2073,12 @@ def format_report_text(report):
         lines.append("  needs: %s" % ", ".join(
             "%s(%s)" % (n["id"], n["kind"]) for n in report["needs"]))
     if report.get("network_denials"):
-        lines.append("  network denied: %s (approve: agent-exec sandbox allow-domain HOST)"
+        lines.append("  network denied: %s"
                      % ", ".join("%s(%s:%s)" % (d["id"], d["host"], d.get("port"))
                                  for d in report["network_denials"]))
+    if report.get("approvals"):
+        lines.append("  approvals: %d pending — agent-exec approvals --state %s"
+                     % (report["approvals"], report.get("state")))
     return "\n".join(lines)
 
 
@@ -2135,6 +2182,44 @@ def cmd_wave_run(args):
     return exit_code_for(report)
 
 
+def await_package(state_path, pkg):
+    """`wave mark --await`: hand a package whose interactive session stopped
+    on a dialog (or timed out) back to the runner, which waits for that same
+    session's result. Returns (0, None) or (2, why it cannot)."""
+    store = agent_exec_wave.StateStore(state_path)
+    state = store.load()
+    entry = state.get("packages", {}).get(pkg)
+    need = next((n for n in state.get("needs") or [] if n.get("id") == pkg), None)
+    need_detail = {}
+    try:
+        need_detail = json.loads(need.get("detail") or "{}") if need else {}
+    except (TypeError, ValueError):
+        need_detail = {}
+    if not isinstance(need_detail, dict):
+        need_detail = {}
+    need_kind = need.get("kind") if need else None
+    is_orca_need = (need_kind in ("stalled", "timeout")
+                    or (need_kind == "delegate"
+                        and need_detail.get("orca") in ("stalled", "timeout")))
+    if entry is None or entry.get("status") != "needs" or not is_orca_need:
+        return 2, "--await requires an Orca stalled/timeout need"
+    state_dir = os.path.dirname(os.path.abspath(state_path))
+    session = None
+    for host_cls in (agent_exec_herdr.HerdrExecutor, agent_exec_orca.OrcaExecutor):
+        host = host_cls.from_config()
+        host.state_dir = state_dir
+        session = host._load_registry().get(pkg)
+        if isinstance(session, dict) and session.get("terminal"):
+            break
+    if (not isinstance(session, dict) or not session.get("terminal")
+            or not session.get("worktree")
+            or not os.path.isdir(session["worktree"])):
+        return 2, "no live Orca session for %s" % pkg
+    store.clear_need(pkg)
+    store.set_status(pkg, "implementing", detail="await-orca")
+    return 0, None
+
+
 def cmd_wave_mark(args):
     state_path = None
     pkg = None
@@ -2209,35 +2294,10 @@ def cmd_wave_mark(args):
     state = store.load()
     packages = state.get("packages", {})
     if await_pkg is not None:
-        entry = packages.get(await_pkg)
-        need = next((n for n in state.get("needs") or [] if n.get("id") == await_pkg), None)
-        need_detail = {}
-        try:
-            need_detail = json.loads(need.get("detail") or "{}") if need else {}
-        except (TypeError, ValueError):
-            need_detail = {}
-        need_kind = need.get("kind") if need else None
-        is_orca_need = (need_kind in ("stalled", "timeout")
-                        or (need_kind == "delegate"
-                            and need_detail.get("orca") in ("stalled", "timeout")))
-        if (entry is None or entry.get("status") != "needs" or not is_orca_need):
-            sys.stderr.write("agent-exec: wave mark: --await requires an Orca stalled/timeout need\n")
-            return 2
-        state_dir = os.path.dirname(os.path.abspath(state_path))
-        session = None
-        for host_cls in (agent_exec_herdr.HerdrExecutor, agent_exec_orca.OrcaExecutor):
-            host = host_cls.from_config()
-            host.state_dir = state_dir
-            session = host._load_registry().get(await_pkg)
-            if isinstance(session, dict) and session.get("terminal"):
-                break
-        if (not isinstance(session, dict) or not session.get("terminal")
-                or not session.get("worktree")
-                or not os.path.isdir(session["worktree"])):
-            sys.stderr.write("agent-exec: wave mark: no live Orca session for %s\n" % await_pkg)
-            return 2
-        store.clear_need(await_pkg)
-        store.set_status(await_pkg, "implementing", detail="await-orca")
+        code, message = await_package(state_path, await_pkg)
+        if code != 0:
+            sys.stderr.write("agent-exec: wave mark: %s\n" % message)
+            return code
         print(json.dumps({"pkg": await_pkg, "status": "implementing",
                           "detail": "await-orca"}, ensure_ascii=False))
         return 0

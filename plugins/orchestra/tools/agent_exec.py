@@ -688,7 +688,7 @@ Usage:
                                   effective writable set for a pi run in D
                                   (default cwd), learned grants, deny_read,
                                   backend
-  agent-exec sandbox allow <path> [--json]
+  agent-exec sandbox allow <path> [--reason TEXT] [--json]
                                   remember a user grant for this machine
                                   (~/.local/state/claude-orchestra/sandbox-learned.json by default;
                                   refuses deny_read, ~/.claude, / and $HOME)
@@ -758,6 +758,15 @@ Usage:
                   [--detail TEXT]
                                   hand a package back to the runner and
                                   clear its needs entries
+  agent-exec approvals --state PATH [--json]
+                                  pending network hosts (net:HOST), path
+                                  grants (path:ID:N) and permission dialogs
+                                  (dialog:ID) of a wave, with stable ids
+  agent-exec approvals decide --state PATH ITEM allow|deny --reason TEXT
+                  [--by instructor|user] [--json]
+                                  apply one decision, resume the affected
+                                  package, and append it to
+                                  <state dir>/audit/decisions.jsonl
   agent-exec ui [--open] [--stop] [--idle-minutes N] [--json]
                                   start (or reuse) the local zero-token
                                   dashboard on 127.0.0.1 and print its
@@ -1711,7 +1720,7 @@ def cmd_sandbox(args):
     """`agent-exec sandbox list|allow|forget|probe`."""
     if not args or args[0] in ("-h", "--help"):
         sys.stderr.write("usage: agent-exec sandbox list [--workdir D] [--json] | "
-                         "allow <path> [--json] | forget <path> | "
+                         "allow <path> [--reason TEXT] [--json] | forget <path> | "
                          "allow-domain <host-or-*.wildcard> [--json] | "
                          "forget-domain <host> [--json] | probe [--json]\n")
         return 2 if not args else 0
@@ -1753,6 +1762,14 @@ def cmd_sandbox(args):
         return 0
 
     if sub in ("allow", "forget"):
+        grant_reason = None
+        if sub == "allow" and "--reason" in rest:
+            at = rest.index("--reason")
+            if at + 1 >= len(rest):
+                sys.stderr.write("agent-exec: sandbox allow: missing value for --reason\n")
+                return 2
+            grant_reason = rest[at + 1]
+            rest = rest[:at] + rest[at + 2:]
         if len(rest) != 1:
             sys.stderr.write("agent-exec: sandbox %s: expected one path\n" % sub)
             return 2
@@ -1772,7 +1789,7 @@ def cmd_sandbox(args):
             sys.stderr.write("agent-exec: sandbox allow: %s\n" % reason)
             return 1
         try:
-            entry = agent_exec_sandbox.add_grant(path, "user")
+            entry = agent_exec_sandbox.add_grant(path, "user", reason=grant_reason)
         except (OSError, ValueError) as exc:
             sys.stderr.write("agent-exec: sandbox allow: %s\n" % exc)
             return 1
@@ -10788,6 +10805,10 @@ def main(argv):
 
     if tok == "wave":
         return agent_exec_wave.cmd_wave(argv[1:])
+
+    if tok == "approvals":
+        import agent_exec_approvals
+        return agent_exec_approvals.cmd_approvals(argv[1:])
 
     if tok == "ui":
         import agent_exec_ui

@@ -117,8 +117,8 @@ Ubuntu 24.04以降は非特権のユーザー名前空間がAppArmorで塞がれ
 **拒否の検知と自動許可。** piのツール出力とエラー出力から、`operation not permitted` / `permission denied` / `read-only file system`の前後にあるパスを拾う(coreutils・Go・Python・Nodeの各形式、UTF-8環境の引用符を含む)。ユーザー自身にも書けない場所(`find /`で出るような拒否)と`deny_read`の内側は対象にしない。
 
 - 拒否されたパスがキャッシュの置き場所(`~/.cache`、`~/Library/Caches`、`~/.npm`、pnpm/yarnのストア、`~/go/pkg/mod`、`~/.cargo/registry`など、取得物を検証する生態系のもの)の中なら、自動で許可する。許可するのは「置き場所＋1階層」で、置き場所の直下への拒否なら置き場所そのもの。許可はマシンごとの`$XDG_STATE_HOME/claude-orchestra/sandbox-learned.json`(未設定または相対パスなら`~/.local/state/claude-orchestra/sandbox-learned.json`)に記録し、同じセッションを再開する(1回のdispatchにつき最大2回)。
-- それ以外への拒否で、実行役が失敗を報告したときは`status: needs-permission`を返す。指示役はユーザーに確認し、許可されたら`agent-exec sandbox allow <path>`のあと同じタスクIDで再dispatchする(セッションが再開される)。
-- 実行役が成功を報告したときは`ok`のまま、`sandbox.denials`に拒否を添える(`auto: false`)。作業が実際に済んでいるかはレビューが判定し、不合格なら指示役がユーザーに確認する。
+- それ以外への拒否で、実行役が失敗を報告したときは`status: needs-permission`を返す。指示役はスキル§8の方針で自分で判断する(ユーザーに聞くのは認証情報、リポジトリとツールチェーンのキャッシュ以外への書き込み、公開・デプロイ・プッシュに当たるもの、仕様との関係が不明なものだけ)。許可するなら`agent-exec sandbox allow <path> --reason TEXT`のあと同じタスクIDで再dispatchする(セッションが再開される)。wave実行中は`agent-exec approvals decide`を使う(許可・再開・監査記録を一度に行う)。
+- 実行役が成功を報告したときは`ok`のまま、`sandbox.denials`に拒否を添える(`auto: false`)。作業が実際に済んでいるかはレビューが判定し、不合格なら指示役が同じ方針で判断する。
 
 一覧・追加・削除・診断は`agent-exec sandbox list|allow|forget|probe`。
 

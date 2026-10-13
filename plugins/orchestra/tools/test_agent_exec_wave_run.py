@@ -421,6 +421,33 @@ class NeedsTests(_WaveRepo):
         self.assertEqual(self.need_kinds(), [("A", "escalate")])
         self.assertIn("spec unclear", self.state()["needs"][0]["detail"])
 
+    def test_network_escalate_is_a_network_need_and_resumes_with_the_decision(self):
+        import agent_exec_approvals
+        env = mock.patch.dict(os.environ, {"XDG_STATE_HOME": os.path.join(self.tmp, "xs")})
+        env.start()
+        self.addCleanup(env.stop)
+        self.plan([{"id": "A"}, {"id": "B"}])
+        ex = FakeExecutor({
+            "A": [edit({"a.txt": "a\n"}, answer="ESCALATE: network files.example.com\nwhy"),
+                  edit({"a.txt": "a2\n"})],
+            "B": [edit({"b.txt": "b\n"}, answer="ESCALATE: networking spec unclear")],
+        })
+        report, rc = self.run_wave(ex)
+        self.assertEqual(rc, 1, report)
+        self.assertEqual(sorted(self.need_kinds()), [("A", "network"), ("B", "escalate")])
+        self.assertEqual(self.state()["packages"]["A"]["network_denials"],
+                         [{"host": "files.example.com", "port": 443}])
+        self.assertEqual(report["approvals"], 1)
+
+        code, out = agent_exec_approvals.decide(
+            self.state_path, "net:files.example.com", "deny", "unrelated to the spec")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.status("A"), "pending")
+        report, rc = self.run_wave(ex)
+        notes = [f for f in ex.calls[-1]["prompt_files"] if f.endswith(".approvals.md")]
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(self.status("A"), "integrated")
+
     def test_delegate_then_mark_ready_integrates(self):
         self.plan([{"id": "A"}])
         payload = {"status": "delegate", "executor": "claude", "model": "sonnet",

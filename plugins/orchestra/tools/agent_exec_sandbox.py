@@ -234,6 +234,10 @@ def user_grant_refusal(path, deny_read=(), home=None):
 
 STATE_DIR = "~/.local/state/claude-orchestra"
 
+# Who may add a grant under the user rules: the user, or the instructor
+# session deciding an approval (`agent-exec approvals decide`).
+USER_SOURCES = ("user", "instructor")
+
 
 def state_dir(home=None):
     """The machine-local orchestra state directory, resolved in one place."""
@@ -258,7 +262,7 @@ def _valid_grant(entry, home, deny_read):
     source = entry.get("source")
     if source == "auto":
         return grant_for(path, home) is not None
-    if source == "user":
+    if source in USER_SOURCES:
         return user_grant_refusal(path, deny_read, home) is None
     return False
 
@@ -334,18 +338,19 @@ def _now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def add_grant(path, source, example=None, home=None):
+def add_grant(path, source, example=None, home=None, reason=None):
     """Persist one grant; returns the stored entry. Raises ValueError when
-    the grant is not allowed for `source`. Idempotent per realpath."""
+    the grant is not allowed for `source`. Idempotent per realpath. `reason`
+    (why it was granted) is stored when given."""
     home = _home(home)
     real = os.path.realpath(path)
     if source == "auto":
         if grant_for(real, home) is None:
             raise ValueError("not an eligible cache grant: %s" % real)
-    elif source == "user":
-        reason = user_grant_refusal(real, [_expand(p, home) for p in DEFAULT_DENY_READ], home)
-        if reason:
-            raise ValueError(reason)
+    elif source in USER_SOURCES:
+        refusal = user_grant_refusal(real, [_expand(p, home) for p in DEFAULT_DENY_READ], home)
+        if refusal:
+            raise ValueError(refusal)
     else:
         raise ValueError("unknown grant source: %s" % source)
     grants, _ = load_learned(home)
@@ -354,6 +359,8 @@ def add_grant(path, source, example=None, home=None):
             return g
     entry = {"path": real, "added": _now_iso(), "source": source,
              "example": os.path.realpath(example) if example else real}
+    if reason:
+        entry["reason"] = reason
     grants.append(entry)
     save_learned(grants, home)
     return entry
@@ -439,18 +446,21 @@ def learned_domains(home=None):
     return _dedupe(e["domain"].strip().lower() for e in load_domains(home)[0])
 
 
-def add_domain(domain, home=None):
+def add_domain(domain, home=None, source="user", reason=None):
     """Persist one domain grant; returns the stored entry. Raises ValueError
-    when refused. Idempotent."""
-    reason = domain_refusal(domain)
-    if reason:
-        raise ValueError(reason)
+    when refused. Idempotent. `source` (who approved it) is stored, and
+    `reason` when given."""
+    refusal = domain_refusal(domain)
+    if refusal:
+        raise ValueError(refusal)
     text = domain.strip().lower()
     domains, _ = load_domains(home)
     for entry in domains:
         if entry["domain"].strip().lower() == text:
             return entry
-    entry = {"domain": text, "added": _now_iso(), "source": "user"}
+    entry = {"domain": text, "added": _now_iso(), "source": source}
+    if reason:
+        entry["reason"] = reason
     domains.append(entry)
     save_learned(None, home, domains=domains)
     return entry

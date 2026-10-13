@@ -759,7 +759,14 @@ Measured numbers, the restructured `runTask`, and the full barrier/sizing rules:
 
 Launch `orchestra-delegate` (Sonnet, pinned in its own frontmatter) via the Agent tool; it runs `agent-exec dispatch --class light --capture` per round itself, spawns `orchestra-review`, applies the same two-gate discipline (§11) — one correction round with a cited, family-swept packet to a fresh worker, then an incremental re-gate — and reports back only the structured verdict. When it returns `needsInstructor`, that is your re-analysis cue, not a signal to tell it to try again. Full shape: `references/authoring.md` §5.
 
-When a verdict has `needsPermission: true`, ask the user with `AskUserQuestion`, showing every denial's `grant_candidate` and `why` with allow/deny choices. For each allowed path, run `agent-exec sandbox allow <path>` (through a relay or yourself), then re-dispatch the **same task id**: the session store resumes the same executor session and keeps its learned cache state. If a path is denied, put that path in the correction packet as off-limits to the worker. A sandbox denial is not executor exhaustion and must not consume a gate.
+When a verdict has `needsPermission: true` (or a wave has pending `agent-exec approvals`), **you decide** each denial yourself against the package's spec, using this policy:
+
+- **Allow without asking:** package registries and mirrors of the project's toolchain; official docs/spec/standards hosts the package plausibly reads; toolchain caches and config dirs a build tool writes; dialogs for actions confined to the package's worktree that match its spec.
+- **Deny with a reason, no user question,** when the subject is unrelated to the package's spec — the package continues without it.
+- **Ask the user (`AskUserQuestion`) only for:** credentials and secret stores; writes outside the repo and toolchain caches (other repos, home config); hosts that accept uploads or messages (paste/file sharing, webhooks, chat/issue APIs, git push targets); cloud, internal, corporate or production endpoints; anything that deploys, publishes or pushes; and whenever the relation to the spec is unclear.
+- Always give `--reason`. In wave runs prefer `agent-exec approvals decide --state <state> <item> allow|deny --reason TEXT` over raw `sandbox allow`/`allow-domain`: it applies the grant, resumes the package and audits the decision. Outside wave runs use `agent-exec sandbox allow <path> --reason TEXT` / `allow-domain <host> --reason TEXT`, then re-dispatch the **same task id**: the session store resumes the same executor session and keeps its learned cache state. A denied path goes into the correction packet as off-limits to the worker. The hard refusals (`/`, `$HOME`, `~/.claude`, `deny_read`, tamper paths; `*`, `*.tld`, IPs, localhost) hold for every decider.
+
+A sandbox denial is not executor exhaustion and must not consume a gate.
 
 ## 9. Configuration and external executors
 
