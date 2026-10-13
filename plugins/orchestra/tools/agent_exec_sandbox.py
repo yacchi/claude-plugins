@@ -749,6 +749,9 @@ def host_policy(repo, worktree_base, herdr_home, cfg, extra_writable=(), home=No
     state = os.path.realpath(state_dir(home))
     deny_write = [p for p in tamper_paths(home) if os.path.realpath(p) != state]
     deny_write += claude_deny
+    # Binaries and config orchestra later runs (outside this sandbox's scope):
+    # managed tools and the dedicated pi agent dir must not be replaceable.
+    deny_write += [os.path.join(state, "tools"), os.path.join(state, "pi-agent")]
     deny_write_regex = []
     for tree in (repo, base):
         root = _repo_root(tree) if os.path.isdir(tree) else None

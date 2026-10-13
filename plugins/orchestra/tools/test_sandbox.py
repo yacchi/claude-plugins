@@ -136,6 +136,11 @@ class HostPolicyTests(unittest.TestCase):
         # a symlinked skills dir is denied at its real path as well
         self.assertIn(os.path.join(self.shared, "skills"), deny)
 
+    def test_managed_tools_and_pi_agent_dir_cannot_be_replaced(self):
+        state = os.path.realpath(sb.state_dir(self.home))
+        for name in ("tools", "pi-agent"):
+            self.assertIn(os.path.join(state, name), self.policy["deny_write"])
+
     def test_seatbelt_denies_come_after_every_allow(self):
         sbpl, params = sb.seatbelt_profile(self.policy)
         allow_end = sbpl.index("(deny file-write* (require-not")
