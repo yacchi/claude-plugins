@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
@@ -312,6 +313,21 @@ func rawStore(home string) *jsonx.Object {
 	return jsonx.NewObject()
 }
 
+// storeLockTimeout bounds how long a grant waits for another writer.
+const storeLockTimeout = 10 * time.Second
+
+// lockStore serializes the store's read-modify-write across processes
+// (concurrent `sandbox allow` runs would otherwise drop each other's
+// entries). The store's own format is untouched; the lock is a sibling
+// file.
+func lockStore(home string) (func() error, error) {
+	path := learnedPath(home)
+	if err := os.MkdirAll(pyDirname(path), 0o700); err != nil {
+		return nil, err
+	}
+	return fsutil.Lock(path+".lock", fsutil.Exclusive, storeLockTimeout)
+}
+
 // saveLearned writes the store atomically (0600 file in a 0700 dir). A nil
 // list keeps that list of the store as it is.
 func saveLearned(home string, grants, domains []any) error {
@@ -368,6 +384,11 @@ func addGrant(path, source, example, reason, home string) (Grant, error) {
 	default:
 		return Grant{}, fmt.Errorf("unknown grant source: %s", source)
 	}
+	unlock, err := lockStore(home)
+	if err != nil {
+		return Grant{}, err
+	}
+	defer unlock()
 	grants, _, _ := loadGrants(home, nil)
 	for _, g := range grants {
 		if g.Path == real {
@@ -400,6 +421,11 @@ func ForgetGrant(path string) error { return forgetGrant(path, "") }
 func forgetGrant(path, home string) error {
 	home = homeOf(home)
 	real := realPath(path)
+	unlock, err := lockStore(home)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	grants, _, _ := loadGrants(home, nil)
 	kept := []any{}
 	for _, g := range grants {

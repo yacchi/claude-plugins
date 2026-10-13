@@ -67,7 +67,7 @@ func normalizeConfig(raw *jsonx.Object) Config {
 			c.Mode = "off" // YAML 1.1 loads a bareword `off` as false
 		}
 	case string:
-		if s := strings.ToLower(strings.TrimSpace(m)); contains(modes, s) {
+		if s := config.PyLower(strings.TrimSpace(m)); contains(modes, s) {
 			c.Mode = s
 		}
 	}
@@ -99,7 +99,7 @@ func normalizeNetwork(raw *jsonx.Object) NetworkConfig {
 			mode = "off"
 		}
 	case string:
-		mode = strings.ToLower(strings.TrimSpace(m))
+		mode = config.PyLower(strings.TrimSpace(m))
 	}
 	if contains(networkModes, mode) {
 		n.Mode = mode
@@ -108,7 +108,7 @@ func normalizeNetwork(raw *jsonx.Object) NetworkConfig {
 	case bool:
 		n.Ecosystem = e
 	case string:
-		switch strings.ToLower(strings.TrimSpace(e)) {
+		switch config.PyLower(strings.TrimSpace(e)) {
 		case "off", "false", "no", "0":
 			n.Ecosystem = false
 		}
@@ -126,7 +126,7 @@ func normalizeNetwork(raw *jsonx.Object) NetworkConfig {
 		}
 		var out []string
 		for _, v := range values {
-			if s := strings.ToLower(strings.TrimSpace(v)); s != "" {
+			if s := config.PyLower(strings.TrimSpace(v)); s != "" {
 				out = append(out, s)
 			}
 		}

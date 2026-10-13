@@ -222,8 +222,10 @@ func TestLearnedStore(t *testing.T) {
 		t.Errorf("roundtrip: %+v %v", l, err)
 	}
 	entries, _ := os.ReadDir(filepath.Dir(LearnedPath()))
-	if len(entries) != 1 {
-		t.Errorf("temp files left: %v", entries)
+	for _, e := range entries {
+		if e.Name() != "sandbox-learned.json" && e.Name() != "sandbox-learned.json.lock" {
+			t.Errorf("temp file left: %s", e.Name())
+		}
 	}
 	if err := ForgetGrant(h.h(".cache/uv")); err != nil {
 		t.Fatal(err)

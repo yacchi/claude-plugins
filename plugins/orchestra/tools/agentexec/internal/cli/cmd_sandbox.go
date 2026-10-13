@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	// srt registers sandbox's network planner: linked into every binary, so
@@ -95,7 +96,7 @@ func newSandboxCmd() *cobra.Command {
 			return exitf(2, "sandbox allow-domain: expected one domain")
 		}
 		configOrDefaults()
-		domain := strings.ToLower(strings.TrimSpace(args[0]))
+		domain := config.PyLower(strings.TrimSpace(args[0]))
 		entry, err := sandbox.AddDomainEntry(domain, "user", domainReason.Or(""))
 		if err != nil {
 			return exitf(1, "sandbox allow-domain: %s", err)
@@ -114,7 +115,7 @@ func newSandboxCmd() *cobra.Command {
 			return exitf(2, "sandbox forget-domain: expected one domain")
 		}
 		configOrDefaults()
-		domain := strings.ToLower(strings.TrimSpace(args[0]))
+		domain := config.PyLower(strings.TrimSpace(args[0]))
 		err := sandbox.ForgetDomain(domain)
 		if err != nil && !errors.Is(err, sandbox.ErrNotFound) {
 			return exitf(1, "sandbox forget-domain: %s", err)

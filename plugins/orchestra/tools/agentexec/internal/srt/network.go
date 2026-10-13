@@ -133,7 +133,7 @@ func cleanDomains(values []any) []string {
 	var out []string
 	for _, v := range values {
 		if s, ok := v.(string); ok && sandbox.DomainRefusal(s) == "" {
-			out = append(out, strings.ToLower(strings.TrimSpace(s)))
+			out = append(out, config.PyLower(strings.TrimSpace(s)))
 		}
 	}
 	return dedupe(out)
@@ -177,7 +177,7 @@ func npmrcHosts(path string) []string {
 		if err != nil {
 			continue
 		}
-		host := strings.ToLower(u.Hostname())
+		host := config.PyLower(u.Hostname())
 		if host != "" && sandbox.DomainRefusal(host) == "" {
 			hosts = append(hosts, host)
 		}
@@ -250,7 +250,7 @@ func ExecutorDomains(executor string, ecfg *jsonx.Object, model string) []string
 		if i := strings.Index(model, "/"); i >= 0 {
 			prefix = model[:i]
 		}
-		return append([]string{}, piProviderDomains[strings.ToLower(strings.TrimSpace(prefix))]...)
+		return append([]string{}, piProviderDomains[config.PyLower(strings.TrimSpace(prefix))]...)
 	}
 	return []string{}
 }

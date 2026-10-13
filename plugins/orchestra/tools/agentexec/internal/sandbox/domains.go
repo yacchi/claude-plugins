@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
@@ -18,7 +19,7 @@ var domainRe = regexp.MustCompile(`^(\*\.)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*` +
 	`[a-z0-9]([a-z0-9-]*[a-z0-9])?(:[0-9]{1,5})?$`)
 
 // pyStrip is str.strip() / str.lower() for the domain checks.
-func normDomain(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+func normDomain(s string) string { return config.PyLower(strings.TrimSpace(s)) }
 
 func isIP(text string) bool {
 	host := text
@@ -136,6 +137,11 @@ func addDomain(domain, source, reason, home string) (DomainGrant, error) {
 		return DomainGrant{}, errors.New("a domain grant needs a source")
 	}
 	text := normDomain(domain)
+	unlock, err := lockStore(home)
+	if err != nil {
+		return DomainGrant{}, err
+	}
+	defer unlock()
 	domains, _ := loadDomains(home)
 	for _, e := range domains {
 		if normDomain(e.Domain) == text {
@@ -163,6 +169,11 @@ func ForgetDomain(d string) error { return forgetDomain(d, "") }
 
 func forgetDomain(domain, home string) error {
 	text := normDomain(domain)
+	unlock, err := lockStore(home)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	domains, _ := loadDomains(home)
 	kept := []any{}
 	for _, e := range domains {
