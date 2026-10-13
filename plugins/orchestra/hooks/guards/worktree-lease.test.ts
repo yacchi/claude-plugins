@@ -37,6 +37,7 @@ describe('worktree-lease', () => {
         const h = host(on)
         expect((await as($, 'ag_A', light, WT1, editIn(`${WT1}/a.ts`))).deny, 'first writer takes the lease').toBeUndefined()
         expect(JSON.parse(h.files.get(LEASE) ?? '{}').agent_id).toBe('ag_A')
+        expect(h.files.has(`${LEASE}.tmp`), 'written via a temp file, then renamed').toBe(false)
         const dup = await as($, 'ag_B', light, WT1, editIn(`${WT1}/a.ts`))
         expect(dup.deny).toContain('DUPLICATE')
         expect(dup.deny).toContain(`the worktree ${WT1} is leased by ${light}`)

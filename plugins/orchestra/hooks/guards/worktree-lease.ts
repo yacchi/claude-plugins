@@ -188,7 +188,14 @@ export const checkWorktreeLease = async (io: Io, call: WorkerCall): Promise<stri
         }
         const since = mine ? lease?.since ?? now : now
         try {
-            await io.write(found.file, JSON.stringify({ agent_id: call.agentId, agent_type: call.agentType, last_seen: now, since }))
+            // Write then rename, so a concurrent reader never sees a torn lease
+            // ($.fs has no rename, hence `mv`).
+            const tmp = `${found.file}.tmp`
+            await io.write(tmp, JSON.stringify({ agent_id: call.agentId, agent_type: call.agentType, last_seen: now, since }))
+            const moved = await io.run(['mv', '-f', tmp, found.file], { timeoutMs: 5000 })
+            if (moved.exitCode !== 0) {
+                throw new Error('lease rename failed')
+            }
             if (!mine) {
                 const files = held.get(call.agentId) ?? new Set<string>()
                 files.add(found.file)

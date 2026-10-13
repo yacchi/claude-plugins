@@ -161,6 +161,16 @@ export const fakeHost = (on: On, options: HostOptions) => {
         if (argv[0] === 'git') {
             return { value: git(argv.slice(1), cwd) }
         }
+        if (argv[0] === 'mv' && argv[1] === '-f' && argv[2] !== undefined && argv[3] !== undefined) {
+            const text = files.get(norm(argv[2]))
+            if (text === undefined) {
+                return { value: fail(1) }
+            }
+            files.delete(norm(argv[2]))
+            files.set(norm(argv[3]), text)
+
+            return { value: ok('') }
+        }
         if (argv[0] === 'rm' && argv[1] === '-f' && argv[2] !== undefined) {
             files.delete(argv[2])
 
