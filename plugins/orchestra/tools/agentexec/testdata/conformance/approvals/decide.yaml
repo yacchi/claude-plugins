@@ -1,0 +1,102 @@
+description: >
+  approvals lists a wave's pending network hosts (quiet and allowed hosts
+  are not pending), path denials of permission needs and permission dialogs
+  in a stable order (--json or text); decide applies one decision: a
+  domain allow is learned and resumes only the packages whose network need
+  waits on that host, a path allow grants the candidate, refusals (a host
+  that is no domain, a path under ~/.claude) apply to every decider and
+  keep the need, an Orca dialog cannot be answered from here; every
+  decision is audited; wave status counts what is still pending
+setup:
+  files:
+    ~/.toolcache/keep: "x\n"
+    ~/wave/specs/A.md: "a\n"
+    ~/wave/specs/B.md: "b\n"
+    ~/wave/specs/C.md: "c\n"
+    ~/wave/specs/D.md: "d\n"
+    ~/wave/specs/E.md: "e\n"
+    ~/wave/plan.json: |
+      {"packages": [
+         {"id": "A", "spec": "specs/A.md", "cls": "light", "files_owned": ["a.txt"]},
+         {"id": "B", "spec": "specs/B.md", "cls": "light", "files_owned": ["b.txt"]},
+         {"id": "C", "spec": "specs/C.md", "cls": "light", "files_owned": ["c.txt"]},
+         {"id": "D", "spec": "specs/D.md", "cls": "light", "files_owned": ["d.txt"]},
+         {"id": "E", "spec": "specs/E.md", "cls": "light", "files_owned": ["e.txt"]}
+       ]}
+    ~/wave/state.json: |
+      {
+        "version": 1, "plan": "<HOME>/wave/plan.json", "wave": 1,
+        "integration": {"task": "wave-int", "path": null, "base": null},
+        "needs": [
+          {"id": "A", "kind": "network", "detail": "{\"hosts\": [\"files.example.com\", \"10.0.0.1\"], \"answer\": \"ESCALATE: network files.example.com 10.0.0.1\"}", "at": 10.5},
+          {"id": "C", "kind": "permission", "detail": "{\"denials\": [{\"path\": \"<HOME>/.toolcache/f\", \"grant_candidate\": \"<HOME>/.toolcache\", \"why\": \"not cache\"}]}", "at": 11.5},
+          {"id": "D", "kind": "permission", "detail": "{\"denials\": [{\"path\": \"<HOME>/.claude/settings.json\", \"grant_candidate\": null, \"why\": \"config\"}, \"junk\"]}", "at": 12.5},
+          {"id": "E", "kind": "delegate", "detail": "{\"orca\": \"stalled\", \"detail\": \"dialog:\\nAllow write to /x?\\n  1. Yes\\n  2. No\\nterminal: term-E\\nworktree: /x\\nresult: /r\"}", "at": 13.5}
+        ],
+        "packages": {
+          "A": {"status": "needs", "since": 1.5, "attempts": 0, "tree": null, "executor": "pi", "session": false, "files_changed": null, "commit": null, "detail": "",
+                "network_denials": [{"host": "files.example.com", "port": 443}, {"host": "api.anthropic.com", "port": 443}, {"host": "10.0.0.1", "port": 443}, {"host": "statsig.anthropic.com", "port": 443}]},
+          "B": {"status": "implementing", "since": 1.5, "attempts": 0, "tree": null, "executor": "pi", "session": false, "files_changed": null, "commit": null, "detail": "",
+                "network_denials": [{"host": "files.example.com", "port": 80}, {"host": "Other.Example.ORG.", "port": 8443}]},
+          "C": {"status": "needs", "since": 1.5, "attempts": 0, "tree": null, "executor": "pi", "session": false, "files_changed": null, "commit": null, "detail": ""},
+          "D": {"status": "needs", "since": 1.5, "attempts": 0, "tree": null, "executor": "pi", "session": false, "files_changed": null, "commit": null, "detail": ""},
+          "E": {"status": "needs", "since": 1.5, "attempts": 0, "tree": null, "executor": "orca", "session": true, "files_changed": null, "commit": null, "detail": ""}
+        },
+        "stopped": null,
+        "updated": 15.5
+      }
+    ~/wave/state.events.jsonl: |
+      {"at": 5.5, "pkg": "B", "from": null, "to": null, "event": "network-denied", "detail": "{\"denials\": [{\"host\": \"other.example.org\", \"port\": 8443}]}"}
+      {"at": 6.5, "pkg": "A", "from": null, "to": null, "event": "network-denied", "detail": "{\"denials\": [{\"host\": \"files.example.com\", \"port\": 443}]}"}
+      {"at": 7.5, "pkg": "B", "from": null, "to": null, "event": "network-denied", "detail": "not json"}
+normalize_keys: [since, updated, at]
+normalize_text:
+  - pattern: '\b[0-9]+[hm][0-9]{2}[ms]\b'
+    replace: '<ELAPSED>'
+steps:
+  - argv: [approvals]
+  - argv: [approvals, --state, wave/nope.json]
+    cwd: "~"
+  - argv: [approvals, --state, wave/state.json, stray]
+    cwd: "~"
+  - argv: [approvals, --state, wave/state.json, --bogus]
+    cwd: "~"
+  - argv: [approvals, --state]
+    cwd: "~"
+  - argv: [approvals, --help]
+  - argv: [approvals, --state, wave/state.json, --json]
+    cwd: "~"
+  - argv: [approvals, --state, wave/state.json]
+    cwd: "~"
+  - argv: [wave, status, --state, wave/state.json]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "path:C:0", allow]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "path:C:0", maybe, --reason, r]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "path:C:0", allow, --reason, r, --by, robot]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "net:nope.example.com", allow, --reason, r]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "net:10.0.0.1", allow, --reason, r, --json]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "net:files.example.com", allow, --reason, "  needed for the download  ", --by, user, --json]
+    cwd: "~"
+    snapshot: ["~/wave/state.json", "~/wave/approvals.json", "~/wave/corrections/A.approvals.md", "~/.local/state/claude-orchestra/sandbox-learned.json"]
+  - argv: [approvals, decide, --state, wave/state.json, "net:10.0.0.1", deny, --reason, "no raw IPs"]
+    cwd: "~"
+    snapshot: ["~/wave/state.json", "~/wave/corrections/A.approvals.md"]
+  - argv: [approvals, decide, --state, wave/state.json, "net:other.example.org", deny, --reason, "unrelated"]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "path:D:0", allow, --reason, r]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "path:D:0", deny, --reason, "stay out", --json]
+    cwd: "~"
+  - argv: [approvals, decide, --state, wave/state.json, "path:C:0", allow, --reason, "cache dir"]
+    cwd: "~"
+    snapshot: ["~/wave/state.json", "~/wave/corrections/C.approvals.md", "~/.local/state/claude-orchestra/sandbox-learned.json"]
+  - argv: [approvals, decide, --state, wave/state.json, "dialog:E", allow, --reason, r]
+    cwd: "~"
+  - argv: [approvals, --state, wave/state.json, --json]
+    cwd: "~"
+    snapshot: ["~/.local/state/claude-orchestra/audit/decisions.jsonl"]

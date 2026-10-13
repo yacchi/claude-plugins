@@ -42,10 +42,19 @@ type normalizer struct {
 	paths    [][2]string
 	numbered map[string]map[string]string
 	keys     map[string]bool
+	rules    []textRule
 }
 
-func newNormalizer(s *sandbox, keys []string) *normalizer {
+type textRule struct {
+	re      *regexp.Regexp
+	replace string
+}
+
+func newNormalizer(s *sandbox, keys []string, rules []TextRule) *normalizer {
 	n := &normalizer{numbered: map[string]map[string]string{}, keys: map[string]bool{}}
+	for _, r := range rules {
+		n.rules = append(n.rules, textRule{regexp.MustCompile(r.Pattern), r.Replace})
+	}
 	for _, k := range append([]string{"pid", "port"}, keys...) {
 		n.keys[k] = true
 	}
@@ -83,7 +92,11 @@ func (n *normalizer) text(s string) string {
 	s = reToken.ReplaceAllStringFunc(s, func(v string) string { return n.number("TOKEN", v) })
 	s = reUUID.ReplaceAllStringFunc(s, func(v string) string { return n.number("UUID", v) })
 	s = reSHA.ReplaceAllStringFunc(s, func(v string) string { return n.number("SHA", v) })
-	return reTS.ReplaceAllString(s, "<TS>")
+	s = reTS.ReplaceAllString(s, "<TS>")
+	for _, r := range n.rules {
+		s = r.re.ReplaceAllString(s, r.replace)
+	}
+	return s
 }
 
 // value normalizes a decoded JSON value, visiting object keys in sorted

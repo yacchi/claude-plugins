@@ -88,9 +88,7 @@ func newRoot() *cobra.Command {
 	addIsolateCoreCommands(isolate)
 	addIsolateExtCommands(isolate)
 
-	wave := groupCommand("wave", "the deterministic outer loop over a plan")
-	addWaveStatusCommands(wave)
-	addWaveRunCommands(wave)
+	wave := newWaveCmd()
 
 	root.AddCommand(
 		newInstallCmd(),

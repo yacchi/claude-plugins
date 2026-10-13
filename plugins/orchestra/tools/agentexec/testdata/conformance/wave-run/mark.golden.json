@@ -1,0 +1,557 @@
+{
+  "scenario": "wave-run/mark",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--pkg",
+        "A"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--pkg",
+        "A",
+        "--status",
+        "integrated"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave mark: --status must be ready|pending|failed\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/nope.json",
+        "--pkg",
+        "A",
+        "--status",
+        "ready"
+      ],
+      "exit": 3,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave mark: no state file at wave/nope.json\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--pkg",
+        "Z",
+        "--status",
+        "ready"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave mark: unknown package: Z\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--await",
+        "A",
+        "--pkg",
+        "A"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--await",
+        "A",
+        "--clear-environment"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--clear-environment",
+        "--detail",
+        "x"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--await",
+        "B"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave mark: --await requires an Orca stalled/timeout need\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--await",
+        "F"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave mark: no live Orca session for F\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--await",
+        "A"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "detail": "await-orca",
+        "pkg": "A",
+        "status": "implementing"
+      },
+      "stderr": "",
+      "files": {
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": null,
+              "path": null,
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "ESCALATE: unclear",
+                "id": "B",
+                "kind": "escalate"
+              },
+              {
+                "at": "<AT>",
+                "detail": "{\"orca\": \"timeout\", \"detail\": \"no result\"}",
+                "id": "F",
+                "kind": "delegate"
+              },
+              {
+                "at": "<AT>",
+                "detail": "ensure failed",
+                "id": null,
+                "kind": "environment"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "await-orca",
+                "executor": "herdr",
+                "files_changed": null,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "implementing",
+                "tree": null
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "ESCALATE: unclear",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              },
+              "C": {
+                "attempts": 1,
+                "commit": null,
+                "detail": "boom",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "failed",
+                "tree": null
+              },
+              "D": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": "<HOME>/trees/D"
+              },
+              "E": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "F": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "herdr",
+                "files_changed": null,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              }
+            },
+            "plan": "plan.json",
+            "stopped": {
+              "at": "<AT>",
+              "reason": "environment: ensure failed"
+            },
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--pkg",
+        "B",
+        "--status",
+        "ready"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "pkg": "B",
+        "status": "verifying"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--pkg",
+        "C",
+        "--status",
+        "pending",
+        "--detail",
+        "retry it"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "pkg": "C",
+        "status": "pending"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--recheck",
+        "D,E"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave mark: package has no tree: E\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--recheck",
+        "D,ZZ"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null,
+      "stderr": "agent-exec: wave mark: unknown package: ZZ\n"
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--pkg",
+        "D",
+        "--widen",
+        "src/*.py,docs/*.md,"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "pkg": "D",
+        "status": "pending",
+        "widen": [
+          "src/*.py",
+          "docs/*.md"
+        ]
+      },
+      "stderr": "",
+      "files": {
+        "~/wave/plan-overrides.json": {
+          "content": {
+            "D": {
+              "files_owned_add": [
+                "src/*.py",
+                "docs/*.md"
+              ]
+            }
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--recheck",
+        "D",
+        "--detail",
+        "looked again"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "pkg": [
+          "D"
+        ],
+        "status": "verifying"
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "mark",
+        "--state",
+        "wave/state.json",
+        "--clear-environment"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "environment_cleared": true
+      },
+      "stderr": "",
+      "files": {
+        "~/wave/state.events.jsonl": {
+          "content": [
+            {
+              "at": "<AT>",
+              "detail": "await-orca",
+              "event": "status",
+              "from": "needs",
+              "pkg": "A",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "marked by the instructor",
+              "event": "status",
+              "from": "needs",
+              "pkg": "B",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "retry it",
+              "event": "status",
+              "from": "failed",
+              "pkg": "C",
+              "to": "pending"
+            },
+            {
+              "at": "<AT>",
+              "detail": "widened ownership",
+              "event": "status",
+              "from": "needs",
+              "pkg": "D",
+              "to": "pending"
+            },
+            {
+              "at": "<AT>",
+              "detail": "looked again",
+              "event": "status",
+              "from": "pending",
+              "pkg": "D",
+              "to": "verifying"
+            }
+          ],
+          "shape": "jsonl"
+        },
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": null,
+              "path": null,
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "{\"orca\": \"timeout\", \"detail\": \"no result\"}",
+                "id": "F",
+                "kind": "delegate"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "await-orca",
+                "executor": "herdr",
+                "files_changed": null,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "implementing",
+                "tree": null
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "marked by the instructor",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "verifying",
+                "tree": null
+              },
+              "C": {
+                "attempts": 1,
+                "commit": null,
+                "detail": "retry it",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "D": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "looked again",
+                "executor": "pi",
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "verifying",
+                "tree": "<HOME>/trees/D"
+              },
+              "E": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "F": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": "herdr",
+                "files_changed": null,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": null
+              }
+            },
+            "plan": "plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 1
+          },
+          "shape": "json-indent"
+        }
+      }
+    }
+  ]
+}

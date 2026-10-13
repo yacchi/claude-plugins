@@ -1,0 +1,464 @@
+{
+  "scenario": "wave-run/basic",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "wave/state.json",
+        "--into",
+        "wave-int",
+        "--repo",
+        "../work",
+        "--max-in-flight",
+        "1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "approvals": 0,
+        "blocked": [],
+        "flaky_tests": [],
+        "integrated": [
+          "A",
+          "B",
+          "C"
+        ],
+        "needs": [],
+        "network_denials": [],
+        "pending": [],
+        "reason": null,
+        "state": "<HOME>/wave/state.json",
+        "status": "done",
+        "waves": 3
+      },
+      "stderr": "max-in-flight: 1 (option)\n",
+      "files": {
+        "~/.claude/orchestra/waves.jsonl": {
+          "content": {
+            "into": "wave-int",
+            "plan": "<HOME>/wave/plan.json",
+            "registered_at": "<REGISTERED_AT>",
+            "repo": "<WORK>",
+            "state": "<HOME>/wave/state.json"
+          },
+          "shape": "json-line"
+        },
+        "~/wave/context/B.md": {
+          "content": "# Wave package B\n\nWORKING TREE: the isolated worktree you are started in (your cwd). Do every read, edit, test and command inside it; never touch files outside it.\n\nYou own only these paths (files_owned); change nothing else:\n- b.txt\n\nCarry-over: anything you need changed outside files_owned goes, one self-contained instruction per line with file paths, into <HOME>/wave/carry/B.carry.md -- never into the code. Finish your own scope anyway.\n\nRead the current code before trusting the spec's paths: other packages have moved code since it was written.\n\nDo NOT commit, stash, reset or checkout. To set changes aside use `agent-exec shelf push` / `agent-exec shelf pop`, never `git stash`.\n\nIf the task cannot be done as specified, reply with a first line `ESCALATE: <reason>` and change nothing further.\n\nNetwork access goes through an allowlist. A blocked request (proxy 403, \"blocked by network allowlist\", connection refused to an external host) must not be worked around: no other mirrors, no proxy or environment changes, no hand-vendoring. If the task cannot be finished without it, reply with a first line `ESCALATE: network <host>[, <host>...]`.\n\nDo not commit: leave every change uncommitted in the working tree.\n",
+          "shape": "text"
+        },
+        "~/wave/state.events.jsonl": {
+          "content": [
+            {
+              "at": "<AT>",
+              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "event": "max-in-flight",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "A",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "A",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "A",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "A",
+              "to": "ready"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"tasks\": [\"A\"]}",
+              "event": "integrate-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"applied\"}",
+              "event": "integrate-task",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"ok\"}",
+              "event": "integrate-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'wave-int' at <WORK>-orchestra/00000000-wave-int",
+              "event": "integrate",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "ready",
+              "pkg": "A",
+              "to": "integrated"
+            },
+            {
+              "at": "<AT>",
+              "detail": "B",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "B",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "B",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "B",
+              "to": "ready"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"tasks\": [\"B\"]}",
+              "event": "integrate-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"applied\"}",
+              "event": "integrate-task",
+              "from": null,
+              "pkg": "B",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"ok\"}",
+              "event": "integrate-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'wave-int' at <WORK>-orchestra/00000000-wave-int",
+              "event": "integrate",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "ready",
+              "pkg": "B",
+              "to": "integrated"
+            },
+            {
+              "at": "<AT>",
+              "detail": "C",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "C",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "C",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "C",
+              "to": "ready"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"tasks\": [\"C\"]}",
+              "event": "integrate-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"applied\"}",
+              "event": "integrate-task",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"ok\"}",
+              "event": "integrate-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'wave-int' at <WORK>-orchestra/00000000-wave-int",
+              "event": "integrate",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "ready",
+              "pkg": "C",
+              "to": "integrated"
+            }
+          ],
+          "shape": "jsonl"
+        },
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#1>",
+              "path": "<WORK>-orchestra/00000000-wave-int",
+              "task": "wave-int"
+            },
+            "needs": [],
+            "packages": {
+              "A": {
+                "attempts": 0,
+                "commit": "<SHA#2>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A"
+              },
+              "B": {
+                "attempts": 0,
+                "commit": "<SHA#3>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B"
+              },
+              "C": {
+                "attempts": 0,
+                "commit": "<SHA#4>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C"
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 3
+          },
+          "shape": "json-indent"
+        }
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "status",
+        "--state",
+        "wave/state.json",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "integration": {
+          "base": "<SHA#1>",
+          "path": "<WORK>-orchestra/00000000-wave-int",
+          "task": "wave-int"
+        },
+        "needs": [],
+        "packages": {
+          "A": {
+            "attempts": 0,
+            "commit": "<SHA#2>",
+            "detail": "",
+            "executor": "pi",
+            "files_changed": 1,
+            "session": true,
+            "since": "<SINCE>",
+            "status": "integrated",
+            "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A"
+          },
+          "B": {
+            "attempts": 0,
+            "commit": "<SHA#3>",
+            "detail": "",
+            "executor": "pi",
+            "files_changed": 1,
+            "session": true,
+            "since": "<SINCE>",
+            "status": "integrated",
+            "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B"
+          },
+          "C": {
+            "attempts": 0,
+            "commit": "<SHA#4>",
+            "detail": "",
+            "executor": "pi",
+            "files_changed": 1,
+            "session": true,
+            "since": "<SINCE>",
+            "status": "integrated",
+            "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C"
+          }
+        },
+        "plan": "<HOME>/wave/plan.json",
+        "stopped": null,
+        "updated": "<UPDATED>",
+        "version": 1,
+        "wave": 3
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "wave/state.json",
+        "--into",
+        "wave-int",
+        "--repo",
+        "../work",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "wave run done  waves=0\n  integrated: A, B, C\n",
+      "stderr": "max-in-flight: 4 (auto)\n"
+    }
+  ]
+}

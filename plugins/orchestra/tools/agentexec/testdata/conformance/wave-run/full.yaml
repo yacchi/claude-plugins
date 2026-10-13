@@ -1,0 +1,64 @@
+description: >
+  --full: gated, a green full check after each integrating round records
+  green.json and runs --on-green in a separate green tree at the green SHA
+  (removed once the run is done); a full check that is red even at the last
+  green SHA stops the run (exit 5) without reverting anything. verify_mode
+  final runs --full once at the end; red there converges through catch-all
+  fix-up packages (deep, delegated here) until converge_rounds is used up,
+  then hands over a post-integration need and stops
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      interactive_host: none
+    ~/gated-root/.claude/orchestra.yaml: |
+      wave:
+        verify_mode: gated
+    shared.txt: "base\n"
+    ~/wave/specs/A.md: |
+      Write a.txt.
+      COMMANDS:
+      printf 'a\n' > a.txt
+    ~/wave/specs/B.md: |
+      Write b.txt.
+      COMMANDS:
+      printf 'b\n' > b.txt
+    ~/wave/plan.json: |
+      {"packages": [
+         {"id": "A", "spec": "specs/A.md", "cls": "standard", "files_owned": ["a.txt"]},
+         {"id": "B", "spec": "specs/B.md", "cls": "standard", "depends_on": ["A"], "files_owned": ["b.txt"]}
+       ]}
+normalize_keys: [since, updated, at, registered_at]
+normalize_text:
+  - pattern: '"(seconds|until)": [0-9.e+-]+'
+    replace: '"$1": <N>'
+steps:
+  - argv: [wave, run, --plan, wave/plan.json, --state, gated/state.json, --into, gated-int, --repo, ../work, --max-in-flight, "1",
+           --gate, "true", --full, "test -f a.txt", --full-every, "1", --full-timeout, "60",
+           --on-green, "printf '%s %s\\n' {sha} \"$WAVE_GREEN_SHA\" >> \"$HOME/green.out\"; pwd -P >> \"$HOME/green.out\""]
+    cwd: "~"
+    env:
+      ORCHESTRA_CONFIG_ROOT: "<HOME>/gated-root"
+    snapshot: ["~/gated/state.json", "~/gated/state.events.jsonl", "~/gated/green.json", "~/green.out"]
+  - argv: [wave, run, --plan, wave/plan.json, --state, red/state.json, --into, red-int, --repo, ../work, --max-in-flight, "1",
+           --gate, "true", --full, "false"]
+    cwd: "~"
+    env:
+      ORCHESTRA_CONFIG_ROOT: "<HOME>/gated-root"
+    snapshot: ["~/red/state.json", "~/red/green.json"]
+  - argv: [wave, run, --plan, wave/plan.json, --state, final/state.json, --into, final-int, --repo, ../work, --max-in-flight, "1",
+           --full, "echo boom; exit 1"]
+    cwd: "~"
+    snapshot: ["~/final/state.json", "~/final/state.events.jsonl", "~/final/fixups.json", "~/final/fixups/fix-1.md"]

@@ -1,0 +1,51 @@
+description: >
+  the other direction: a wave started by the implementation under test is
+  marked and resumed by the Python runner (pre-cutover mixed use of one
+  state dir)
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      interactive_host: none
+    shared.txt: "base\n"
+    ~/wave/specs/A.md: "spec A\n"
+    ~/wave/specs/B.md: |
+      Write b.txt.
+      COMMANDS:
+      printf 'b\n' > b.txt
+    ~/wave/plan.json: |
+      {"packages": [
+         {"id": "A", "spec": "specs/A.md", "cls": "light", "files_owned": ["a.txt"]},
+         {"id": "B", "spec": "specs/B.md", "cls": "standard", "depends_on": ["A"], "files_owned": ["b.txt"]}
+       ]}
+normalize_keys: [since, updated, at, registered_at]
+normalize_text:
+  - pattern: '"(seconds|until)": [0-9.e+-]+'
+    replace: '"$1": <N>'
+  - pattern: '\b[0-9]+[hm][0-9]{2}[ms]\b'
+    replace: '<ELAPSED>'
+steps:
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work]
+    cwd: "~"
+    snapshot: ["~/wave/state.json"]
+  - argv: [wave, mark, --state, wave/state.json, --pkg, A, --status, ready]
+    cwd: "~"
+    impl: python
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work]
+    cwd: "~"
+    impl: python
+    snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl"]
+  - argv: [wave, status, --state, wave/state.json, --text]
+    cwd: "~"

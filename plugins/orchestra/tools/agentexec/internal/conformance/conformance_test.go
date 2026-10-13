@@ -206,7 +206,7 @@ func TestConformance(t *testing.T) {
 
 func runScenario(t *testing.T, sc *Scenario) Golden {
 	s := newSandbox(t, sc)
-	n := newNormalizer(s, sc.NormalizeKeys)
+	n := newNormalizer(s, sc.NormalizeKeys, sc.NormalizeText)
 	g := Golden{Scenario: sc.ID()}
 	vars := map[string]string{}
 	for _, st := range sc.Steps {

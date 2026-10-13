@@ -1,0 +1,355 @@
+{
+  "scenario": "wave-run/gated-self-verify",
+  "steps": [
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "wave/plan.json",
+        "--state",
+        "wave/state.json",
+        "--into",
+        "wave-int",
+        "--repo",
+        "../work",
+        "--max-in-flight",
+        "1"
+      ],
+      "exit": 1,
+      "stdout_shape": "json-line",
+      "stdout": {
+        "approvals": 0,
+        "blocked": [
+          "B"
+        ],
+        "flaky_tests": [],
+        "integrated": [
+          "C"
+        ],
+        "needs": [
+          {
+            "id": "A",
+            "kind": "self-verify"
+          }
+        ],
+        "network_denials": [],
+        "pending": [],
+        "reason": null,
+        "state": "<HOME>/wave/state.json",
+        "status": "done",
+        "waves": 2
+      },
+      "stderr": "max-in-flight: 1 (option)\n",
+      "files": {
+        "~/wave/corrections/A.md": {
+          "content": "# Correction for A\n\nThese checks failed on your changes. Fix exactly this, stay inside files_owned, do not commit.\n\n## nobad\n\n",
+          "shape": "text"
+        },
+        "~/wave/state.events.jsonl": {
+          "content": [
+            {
+              "at": "<AT>",
+              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "event": "max-in-flight",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "A",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "A",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "A",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "event": "check-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "event": "check-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "self-verify failed",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "A",
+              "to": "fixing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 2, \"cls\": \"standard\", \"kind\": \"correction\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "fixing",
+              "pkg": "A",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "event": "check-start",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "event": "check-end",
+              "from": null,
+              "pkg": "A",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "## nobad\n",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "A",
+              "to": "needs"
+            },
+            {
+              "at": "<AT>",
+              "detail": "C",
+              "event": "wave-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "pending",
+              "pkg": "C",
+              "to": "implementing"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "event": "dispatch-start",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "event": "dispatch-end",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "implementing",
+              "pkg": "C",
+              "to": "verifying"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
+              "event": "check-start",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"pass\"}",
+              "event": "check-end",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "verifying",
+              "pkg": "C",
+              "to": "ready"
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"tasks\": [\"C\"]}",
+              "event": "integrate-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"applied\"}",
+              "event": "integrate-task",
+              "from": null,
+              "pkg": "C",
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"at_commit\": \"<SHA#1>\"}",
+              "event": "verify-start",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "event": "verify-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"status\": \"ok\"}",
+              "event": "integrate-end",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'wave-int' at <WORK>-orchestra/00000000-wave-int",
+              "event": "integrate",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "",
+              "event": "status",
+              "from": "ready",
+              "pkg": "C",
+              "to": "integrated"
+            }
+          ],
+          "shape": "jsonl"
+        },
+        "~/wave/state.json": {
+          "content": {
+            "integration": {
+              "base": "<SHA#2>",
+              "path": "<WORK>-orchestra/00000000-wave-int",
+              "task": "wave-int"
+            },
+            "needs": [
+              {
+                "at": "<AT>",
+                "detail": "## nobad\n",
+                "id": "A",
+                "kind": "self-verify"
+              }
+            ],
+            "packages": {
+              "A": {
+                "attempts": 1,
+                "commit": null,
+                "detail": "## nobad\n",
+                "executor": "pi",
+                "files_changed": null,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "needs",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A"
+              },
+              "B": {
+                "attempts": 0,
+                "commit": null,
+                "detail": "",
+                "executor": null,
+                "files_changed": null,
+                "session": false,
+                "since": "<SINCE>",
+                "status": "pending",
+                "tree": null
+              },
+              "C": {
+                "attempts": 0,
+                "commit": "<SHA#1>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C"
+              }
+            },
+            "plan": "<HOME>/wave/plan.json",
+            "stopped": null,
+            "updated": "<UPDATED>",
+            "version": 1,
+            "wave": 2
+          },
+          "shape": "json-indent"
+        }
+      }
+    }
+  ]
+}

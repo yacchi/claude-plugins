@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -26,6 +27,9 @@ import (
 //	  fakes: [pi]                # fake executors on PATH
 //	  keep_sandbox_default: true # skip the harness's `sandbox: {mode: off}` user layer
 //	normalize_keys: [elapsed_s]  # JSON keys whose values are masked
+//	normalize_text:              # regex rewrites of every string (after the
+//	  - pattern: '"seconds": [0-9.e-]+'   #   built-in masks), e.g. durations
+//	    replace: '"seconds": <S>'         #   inside JSON-in-a-string details
 //	steps:
 //	  - argv: [config, --json]
 //	    cwd: sub/dir             # relative to WORK ("~" or "~/x" for HOME)
@@ -47,13 +51,20 @@ import (
 // running that step's implementation, for a PATH shim that must reach it
 // (`exec "$AGENT_EXEC_UNDER_TEST" "$@"`: a detached child re-runs the shim).
 type Scenario struct {
-	Description   string   `yaml:"description"`
-	Platforms     []string `yaml:"platforms"`
-	Setup         Setup    `yaml:"setup"`
-	NormalizeKeys []string `yaml:"normalize_keys"`
-	Steps         []Step   `yaml:"steps"`
+	Description   string     `yaml:"description"`
+	Platforms     []string   `yaml:"platforms"`
+	Setup         Setup      `yaml:"setup"`
+	NormalizeKeys []string   `yaml:"normalize_keys"`
+	NormalizeText []TextRule `yaml:"normalize_text"`
+	Steps         []Step     `yaml:"steps"`
 
 	area, name, path string
+}
+
+// TextRule is one normalize_text rewrite (Go regexp syntax; $1 in Replace).
+type TextRule struct {
+	Pattern string `yaml:"pattern"`
+	Replace string `yaml:"replace"`
 }
 
 type Setup struct {
@@ -135,6 +146,11 @@ func loadScenarios(root string) ([]*Scenario, error) {
 		dec.KnownFields(true)
 		if err := dec.Decode(sc); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		for _, r := range sc.NormalizeText {
+			if _, err := regexp.Compile(r.Pattern); err != nil {
+				return nil, fmt.Errorf("%s: normalize_text: %w", path, err)
+			}
 		}
 		if len(sc.Steps) == 0 {
 			return nil, fmt.Errorf("%s: no steps", path)

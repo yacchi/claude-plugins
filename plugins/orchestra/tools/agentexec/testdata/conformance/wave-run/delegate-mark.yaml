@@ -1,0 +1,50 @@
+description: >
+  light packages route to a Claude tier: with no interactive host the
+  dispatch hands them back as `delegate` needs (token, model, the task
+  tree), their dependent is blocked and the run ends done with needs (exit
+  1); `wave mark --status ready` sends A back through self-verify and the
+  next run integrates the tree as it is (here: nothing changed), which
+  unblocks B; `--status failed` is a terminal handoff
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      interactive_host: none
+    shared.txt: "base\n"
+    ~/wave/specs/A.md: "spec A\n"
+    ~/wave/specs/B.md: "spec B\n"
+    ~/wave/specs/C.md: "spec C\n"
+    ~/wave/plan.json: |
+      {"packages": [
+         {"id": "A", "spec": "specs/A.md", "cls": "light", "files_owned": ["a.txt"]},
+         {"id": "B", "spec": "specs/B.md", "cls": "light", "depends_on": ["A"], "files_owned": ["b.txt"]},
+         {"id": "C", "spec": "specs/C.md", "cls": "light", "files_owned": ["c.txt"]}
+       ]}
+normalize_keys: [since, updated, at, registered_at]
+normalize_text:
+  - pattern: '"(seconds|until)": [0-9.e+-]+'
+    replace: '"$1": <N>'
+steps:
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1", --no-ui]
+    cwd: "~"
+    snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl"]
+  - argv: [wave, mark, --state, wave/state.json, --pkg, A, --status, ready]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --pkg, C, --status, failed, --detail, "given up"]
+    cwd: "~"
+    snapshot: ["~/wave/state.json"]
+  - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1"]
+    cwd: "~"
+    snapshot: ["~/wave/state.json"]

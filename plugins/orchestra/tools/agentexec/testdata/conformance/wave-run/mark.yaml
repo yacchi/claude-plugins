@@ -1,0 +1,80 @@
+description: >
+  wave mark: --status ready hands a package back to self-verify (pending and
+  failed are terminal handoffs) and clears its need; --widen records extra
+  files_owned globs in plan-overrides.json and re-queues the package;
+  --recheck batches packages with a tree back to verifying (all-or-nothing);
+  --clear-environment drops the wave-level needs and the stop record;
+  --await hands a package whose interactive session stopped on a dialog
+  back to the runner when the host registry still holds that session; and
+  the usage and lookup errors
+setup:
+  files:
+    ~/trees/A/keep: "x\n"
+    ~/trees/D/keep: "x\n"
+    ~/wave/herdr-sessions.json: |
+      {"A": {"pkg": "A", "terminal": "t-A", "worktree": "<HOME>/trees/A", "herdr_session": "orchestra"},
+       "F": {"pkg": "F", "terminal": "t-F", "worktree": "<HOME>/trees/missing"}}
+    ~/wave/plan-overrides.json: |
+      {"D": {"files_owned_add": ["src/*.py"]}}
+    ~/wave/state.json: |
+      {
+        "version": 1, "plan": "plan.json", "wave": 1,
+        "integration": {"task": "wave-int", "path": null, "base": null},
+        "needs": [
+          {"id": "A", "kind": "delegate", "detail": "{\"orca\": \"stalled\", \"detail\": \"dialog:\\nAllow?\\nterminal: t-A\"}", "at": 10.5},
+          {"id": "B", "kind": "escalate", "detail": "ESCALATE: unclear", "at": 11.5},
+          {"id": "F", "kind": "delegate", "detail": "{\"orca\": \"timeout\", \"detail\": \"no result\"}", "at": 12.5},
+          {"id": null, "kind": "environment", "detail": "ensure failed", "at": 13.5}
+        ],
+        "packages": {
+          "A": {"status": "needs", "since": 1.5, "attempts": 0, "tree": null, "executor": "herdr", "session": true, "files_changed": null, "commit": null, "detail": "x"},
+          "B": {"status": "needs", "since": 1.5, "attempts": 0, "tree": null, "executor": "pi", "session": false, "files_changed": null, "commit": null, "detail": "ESCALATE: unclear"},
+          "C": {"status": "failed", "since": 1.5, "attempts": 1, "tree": null, "executor": null, "session": false, "files_changed": null, "commit": null, "detail": "boom"},
+          "D": {"status": "needs", "since": 1.5, "attempts": 0, "tree": "<HOME>/trees/D", "executor": "pi", "session": false, "files_changed": null, "commit": null, "detail": ""},
+          "E": {"status": "pending", "since": 1.5, "attempts": 0, "tree": null, "executor": null, "session": false, "files_changed": null, "commit": null, "detail": ""},
+          "F": {"status": "needs", "since": 1.5, "attempts": 0, "tree": null, "executor": "herdr", "session": true, "files_changed": null, "commit": null, "detail": ""}
+        },
+        "stopped": {"reason": "environment: ensure failed", "at": 14.5},
+        "updated": 15.5
+      }
+normalize_keys: [since, updated, at]
+steps:
+  - argv: [wave, mark, --state, wave/state.json]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --pkg, A]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --pkg, A, --status, integrated]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/nope.json, --pkg, A, --status, ready]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --pkg, Z, --status, ready]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --await, A, --pkg, A]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --await, A, --clear-environment]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --clear-environment, --detail, x]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --await, B]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --await, F]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --await, A]
+    cwd: "~"
+    snapshot: ["~/wave/state.json"]
+  - argv: [wave, mark, --state, wave/state.json, --pkg, B, --status, ready]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --pkg, C, --status, pending, --detail, "retry it"]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --recheck, "D,E"]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --recheck, "D,ZZ"]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --pkg, D, --widen, "src/*.py,docs/*.md,"]
+    cwd: "~"
+    snapshot: ["~/wave/plan-overrides.json"]
+  - argv: [wave, mark, --state, wave/state.json, --recheck, D, --detail, "looked again"]
+    cwd: "~"
+  - argv: [wave, mark, --state, wave/state.json, --clear-environment]
+    cwd: "~"
+    snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl"]
