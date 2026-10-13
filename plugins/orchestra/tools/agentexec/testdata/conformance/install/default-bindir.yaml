@@ -1,0 +1,13 @@
+description: >
+  empty stdin: ~/.local/bin (on PATH) is the default; the shim is written and executable
+setup:
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  files:
+    ~/.claude/plugins/marketplaces/mp1/plugins/orchestra/tools/agent-exec: |
+      #!/bin/sh
+steps:
+  - argv: [install]
+    stdin: ""
+    go_replace: [{old: "Quick test: agent-exec list", new: "Quick test: agent-exec doctor"}]
+    snapshot: ["~/.local/bin/agent-exec"]

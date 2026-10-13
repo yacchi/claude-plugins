@@ -1,0 +1,13 @@
+description: >
+  a single marketplace clone is used without asking
+setup:
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  files:
+    ~/.claude/plugins/marketplaces/mp2/plugins/orchestra/tools/agent-exec: |
+      #!/bin/sh
+steps:
+  - argv: [install]
+    stdin: ""
+    go_replace: [{old: "Quick test: agent-exec list", new: "Quick test: agent-exec doctor"}]
+    snapshot: ["~/.local/bin/agent-exec"]

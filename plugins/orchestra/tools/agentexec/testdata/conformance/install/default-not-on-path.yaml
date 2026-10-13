@@ -1,0 +1,11 @@
+description: >
+  no candidate on PATH: the first is the default and the PATH warning follows
+setup:
+  files:
+    ~/.claude/plugins/marketplaces/mp1/plugins/orchestra/tools/agent-exec: |
+      #!/bin/sh
+steps:
+  - argv: [install]
+    stdin: "\n"
+    go_replace: [{old: "Quick test: agent-exec list", new: "Quick test: agent-exec doctor"}]
+    snapshot: ["~/.local/bin/agent-exec"]

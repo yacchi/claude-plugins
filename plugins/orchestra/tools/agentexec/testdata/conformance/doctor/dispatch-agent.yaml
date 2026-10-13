@@ -1,0 +1,24 @@
+description: >
+  pi with dispatch: agent keeps its note and is not in ready
+platforms: [darwin]
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    .claude/orchestra.yaml: |
+      external_executors:
+        pi:
+          dispatch: agent
+steps:
+  - argv: [doctor]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
+  - argv: [doctor, --text]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}

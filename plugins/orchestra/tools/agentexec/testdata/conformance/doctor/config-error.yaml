@@ -1,0 +1,15 @@
+description: >
+  a broken config layer: resolved false, the error text, no executors, no route, defaults for the rest (the parser's message differs between implementations)
+platforms: [darwin]
+normalize_keys: [error]
+setup:
+  fakes: [pi]
+  files:
+    .claude/orchestra.yaml: |
+      tiers: [unclosed
+steps:
+  - argv: [doctor]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
+  - argv: [doctor, --text]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
+    go_replace: [{old: "while parsing a flow sequence\n  in \"<WORK>/.claude/orchestra.yaml\", line 1, column 8\nexpected ',' or ']', but got '<stream end>'\n  in \"<WORK>/.claude/orchestra.yaml\", line 2, column 1\n", new: "yaml: line 1: did not find expected ',' or ']'\n"}]

@@ -1,0 +1,123 @@
+{
+  "scenario": "doctor/config-error",
+  "steps": [
+    {
+      "argv": [
+        "doctor"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cli_network": {
+          "ecosystem": true,
+          "executors": {
+            "pi": {
+              "backend": "seatbelt",
+              "domains": [
+                "chatgpt.com",
+                "auth.openai.com"
+              ],
+              "reason": "network not restricted: srt not found (not-installed)",
+              "restricted": false
+            }
+          },
+          "mode": "allowlist",
+          "preset_domains": []
+        },
+        "config": {
+          "config_root": "<WORK>",
+          "error": "<ERROR>",
+          "layers_found": [],
+          "resolved": false,
+          "values": null,
+          "warnings": []
+        },
+        "cooldowns": {
+          "active": {},
+          "path": "<HOME>/.claude/orchestra/executor-state.json"
+        },
+        "executors": {},
+        "herdr_host": {
+          "backend": "seatbelt",
+          "home": "/private/tmp/orchestra-501/hx",
+          "network": {
+            "allowed_domains": [
+              "api.anthropic.com"
+            ],
+            "mode": "allowlist",
+            "reason": "network not restricted: srt not found (not-installed)",
+            "restricted": false,
+            "srt": {
+              "path": null,
+              "reason": "srt not found (not-installed)",
+              "version": null
+            }
+          },
+          "reason": "macOS Seatbelt (sandbox-exec)",
+          "sandboxed": true
+        },
+        "permission": {
+          "best_effort_note": "best-effort scan of ~/.claude/settings.json and ./.claude/settings.json(.local); does not see enterprise policy or CLI --allowedTools",
+          "found": false,
+          "rule": "Bash(agent-exec:*)",
+          "sources": []
+        },
+        "ready": {},
+        "route": {},
+        "sandbox": {
+          "backend": "seatbelt",
+          "enforced": true,
+          "learned": {
+            "count": 0,
+            "path": "<HOME>/.local/state/claude-orchestra/sandbox-learned.json",
+            "warning": null
+          },
+          "limits": [],
+          "mode": "auto",
+          "probes": {
+            "bwrap": {
+              "detail": "not Linux",
+              "ok": false
+            },
+            "landlock": {
+              "abi": 0,
+              "detail": "not Linux",
+              "ok": false
+            },
+            "seatbelt": {
+              "detail": "sandbox-exec probe ok",
+              "ok": true
+            }
+          },
+          "reason": "macOS Seatbelt (sandbox-exec)",
+          "would_refuse": false
+        },
+        "shim": {
+          "anchored_to": null,
+          "installed": false,
+          "on_path": false,
+          "path": null,
+          "target": null
+        },
+        "user_config": {
+          "herdr": "isolate",
+          "orca": "isolate"
+        },
+        "uv": {
+          "present": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "doctor",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec doctor\n-----------------\nshim: NOT installed\nuv: NOT found\nconfig: FAILED to resolve: agent-exec: invalid YAML in <WORK>/.claude/orchestra.yaml: while parsing a flow sequence\n  in \"<WORK>/.claude/orchestra.yaml\", line 1, column 8\nexpected ',' or ']', but got '<stream end>'\n  in \"<WORK>/.claude/orchestra.yaml\", line 2, column 1\npermission rule Bash(agent-exec:*): NOT found\nexecutors: none known\nsandbox: mode=auto backend=seatbelt enforced=True (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=True (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=False srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=False backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\n",
+      "stderr": ""
+    }
+  ]
+}

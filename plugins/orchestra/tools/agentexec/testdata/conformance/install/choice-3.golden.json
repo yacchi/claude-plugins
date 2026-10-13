@@ -1,0 +1,20 @@
+{
+  "scenario": "install/choice-3",
+  "steps": [
+    {
+      "argv": [
+        "install"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "Choose an install directory for the agent-exec shim:\n  1) <HOME>/.local/bin (NOT on PATH) [default]\n  2) /usr/local/bin (NOT on PATH)\n  3) <HOME>/bin (NOT on PATH)\n  4) <HOME>/.claude/bin (NOT on PATH)\n  5) enter a custom absolute path\nChoice [1]: installed <HOME>/bin/agent-exec -> <HOME>/.claude/plugins/marketplaces/mp1/plugins/orchestra/tools/agent-exec\n\nWARNING: <HOME>/bin is not on your PATH.\nAdd this to your shell rc file:\n  export PATH=\"<HOME>/bin:$PATH\"\n\nRequired: add \"Bash(agent-exec:*)\" to permissions.allow in\n  .claude/settings.json (project) or ~/.claude/settings.json (user)\n  You can also run /permissions in Claude Code to add it.\n\nQuick test: agent-exec list\n",
+      "stderr": "",
+      "files": {
+        "~/bin/agent-exec": {
+          "content": "#!/bin/sh\nexec \"<HOME>/.claude/plugins/marketplaces/mp1/plugins/orchestra/tools/agent-exec\" \"$@\"\n",
+          "shape": "text"
+        }
+      }
+    }
+  ]
+}

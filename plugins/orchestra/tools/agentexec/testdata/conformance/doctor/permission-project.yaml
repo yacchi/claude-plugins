@@ -1,0 +1,22 @@
+description: >
+  the permission rule only in ./.claude/settings.json and settings.local.json
+platforms: [darwin]
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    .claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    .claude/settings.local.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)", "Bash(ls)"]}}
+steps:
+  - argv: [doctor]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
+  - argv: [doctor, --text]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}

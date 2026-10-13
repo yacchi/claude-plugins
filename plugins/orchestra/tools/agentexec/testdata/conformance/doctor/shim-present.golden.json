@@ -1,0 +1,858 @@
+{
+  "scenario": "doctor/shim-present",
+  "steps": [
+    {
+      "argv": [
+        "doctor"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cli_network": {
+          "ecosystem": true,
+          "executors": {
+            "pi": {
+              "backend": "none",
+              "domains": [
+                "chatgpt.com",
+                "auth.openai.com"
+              ],
+              "reason": "sandbox.mode is off",
+              "restricted": false
+            }
+          },
+          "mode": "allowlist",
+          "preset_domains": []
+        },
+        "config": {
+          "config_root": "<WORK>",
+          "error": null,
+          "layers_found": [
+            "<HOME>/.claude/orchestra.yaml"
+          ],
+          "resolved": true,
+          "values": {
+            "checks": {
+              "ensure": [],
+              "flaky_threshold": 3,
+              "items": [],
+              "max_parallel": 2,
+              "retry_failed_alone": true
+            },
+            "cooldown": {
+              "enabled": true,
+              "path": "~/.claude/orchestra/executor-state.json",
+              "seconds": {
+                "auth": 0,
+                "credits": 3600,
+                "nonzero-exit": 0,
+                "quota": 3600,
+                "rate-limit": 900,
+                "sandbox": 0
+              }
+            },
+            "enforcement": {
+              "light_class": "off",
+              "opus_generalist": "nudge",
+              "session_cleanup": "on",
+              "turn_edits": 8,
+              "worker_vcs": "block"
+            },
+            "external_executors": {
+              "pi": {
+                "agent_dir": "managed",
+                "available": true,
+                "class_policy": {
+                  "deep": {
+                    "effort": "high",
+                    "model": "openai-codex/gpt-6.1-sol"
+                  },
+                  "independent-review": {
+                    "effort": "medium",
+                    "model": "openai-codex/gpt-6.1-sol"
+                  },
+                  "light": {
+                    "effort": "medium",
+                    "model": "openai-codex/gpt-5.6-luna"
+                  },
+                  "standard": {
+                    "effort": "medium",
+                    "model": "openai-codex/gpt-5.6-luna"
+                  }
+                },
+                "classes": [
+                  "light",
+                  "standard",
+                  "deep",
+                  "independent-review"
+                ],
+                "context_files": true,
+                "dispatch": "cli",
+                "enabled": true
+              }
+            },
+            "herdr": {
+              "add_dirs": [],
+              "args": "--model {model} --permission-mode {permission_mode}",
+              "auto_trust": true,
+              "enabled": "auto",
+              "keep_sessions": true,
+              "models": {
+                "deep": "opus",
+                "light": "sonnet",
+                "standard": "opus"
+              },
+              "permission_mode": "auto",
+              "startup_timeout": 90,
+              "task_timeout": 3600,
+              "user_config": "isolate",
+              "warm": {
+                "enabled": true,
+                "min_packages": 2,
+                "ttl_seconds": 3000
+              }
+            },
+            "interactive_host": "auto",
+            "isolation": {
+              "carry_extra": [],
+              "carry_files": [
+                ".claude/settings.local.json",
+                ".claude/orchestra.local.yaml",
+                "CLAUDE.local.md"
+              ]
+            },
+            "ledger": {
+              "dir": "~/.claude/orchestra/runs",
+              "enabled": true,
+              "retention_days": 30
+            },
+            "orca": {
+              "add_dirs": [],
+              "auto_trust": false,
+              "command": "claude --model {model} --permission-mode {permission_mode}",
+              "enabled": "auto",
+              "keep_sessions": true,
+              "models": {
+                "deep": "opus",
+                "light": "sonnet",
+                "standard": "opus"
+              },
+              "permission_mode": "auto",
+              "setup": "skip",
+              "startup_timeout": 90,
+              "task_timeout": 3600,
+              "user_config": "isolate"
+            },
+            "priority": {
+              "deep": {
+                "default": [
+                  "claude",
+                  "pi"
+                ]
+              },
+              "independent-review": {
+                "default": [
+                  "pi"
+                ]
+              },
+              "light": {
+                "default": [
+                  "claude",
+                  "pi"
+                ],
+                "investigation": [
+                  "claude",
+                  "pi"
+                ]
+              },
+              "review": {
+                "default": [
+                  "claude"
+                ]
+              },
+              "standard": {
+                "default": [
+                  "pi",
+                  "claude"
+                ]
+              }
+            },
+            "sandbox": {
+              "allow_write": [],
+              "deny_read": [],
+              "mode": "off",
+              "network": {
+                "allowed_domains": [
+                  "api.anthropic.com"
+                ],
+                "denied_domains": [],
+                "ecosystem": true,
+                "mode": "allowlist",
+                "quiet_domains": [
+                  "mcp-proxy.anthropic.com",
+                  "downloads.claude.ai",
+                  "statsig.anthropic.com",
+                  "datadoghq.com",
+                  "*.datadoghq.com",
+                  "sentry.io",
+                  "*.sentry.io",
+                  "herdr.dev"
+                ]
+              }
+            },
+            "telemetry": {
+              "dir": "~/.claude/orchestra/telemetry",
+              "enabled": false
+            },
+            "tiers": {
+              "deep": "opus",
+              "light": "haiku",
+              "review": "sonnet",
+              "standard": "sonnet"
+            },
+            "tools": {
+              "herdr": {
+                "bin": "herdr",
+                "source": "auto",
+                "spec": "aqua:herdrdev/herdr",
+                "version": "0.8.2"
+              },
+              "installer": "auto",
+              "pi": {
+                "bin": "pi",
+                "source": "auto",
+                "spec": "npm:@earendil-works/pi-coding-agent",
+                "version": "1.2.0"
+              },
+              "srt": {
+                "bin": "srt",
+                "source": "auto",
+                "spec": "npm:@anthropic-ai/sandbox-runtime",
+                "version": "0.0.79"
+              }
+            },
+            "watchdog": {
+              "enabled": true,
+              "idle_seconds": 600,
+              "repeat_limit": 3,
+              "tool_idle_seconds": 900,
+              "wall_seconds": {
+                "deep": 5400,
+                "independent-review": 2400,
+                "light": 1200,
+                "standard": 2400
+              }
+            }
+          },
+          "warnings": []
+        },
+        "cooldowns": {
+          "active": {},
+          "path": "<HOME>/.claude/orchestra/executor-state.json"
+        },
+        "executors": {
+          "pi": {
+            "available": true,
+            "binary": "pi",
+            "dispatch": "cli",
+            "enabled": true,
+            "hint": "run: agent-exec tools install pi",
+            "login": {
+              "openai-codex": true
+            },
+            "path": "<ROOT>/bin/pi",
+            "source": "system",
+            "tool_version": null
+          }
+        },
+        "herdr_host": {
+          "backend": "none",
+          "home": "/private/tmp/orchestra-501/hx",
+          "network": {
+            "allowed_domains": [
+              "api.anthropic.com"
+            ],
+            "mode": "allowlist",
+            "reason": "network not restricted: host not sandboxed: sandbox.mode is off",
+            "restricted": false,
+            "srt": {
+              "path": null,
+              "reason": "srt not found (not-installed)",
+              "version": null
+            }
+          },
+          "reason": "sandbox.mode is off",
+          "sandboxed": false
+        },
+        "permission": {
+          "best_effort_note": "best-effort scan of ~/.claude/settings.json and ./.claude/settings.json(.local); does not see enterprise policy or CLI --allowedTools",
+          "found": true,
+          "rule": "Bash(agent-exec:*)",
+          "sources": [
+            "<HOME>/.claude/settings.json"
+          ]
+        },
+        "ready": {
+          "pi": {
+            "missing": [],
+            "ok": true
+          }
+        },
+        "route": {
+          "deep": {
+            "agent_type": null,
+            "archetype": "default",
+            "candidates": [
+              "claude",
+              "pi"
+            ],
+            "class": "deep",
+            "cooldown_bypassed": false,
+            "cooldowns_applied": [],
+            "dispatch": "claude",
+            "effort": null,
+            "executor": "claude",
+            "model": "opus",
+            "remaining": [
+              "pi"
+            ],
+            "skipped": [],
+            "source": "priority"
+          },
+          "light": {
+            "agent_type": null,
+            "archetype": "default",
+            "candidates": [
+              "claude",
+              "pi"
+            ],
+            "class": "light",
+            "cooldown_bypassed": false,
+            "cooldowns_applied": [],
+            "dispatch": "claude",
+            "effort": null,
+            "executor": "claude",
+            "model": "haiku",
+            "remaining": [
+              "pi"
+            ],
+            "skipped": [],
+            "source": "priority"
+          },
+          "review": {
+            "agent_type": null,
+            "archetype": "default",
+            "candidates": [
+              "claude"
+            ],
+            "class": "review",
+            "cooldown_bypassed": false,
+            "cooldowns_applied": [],
+            "dispatch": "claude",
+            "effort": null,
+            "executor": "claude",
+            "model": "sonnet",
+            "remaining": [],
+            "skipped": [],
+            "source": "priority"
+          },
+          "standard": {
+            "agent_type": null,
+            "archetype": "default",
+            "candidates": [
+              "pi",
+              "claude"
+            ],
+            "class": "standard",
+            "cooldown_bypassed": false,
+            "cooldowns_applied": [],
+            "dispatch": "cli",
+            "effort": "medium",
+            "executor": "pi",
+            "model": "openai-codex/gpt-5.6-luna",
+            "remaining": [
+              "claude"
+            ],
+            "skipped": [],
+            "source": "priority"
+          }
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "learned": {
+            "count": 0,
+            "path": "<HOME>/.local/state/claude-orchestra/sandbox-learned.json",
+            "warning": null
+          },
+          "limits": [],
+          "mode": "off",
+          "probes": {
+            "bwrap": {
+              "detail": "not Linux",
+              "ok": false
+            },
+            "landlock": {
+              "abi": 0,
+              "detail": "not Linux",
+              "ok": false
+            },
+            "seatbelt": {
+              "detail": "sandbox-exec probe ok",
+              "ok": true
+            }
+          },
+          "reason": "sandbox.mode is off",
+          "would_refuse": false
+        },
+        "shim": {
+          "anchored_to": "marketplace-clone",
+          "installed": true,
+          "on_path": true,
+          "path": "<HOME>/.local/bin/agent-exec",
+          "target": "/m/plugins/marketplaces/orchestra/tools/agent-exec"
+        },
+        "user_config": {
+          "herdr": "isolate",
+          "orca": "isolate"
+        },
+        "uv": {
+          "present": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "doctor",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json-indent",
+      "stdout": {
+        "cli_network": {
+          "ecosystem": true,
+          "executors": {
+            "pi": {
+              "backend": "none",
+              "domains": [
+                "chatgpt.com",
+                "auth.openai.com"
+              ],
+              "reason": "sandbox.mode is off",
+              "restricted": false
+            }
+          },
+          "mode": "allowlist",
+          "preset_domains": []
+        },
+        "config": {
+          "config_root": "<WORK>",
+          "error": null,
+          "layers_found": [
+            "<HOME>/.claude/orchestra.yaml"
+          ],
+          "resolved": true,
+          "values": {
+            "checks": {
+              "ensure": [],
+              "flaky_threshold": 3,
+              "items": [],
+              "max_parallel": 2,
+              "retry_failed_alone": true
+            },
+            "cooldown": {
+              "enabled": true,
+              "path": "~/.claude/orchestra/executor-state.json",
+              "seconds": {
+                "auth": 0,
+                "credits": 3600,
+                "nonzero-exit": 0,
+                "quota": 3600,
+                "rate-limit": 900,
+                "sandbox": 0
+              }
+            },
+            "enforcement": {
+              "light_class": "off",
+              "opus_generalist": "nudge",
+              "session_cleanup": "on",
+              "turn_edits": 8,
+              "worker_vcs": "block"
+            },
+            "external_executors": {
+              "pi": {
+                "agent_dir": "managed",
+                "available": true,
+                "class_policy": {
+                  "deep": {
+                    "effort": "high",
+                    "model": "openai-codex/gpt-6.1-sol"
+                  },
+                  "independent-review": {
+                    "effort": "medium",
+                    "model": "openai-codex/gpt-6.1-sol"
+                  },
+                  "light": {
+                    "effort": "medium",
+                    "model": "openai-codex/gpt-5.6-luna"
+                  },
+                  "standard": {
+                    "effort": "medium",
+                    "model": "openai-codex/gpt-5.6-luna"
+                  }
+                },
+                "classes": [
+                  "light",
+                  "standard",
+                  "deep",
+                  "independent-review"
+                ],
+                "context_files": true,
+                "dispatch": "cli",
+                "enabled": true
+              }
+            },
+            "herdr": {
+              "add_dirs": [],
+              "args": "--model {model} --permission-mode {permission_mode}",
+              "auto_trust": true,
+              "enabled": "auto",
+              "keep_sessions": true,
+              "models": {
+                "deep": "opus",
+                "light": "sonnet",
+                "standard": "opus"
+              },
+              "permission_mode": "auto",
+              "startup_timeout": 90,
+              "task_timeout": 3600,
+              "user_config": "isolate",
+              "warm": {
+                "enabled": true,
+                "min_packages": 2,
+                "ttl_seconds": 3000
+              }
+            },
+            "interactive_host": "auto",
+            "isolation": {
+              "carry_extra": [],
+              "carry_files": [
+                ".claude/settings.local.json",
+                ".claude/orchestra.local.yaml",
+                "CLAUDE.local.md"
+              ]
+            },
+            "ledger": {
+              "dir": "~/.claude/orchestra/runs",
+              "enabled": true,
+              "retention_days": 30
+            },
+            "orca": {
+              "add_dirs": [],
+              "auto_trust": false,
+              "command": "claude --model {model} --permission-mode {permission_mode}",
+              "enabled": "auto",
+              "keep_sessions": true,
+              "models": {
+                "deep": "opus",
+                "light": "sonnet",
+                "standard": "opus"
+              },
+              "permission_mode": "auto",
+              "setup": "skip",
+              "startup_timeout": 90,
+              "task_timeout": 3600,
+              "user_config": "isolate"
+            },
+            "priority": {
+              "deep": {
+                "default": [
+                  "claude",
+                  "pi"
+                ]
+              },
+              "independent-review": {
+                "default": [
+                  "pi"
+                ]
+              },
+              "light": {
+                "default": [
+                  "claude",
+                  "pi"
+                ],
+                "investigation": [
+                  "claude",
+                  "pi"
+                ]
+              },
+              "review": {
+                "default": [
+                  "claude"
+                ]
+              },
+              "standard": {
+                "default": [
+                  "pi",
+                  "claude"
+                ]
+              }
+            },
+            "sandbox": {
+              "allow_write": [],
+              "deny_read": [],
+              "mode": "off",
+              "network": {
+                "allowed_domains": [
+                  "api.anthropic.com"
+                ],
+                "denied_domains": [],
+                "ecosystem": true,
+                "mode": "allowlist",
+                "quiet_domains": [
+                  "mcp-proxy.anthropic.com",
+                  "downloads.claude.ai",
+                  "statsig.anthropic.com",
+                  "datadoghq.com",
+                  "*.datadoghq.com",
+                  "sentry.io",
+                  "*.sentry.io",
+                  "herdr.dev"
+                ]
+              }
+            },
+            "telemetry": {
+              "dir": "~/.claude/orchestra/telemetry",
+              "enabled": false
+            },
+            "tiers": {
+              "deep": "opus",
+              "light": "haiku",
+              "review": "sonnet",
+              "standard": "sonnet"
+            },
+            "tools": {
+              "herdr": {
+                "bin": "herdr",
+                "source": "auto",
+                "spec": "aqua:herdrdev/herdr",
+                "version": "0.8.2"
+              },
+              "installer": "auto",
+              "pi": {
+                "bin": "pi",
+                "source": "auto",
+                "spec": "npm:@earendil-works/pi-coding-agent",
+                "version": "1.2.0"
+              },
+              "srt": {
+                "bin": "srt",
+                "source": "auto",
+                "spec": "npm:@anthropic-ai/sandbox-runtime",
+                "version": "0.0.79"
+              }
+            },
+            "watchdog": {
+              "enabled": true,
+              "idle_seconds": 600,
+              "repeat_limit": 3,
+              "tool_idle_seconds": 900,
+              "wall_seconds": {
+                "deep": 5400,
+                "independent-review": 2400,
+                "light": 1200,
+                "standard": 2400
+              }
+            }
+          },
+          "warnings": []
+        },
+        "cooldowns": {
+          "active": {},
+          "path": "<HOME>/.claude/orchestra/executor-state.json"
+        },
+        "executors": {
+          "pi": {
+            "available": true,
+            "binary": "pi",
+            "dispatch": "cli",
+            "enabled": true,
+            "hint": "run: agent-exec tools install pi",
+            "login": {
+              "openai-codex": true
+            },
+            "path": "<ROOT>/bin/pi",
+            "source": "system",
+            "tool_version": null
+          }
+        },
+        "herdr_host": {
+          "backend": "none",
+          "home": "/private/tmp/orchestra-501/hx",
+          "network": {
+            "allowed_domains": [
+              "api.anthropic.com"
+            ],
+            "mode": "allowlist",
+            "reason": "network not restricted: host not sandboxed: sandbox.mode is off",
+            "restricted": false,
+            "srt": {
+              "path": null,
+              "reason": "srt not found (not-installed)",
+              "version": null
+            }
+          },
+          "reason": "sandbox.mode is off",
+          "sandboxed": false
+        },
+        "permission": {
+          "best_effort_note": "best-effort scan of ~/.claude/settings.json and ./.claude/settings.json(.local); does not see enterprise policy or CLI --allowedTools",
+          "found": true,
+          "rule": "Bash(agent-exec:*)",
+          "sources": [
+            "<HOME>/.claude/settings.json"
+          ]
+        },
+        "ready": {
+          "pi": {
+            "missing": [],
+            "ok": true
+          }
+        },
+        "route": {
+          "deep": {
+            "agent_type": null,
+            "archetype": "default",
+            "candidates": [
+              "claude",
+              "pi"
+            ],
+            "class": "deep",
+            "cooldown_bypassed": false,
+            "cooldowns_applied": [],
+            "dispatch": "claude",
+            "effort": null,
+            "executor": "claude",
+            "model": "opus",
+            "remaining": [
+              "pi"
+            ],
+            "skipped": [],
+            "source": "priority"
+          },
+          "light": {
+            "agent_type": null,
+            "archetype": "default",
+            "candidates": [
+              "claude",
+              "pi"
+            ],
+            "class": "light",
+            "cooldown_bypassed": false,
+            "cooldowns_applied": [],
+            "dispatch": "claude",
+            "effort": null,
+            "executor": "claude",
+            "model": "haiku",
+            "remaining": [
+              "pi"
+            ],
+            "skipped": [],
+            "source": "priority"
+          },
+          "review": {
+            "agent_type": null,
+            "archetype": "default",
+            "candidates": [
+              "claude"
+            ],
+            "class": "review",
+            "cooldown_bypassed": false,
+            "cooldowns_applied": [],
+            "dispatch": "claude",
+            "effort": null,
+            "executor": "claude",
+            "model": "sonnet",
+            "remaining": [],
+            "skipped": [],
+            "source": "priority"
+          },
+          "standard": {
+            "agent_type": null,
+            "archetype": "default",
+            "candidates": [
+              "pi",
+              "claude"
+            ],
+            "class": "standard",
+            "cooldown_bypassed": false,
+            "cooldowns_applied": [],
+            "dispatch": "cli",
+            "effort": "medium",
+            "executor": "pi",
+            "model": "openai-codex/gpt-5.6-luna",
+            "remaining": [
+              "claude"
+            ],
+            "skipped": [],
+            "source": "priority"
+          }
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "learned": {
+            "count": 0,
+            "path": "<HOME>/.local/state/claude-orchestra/sandbox-learned.json",
+            "warning": null
+          },
+          "limits": [],
+          "mode": "off",
+          "probes": {
+            "bwrap": {
+              "detail": "not Linux",
+              "ok": false
+            },
+            "landlock": {
+              "abi": 0,
+              "detail": "not Linux",
+              "ok": false
+            },
+            "seatbelt": {
+              "detail": "sandbox-exec probe ok",
+              "ok": true
+            }
+          },
+          "reason": "sandbox.mode is off",
+          "would_refuse": false
+        },
+        "shim": {
+          "anchored_to": "marketplace-clone",
+          "installed": true,
+          "on_path": true,
+          "path": "<HOME>/.local/bin/agent-exec",
+          "target": "/m/plugins/marketplaces/orchestra/tools/agent-exec"
+        },
+        "user_config": {
+          "herdr": "isolate",
+          "orca": "isolate"
+        },
+        "uv": {
+          "present": false
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "doctor",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: True)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nuv: NOT found\nconfig: resolved (1 layer(s) found)\n  - <HOME>/.claude/orchestra.yaml\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=True dispatch=cli binary=pi available=True\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=haiku effort=None source=priority)\n  - standard: pi (dispatch=cli model=openai-codex/gpt-5.6-luna effort=medium source=priority)\n  - deep: claude (dispatch=claude model=opus effort=None source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=None source=priority)\nsandbox: mode=off backend=none enforced=False (sandbox.mode is off)\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=False (sandbox.mode is off)\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=False srt=-  network not restricted: host not sandboxed: sandbox.mode is off\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=False backend=none domains=chatgpt.com, auth.openai.com  sandbox.mode is off\n",
+      "stderr": ""
+    }
+  ]
+}

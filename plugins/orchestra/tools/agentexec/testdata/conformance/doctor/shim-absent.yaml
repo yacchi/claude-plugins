@@ -1,0 +1,12 @@
+description: >
+  no shim and no permission rule: pi is not ready, every claude route still works
+platforms: [darwin]
+setup:
+  fakes: [pi]
+steps:
+  - argv: [doctor]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
+  - argv: [doctor, --json]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
+  - argv: [doctor, --text]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}

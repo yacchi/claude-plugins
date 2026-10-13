@@ -1,0 +1,20 @@
+{
+  "scenario": "install/marketplace-single",
+  "steps": [
+    {
+      "argv": [
+        "install"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "Choose an install directory for the agent-exec shim:\n  1) <HOME>/.local/bin (on PATH) [default]\n  2) /usr/local/bin (NOT on PATH)\n  3) <HOME>/bin (NOT on PATH)\n  4) <HOME>/.claude/bin (NOT on PATH)\n  5) enter a custom absolute path\nChoice [1]: installed <HOME>/.local/bin/agent-exec -> <HOME>/.claude/plugins/marketplaces/mp2/plugins/orchestra/tools/agent-exec\n\nRequired: add \"Bash(agent-exec:*)\" to permissions.allow in\n  .claude/settings.json (project) or ~/.claude/settings.json (user)\n  You can also run /permissions in Claude Code to add it.\n\nQuick test: agent-exec list\n",
+      "stderr": "",
+      "files": {
+        "~/.local/bin/agent-exec": {
+          "content": "#!/bin/sh\nexec \"<HOME>/.claude/plugins/marketplaces/mp2/plugins/orchestra/tools/agent-exec\" \"$@\"\n",
+          "shape": "text"
+        }
+      }
+    }
+  ]
+}

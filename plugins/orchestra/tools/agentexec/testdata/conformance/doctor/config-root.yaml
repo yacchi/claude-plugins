@@ -1,0 +1,14 @@
+description: >
+  ORCHESTRA_CONFIG_ROOT redirects the project layer
+platforms: [darwin]
+setup:
+  fakes: [pi]
+  env:
+    ORCHESTRA_CONFIG_ROOT: "<WORK>/other"
+  files:
+    other/.claude/orchestra.yaml: |
+      tiers:
+        light: opus
+steps:
+  - argv: [doctor]
+    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}

@@ -1,0 +1,12 @@
+description: >
+  a clone path that is not a file is an error (exit 1)
+setup:
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  files:
+    ~/.claude/plugins/marketplaces/mp1/plugins/orchestra/tools/agent-exec/x: |
+      y
+steps:
+  - argv: [install]
+    stdin: ""
+    stderr: exact

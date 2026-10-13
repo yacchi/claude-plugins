@@ -1,0 +1,20 @@
+{
+  "scenario": "install/non-writable",
+  "steps": [
+    {
+      "argv": [
+        "install"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "Choose an install directory for the agent-exec shim:\n  1) <HOME>/.local/bin (on PATH) [default]\n  2) /usr/local/bin (NOT on PATH)\n  3) <HOME>/bin (NOT on PATH)\n  4) <HOME>/.claude/bin (NOT on PATH)\n  5) enter a custom absolute path\nChoice [1]: <HOME>/.local/bin/agent-exec already exists. Overwrite? (y/N): ",
+      "stderr": "Traceback (most recent call last):\n  File \"/Users/yasu/projects/private/claude-plugins/claude-plugins/.claude/worktrees/agent-aafc6e7fcce1b5260/plugins/orchestra/tools/agent_exec.py\", line 10526, in <module>\n    sys.exit(main(sys.argv[1:]))\n             ~~~~^^^^^^^^^^^^^^\n  File \"/Users/yasu/projects/private/claude-plugins/claude-plugins/.claude/worktrees/agent-aafc6e7fcce1b5260/plugins/orchestra/tools/agent_exec.py\", line 10457, in main\n    return cmd_install()\n  File \"/Users/yasu/projects/private/claude-plugins/claude-plugins/.claude/worktrees/agent-aafc6e7fcce1b5260/plugins/orchestra/tools/agent_exec.py\", line 990, in cmd_install\n    with open(target, \"w\") as f:\n         ~~~~^^^^^^^^^^^^^\nPermissionError: [Errno 13] Permission denied: '<HOME>/.local/bin/agent-exec'\n",
+      "files": {
+        "~/.local/bin/agent-exec": {
+          "content": "old\n",
+          "shape": "text"
+        }
+      }
+    }
+  ]
+}

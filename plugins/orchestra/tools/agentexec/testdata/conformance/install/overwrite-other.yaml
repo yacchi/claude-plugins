@@ -1,0 +1,16 @@
+description: >
+  any other answer means no
+setup:
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0644"
+  files:
+    ~/.claude/plugins/marketplaces/mp1/plugins/orchestra/tools/agent-exec: |
+      #!/bin/sh
+    ~/.local/bin/agent-exec: |
+      old shim
+steps:
+  - argv: [install]
+    stdin: "\nmaybe\n"
+    snapshot: ["~/.local/bin/agent-exec"]

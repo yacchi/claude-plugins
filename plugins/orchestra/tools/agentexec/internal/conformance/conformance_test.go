@@ -229,6 +229,11 @@ func compare(t *testing.T, sc *Scenario, want, got Golden) {
 			t.Errorf("%s: golden argv %v differs from the scenario (re-capture?)", where, w.Argv)
 			continue
 		}
+		if *implFlag == "go" {
+			for _, msg := range applyGoDeviations(st, &w, &g) {
+				t.Errorf("%s: %s", where, msg)
+			}
+		}
 		if w.Exit != g.Exit {
 			t.Errorf("%s: exit %d, want %d\nstderr: %s", where, g.Exit, w.Exit, g.Stderr)
 		}
