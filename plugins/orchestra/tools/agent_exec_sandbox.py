@@ -37,6 +37,9 @@ import tempfile
 from datetime import datetime, timezone
 
 MODES = ("auto", "required", "off")
+NETWORK_MODES = ("allowlist", "off")
+# The only host a hosted Claude Code session needs.
+DEFAULT_ALLOWED_DOMAINS = ("api.anthropic.com",)
 
 # Secret stores no worker has a reason to read.
 DEFAULT_DENY_READ = (
@@ -278,13 +281,31 @@ def load_learned(home=None, deny_read=None):
     return [dict(g) for g in good], warning
 
 
-def save_learned(grants, home=None):
-    """Atomic write: temp file in the same dir, 0600, os.replace."""
+def _raw_store(home=None):
+    try:
+        with open(learned_path(home), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_learned(grants, home=None, domains=None):
+    """Atomic write: temp file in the same dir, 0600, os.replace. The other
+    list of the store (path grants / domain grants) is kept as it is unless
+    given."""
     path = learned_path(home)
     directory = os.path.dirname(path)
     os.makedirs(directory, mode=0o700, exist_ok=True)
-    payload = json.dumps({"version": 1, "grants": grants}, indent=2,
-                         ensure_ascii=False) + "\n"
+    raw = _raw_store(home)
+    if grants is None:
+        grants = raw.get("grants") if isinstance(raw.get("grants"), list) else []
+    if domains is None:
+        domains = raw.get("domains") if isinstance(raw.get("domains"), list) else []
+    data = {"version": 1, "grants": grants}
+    if domains:
+        data["domains"] = domains
+    payload = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     fd, tmp = tempfile.mkstemp(prefix=".sandbox-learned-", dir=directory)
     try:
         os.fchmod(fd, 0o600)
@@ -340,6 +361,183 @@ def forget_grant(path, home=None):
         return False
     save_learned(kept, home)
     return True
+
+
+# --- learned network domains -------------------------------------------------
+#
+# Domains the user approved with `agent-exec sandbox allow-domain`, stored in
+# the learned-grants file under their own `domains` key (never mixed with the
+# path grants) and so under the same tamper protection.
+
+_DOMAIN_RE = re.compile(r"^(\*\.)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*"
+                        r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(:[0-9]{1,5})?$")
+
+
+def _is_ip(text):
+    import ipaddress
+    host = text
+    if host.startswith("[") and "]" in host:
+        host = host[1:host.index("]")]
+    elif host.count(":") == 1:
+        host = host.split(":", 1)[0]
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
+
+
+def domain_refusal(domain):
+    """Why a domain grant on `domain` is refused, or None if allowed."""
+    if not isinstance(domain, str) or not domain.strip():
+        return "refusing an empty domain"
+    text = domain.strip().lower()
+    if text == "*" or text.startswith("*:"):
+        return "refusing the wildcard *"
+    if _is_ip(text):
+        return "refusing an IP literal: %s" % text
+    if not _DOMAIN_RE.match(text):
+        return "not a host name or *.wildcard: %s" % text
+    host = text.rsplit(":", 1)[0] if ":" in text else text
+    bare = host[2:] if host.startswith("*.") else host
+    if bare == "localhost" or bare.endswith(".localhost"):
+        return "refusing localhost"
+    if host.startswith("*.") and "." not in bare:
+        return "refusing a top-level-domain wildcard: %s" % host
+    if host.replace(".", "").isdigit():
+        return "refusing an IP literal: %s" % text
+    return None
+
+
+def load_domains(home=None):
+    """(domain grants, warning): entries failing `domain_refusal` are
+    dropped, never trusted."""
+    raw = _raw_store(home)
+    entries = raw.get("domains")
+    if entries is None:
+        return [], None
+    if not isinstance(entries, list):
+        return [], "learned domain grants corrupt (%s)" % learned_path(home)
+    good = [e for e in entries if isinstance(e, dict)
+            and domain_refusal(e.get("domain")) is None]
+    warning = None
+    if len(good) != len(entries):
+        warning = "learned domain grants: ignored %d invalid entr%s" % (
+            len(entries) - len(good), "y" if len(entries) - len(good) == 1 else "ies")
+    return [dict(e) for e in good], warning
+
+
+def learned_domains(home=None):
+    return _dedupe(e["domain"].strip().lower() for e in load_domains(home)[0])
+
+
+def add_domain(domain, home=None):
+    """Persist one domain grant; returns the stored entry. Raises ValueError
+    when refused. Idempotent."""
+    reason = domain_refusal(domain)
+    if reason:
+        raise ValueError(reason)
+    text = domain.strip().lower()
+    domains, _ = load_domains(home)
+    for entry in domains:
+        if entry["domain"].strip().lower() == text:
+            return entry
+    entry = {"domain": text, "added": _now_iso(), "source": "user"}
+    domains.append(entry)
+    save_learned(None, home, domains=domains)
+    return entry
+
+
+def forget_domain(domain, home=None):
+    """Remove a domain grant; True if one was removed."""
+    text = (domain or "").strip().lower()
+    domains, _ = load_domains(home)
+    kept = [e for e in domains if e["domain"].strip().lower() != text]
+    if len(kept) == len(domains):
+        return False
+    save_learned(None, home, domains=kept)
+    return True
+
+
+# --- sandbox-runtime (srt) for the herdr host ---------------------------------
+
+SRT_SETTINGS_DIR = "herdr-srt"
+AUDIT_DIR = "audit"
+NETWORK_AUDIT = "network.jsonl"
+
+_SRT_BLOCKED_RE = re.compile(r"Connection blocked to (\S+)")
+
+
+def parse_srt_denial(line):
+    """(host, port) of a `Connection blocked to <host>:<port>` srt debug
+    line, or None. IPv6 hosts come bracketed (`[::1]:443`) or bare
+    (`::1:443`, the last component is the port)."""
+    match = _SRT_BLOCKED_RE.search(line or "")
+    if not match:
+        return None
+    target = match.group(1).rstrip(".,;")
+    if target.startswith("["):
+        host, _, rest = target[1:].partition("]")
+        port = rest[1:] if rest.startswith(":") else ""
+    else:
+        host, sep, port = target.rpartition(":")
+        if not sep or not port.isdigit():
+            host, port = target, ""
+    if not host:
+        return None
+    return host, (int(port) if port.isdigit() else None)
+
+
+def _real(path):
+    return os.path.realpath(path) if os.path.lexists(path) else path
+
+
+def _regex_globs(rx):
+    """srt has globs, not regexes: the repo-config regex as globs."""
+    match = re.match(r"^\^(.*)/\(\.\*/\)\?\\\.claude/orchestra", rx)
+    if not match:
+        return []
+    root = re.sub(r"\\(.)", r"\1", match.group(1))
+    return [root + "/.claude/orchestra*.y*ml", root + "/**/.claude/orchestra*.y*ml"]
+
+
+def srt_settings(policy, sockets, allowed_domains, denied_domains, home=None):
+    """The sandbox-runtime settings for the herdr server, from `host_policy`.
+    Paths are realpaths where they exist (srt follows no symlink for an
+    allow); `writable_regex` (~/.claude.json and its siblings) becomes the
+    glob `<home>/.claude.json*`; a `readonly` carve-out becomes a deny of
+    its entries that hold no writable path."""
+    home = _home(home)
+    allow = _dedupe(_real(p) for p in policy.get("writable") or [])
+    if policy.get("writable_regex"):
+        allow.append(os.path.join(home, ".claude.json*"))
+    deny = [_real(p) for p in policy.get("deny_write") or []]
+    for rx in policy.get("deny_write_regex") or []:
+        deny += _regex_globs(rx)
+    for ro in policy.get("readonly") or []:
+        inner = [w for w in policy.get("writable") or [] if w != ro and _under(w, ro)]
+        try:
+            names = sorted(os.listdir(ro))
+        except OSError:
+            names = []
+        for name in names:
+            entry = os.path.join(ro, name)
+            if not any(_under(w, entry) for w in inner):
+                deny.append(_real(entry))
+    return {
+        "network": {
+            "allowedDomains": _dedupe(allowed_domains),
+            "deniedDomains": _dedupe(denied_domains),
+            "allowUnixSockets": list(sockets),
+            "allowAllUnixSockets": False,
+        },
+        "filesystem": {
+            "allowWrite": allow,
+            "denyWrite": _dedupe(deny),
+            "denyRead": _dedupe(_real(p) for p in policy.get("deny_read") or []),
+        },
+        "allowPty": True,
+    }
 
 
 # --- denial detection --------------------------------------------------------
@@ -485,6 +683,25 @@ def normalize_config(raw, union=None):
     for key in ("allow_write", "deny_read"):
         values = (union or {}).get(key, raw.get(key))
         out[key] = _dedupe(v for v in (values or []) if isinstance(v, str))
+    out["network"] = normalize_network(raw.get("network"), (union or {}).get("network"))
+    return out
+
+
+def normalize_network(raw, union=None):
+    """A well-formed `sandbox.network`: mode allowlist|off and the domain
+    lists (already unioned across layers by the caller when `union` is set).
+    Missing lists fall back to the defaults (api.anthropic.com only)."""
+    raw = raw if isinstance(raw, dict) else {}
+    mode = raw.get("mode")
+    if mode is False:  # YAML 1.1 `off`
+        mode = "off"
+    mode = mode.strip().lower() if isinstance(mode, str) else ""
+    out = {"mode": mode if mode in NETWORK_MODES else "allowlist"}
+    for key, default in (("allowed_domains", DEFAULT_ALLOWED_DOMAINS),
+                         ("denied_domains", ())):
+        values = (union or {}).get(key, raw.get(key, list(default)))
+        out[key] = _dedupe(v.strip().lower() for v in (values or [])
+                           if isinstance(v, str) and v.strip())
     return out
 
 
@@ -759,6 +976,9 @@ def host_policy(repo, worktree_base, herdr_home, cfg, extra_writable=(), home=No
     # Binaries and config orchestra later runs (outside this sandbox's scope):
     # managed tools and the dedicated pi agent dir must not be replaceable.
     deny_write += [os.path.join(state, "tools"), os.path.join(state, "pi-agent")]
+    # The network sandbox's settings and its audit log: written by the
+    # executor outside the sandbox, never by a pane.
+    deny_write += [os.path.join(state, SRT_SETTINGS_DIR), os.path.join(state, AUDIT_DIR)]
     deny_write_regex = []
     for tree in (repo, base):
         root = _repo_root(tree) if os.path.isdir(tree) else None

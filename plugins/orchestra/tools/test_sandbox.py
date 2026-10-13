@@ -178,14 +178,23 @@ class ConfigUnionTests(unittest.TestCase):
         p1 = os.path.join(d1, "orchestra.yaml")
         p2 = os.path.join(d2, "orchestra.yaml")
         with open(p1, "w") as f:
-            f.write("sandbox:\n  allow_write: [~/a]\n  deny_read: [~/s1]\n")
+            f.write("sandbox:\n  allow_write: [~/a]\n  deny_read: [~/s1]\n"
+                    "  network: {allowed_domains: [registry.npmjs.org]}\n")
         with open(p2, "w") as f:
-            f.write("sandbox:\n  mode: off\n  allow_write: [~/b, ~/a]\n")
+            f.write("sandbox:\n  mode: off\n  allow_write: [~/b, ~/a]\n"
+                    "  network: {mode: off, allowed_domains: [example.org],"
+                    " denied_domains: [bad.example.org]}\n")
         with mock.patch.object(agent_exec, "_ordered_layer_paths", return_value=[p1, p2]):
             cfg, err = agent_exec.resolve_config()
         self.assertIsNone(err)
+        # a later layer adds domains; it never drops one an earlier layer
+        # (or the default) allowed
         self.assertEqual(cfg["sandbox"], {
             "mode": "off", "allow_write": ["~/a", "~/b"], "deny_read": ["~/s1"],
+            "network": {"mode": "off",
+                        "allowed_domains": ["api.anthropic.com", "registry.npmjs.org",
+                                            "example.org"],
+                        "denied_domains": ["bad.example.org"]},
         })
 
 

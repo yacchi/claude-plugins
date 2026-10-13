@@ -254,6 +254,84 @@ class LearnedStoreTests(HomeCase):
                                      exists=lambda p: True))
 
 
+class DomainGrantTests(HomeCase):
+    """Network domain grants: their own key in the learned store, refusals."""
+
+    def setUp(self):
+        HomeCase.setUp(self)
+        patcher = mock.patch.dict(os.environ, {"XDG_STATE_HOME": ""})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def store(self):
+        with open(sb.learned_path(self.home)) as fh:
+            return json.load(fh)
+
+    def test_refuses_wildcards_tlds_ips_and_localhost(self):
+        for domain in ("", " ", "*", "*.com", "*.dev:443", "1.2.3.4", "10.0.0.1:443",
+                       "::1", "[::1]:443", "fe80::1", "localhost", "LOCALHOST:8080",
+                       "*.localhost", "a b.com", "http://x.com"):
+            with self.subTest(domain):
+                self.assertIsNotNone(sb.domain_refusal(domain))
+                with self.assertRaises(ValueError):
+                    sb.add_domain(domain, self.home)
+        for domain in ("registry.npmjs.org", "*.github.com", "pypi.org:443"):
+            self.assertIsNone(sb.domain_refusal(domain), domain)
+
+    def test_domains_are_kept_apart_from_path_grants(self):
+        cache = self.h(".cache/uv")
+        sb.add_grant(cache, "user", home=self.home)
+        sb.add_domain("Registry.npmjs.org", self.home)
+        sb.add_domain("registry.npmjs.org", self.home)  # idempotent
+        data = self.store()
+        self.assertEqual([g["path"] for g in data["grants"]], [os.path.realpath(cache)])
+        self.assertEqual([d["domain"] for d in data["domains"]], ["registry.npmjs.org"])
+        # a path grant written later keeps the domains, and vice versa
+        sb.forget_grant(cache, self.home)
+        self.assertEqual(sb.learned_domains(self.home), ["registry.npmjs.org"])
+        self.assertTrue(sb.forget_domain("registry.npmjs.org", self.home))
+        self.assertEqual(self.store()["grants"], [])
+        self.assertEqual(sb.learned_domains(self.home), [])
+        # domains never reach the writable set, and a planted bad one is dropped
+        with open(sb.learned_path(self.home), "w") as fh:
+            json.dump({"version": 1, "grants": [],
+                       "domains": [{"domain": "*"}, {"domain": "ok.example.org"}]}, fh)
+        self.assertEqual(sb.learned_domains(self.home), ["ok.example.org"])
+        self.assertEqual(sb.load_learned(self.home)[0], [])
+
+    def test_cli_allow_domain_refuses_and_stores(self):
+        err = io.StringIO()
+        with mock.patch("sys.stderr", err):
+            self.assertEqual(agent_exec.cmd_sandbox(["allow-domain", "*.com"]), 1)
+        self.assertIn("top-level", err.getvalue())
+        out = io.StringIO()
+        with mock.patch("sys.stdout", out):
+            self.assertEqual(agent_exec.cmd_sandbox(
+                ["allow-domain", "registry.npmjs.org", "--json"]), 0)
+        self.assertEqual(json.loads(out.getvalue())["domain"], "registry.npmjs.org")
+        self.assertEqual(sb.learned_domains(), ["registry.npmjs.org"])
+        self.assertEqual(sb.load_learned()[0], [])
+        with mock.patch("sys.stdout", io.StringIO()):
+            self.assertEqual(agent_exec.cmd_sandbox(["forget-domain", "registry.npmjs.org"]), 0)
+            self.assertEqual(agent_exec.cmd_sandbox(["forget-domain", "registry.npmjs.org"]), 1)
+
+
+class SrtDenialParseTests(unittest.TestCase):
+    def test_blocked_line_forms(self):
+        cases = {
+            "[SandboxDebug] Connection blocked to example.com:443": ("example.com", 443),
+            "Connection blocked to sub.example.co.uk:8080": ("sub.example.co.uk", 8080),
+            "Connection blocked to [2001:db8::1]:443": ("2001:db8::1", 443),
+            "Connection blocked to 2001:db8::1:443": ("2001:db8::1", 443),
+            "Connection blocked to 10.0.0.1:22": ("10.0.0.1", 22),
+            "Connection blocked to example.com": ("example.com", None),
+        }
+        for line, expected in cases.items():
+            self.assertEqual(sb.parse_srt_denial(line), expected, line)
+        self.assertIsNone(sb.parse_srt_denial(
+            "[SandboxDebug] No matching config rule, denying: example.com:443"))
+
+
 class TamperProtectionTests(HomeCase):
     def test_denies_win_over_every_allow_in_sbpl(self):
         policy = sb.build_policy(self.tree, "pi",

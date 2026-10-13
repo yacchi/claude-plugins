@@ -769,8 +769,11 @@ class _Runner(object):
                 % (self.host_name.capitalize(), self._orca_handle(detail), self.state_path,
                    pid or "ID", self.host_name, self.host_name)
             )
-        return {"status": "_orca_need", "kind": exc.kind, "detail": detail,
-                "token": token, "executor": self.host_name}
+        out = {"status": "_orca_need", "kind": exc.kind, "detail": detail,
+               "token": token, "executor": self.host_name}
+        if getattr(exc, "network_denials", None):
+            out["network_denials"] = exc.network_denials
+        return out
 
     def _orca_handle(self, detail):
         match = re.search(r"\nterminal: ([^\n]+)", detail)
@@ -830,12 +833,15 @@ class _Runner(object):
             summary = str(result.get("summary") or "")
             answer = ("ESCALATE: " + summary
                       if result["status"] == "escalate" else summary)
-            return {
+            out = {
                 "status": "ok", "answer": answer, "session_id": session.get("terminal"),
                 "resumed": True, "executor": self.host_name,
                 "isolation": {"isolate": True, "path": session["worktree"],
                               "workdir": session["worktree"]},
             }
+            if result.get("network_denials"):
+                out["network_denials"] = result["network_denials"]
+            return out
         except agent_exec_orca.OrcaNeed as exc:
             return self._orca_need(None, exc, pid)
 
@@ -855,14 +861,34 @@ class _Runner(object):
         if session is not None:
             self.orca.close(session, remove_worktree=True)
 
+    def _network_denials(self, pid, result):
+        """Hosts the package's session tried to reach and the network
+        allowlist blocked: kept on the package (never a failure by itself)
+        so the needs/status output shows them."""
+        denials = result.get("network_denials") or []
+        if not denials:
+            return []
+        entry = self.store.load()["packages"].get(pid, {})
+        merged = list(entry.get("network_denials") or [])
+        for d in denials:
+            if d not in merged:
+                merged.append(d)
+        self.store.update(pid, network_denials=merged)
+        self._emit("network-denied", pid, {"denials": denials})
+        return denials
+
     def _handle(self, pid, token, result):
         """Record a dispatch result. True when the package moved to verifying."""
         status = result.get("status")
+        denials = self._network_denials(pid, result)
         if status == "_orca_need":
-            self._need(pid, "delegate", json.dumps({
+            need = {
                 "orca": result["kind"], "detail": result["detail"],
                 "token": result.get("token") or token,
-            }, ensure_ascii=False))
+            }
+            if denials:
+                need["network_denials"] = denials
+            self._need(pid, "delegate", json.dumps(need, ensure_ascii=False))
             return False
         if status == "_stop":
             self.store.set_status(pid, "pending", detail=result["reason"])
@@ -1551,6 +1577,9 @@ class _Runner(object):
             return False, True
         if self.unavailable:
             return False, False
+        tick = getattr(self.orca, "network_tick", None)
+        if tick is not None:
+            tick()
         state = self.store.load()
         pkg_states = state["packages"]
         busy = set(running.values())
@@ -1908,6 +1937,8 @@ class _Runner(object):
             "integrated": with_status("integrated"),
             "needs": [{"id": n.get("id"), "kind": n.get("kind")}
                       for n in state.get("needs") or []],
+            "network_denials": [dict(d, id=pid) for pid in order
+                                for d in pkg_states.get(pid, {}).get("network_denials") or []],
             "pending": [pid for pid in with_status("pending") if pid not in blocked_ids],
             "blocked": [pid for pid in with_status("pending") if pid in blocked_ids],
             "flaky_tests": [{"file": path, "count": count}
@@ -1997,6 +2028,10 @@ def format_report_text(report):
     if report.get("needs"):
         lines.append("  needs: %s" % ", ".join(
             "%s(%s)" % (n["id"], n["kind"]) for n in report["needs"]))
+    if report.get("network_denials"):
+        lines.append("  network denied: %s (approve: agent-exec sandbox allow-domain HOST)"
+                     % ", ".join("%s(%s:%s)" % (d["id"], d["host"], d.get("port"))
+                                 for d in report["network_denials"]))
     return "\n".join(lines)
 
 

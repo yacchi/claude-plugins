@@ -543,6 +543,27 @@ class HappyPathTests(_OrcaRepo):
         self.assertTrue(seen["path"].endswith("wave-r1234567-a"))
         self.assertEqual(seen["files"][-1], os.path.join(self.wave_dir, "specs", "A.md"))
 
+    def test_network_denials_are_surfaced_without_failing_the_package(self):
+        self.plan(["A"])
+        orca = self.orca()
+        original = orca.prompt
+
+        def prompt(session, files, result_path, timeout):
+            out = original(session, files, result_path, timeout)
+            return dict(out, network_denials=[{"host": "example.com", "port": 443}])
+
+        orca.prompt = prompt
+        self.scenario({"prompts": {"a": [_ok({"a.txt": "x\n"})]}})
+        report, rc = self.run_wave(DelegateExecutor(), orca=orca)
+        self.assertEqual(rc, 0, report)
+        self.assertEqual(self.status("A"), "integrated")
+        self.assertEqual(self.state()["packages"]["A"]["network_denials"],
+                         [{"host": "example.com", "port": 443}])
+        self.assertEqual(report["network_denials"],
+                         [{"id": "A", "host": "example.com", "port": 443}])
+        self.assertIn("A(example.com:443)",
+                      agent_exec_wave_run.format_report_text(report))
+
     def test_self_verify_failure_goes_to_the_same_terminal(self):
         self.config("", checks=_NO_BAD_CHECK)
         self.plan(["A"])

@@ -47,7 +47,7 @@ _NEED_KIND_SET = frozenset(NEED_KINDS)
 # Per-package keys as they appear in state.json.
 _PACKAGE_FIELDS = (
     "status", "since", "attempts", "tree", "executor", "session",
-    "files_changed", "commit", "detail",
+    "files_changed", "commit", "detail", "network_denials",
 )
 # Fields `set_status` may additionally set via **fields (status/since/detail
 # are handled through set_status's own named parameters).
@@ -481,6 +481,12 @@ def render_status(state, now, plan_titles=None, events=None, live=False):
             lines.append("  %s  %s  %s" % (
                 "(wave)" if need.get("id") is None else need.get("id"),
                 need.get("kind"), first_line))
+
+    denied = [(pid, d) for pid, pkg in items for d in pkg.get("network_denials") or []]
+    if denied:
+        lines.append("network denied (approve: agent-exec sandbox allow-domain HOST):")
+        for pid, d in denied:
+            lines.append("  %s  %s:%s" % (pid, d.get("host"), d.get("port")))
 
     if events:
         lines.append("recent:")

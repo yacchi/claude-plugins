@@ -190,6 +190,7 @@ class _Base(unittest.TestCase):
         kwargs.setdefault("env", dict(SESSION_ENV))
         kwargs.setdefault("herdr_home", self.home)
         kwargs.setdefault("sandbox_probes", _probes())
+        kwargs.setdefault("srt_binary", False)  # never the real srt
         executor = agent_exec_herdr.HerdrExecutor(
             cfg=cfg, binary="/opt/herdr", runner=fake, popen=fake.popen,
             clock=lambda: clock["now"], sleep=sleep, poll=1.0, **kwargs)
@@ -597,6 +598,197 @@ class BypassTests(_Base):
         args = executor._native_args({"model": "opus", "add_dirs": ["/x/state"]})
         self.assertEqual(args, ["--model", "opus", "--permission-mode", "auto",
                                 "--add-dir", "/x/state"])
+
+
+class NetworkTests(_Base):
+    """The herdr server under sandbox-runtime (srt): settings, control pipe,
+    blocked-connection audit and the opt-in permission bypass."""
+
+    def setUp(self):
+        _Base.setUp(self)
+        self.xstate = os.path.join(os.path.realpath(self.tmp), "xstate")
+        self.claude = os.path.join(self.tmp, "claude")
+        self.shared = os.path.join(self.tmp, "shared", "projects")
+        os.makedirs(self.claude)
+        os.makedirs(self.shared)
+        os.symlink(self.shared, os.path.join(self.claude, "projects"))
+        saved = dict(os.environ)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(saved)))
+        os.environ["XDG_STATE_HOME"] = self.xstate
+        os.environ["CLAUDE_CONFIG_DIR"] = self.claude
+        self.read_ends = []
+
+    def pipe(self):
+        read_end, write_end = os.pipe()
+        keep = os.dup(read_end)
+        os.set_blocking(keep, False)
+        self.read_ends.append(keep)
+        self.addCleanup(os.close, keep)
+        return read_end, write_end
+
+    def lines(self):
+        try:
+            data = os.read(self.read_ends[0], 1 << 20)
+        except BlockingIOError:
+            return []
+        return [json.loads(line) for line in data.decode().splitlines()]
+
+    def srt_executor(self, fake, cfg=None, srt="/opt/srt", seatbelt=True, **kwargs):
+        return self.executor(fake, cfg, srt_binary=srt, pipe=self.pipe,
+                             sandbox_probes=_probes(seatbelt=seatbelt), **kwargs)
+
+    def start(self, executor):
+        return executor.start("a", self.repo, "main", "standard", "opus", "run-1", self.state)
+
+    def settings(self):
+        path = os.path.join(self.xstate, "claude-orchestra", "herdr-srt", SESSION + ".json")
+        with open(path) as fh:
+            return path, json.load(fh)
+
+    def srt_log(self, *lines):
+        path = os.path.join(self.home, "herdr", "sessions", SESSION, "srt.log")
+        with open(path, "a") as fh:
+            fh.write("".join(line + "\n" for line in lines))
+
+    def test_server_runs_under_srt_alone_with_the_host_policy(self):
+        fake = FakeHerdr()
+        executor = self.srt_executor(fake)
+        self.start(executor)
+        argv, kwargs = fake.popens[0]
+        self.assertEqual(argv[:5], ["/opt/srt", "-d", "-s", self.settings()[0],
+                                    "--control-fd"])
+        self.assertEqual(argv[5:7], ["3", "-c"])
+        self.assertEqual(argv[7], "/opt/herdr --session %s server" % SESSION)
+        self.assertNotIn("/usr/bin/sandbox-exec", argv)  # never nested
+        self.assertFalse(kwargs["close_fds"])
+        self.assertTrue(callable(kwargs["preexec_fn"]))
+        self.assertEqual(kwargs["env"]["XDG_CONFIG_HOME"], self.home)
+        self.assertNotIn("CLAUDECODE", kwargs["env"])
+        path, settings = self.settings()
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(os.path.dirname(path)).st_mode & 0o777, 0o700)
+        net = settings["network"]
+        sessions = os.path.join(os.path.realpath(self.home), "herdr", "sessions", SESSION)
+        self.assertEqual(net["allowUnixSockets"], [os.path.join(sessions, "herdr.sock"),
+                                                   os.path.join(sessions, "herdr-client.sock")])
+        self.assertIs(net["allowAllUnixSockets"], False)
+        self.assertEqual(net["allowedDomains"], ["api.anthropic.com"])
+        self.assertIs(settings["allowPty"], True)
+        fs = settings["filesystem"]
+        allow, deny = fs["allowWrite"], fs["denyWrite"]
+        self.assertNotIn(os.path.realpath(self.repo), allow)
+        # the symlinked Claude config child is allowed by its real target only
+        self.assertIn(os.path.realpath(self.shared), allow)
+        self.assertNotIn(os.path.join(self.claude, "projects"), allow)
+        self.assertIn(os.path.join(os.path.realpath(os.path.expanduser("~")), ".claude.json*"),
+                      allow)
+        store = os.path.join(os.path.realpath(self.xstate), "claude-orchestra",
+                             "sandbox-learned.json")
+        self.assertIn(store, deny)
+        self.assertIn(os.path.join(os.path.realpath(self.claude), "settings.json"), deny)
+        self.assertTrue(any(d.endswith("/.claude/orchestra*.y*ml") for d in deny))
+        self.assertIn(os.path.realpath(os.path.expanduser("~/.ssh")), fs["denyRead"])
+        self.assertTrue(executor._sandboxed and executor._net_restricted)
+
+    def test_srt_is_not_used_when_network_mode_is_off_or_srt_is_missing(self):
+        for label, kwargs, why in (
+                ("mode off", {"tools_cfg": {"sandbox": {"network": {"mode": "off"}}}},
+                 "sandbox.network.mode is off"),
+                ("srt missing", {"srt": False}, "srt not available")):
+            with self.subTest(label):
+                fake = FakeHerdr()
+                events = []
+                executor = self.srt_executor(fake, **kwargs)
+                executor.on_event = lambda pkg, detail: events.append(detail)
+                self.start(executor)
+                argv = fake.popens[0][0]
+                self.assertEqual(argv[0], "/usr/bin/sandbox-exec")
+                self.assertNotIn("/opt/srt", argv)
+                self.assertTrue(executor._sandboxed)
+                self.assertFalse(executor._net_restricted)
+                self.assertIn({"action": "network", "terminal": None, "restricted": False,
+                               "reason": "network not restricted: " + why}, events)
+                agent_exec.isolate_remove(self.repo, "pkg-a", force=True)
+
+    def test_linux_without_bwrap_or_socat_falls_back_with_the_reason(self):
+        path, _, why = agent_exec_herdr.srt_status(
+            binary="/opt/srt", platform="linux", which=lambda b: b == "bwrap" and "/b")
+        self.assertIsNone(path)
+        self.assertEqual(why, "srt needs socat on Linux")
+        report = agent_exec_herdr.host_report(
+            {"sandbox": {"mode": "auto"}}, probe_results=_probes(seatbelt=True),
+            srt_binary=False)
+        self.assertFalse(report["network"]["restricted"])
+        self.assertIn("network not restricted", report["network"]["reason"])
+
+    def test_approved_domain_reaches_the_running_server_as_one_full_line(self):
+        import agent_exec_sandbox
+        executor = self.srt_executor(FakeHerdr())
+        self.start(executor)
+        _, initial = self.settings()
+        executor.network_tick()
+        self.assertEqual(self.lines(), [])  # nothing changed: nothing written
+        agent_exec_sandbox.add_domain("registry.npmjs.org")
+        executor.network_tick()
+        lines = self.lines()
+        self.assertEqual(len(lines), 1)
+        expected = json.loads(json.dumps(initial))
+        expected["network"]["allowedDomains"] = ["api.anthropic.com", "registry.npmjs.org"]
+        self.assertEqual(lines[0], expected)
+        executor.network_tick()
+        self.assertEqual(self.lines(), [])
+        agent_exec_sandbox.forget_domain("registry.npmjs.org")
+        executor.network_tick()
+        self.assertEqual(self.lines()[0]["network"]["allowedDomains"], ["api.anthropic.com"])
+
+    def test_blocked_connections_are_audited_and_surfaced_once_per_host(self):
+        fake = FakeHerdr(on_prompt=lambda: (self.srt_log(
+            "[SandboxDebug] No matching config rule, denying: example.com:443",
+            "[SandboxDebug] Connection blocked to example.com:443",
+            "[SandboxDebug] Connection blocked to example.com:443",
+            "[SandboxDebug] Connection blocked to [2001:db8::1]:8443"), self.write_result()))
+        executor = self.srt_executor(fake)
+        session = self.start(executor)
+        out = executor.prompt(session, ["/p/one.md"], self.result, 60)
+        self.assertEqual(out["status"], "ok")
+        self.assertEqual(out["network_denials"], [{"host": "example.com", "port": 443},
+                                                  {"host": "2001:db8::1", "port": 8443}])
+        audit = os.path.join(self.xstate, "claude-orchestra", "audit", "network.jsonl")
+        with open(audit) as fh:
+            records = [json.loads(line) for line in fh]
+        self.assertEqual([(r["host"], r["port"], r["decision"], r["session"])
+                          for r in records],
+                         [("example.com", 443, "blocked", SESSION)] * 2
+                         + [("2001:db8::1", 8443, "blocked", SESSION)])
+        self.assertEqual(os.stat(os.path.dirname(audit)).st_mode & 0o777, 0o700)
+
+    def test_bypass_needs_srt_with_the_allowlist_and_the_host_sandbox(self):
+        for label, cfg_key, value in (
+                ("permission_mode", "permission_mode", "bypassPermissions"),
+                ("args", "args", "--model {model} --dangerously-skip-permissions")):
+            with self.subTest(label):
+                fake = FakeHerdr()
+                self.start(self.srt_executor(fake, {cfg_key: value}))
+                self.assertIn(value.split()[-1].replace("{model}", "opus"),
+                              " ".join(fake.starts()[0]))
+                agent_exec.isolate_remove(self.repo, "pkg-a", force=True)
+        cfg = {"permission_mode": "bypassPermissions"}
+        for label, fake, kwargs, needle in (
+                ("srt missing", FakeHerdr(), {"srt": False}, "network not restricted"),
+                ("network off", FakeHerdr(),
+                 {"tools_cfg": {"sandbox": {"network": {"mode": "off"}}}},
+                 "network not restricted"),
+                ("no host sandbox", FakeHerdr(), {"seatbelt": False},
+                 "host filesystem sandbox does not apply"),
+                ("server not ours", FakeHerdr(running=True), {},
+                 "host filesystem sandbox does not apply")):
+            with self.subTest(label):
+                executor = self.srt_executor(fake, cfg, **kwargs)
+                with self.assertRaises(agent_exec_orca.OrcaNeed) as ctx:
+                    self.start(executor)
+                self.assertIn("bypass is not allowed", ctx.exception.detail)
+                self.assertIn(needle, ctx.exception.detail)
+                self.assertEqual(fake.starts(), [])
 
 
 class _Stub(object):

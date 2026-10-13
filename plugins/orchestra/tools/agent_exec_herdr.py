@@ -26,6 +26,15 @@ sessions are never touched, and the server runs under the executor sandbox
 folder-trust dialog is only auto-accepted for a worktree this executor
 created, under a sandboxed server.
 
+With `sandbox.network.mode: allowlist` and sandbox-runtime (srt) available,
+the server runs under srt instead of orchestra's own Seatbelt/bubblewrap
+wrapping: the same host policy as srt settings plus an outbound domain
+allowlist. Blocked connections from srt's debug log are appended to
+`<state>/audit/network.jsonl` and surfaced per package as
+`network_denials`; a domain approved with `agent-exec sandbox allow-domain`
+reaches the running server through srt's control pipe. Only there may
+`herdr.permission_mode` be `bypassPermissions`.
+
 Sessions are persisted in `<state dir>/herdr-sessions.json`. Stdlib only;
 agent_exec is imported lazily.
 """
@@ -35,6 +44,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -55,6 +65,9 @@ _INPUT_SETTLE = 1
 # `agent start` retries while a just-created pane's shell is not up yet.
 _SHELL_RETRIES = 3
 _PERMISSION_MODES = frozenset(("acceptEdits", "auto", "default", "plan"))
+_BYPASS_MODE = "bypassPermissions"
+# The fd srt reads live config lines from (`--control-fd`).
+_CONTROL_FD = 3
 _TRUST_MARKERS = ("trust this folder", "is this a project you")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 # A unix socket path must stay under sun_path (104 bytes on macOS).
@@ -252,20 +265,65 @@ def resolve_home(sname, base=None, fallback_root=None, uid=None, create=True):
     return os.path.join(parent, _HOME_DIR)
 
 
-def host_report(cfg=None, probe_results=None):
-    """Doctor view of the herdr host: its home and whether the server would
-    be sandboxed (and so whether `auto_trust` could apply)."""
+def srt_status(cfg=None, which=None, platform=None, binary=None):
+    """(path or None, version or None, reason): can sandbox-runtime confine
+    the herdr host here? `binary` overrides resolution (False: unavailable).
+    On Linux srt also needs bwrap and socat."""
+    which = which or shutil.which
+    platform = platform or sys.platform
+    version = None
+    if binary is False:
+        return None, None, "srt not available"
+    if binary:
+        path = binary
+    else:
+        info = _tools().resolve("srt", cfg if cfg is not None else _agent_exec().DEFAULTS)
+        path, version = info.get("path"), info.get("version")
+        if not path:
+            return None, None, "srt not found (%s)" % (info.get("reason") or "not installed")
+    if platform.startswith("linux"):
+        missing = [b for b in ("bwrap", "socat") if not which(b)]
+        if missing:
+            return None, version, "srt needs %s on Linux" % " and ".join(missing)
+    return path, version, ""
+
+
+def network_plan(cfg, spec, which=None, platform=None, binary=None):
+    """(srt path or None, version, reason): srt is used only when the host
+    would be sandboxed, the network mode is allowlist and srt is usable.
+    `reason` says why the network is not restricted otherwise."""
+    cfg = cfg if cfg is not None else _agent_exec().DEFAULTS
+    net = _sandbox().normalize_config(cfg.get("sandbox"))["network"]
+    if not (spec and spec.get("enforced") and spec.get("policy") is not None):
+        return None, None, "host not sandboxed: %s" % ((spec or {}).get("reason") or "unknown")
+    if net["mode"] != "allowlist":
+        return None, None, "sandbox.network.mode is off"
+    return srt_status(cfg, which, platform, binary)
+
+
+def host_report(cfg=None, probe_results=None, which=None, platform=None, srt_binary=None):
+    """Doctor view of the herdr host: its home, whether the server would be
+    sandboxed (and so whether `auto_trust` could apply), and whether its
+    network would be restricted by srt."""
     agent_exec = _agent_exec()
     cwd = os.getcwd()
     try:
         home = resolve_home("orchestra-00000000", create=False)
     except Exception as exc:
         return {"home": None, "sandboxed": False, "reason": str(getattr(exc, "detail", exc))}
-    sandbox_cfg = (cfg or agent_exec.DEFAULTS).get("sandbox")
+    cfg = cfg or agent_exec.DEFAULTS
+    sandbox_cfg = cfg.get("sandbox")
     spec = _sandbox().prepare_host(
         sandbox_cfg, cwd, agent_exec.isolate_home(cwd), home, probe_results=probe_results)
+    net = _sandbox().normalize_config(sandbox_cfg)["network"]
+    path, version, why = srt_status(cfg, which, platform, srt_binary)
+    srt, _, reason = network_plan(cfg, spec, which, platform, srt_binary)
     return {"home": home, "sandboxed": bool(spec["enforced"] and spec["policy"]),
-            "backend": spec["backend"], "reason": spec["reason"]}
+            "backend": spec["backend"], "reason": spec["reason"],
+            "network": {"mode": net["mode"], "allowed_domains": net["allowed_domains"],
+                        "srt": {"path": path, "version": version, "reason": why},
+                        "restricted": bool(srt),
+                        "reason": "" if srt else "network not restricted: %s" % reason}}
 
 
 class HerdrExecutor(object):
@@ -280,7 +338,8 @@ class HerdrExecutor(object):
 
     def __init__(self, cfg=None, binary=None, tools_cfg=None, runner=subprocess.run,
                  popen=subprocess.Popen, clock=time.time, sleep=time.sleep, poll=2.0,
-                 on_event=None, env=None, herdr_home=None, sandbox_probes=None):
+                 on_event=None, env=None, herdr_home=None, sandbox_probes=None,
+                 srt_binary=None, which=None, platform=None, pipe=os.pipe):
         self.cfg = merged_config(cfg)
         self.binary = binary
         self.tools_cfg = tools_cfg
@@ -306,6 +365,21 @@ class HerdrExecutor(object):
         self._warm_counts = {}
         self._warm_failed = set()
         self._warm_lock = threading.RLock()
+        # network sandbox (srt)
+        self.srt_binary = srt_binary
+        self.pipe = pipe
+        self.which = which
+        self.platform = platform
+        self._net_restricted = False
+        self._net_reason = None
+        self._srt_config = None
+        self._control_w = None
+        self._live_domains = None
+        self._srt_log = None
+        self._srt_offset = 0
+        self._srt_partial = ""
+        self._net_denials = []
+        self._net_lock = threading.Lock()
 
     @classmethod
     def from_config(cls, **kwargs):
@@ -428,6 +502,8 @@ class HerdrExecutor(object):
             if self._status_running():
                 # Not ours: nothing says it runs under the sandbox.
                 self._set_sandboxed(None, "the server was already running")
+                self._set_network(None, "the server was already running")
+                self._watch_srt_log(self._srt_log_path(self._home()), from_end=True)
                 self._server_ready = True
                 return
             home = self._home()
@@ -436,16 +512,24 @@ class HerdrExecutor(object):
                       encoding="utf-8") as fh:
                 fh.write(_CONFIG_TOML)
             spec = self._host_spec(home)
-            argv = _sandbox().wrap_argv(self._h() + ["server"], os.getcwd(), spec)
             env = _sandbox().child_env(spec, self._env())
             self._set_sandboxed(spec)
+            srt, _version, why = network_plan(
+                self.tools_cfg if self.tools_cfg is not None else _agent_exec().DEFAULTS,
+                spec, self.which, self.platform, self.srt_binary)
             log_dir = os.path.join(self.state_dir or os.getcwd(), "herdr")
             os.makedirs(log_dir, exist_ok=True)
             log = open(os.path.join(log_dir, self.sname + ".server.log"), "ab")
             try:
-                self.popen(argv, stdin=subprocess.DEVNULL, stdout=log,
-                           stderr=log, start_new_session=True, env=env)
+                if srt:
+                    self._spawn_srt(srt, spec, home, env, log)
+                else:
+                    self._set_network(None, why)
+                    argv = _sandbox().wrap_argv(self._h() + ["server"], os.getcwd(), spec)
+                    self.popen(argv, stdin=subprocess.DEVNULL, stdout=log,
+                               stderr=log, start_new_session=True, env=env)
             except OSError as exc:
+                self._close_control()
                 raise _need("error", "could not start the herdr server: %s" % exc)
             finally:
                 log.close()
@@ -469,6 +553,184 @@ class HerdrExecutor(object):
         if spec["refuse"]:
             raise _need("error", spec["reason"])
         return spec
+
+    # -- network sandbox (srt) ------------------------------------------------
+
+    def _sockets(self, home):
+        """herdr's own two sockets of this session; nothing else is reachable."""
+        directory = os.path.join(os.path.realpath(home), "herdr", "sessions", self.sname)
+        return [os.path.join(directory, "herdr.sock"),
+                os.path.join(directory, "herdr-client.sock")]
+
+    def _srt_log_path(self, home):
+        return os.path.join(home, "herdr", "sessions", self.sname, "srt.log")
+
+    def _net_cfg(self):
+        cfg = self.tools_cfg if self.tools_cfg is not None else _agent_exec().DEFAULTS
+        return _sandbox().normalize_config(cfg.get("sandbox"))["network"]
+
+    def _srt_settings(self, domains):
+        settings = json.loads(json.dumps(self._srt_config))
+        net = self._net_cfg()
+        settings["network"]["allowedDomains"] = _sandbox()._dedupe(
+            list(net["allowed_domains"]) + list(domains))
+        return settings
+
+    def _write_srt_settings(self, settings):
+        directory = os.path.join(_sandbox().state_dir(), _sandbox().SRT_SETTINGS_DIR)
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        os.chmod(directory, 0o700)
+        path = os.path.join(directory, self.sname + ".json")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            os.fchmod(fh.fileno(), 0o600)
+            json.dump(settings, fh, indent=1, sort_keys=True)
+            fh.write("\n")
+        return path
+
+    def _spawn_srt(self, srt, spec, home, env, log):
+        """Start the server under sandbox-runtime: srt's own Seatbelt /
+        bubblewrap profile built from the host policy (never nested in
+        orchestra's), the domain allowlist, and a control pipe on fd 3 for
+        live domain updates. srt's debug output goes to the session's
+        srt.log, which `network_tick` tails for blocked connections."""
+        domains = _sandbox().learned_domains()
+        net = self._net_cfg()
+        self._srt_config = _sandbox().srt_settings(
+            spec["policy"], self._sockets(home), net["allowed_domains"],
+            net["denied_domains"])
+        settings = self._srt_settings(domains)
+        path = self._write_srt_settings(settings)
+        log_path = self._srt_log_path(home)
+        os.makedirs(os.path.dirname(log_path), mode=0o700, exist_ok=True)
+        self._watch_srt_log(log_path, from_end=True)
+        argv = [srt, "-d", "-s", path, "--control-fd", str(_CONTROL_FD),
+                "-c", shlex.join(self._h() + ["server"])]
+        read_end, write_end = self.pipe()
+
+        def control_fd():
+            # In the child only: the pipe's read end becomes fd 3 (inheritable).
+            os.dup2(read_end, _CONTROL_FD)
+
+        srt_log = open(log_path, "ab")
+        try:
+            # close_fds=False keeps fd 3; every other fd Python opened is
+            # non-inheritable (PEP 446) and so is not leaked.
+            self.popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=srt_log,
+                       start_new_session=True, env=env, close_fds=False,
+                       preexec_fn=control_fd)
+        except OSError:
+            os.close(write_end)
+            raise
+        finally:
+            os.close(read_end)
+            srt_log.close()
+        self._control_w = write_end
+        self._live_domains = set(domains)
+        self._set_network(True)
+
+    def _set_network(self, restricted, reason=None):
+        """Remember whether the server's network is restricted; say so (stderr
+        and an event) when it is not."""
+        if restricted:
+            self._net_restricted, self._net_reason = True, None
+            return
+        self._net_restricted = False
+        self._net_reason = reason or "unknown"
+        message = "network not restricted: %s" % self._net_reason
+        sys.stderr.write("agent-exec: herdr: %s\n" % message)
+        self._event(None, "network", None, restricted=False, reason=message)
+
+    def _close_control(self):
+        if self._control_w is not None:
+            try:
+                os.close(self._control_w)
+            except OSError:
+                pass
+            self._control_w = None
+
+    def _watch_srt_log(self, path, from_end):
+        self._srt_log = path
+        self._srt_partial = ""
+        try:
+            self._srt_offset = os.path.getsize(path) if from_end else 0
+        except OSError:
+            self._srt_offset = 0
+
+    def _audit(self, record):
+        directory = os.path.join(_sandbox().state_dir(), _sandbox().AUDIT_DIR)
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        path = os.path.join(directory, _sandbox().NETWORK_AUDIT)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+
+    def _tail_srt_log(self):
+        if not self._srt_log:
+            return
+        try:
+            size = os.path.getsize(self._srt_log)
+        except OSError:
+            return
+        if size < self._srt_offset:  # truncated: start over
+            self._srt_offset, self._srt_partial = 0, ""
+        if size == self._srt_offset:
+            return
+        with open(self._srt_log, "rb") as fh:
+            fh.seek(self._srt_offset)
+            data = fh.read(size - self._srt_offset)
+        self._srt_offset += len(data)
+        lines = (self._srt_partial + data.decode("utf-8", "replace")).split("\n")
+        self._srt_partial = lines.pop()
+        for line in lines:
+            parsed = _sandbox().parse_srt_denial(line)
+            if parsed is None:
+                continue
+            host, port = parsed
+            self._net_denials.append((host, port))
+            self._audit({"ts": _sandbox()._now_iso(), "session": self.sname,
+                         "host": host, "port": port, "decision": "blocked"})
+
+    def _push_domains(self):
+        """One full-config line to srt when the learned domains changed."""
+        if self._control_w is None or self._srt_config is None:
+            return
+        domains = _sandbox().learned_domains()
+        if set(domains) == self._live_domains:
+            return
+        settings = self._srt_settings(domains)
+        line = (json.dumps(settings, sort_keys=True) + "\n").encode("utf-8")
+        try:
+            os.write(self._control_w, line)
+        except OSError as exc:
+            sys.stderr.write("agent-exec: herdr: srt control pipe: %s\n" % exc)
+            self._close_control()
+            return
+        self._live_domains = set(domains)
+        try:
+            self._write_srt_settings(settings)
+        except OSError:
+            pass
+
+    def network_tick(self):
+        """Tail srt's log for blocked connections and push newly approved
+        domains to the running server. Called on every wait poll and
+        scheduling tick; never raises."""
+        with self._net_lock:
+            for step in (self._tail_srt_log, self._push_domains):
+                try:
+                    step()
+                except Exception as exc:
+                    sys.stderr.write("agent-exec: herdr: network: %s\n" % exc)
+
+    def network_denials(self, mark=0):
+        """Blocked (host, port) pairs logged since `mark`, de-duplicated."""
+        out, seen = [], set()
+        for host, port in self._net_denials[int(mark or 0):]:
+            if (host, port) not in seen:
+                seen.add((host, port))
+                out.append({"host": host, "port": port})
+        return out
 
     def _set_sandboxed(self, spec, reason=None):
         """Remember whether the server confines its panes; say so once when
@@ -497,6 +759,7 @@ class HerdrExecutor(object):
             self._call(["server", "stop"], _CALL_TIMEOUT)
         except _HerdrError as exc:
             sys.stderr.write("agent-exec: herdr: %s\n" % exc)
+        self._close_control()
 
     # -- registry --------------------------------------------------------------
 
@@ -573,15 +836,30 @@ class HerdrExecutor(object):
             return "\n".join(_strings(payload))
         return out
 
+    def _bypass_missing(self):
+        """Why a permission bypass is refused now, or None when the server
+        runs under srt with the network allowlist enforced and the host
+        filesystem sandbox applies."""
+        if not self._server_ready:
+            return "the herdr server is not running yet"
+        if not self._sandboxed:
+            return "the host filesystem sandbox does not apply (%s)" % self._unsandboxed
+        if not self._net_restricted:
+            return ("the herdr server is not running under srt with the network "
+                    "allowlist enforced (network not restricted: %s)" % self._net_reason)
+        return None
+
     def _native_args(self, session, fork=False):
         permission_mode = self.cfg.get("permission_mode", "acceptEdits")
         template = str(self.cfg.get("args") or "")
-        if permission_mode not in _PERMISSION_MODES:
+        if permission_mode not in _PERMISSION_MODES and permission_mode != _BYPASS_MODE:
             raise _need("error", "invalid herdr.permission_mode: %s" % permission_mode)
-        if permission_mode == "bypassPermissions" or (
-                "bypassPermissions" in template
+        if permission_mode == _BYPASS_MODE or (
+                _BYPASS_MODE in template
                 or "--dangerously-skip-permissions" in template):
-            raise _need("error", "herdr permission bypass is not allowed")
+            missing = self._bypass_missing()
+            if missing:
+                raise _need("error", "herdr permission bypass is not allowed: %s" % missing)
         text = template.replace("{model}", session.get("model") or "opus")
         text = text.replace("{permission_mode}", permission_mode)
         args = shlex.split(text)
@@ -599,9 +877,9 @@ class HerdrExecutor(object):
         """Workspace + agent on the session's worktree, up to a usable
         prompt. Raises OrcaNeed on the trust dialog (unless auto_trust applies
         to a worktree this executor created) or any other failed start."""
-        native = self._native_args(session, fork)
         self._repo = self._repo or session.get("repo")
         self._ensure_server()
+        native = self._native_args(session, fork)
         name = agent_name(session["pkg"])
         try:
             payload, _ = self._call(
@@ -911,6 +1189,7 @@ class HerdrExecutor(object):
             "created": created.get("status") == "created",
             "herdr_session": self.sname,
             "add_dirs": add_dirs,
+            "net_mark": len(self._net_denials),
         }
         if warm:
             session.update(warm_session=warm["session_id"], warm_worktree=warm["worktree"])
@@ -997,12 +1276,15 @@ class HerdrExecutor(object):
 
         summary = str(data.get("summary") or "")
         answer = ("ESCALATE: " + summary) if data["status"] == "escalate" else summary
-        return {
+        out = {
             "status": "ok", "answer": answer, "session_id": name, "resumed": resumed,
             "executor": "herdr",
             "isolation": {"isolate": True, "path": session["worktree"],
                           "workdir": session["worktree"]},
         }
+        if data.get("network_denials"):
+            out["network_denials"] = data["network_denials"]
+        return out
 
     def _send_prompt(self, session, name, line, result_path):
         """Send ONE prompt line. A stalled prompt is resent once after a short
@@ -1043,11 +1325,17 @@ class HerdrExecutor(object):
             data = self._wait_result(session, result_path, timeout)
         except _orca().OrcaNeed as exc:
             failure = exc
+        self.network_tick()
+        denials = self.network_denials(session.get("net_mark"))
         leaked = self._warm_leak(session)
         if leaked:
-            raise _need("error", "fork wrote outside its tree: %s" % ", ".join(leaked))
+            failure = _need("error", "fork wrote outside its tree: %s" % ", ".join(leaked))
         if failure is not None:
+            if denials:
+                failure.network_denials = denials
             raise failure
+        if denials:
+            data = dict(data, network_denials=denials)
         return data
 
     def _wait_result(self, session, result_path, timeout):
@@ -1056,6 +1344,7 @@ class HerdrExecutor(object):
             raise _need("stalled", "agent is no longer registered")
         deadline = self.clock() + float(timeout)
         while True:
+            self.network_tick()
             data = _read_result(result_path)
             if data is not None:
                 return data

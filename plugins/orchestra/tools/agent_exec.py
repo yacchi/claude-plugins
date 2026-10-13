@@ -105,6 +105,13 @@ DEFAULTS = {
             "version": "0.8.2",
             "bin": "herdr",
         },
+        # sandbox-runtime: confines the herdr host's network to an allowlist.
+        "srt": {
+            "source": "auto",
+            "spec": "npm:@anthropic-ai/sandbox-runtime",
+            "version": "0.0.79",
+            "bin": "srt",
+        },
     },
     "watchdog": {
         "enabled": True,
@@ -261,10 +268,20 @@ DEFAULTS = {
     # paths) are UNIONED across config layers -- an exception to the
     # list-replace rule, so a project layer cannot silently drop a path the
     # user layer protects or needs. See resolve_config().
+    # `network` restricts the herdr host's outbound connections through
+    # sandbox-runtime (srt): mode allowlist = only `allowed_domains` (plus
+    # domains granted with `agent-exec sandbox allow-domain`) are reachable;
+    # off = no network restriction. Both domain lists are UNIONED across
+    # layers like allow_write.
     "sandbox": {
         "mode": "auto",
         "allow_write": [],
         "deny_read": [],
+        "network": {
+            "mode": "allowlist",
+            "allowed_domains": ["api.anthropic.com"],
+            "denied_domains": [],
+        },
     },
     "telemetry": {
         "enabled": False,
@@ -671,6 +688,12 @@ Usage:
                                   refuses deny_read, ~/.claude, / and $HOME)
   agent-exec sandbox forget <path>
                                   remove a learned grant
+  agent-exec sandbox allow-domain <host-or-*.wildcard> [--json]
+                                  allow the herdr host's network to reach a
+                                  domain (refuses *, *.tld, IPs, localhost);
+                                  a running srt-confined host picks it up live
+  agent-exec sandbox forget-domain <host>
+                                  remove a domain grant
   agent-exec sandbox probe [--json]
                                   which backend a run would use, and why
   agent-exec telemetry record (--json STR | --file F)
@@ -1437,6 +1460,10 @@ def resolve_config():
     error_message_or_None)."""
     resolved = copy.deepcopy(DEFAULTS)
     sandbox_union = {"allow_write": [], "deny_read": []}
+    # Network domain lists are unioned the same way, starting from the
+    # defaults (a layer can add a domain, never drop api.anthropic.com).
+    network_union = dict((key, list(DEFAULTS["sandbox"]["network"][key]))
+                         for key in ("allowed_domains", "denied_domains"))
     removed = []
 
     for path in _ordered_layer_paths():
@@ -1452,13 +1479,20 @@ def resolve_config():
                 values = layer_sandbox.get(key)
                 if isinstance(values, list):
                     acc.extend(v for v in values if isinstance(v, str) and v not in acc)
+            layer_network = layer_sandbox.get("network")
+            if isinstance(layer_network, dict):
+                for key, acc in network_union.items():
+                    values = layer_network.get(key)
+                    if isinstance(values, list):
+                        acc.extend(v for v in values
+                                   if isinstance(v, str) and v not in acc)
         resolved = _deep_merge(resolved, data)
 
     if removed:
         return None, _removed_executor_error(removed)
 
     resolved["sandbox"] = agent_exec_sandbox.normalize_config(
-        resolved.get("sandbox"), sandbox_union
+        resolved.get("sandbox"), dict(sandbox_union, network=network_union)
     )
 
     external = resolved.get("external_executors") or {}
@@ -1671,7 +1705,9 @@ def cmd_sandbox(args):
     """`agent-exec sandbox list|allow|forget|probe`."""
     if not args or args[0] in ("-h", "--help"):
         sys.stderr.write("usage: agent-exec sandbox list [--workdir D] [--json] | "
-                         "allow <path> [--json] | forget <path> | probe [--json]\n")
+                         "allow <path> [--json] | forget <path> | "
+                         "allow-domain <host-or-*.wildcard> [--json] | "
+                         "forget-domain <host> [--json] | probe [--json]\n")
         return 2 if not args else 0
     sub, rest = args[0], args[1:]
     as_json = "--json" in rest
@@ -1738,6 +1774,30 @@ def cmd_sandbox(args):
             print(json.dumps(entry, ensure_ascii=False))
         else:
             print("granted: %s" % entry["path"])
+        return 0
+
+    if sub in ("allow-domain", "forget-domain"):
+        if len(rest) != 1:
+            sys.stderr.write("agent-exec: sandbox %s: expected one domain\n" % sub)
+            return 2
+        domain = rest[0].strip().lower()
+        if sub == "forget-domain":
+            removed = agent_exec_sandbox.forget_domain(domain)
+            if as_json:
+                print(json.dumps({"domain": domain, "removed": removed}))
+            else:
+                print("%s: %s" % ("removed" if removed else "no grant for", domain))
+            return 0 if removed else 1
+        try:
+            entry = agent_exec_sandbox.add_domain(domain)
+        except (OSError, ValueError) as exc:
+            sys.stderr.write("agent-exec: sandbox allow-domain: %s\n" % exc)
+            return 1
+        if as_json:
+            print(json.dumps(entry, ensure_ascii=False))
+        else:
+            print("allowed domain: %s (a running herdr host picks it up live)"
+                  % entry["domain"])
         return 0
 
     if sub == "probe":
@@ -4371,6 +4431,13 @@ def _print_doctor_text(report):
         host = report.get("herdr_host") or {}
         print("herdr host: home=%s sandboxed=%s (%s)" % (
             host.get("home"), host.get("sandboxed"), host.get("reason")))
+        net = host.get("network") or {}
+        if net:
+            srt = net.get("srt") or {}
+            print("  network: mode=%s restricted=%s srt=%s%s%s" % (
+                net.get("mode"), net.get("restricted"), srt.get("path") or "-",
+                (" (%s)" % srt["version"]) if srt.get("version") else "",
+                ("  " + net["reason"]) if net.get("reason") else ""))
         learned = sandbox.get("learned") or {}
         print("  learned grants: %d (%s)" % (learned.get("count", 0), learned.get("path")))
         if learned.get("warning"):
