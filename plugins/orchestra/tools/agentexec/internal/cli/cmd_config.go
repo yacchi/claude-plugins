@@ -10,9 +10,9 @@ func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "print the resolved orchestra config (defaults + user + project + local layers)",
-		Args:  noArgs,
+		Args:  cobra.NoArgs,
 	}
-	boolFlag(cmd, "json", "JSON output (the default and only format)")
+	cmd.Flags().Bool("json", false, "JSON output (the default and only format)")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		cfg, err := loadConfig()
 		if err != nil {

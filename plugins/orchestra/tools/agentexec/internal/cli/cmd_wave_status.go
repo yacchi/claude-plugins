@@ -21,132 +21,99 @@ import (
 // the real counter; until then status shows none.
 var ApprovalsPending = func(statePath string) int { return 0 }
 
-// The wave status/stop/lint commands parse their own arguments, as the Python
-// parsers did ("wave: unknown argument: X", last format flag wins).
+type waveStatusOptions struct {
+	statePath string
+	format    format
+	live      bool
+	watch     float64
+	events    int
+}
+
 func addWaveStatusCommands(parent *cobra.Command) {
 	status := &cobra.Command{
-		Use:                "status",
-		Short:              "render a wave's state.json",
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWaveStatus(cmd.OutOrStdout(), cmd.ErrOrStderr(), args)
-		},
+		Use:   "status",
+		Short: "render a wave's state.json",
+		Args:  cobra.NoArgs,
 	}
-	// Declared for --help only; DisableFlagParsing means they are never parsed.
-	strFlag(status, "state", "state.json path")
-	formatFlags(status, "json", "line", "text")
-	boolFlag(status, "live", "include live worktree changes")
-	strFlag(status, "watch", "redraw every SEC seconds")
-	strFlag(status, "events", "show the last N events")
+	var so waveStatusOptions
+	status.Flags().StringVar(&so.statePath, "state", "", "state.json path")
+	so.format = formatFlags(status, "json", "line", "text")
+	status.Flags().BoolVar(&so.live, "live", false, "include live worktree changes")
+	status.Flags().Float64Var(&so.watch, "watch", 0, "redraw every SEC seconds")
+	status.Flags().IntVar(&so.events, "events", 0, "show the last N events")
+	_ = status.MarkFlagRequired("state")
+	status.RunE = func(cmd *cobra.Command, _ []string) error {
+		if cmd.Flags().Changed("watch") && !finiteNonNegative(so.watch) {
+			return exitf(2, "wave status: --watch must be a non-negative number of seconds")
+		}
+		return runWaveStatus(cmd.OutOrStdout(), cmd.ErrOrStderr(), so, cmd.Flags().Changed("watch"))
+	}
 
 	stop := &cobra.Command{
-		Use:                "stop",
-		Short:              "ask a wave's runner to stop",
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWaveStop(cmd.OutOrStdout(), args)
-		},
+		Use:   "stop",
+		Short: "ask a wave's runner to stop",
+		Args:  cobra.NoArgs,
 	}
-	strFlag(stop, "state", "state.json path")
-	strFlag(stop, "reason", "why")
+	stopState := stop.Flags().String("state", "", "state.json path")
+	reason := stop.Flags().String("reason", "", "why")
+	_ = stop.MarkFlagRequired("state")
+	stop.RunE = func(cmd *cobra.Command, _ []string) error {
+		if err := state.RequestStop(*stopState, *reason); err != nil {
+			return &ExitError{Code: 1, Msg: "wave stop: " + err.Error()}
+		}
+		_, err := fmt.Fprintln(cmd.OutOrStdout(), `{"stop_requested": true}`)
+		return err
+	}
 
 	lint := &cobra.Command{
-		Use:                "lint",
-		Short:              "check a wave plan",
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWaveLint(cmd.OutOrStdout(), args)
-		},
+		Use:   "lint",
+		Short: "check a wave plan",
+		Args:  cobra.NoArgs,
 	}
-	strFlag(lint, "plan", "plan path")
-	formatFlags(lint, "json", "text")
+	planPath := lint.Flags().String("plan", "", "plan path")
+	lintFormat := formatFlags(lint, "json", "text")
+	_ = lint.MarkFlagRequired("plan")
+	lint.RunE = func(cmd *cobra.Command, _ []string) error {
+		return runWaveLint(cmd.OutOrStdout(), *planPath, lintFormat.is("json"))
+	}
 
 	parent.AddCommand(status, stop, lint)
 }
 
-func runWaveStatus(out, errw io.Writer, args []string) error {
-	statePath, hasState := "", false
-	format := "text"
-	watch, hasWatch := 0.0, false
-	events := 0
-	live := false
-	for i := 0; i < len(args); i++ {
-		tok := args[i]
-		switch tok {
-		case "--state":
-			if i+1 >= len(args) {
-				return exitf(2, "wave: missing value for --state")
-			}
-			statePath, hasState = args[i+1], true
-			i++
-		case "--json", "--line", "--text":
-			format = tok[2:]
-		case "--watch":
-			if i+1 >= len(args) {
-				return exitf(2, "wave: missing value for --watch")
-			}
-			v, ok := pyFloat(args[i+1])
-			if !ok {
-				return exitf(2, "wave: bad --watch value: %s", args[i+1])
-			}
-			watch, hasWatch = v, true
-			i++
-		case "--live":
-			live = true
-		case "--events":
-			if i+1 >= len(args) {
-				return exitf(2, "wave: missing value for --events")
-			}
-			n, ok := pyInt(args[i+1])
-			if !ok {
-				return exitf(2, "wave: bad --events value: %s", args[i+1])
-			}
-			events = n
-			i++
-		default:
-			return exitf(2, "wave: unknown argument: %s", tok)
-		}
-	}
-	if !hasState {
-		return exitf(2, "wave: status: --state is required")
-	}
-
+func runWaveStatus(out, errw io.Writer, o waveStatusOptions, watch bool) error {
 	renderOnce := func() (string, error) {
-		if info, err := os.Stat(statePath); err != nil || !info.Mode().IsRegular() {
-			fmt.Fprintf(errw, "agent-exec: wave: no state file at %s\n", statePath)
+		if info, err := os.Stat(o.statePath); err != nil || !info.Mode().IsRegular() {
+			fmt.Fprintf(errw, "agent-exec: wave status: no state file at %s\n", o.statePath)
 			return "", &ExitError{Code: 3}
 		}
-		store, err := state.Open(statePath)
+		store, err := state.Open(o.statePath)
 		if err != nil {
-			return "", &ExitError{Code: 3, Msg: "wave: " + err.Error()}
+			return "", &ExitError{Code: 3, Msg: "wave status: " + err.Error()}
 		}
 		st, err := store.Load()
 		if err != nil {
-			return "", &ExitError{Code: 1, Msg: "wave: cannot read state: " + err.Error()}
+			return "", &ExitError{Code: 1, Msg: "wave status: cannot read state: " + err.Error()}
 		}
 		now := float64(time.Now().UnixNano()) / 1e9
-		switch format {
-		case "json":
+		switch {
+		case o.format.is("json"):
 			m := st.ToMap()
-			if live {
+			if o.live {
 				m["live_changes"] = state.LiveChanges(&st)
 			}
 			b, err := fsutil.MarshalJSON(m)
 			return string(b), err
-		case "line":
-			return state.StatusLine(&st, now, live), nil
+		case o.format.is("line"):
+			return state.StatusLine(&st, now, o.live), nil
 		}
-		o := state.RenderOptions{Live: live, StatePath: statePath, ApprovalsPending: ApprovalsPending(statePath)}
-		if events != 0 {
-			o.Events = state.ReadEvents(statePath, events)
+		ro := state.RenderOptions{Live: o.live, StatePath: o.statePath, ApprovalsPending: ApprovalsPending(o.statePath)}
+		if o.events != 0 {
+			ro.Events = state.ReadEvents(o.statePath, o.events)
 		}
-		return state.RenderStatus(&st, now, o), nil
+		return state.RenderStatus(&st, now, ro), nil
 	}
 
-	if !hasWatch {
+	if !watch {
 		s, err := renderOnce()
 		if err != nil {
 			return err
@@ -157,74 +124,25 @@ func runWaveStatus(out, errw io.Writer, args []string) error {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigs)
+	clearScreen := !o.format.is("json") && !o.format.is("line")
 	for {
 		s, err := renderOnce()
 		if err != nil {
 			return err
 		}
-		if format == "text" {
+		if clearScreen {
 			fmt.Fprint(out, "\x1b[H\x1b[2J")
 		}
 		fmt.Fprintln(out, s)
 		select {
 		case <-sigs:
 			return nil
-		case <-time.After(time.Duration(max(watch, 0) * float64(time.Second))):
+		case <-time.After(duration(o.watch, time.Second)):
 		}
 	}
 }
 
-func runWaveStop(out io.Writer, args []string) error {
-	statePath, hasState := "", false
-	reason := ""
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--state":
-			if i+1 >= len(args) {
-				return exitf(2, "wave: missing value for --state")
-			}
-			statePath, hasState = args[i+1], true
-			i++
-		case "--reason":
-			if i+1 >= len(args) {
-				return exitf(2, "wave: missing value for --reason")
-			}
-			reason = args[i+1]
-			i++
-		default:
-			return exitf(2, "wave: unknown argument: %s", args[i])
-		}
-	}
-	if !hasState {
-		return exitf(2, "wave: stop: --state is required")
-	}
-	if err := state.RequestStop(statePath, reason); err != nil {
-		return &ExitError{Code: 1, Msg: "wave: " + err.Error()}
-	}
-	_, err := fmt.Fprintln(out, `{"stop_requested": true}`)
-	return err
-}
-
-func runWaveLint(out io.Writer, args []string) error {
-	planPath, hasPlan := "", false
-	format := "text"
-	for i := 0; i < len(args); i++ {
-		switch tok := args[i]; tok {
-		case "--plan":
-			if i+1 >= len(args) {
-				return exitf(2, "wave lint: missing value for --plan")
-			}
-			planPath, hasPlan = args[i+1], true
-			i++
-		case "--json", "--text":
-			format = tok[2:]
-		default:
-			return exitf(2, "wave lint: unknown argument: %s", tok)
-		}
-	}
-	if !hasPlan {
-		return exitf(2, "wave lint: --plan is required")
-	}
+func runWaveLint(out io.Writer, planPath string, asJSON bool) error {
 	p, err := plan.Load(planPath)
 	if err != nil {
 		var pe *plan.Error
@@ -234,7 +152,7 @@ func runWaveLint(out io.Writer, args []string) error {
 		return err
 	}
 	warnings := plan.Lint(p, "")
-	if format == "json" {
+	if asJSON {
 		list := make([]any, 0, len(warnings))
 		for _, w := range warnings {
 			var pkg any
@@ -248,11 +166,11 @@ func runWaveLint(out io.Writer, args []string) error {
 		}
 	} else {
 		for _, w := range warnings {
-			pkg := "None"
 			if w.Pkg != nil {
-				pkg = *w.Pkg
+				fmt.Fprintf(out, "plan-warning: %s: %s\n", *w.Pkg, w.Message)
+			} else {
+				fmt.Fprintf(out, "plan-warning: %s\n", w.Message)
 			}
-			fmt.Fprintf(out, "plan-warning: %s: %s\n", pkg, w.Message)
 		}
 	}
 	if len(warnings) > 0 {

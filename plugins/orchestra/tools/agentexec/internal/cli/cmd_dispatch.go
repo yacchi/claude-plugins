@@ -19,52 +19,60 @@ import (
 )
 
 type dispatchFlags struct {
-	class, archetype, exhausted, workdir, isolate, task, runID, resume, token *optString
-	executor, model, effort                                                   *optString
-	promptFiles                                                               *[]string
-	noResume, noCooldown, capture, detach, summary                            *optBool
+	class, archetype, exhausted, workdir, isolate, task, runID, resume, token string
+	executor, model, effort                                                   string
+	promptFiles                                                               []string
+	noResume, noCooldown, capture, detach, summary                            bool
 }
 
 func newDispatchCmd() *cobra.Command {
-	cmd := withPrefix(&cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "dispatch",
 		Short: "one-call resolve + dispatch (or, with --executor, a direct run)",
-		Args:  noArgs,
-	}, "dispatch")
-	f := dispatchFlags{
-		class:       strFlag(cmd, "class", "capability class"),
-		archetype:   strFlag(cmd, "archetype", "task archetype"),
-		exhausted:   strFlag(cmd, "exhausted", "comma-separated executors already tried"),
-		promptFiles: listFlag(cmd, "prompt-file", "prompt file (repeatable)"),
-		workdir:     strFlag(cmd, "workdir", "working directory of the worker"),
-		isolate:     strFlag(cmd, "isolate", "auto|always|never"),
-		task:        strFlag(cmd, "task", "task id (names the worktree and the resumable session)"),
-		runID:       strFlag(cmd, "run-id", "run ledger id"),
-		resume:      strFlag(cmd, "resume", "session id to resume"),
-		noResume:    boolFlag(cmd, "no-resume", "start cold even when the task has a session"),
-		noCooldown:  boolFlag(cmd, "no-cooldown", "ignore executor cooldowns"),
-		token:       strFlag(cmd, "token", "dispatch token from `dispatch prepare`"),
-		capture:     boolFlag(cmd, "capture", "accepted for compatibility; dispatch always captures"),
-		detach:      boolFlag(cmd, "detach", "run as a detached background child"),
-		summary:     boolFlag(cmd, "summary", "print one compact line with the answer cut to 400 characters"),
-		executor:    strFlag(cmd, "executor", "direct mode: run this executor without routing"),
-		model:       strFlag(cmd, "model", "direct mode: model"),
-		effort:      strFlag(cmd, "effort", "direct mode: effort"),
+		Args:  cobra.NoArgs,
 	}
+	f := &dispatchFlags{}
+	fl := cmd.Flags()
+	fl.StringVar(&f.class, "class", "", "capability class")
+	fl.StringVar(&f.archetype, "archetype", "default", "task archetype")
+	fl.StringVar(&f.exhausted, "exhausted", "", "comma-separated executors already tried")
+	fl.StringArrayVar(&f.promptFiles, "prompt-file", nil, "prompt file (repeatable)")
+	fl.StringVar(&f.workdir, "workdir", "", "working directory of the worker")
+	fl.StringVar(&f.isolate, "isolate", "", "auto|always|never (default auto; never with --executor)")
+	fl.StringVar(&f.task, "task", "", "task id (names the worktree and the resumable session)")
+	fl.StringVar(&f.runID, "run-id", "", "run ledger id")
+	fl.StringVar(&f.resume, "resume", "", "session id to resume")
+	fl.BoolVar(&f.noResume, "no-resume", false, "start cold even when the task has a session")
+	fl.BoolVar(&f.noCooldown, "no-cooldown", false, "ignore executor cooldowns")
+	fl.StringVar(&f.token, "token", "", "dispatch token from `dispatch prepare`")
+	fl.BoolVar(&f.capture, "capture", false, "accepted for compatibility; dispatch always captures")
+	fl.BoolVar(&f.detach, "detach", false, "run as a detached background child")
+	fl.BoolVar(&f.summary, "summary", false, "print one compact line with the answer cut to 400 characters")
+	fl.StringVar(&f.executor, "executor", "", "direct mode: run this executor without routing")
+	fl.StringVar(&f.model, "model", "", "direct mode: model")
+	fl.StringVar(&f.effort, "effort", "", "direct mode: effort")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error { return runDispatch(cmd, f) }
 	cmd.AddCommand(newDispatchPrepareCmd(), newDispatchWaitCmd())
 	return cmd
 }
 
-// checkIsolateRunID validates the two values the parser checked on sight.
-func checkIsolateRunID(isolate, runID *optString) error {
-	if v, ok := isolate.Get(); ok && !dispatch.ValidIsolate(v) {
+// checkIsolateRunID validates --isolate and --run-id when they are given.
+func checkIsolateRunID(cmd *cobra.Command, isolate, runID string) error {
+	if cmd.Flags().Changed("isolate") && !dispatch.ValidIsolate(isolate) {
 		return exitf(2, "dispatch: --isolate must be auto|always|never")
 	}
-	if v, ok := runID.Get(); ok && !ledger.RunIDPattern.MatchString(v) {
-		return exitf(2, "dispatch: invalid --run-id: %s", v)
+	if cmd.Flags().Changed("run-id") && !ledger.RunIDPattern.MatchString(runID) {
+		return exitf(2, "dispatch: invalid --run-id: %s", runID)
 	}
 	return nil
+}
+
+// isolateOr is --isolate, or def when it was not given.
+func isolateOr(cmd *cobra.Command, isolate, def string) string {
+	if cmd.Flags().Changed("isolate") {
+		return isolate
+	}
+	return def
 }
 
 // given lists the flags among names that were passed, as --name.
@@ -76,6 +84,18 @@ func given(cmd *cobra.Command, names ...string) []string {
 		}
 	}
 	return out
+}
+
+// requireFlags is the missing-flag usage error for the first of names not
+// given; dispatch's required flags depend on its mode, so cobra's static
+// MarkFlagRequired cannot express them.
+func requireFlags(cmd *cobra.Command, names ...string) error {
+	for _, n := range names {
+		if !cmd.Flags().Changed(n) {
+			return exitf(2, "%s: missing required flag --%s", cmdName(cmd), n)
+		}
+	}
+	return nil
 }
 
 // resolveForDispatch is the routed path's config load: a broken layer is a
@@ -92,26 +112,26 @@ func resolveForDispatch(cmd *cobra.Command) (*config.Resolved, error) {
 	return cfg, nil
 }
 
-func runDispatch(cmd *cobra.Command, f dispatchFlags) error {
-	if err := checkIsolateRunID(f.isolate, f.runID); err != nil {
+func runDispatch(cmd *cobra.Command, f *dispatchFlags) error {
+	if err := checkIsolateRunID(cmd, f.isolate, f.runID); err != nil {
 		return err
 	}
 	var exhausted []string
-	for _, e := range strings.Split(f.exhausted.Or(""), ",") {
+	for _, e := range strings.Split(f.exhausted, ",") {
 		if e != "" {
 			exhausted = append(exhausted, e)
 		}
 	}
-	if token, ok := f.token.Get(); ok {
-		return runTokenDispatch(cmd, f, token, exhausted)
+	if cmd.Flags().Changed("token") {
+		return runTokenDispatch(cmd, f, exhausted)
 	}
-	if f.detach.On() {
+	if f.detach {
 		return exitf(2, "dispatch: --detach requires --token")
 	}
-	if f.summary.On() {
+	if f.summary {
 		return exitf(2, "dispatch: --summary requires --token")
 	}
-	if _, ok := f.executor.Get(); ok {
+	if cmd.Flags().Changed("executor") {
 		return runDirectDispatch(cmd, f)
 	}
 	for _, name := range []string{"model", "effort"} {
@@ -119,19 +139,12 @@ func runDispatch(cmd *cobra.Command, f dispatchFlags) error {
 			return exitf(2, "dispatch: --%s requires --executor", name)
 		}
 	}
-	cls, ok := f.class.Get()
-	if !ok {
-		return exitf(2, "dispatch: missing required option: --class")
+	if err := requireFlags(cmd, "class", "prompt-file", "workdir"); err != nil {
+		return err
 	}
-	if len(*f.promptFiles) == 0 {
-		return exitf(2, "dispatch: missing required option: --prompt-file")
-	}
-	workdir, ok := f.workdir.Get()
-	if !ok {
-		return exitf(2, "dispatch: missing required option: --workdir")
-	}
-	// The prompt files are checked before the config, as the parser did.
-	if _, err := capture.ReadPromptFiles(*f.promptFiles); err != nil {
+	// Unreadable prompt files are a usage error even when the config is
+	// broken: they are checked first.
+	if _, err := capture.ReadPromptFiles(f.promptFiles); err != nil {
 		return exitf(2, "dispatch: %s", err)
 	}
 	cfg, err := resolveForDispatch(cmd)
@@ -139,17 +152,17 @@ func runDispatch(cmd *cobra.Command, f dispatchFlags) error {
 		return err
 	}
 	return emitOutcome(cmd, dispatch.Execute(context.Background(), cfg, dispatch.Request{
-		Class: cls, Archetype: f.archetype.Or("default"), Workdir: workdir,
-		Isolate: f.isolate.Or(dispatch.IsolateAuto), Task: f.task.Or(""), RunID: f.runID.Or(""),
-		Resume: f.resume.Or(""), PromptFiles: *f.promptFiles, Exhausted: exhausted,
-		NoCooldown: f.noCooldown.On(), NoResume: f.noResume.On(),
+		Class: f.class, Archetype: f.archetype, Workdir: f.workdir,
+		Isolate: isolateOr(cmd, f.isolate, dispatch.IsolateAuto), Task: f.task, RunID: f.runID,
+		Resume: f.resume, PromptFiles: f.promptFiles, Exhausted: exhausted,
+		NoCooldown: f.noCooldown, NoResume: f.noResume,
 	}))
 }
 
 // runTokenDispatch runs (or detaches, or summarizes) a prepared token. Only
 // --class (to escalate), --exhausted, --no-resume and the output switches
 // may accompany it.
-func runTokenDispatch(cmd *cobra.Command, f dispatchFlags, token string, exhausted []string) error {
+func runTokenDispatch(cmd *cobra.Command, f *dispatchFlags, exhausted []string) error {
 	if conflicts := given(cmd, "prompt-file", "workdir", "archetype", "run-id", "isolate", "task",
 		"resume", "no-cooldown", "executor", "model", "effort"); len(conflicts) > 0 {
 		return exitf(2, "dispatch: --token conflicts with %s", strings.Join(conflicts, ", "))
@@ -159,9 +172,9 @@ func runTokenDispatch(cmd *cobra.Command, f dispatchFlags, token string, exhaust
 		return err
 	}
 	dispatch.SweepRetention(cfg)
-	spec, err := dispatch.LoadToken(cfg, token)
+	spec, err := dispatch.LoadToken(cfg, f.token)
 	if err != nil {
-		return exitf(2, "dispatch: invalid token: %s", token)
+		return exitf(2, "dispatch: invalid token: %s", f.token)
 	}
 	if spec.ConfigRoot != "" {
 		// Pin the project layers recorded at prepare time; the detached
@@ -175,9 +188,12 @@ func runTokenDispatch(cmd *cobra.Command, f dispatchFlags, token string, exhaust
 		return exitf(2, "dispatch: invalid --run-id: %s", *spec.RunID)
 	}
 	req := dispatch.Request{
-		Class: f.class.Or(spec.Class), Archetype: spec.Archetype, Workdir: spec.Workdir,
-		Isolate: spec.Isolate, PromptFiles: spec.PromptFiles, NoResume: f.noResume.On(),
+		Class: spec.Class, Archetype: spec.Archetype, Workdir: spec.Workdir,
+		Isolate: spec.Isolate, PromptFiles: spec.PromptFiles, NoResume: f.noResume,
 		Exhausted: exhausted,
+	}
+	if cmd.Flags().Changed("class") {
+		req.Class = f.class
 	}
 	if spec.RunID != nil {
 		req.RunID = *spec.RunID
@@ -186,14 +202,14 @@ func runTokenDispatch(cmd *cobra.Command, f dispatchFlags, token string, exhaust
 		req.Task = *spec.Task
 	}
 	switch {
-	case f.detach.On():
-		return writeJSONLine(cmd.OutOrStdout(), dispatch.Detach(cfg, token, req.Args()))
-	case f.summary.On():
+	case f.detach:
+		return writeJSONLine(cmd.OutOrStdout(), dispatch.Detach(cfg, f.token, req.Args()))
+	case f.summary:
 		o := dispatch.Execute(context.Background(), cfg, req)
 		if o.Out == nil {
 			return emitOutcome(cmd, o)
 		}
-		dispatch.AttachAnswerPath(cfg, token, o.Out)
+		dispatch.AttachAnswerPath(cfg, f.token, o.Out)
 		o.Out = dispatch.Summarize(o.Out)
 		return emitSummary(cmd, o)
 	}
@@ -202,31 +218,25 @@ func runTokenDispatch(cmd *cobra.Command, f dispatchFlags, token string, exhaust
 
 // runDirectDispatch is `dispatch --executor E --model M --effort E`: the
 // executor runs as given, without routing (the old `run --capture`).
-func runDirectDispatch(cmd *cobra.Command, f dispatchFlags) error {
-	executor, _ := f.executor.Get()
-	if readiness.KnownExecutors[executor] != "cli" {
-		return exitf(2, "dispatch: unknown executor: %s", executor)
+func runDirectDispatch(cmd *cobra.Command, f *dispatchFlags) error {
+	if readiness.KnownExecutors[f.executor] != "cli" {
+		return exitf(2, "dispatch: unknown executor: %s", f.executor)
 	}
 	if conflicts := given(cmd, "archetype", "exhausted", "no-cooldown", "no-resume"); len(conflicts) > 0 {
 		return exitf(2, "dispatch: --executor conflicts with %s", strings.Join(conflicts, ", "))
 	}
-	for _, name := range []string{"model", "effort", "workdir"} {
-		if !cmd.Flags().Changed(name) {
-			return exitf(2, "dispatch: missing required option: --%s", name)
-		}
+	if err := requireFlags(cmd, "model", "effort", "workdir", "prompt-file"); err != nil {
+		return err
 	}
-	if len(*f.promptFiles) == 0 {
-		return exitf(2, "dispatch: missing required option: --prompt-file")
-	}
-	if _, err := capture.ReadPromptFiles(*f.promptFiles); err != nil {
+	if _, err := capture.ReadPromptFiles(f.promptFiles); err != nil {
 		return exitf(2, "dispatch: %s", err)
 	}
 	// A direct run never fails on a broken config layer: the defaults apply.
 	cfg := configOrDefaults()
 	return emitOutcome(cmd, dispatch.Execute(context.Background(), cfg, dispatch.Request{
-		Executor: executor, Model: f.model.Or(""), Effort: f.effort.Or(""), Class: f.class.Or(""),
-		Workdir: f.workdir.Or(""), Isolate: f.isolate.Or(dispatch.IsolateNever), Task: f.task.Or(""),
-		RunID: f.runID.Or(""), Resume: f.resume.Or(""), PromptFiles: *f.promptFiles,
+		Executor: f.executor, Model: f.model, Effort: f.effort, Class: f.class,
+		Workdir: f.workdir, Isolate: isolateOr(cmd, f.isolate, dispatch.IsolateNever), Task: f.task,
+		RunID: f.runID, Resume: f.resume, PromptFiles: f.promptFiles,
 	}))
 }
 
@@ -266,51 +276,44 @@ func outcomeExit(cmd *cobra.Command, o dispatch.Outcome) error {
 }
 
 func newDispatchPrepareCmd() *cobra.Command {
-	cmd := withPrefix(&cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "prepare",
 		Short: "mint a dispatch token for the run",
-		Args:  noArgs,
-	}, "dispatch")
-	class := strFlag(cmd, "class", "capability class")
-	promptFiles := listFlag(cmd, "prompt-file", "prompt file (repeatable; may not exist yet)")
-	workdir := strFlag(cmd, "workdir", "working directory of the worker")
-	archetype := strFlag(cmd, "archetype", "task archetype")
-	isolate := strFlag(cmd, "isolate", "auto|always|never")
-	task := strFlag(cmd, "task", "task id")
-	runID := strFlag(cmd, "run-id", "run ledger id")
-	boolFlag(cmd, "json", "JSON output")
+		Args:  cobra.NoArgs,
+	}
+	fl := cmd.Flags()
+	class := fl.String("class", "", "capability class")
+	promptFiles := fl.StringArray("prompt-file", nil, "prompt file (repeatable; may not exist yet)")
+	workdir := fl.String("workdir", "", "working directory of the worker")
+	archetype := fl.String("archetype", "default", "task archetype")
+	isolate := fl.String("isolate", dispatch.IsolateAuto, "auto|always|never")
+	task := fl.String("task", "", "task id")
+	runID := fl.String("run-id", "", "run ledger id")
+	fl.Bool("json", false, "JSON output (the default and only format)")
+	for _, name := range []string{"class", "prompt-file", "workdir"} {
+		_ = cmd.MarkFlagRequired(name)
+	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		if err := checkIsolateRunID(isolate, runID); err != nil {
+		if err := checkIsolateRunID(cmd, *isolate, *runID); err != nil {
 			return err
-		}
-		cls, ok := class.Get()
-		if !ok {
-			return exitf(2, "dispatch: missing required option: --class")
-		}
-		if len(*promptFiles) == 0 {
-			return exitf(2, "dispatch: missing required option: --prompt-file")
-		}
-		wd, ok := workdir.Get()
-		if !ok {
-			return exitf(2, "dispatch: missing required option: --workdir")
 		}
 		cfg, err := loadConfig()
 		if err != nil {
 			return err
 		}
 		spec := dispatch.PrepareSpec{
-			Class: cls, Archetype: archetype.Or("default"), Workdir: wd,
-			Isolate: isolate.Or(dispatch.IsolateAuto), PromptFiles: *promptFiles,
+			Class: *class, Archetype: *archetype, Workdir: *workdir,
+			Isolate: *isolate, PromptFiles: *promptFiles,
 		}
-		if v, ok := runID.Get(); ok {
-			spec.RunID = &v
+		if cmd.Flags().Changed("run-id") {
+			spec.RunID = runID
 		}
-		if v, ok := task.Get(); ok {
-			spec.Task = &v
+		if cmd.Flags().Changed("task") {
+			spec.Task = task
 		}
 		token, err := dispatch.Prepare(cfg, spec)
 		if err != nil {
-			return exitf(1, "dispatch: %s", err)
+			return exitf(1, "dispatch prepare: %s", err)
 		}
 		layers := make([]any, len(cfg.Layers))
 		for i, l := range cfg.Layers {
@@ -322,36 +325,26 @@ func newDispatchPrepareCmd() *cobra.Command {
 }
 
 func newDispatchWaitCmd() *cobra.Command {
-	cmd := withPrefix(&cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "wait",
 		Short: "poll a --detach'd run",
-		Args:  noArgs,
-	}, "dispatch")
-	token := strFlag(cmd, "token", "dispatch token")
-	maxWait := strFlag(cmd, "max-wait", "seconds to poll (default 560)")
-	summary := boolFlag(cmd, "summary", "print one compact line with the answer cut to 400 characters")
+		Args:  cobra.NoArgs,
+	}
+	token := cmd.Flags().String("token", "", "dispatch token")
+	maxWait := cmd.Flags().Int("max-wait", int(dispatch.DefaultMaxWait/time.Second), "seconds to poll")
+	summary := cmd.Flags().Bool("summary", false, "print one compact line with the answer cut to 400 characters")
+	_ = cmd.MarkFlagRequired("token")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		wait := dispatch.DefaultMaxWait
-		if v, ok := maxWait.Get(); ok {
-			n, valid := pyInt(v)
-			if !valid {
-				return exitf(2, "dispatch: --max-wait must be an integer")
-			}
-			wait = time.Duration(n) * time.Second
-		}
-		tok, ok := token.Get()
-		if !ok {
-			return exitf(2, "dispatch: missing required option: --token")
-		}
 		cfg, err := loadConfig()
 		if err != nil {
 			return err
 		}
-		if !dispatch.TokenPattern.MatchString(tok) {
-			return exitf(2, "dispatch: invalid token: %s", tok)
+		if !dispatch.TokenPattern.MatchString(*token) {
+			return exitf(2, "dispatch wait: invalid token: %s", *token)
 		}
-		out, code := dispatch.Wait(cfg, tok, wait, summary.On())
-		if summary.On() {
+		wait := time.Duration(*maxWait) * time.Second
+		out, code := dispatch.Wait(cfg, *token, wait, *summary)
+		if *summary {
 			return emitSummary(cmd, dispatch.Outcome{Out: out, Exit: code})
 		}
 		return emitOutcome(cmd, dispatch.Outcome{Out: out, Exit: code})

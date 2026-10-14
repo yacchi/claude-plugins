@@ -3,8 +3,8 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -23,135 +23,101 @@ func init() {
 	}
 }
 
-const approvalsUsage = "usage: agent-exec approvals --state STATE [--json]\n" +
-	"       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n" +
-	"                                   [--by instructor|user] [--json]\n"
-
-// The approvals command parses its own arguments like the Python parser:
-// `decide` is only a verb when it comes first, positionals are collected in
-// any position, and the usage goes to stderr with exit 2.
-func newApprovalsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:                "approvals [decide ITEM allow|deny]",
-		Short:              "pending network, path and dialog approvals of a wave",
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runApprovals(cmd.OutOrStdout(), cmd.ErrOrStderr(), args)
-		},
+// requireStateFile is exit 3 when the wave's state file is missing.
+func requireStateFile(cmd *cobra.Command, statePath string) error {
+	if st, err := os.Stat(statePath); err != nil || !st.Mode().IsRegular() {
+		return exitf(3, "%s: no state file at %s", cmdName(cmd), statePath)
 	}
-	// Declared for --help only; DisableFlagParsing means they are never parsed.
-	strFlag(cmd, "state", "state.json path")
-	strFlag(cmd, "reason", "why (decide)")
-	strFlag(cmd, "by", "instructor|user (decide)")
-	boolFlag(cmd, "json", "JSON output")
-	return cmd
+	return nil
 }
 
-func runApprovals(out, errw io.Writer, args []string) error {
-	deciding := len(args) > 0 && args[0] == "decide"
-	rest := args
-	if deciding {
-		rest = args[1:]
+func newApprovalsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "approvals",
+		Short: "pending network, path and dialog approvals of a wave",
+		Args:  cobra.NoArgs,
 	}
-	if len(rest) > 0 && (rest[0] == "-h" || rest[0] == "--help") {
-		_, _ = io.WriteString(out, approvalsUsage)
-		return nil
-	}
-	usage := func() error {
-		_, _ = io.WriteString(errw, approvalsUsage)
-		return &ExitError{Code: 2}
-	}
-	values := map[string]string{}
-	var positional []string
-	asJSON := false
-	for i := 0; i < len(rest); i++ {
-		tok := rest[i]
-		switch {
-		case tok == "--json":
-			asJSON = true
-		case tok == "--state" || tok == "--reason" || tok == "--by":
-			if i+1 >= len(rest) {
-				return exitf(2, "approvals: missing value for %s", tok)
-			}
-			values[tok[2:]] = rest[i+1]
-			i++
-		case strings.HasPrefix(tok, "--"):
-			return exitf(2, "approvals: unknown option: %s", tok)
-		default:
-			positional = append(positional, tok)
+	statePath := cmd.Flags().String("state", "", "state.json path")
+	asJSON := cmd.Flags().Bool("json", false, "JSON output")
+	_ = cmd.MarkFlagRequired("state")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		if err := requireStateFile(cmd, *statePath); err != nil {
+			return err
 		}
-	}
-	statePath := values["state"]
-	if statePath == "" {
-		return usage()
-	}
-	if st, err := os.Stat(statePath); err != nil || !st.Mode().IsRegular() {
-		return exitf(3, "approvals: no state file at %s", statePath)
-	}
-	if !deciding {
-		_, hasReason := values["reason"]
-		_, hasBy := values["by"]
-		if len(positional) > 0 || hasReason || hasBy {
-			return usage()
-		}
-		items, err := approvals.Pending(statePath)
+		items, err := approvals.Pending(*statePath)
 		if err != nil {
 			return exitf(1, "approvals: %v", err)
 		}
-		if asJSON {
+		out := cmd.OutOrStdout()
+		if *asJSON {
 			return writeJSONLine(out, items)
 		}
 		for _, it := range items {
 			fmt.Fprintln(out, approvals.FormatLine(it))
 		}
 		if len(items) > 0 {
-			fmt.Fprintf(out, "decide: agent-exec approvals decide --state %s ITEM allow|deny --reason TEXT\n", statePath)
+			fmt.Fprintf(out, "decide: agent-exec approvals decide --state %s ITEM allow|deny --reason TEXT\n", *statePath)
 		} else {
 			fmt.Fprintln(out, "no pending approvals")
 		}
 		return nil
 	}
-	by, ok := values["by"]
-	if !ok {
-		by = "instructor"
-	}
-	reason := strings.TrimSpace(values["reason"])
-	if len(positional) != 2 || !contains(approvals.Decisions, positional[1]) ||
-		!contains(approvals.Bys, by) || reason == "" {
-		return usage()
-	}
-	res, err := approvals.Decide(statePath, positional[0], positional[1], reason, by)
-	var failed *approvals.DecisionError
-	if err != nil && !errors.As(err, &failed) {
-		return exitf(1, "approvals decide: %v", err)
-	}
-	if asJSON {
-		if werr := writeJSONLine(out, res); werr != nil {
-			return werr
-		}
-	} else if failed == nil {
-		subject := "dialog"
-		if res["kind"] != "dialog" {
-			subject = fmt.Sprint(res["subject"])
-		}
-		tail := ""
-		if resumed, _ := res["resumed"].([]string); len(resumed) > 0 {
-			tail = "  resumed: " + strings.Join(resumed, ", ")
-		}
-		fmt.Fprintf(out, "%s %s: %s%s\n", positional[1], positional[0], subject, tail)
-	}
-	if failed != nil {
-		return exitf(failed.Code, "approvals decide: %s", failed.Msg)
-	}
-	return nil
+	cmd.AddCommand(newApprovalsDecideCmd())
+	return cmd
 }
 
-func contains(list []string, s string) bool {
-	for _, e := range list {
-		if e == s {
-			return true
-		}
+func newApprovalsDecideCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "decide ITEM allow|deny",
+		Short: "allow or deny a pending approval",
+		Args:  cobra.ExactArgs(2),
 	}
-	return false
+	statePath := cmd.Flags().String("state", "", "state.json path")
+	reason := cmd.Flags().String("reason", "", "why")
+	by := cmd.Flags().String("by", "instructor", "instructor|user")
+	asJSON := cmd.Flags().Bool("json", false, "JSON output")
+	for _, name := range []string{"state", "reason"} {
+		_ = cmd.MarkFlagRequired(name)
+	}
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		item, decision := args[0], args[1]
+		why := strings.TrimSpace(*reason)
+		switch {
+		case !slices.Contains(approvals.Decisions, decision):
+			return exitf(2, "approvals decide: decision must be %s, got %s", strings.Join(approvals.Decisions, "|"), decision)
+		case !slices.Contains(approvals.Bys, *by):
+			return exitf(2, "approvals decide: --by must be %s, got %s", strings.Join(approvals.Bys, "|"), *by)
+		case why == "":
+			return exitf(2, "approvals decide: --reason must not be blank")
+		}
+		if err := requireStateFile(cmd, *statePath); err != nil {
+			return err
+		}
+		res, err := approvals.Decide(*statePath, item, decision, why, *by)
+		var failed *approvals.DecisionError
+		if err != nil && !errors.As(err, &failed) {
+			return exitf(1, "approvals decide: %v", err)
+		}
+		out := cmd.OutOrStdout()
+		if *asJSON {
+			if werr := writeJSONLine(out, res); werr != nil {
+				return werr
+			}
+		} else if failed == nil {
+			subject := "dialog"
+			if res["kind"] != "dialog" {
+				subject = fmt.Sprint(res["subject"])
+			}
+			tail := ""
+			if resumed, _ := res["resumed"].([]string); len(resumed) > 0 {
+				tail = "  resumed: " + strings.Join(resumed, ", ")
+			}
+			fmt.Fprintf(out, "%s %s: %s%s\n", decision, item, subject, tail)
+		}
+		if failed != nil {
+			return exitf(failed.Code, "approvals decide: %s", failed.Msg)
+		}
+		return nil
+	}
+	return cmd
 }

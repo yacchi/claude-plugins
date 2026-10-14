@@ -15,17 +15,18 @@ func newUsageCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "usage",
 		Short: "aggregate token usage and estimated cost",
-		Args:  noArgs,
+		Args:  cobra.NoArgs,
 	}
-	since := strFlag(cmd, "since", "<N>m|<N>h|<N>d or an ISO8601 timestamp (default 24h)")
-	runs := listFlag(cmd, "run", "run id(s), comma-separated (repeatable)")
-	sessions := listFlag(cmd, "session", "session id(s), comma-separated (repeatable)")
-	source := listFlag(cmd, "source", "comma-separated sources (claude,pi)")
-	allProjects := boolFlag(cmd, "all-projects", "do not scope to this working directory")
-	listRuns := boolFlag(cmd, "list-runs", "list the recorded runs")
+	fl := cmd.Flags()
+	since := fl.String("since", "24h", "<N>m|<N>h|<N>d or an ISO8601 timestamp")
+	runs := fl.StringArray("run", nil, "run id(s), comma-separated (repeatable)")
+	sessions := fl.StringArray("session", nil, "session id(s), comma-separated (repeatable)")
+	source := fl.StringArray("source", nil, "comma-separated sources (claude,pi)")
+	allProjects := fl.Bool("all-projects", false, "do not scope to this working directory")
+	listRuns := fl.Bool("list-runs", false, "list the recorded runs")
 	format := formatFlags(cmd, "json", "text")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		return runUsage(cmd, since, *runs, *sessions, *source, allProjects.On(), listRuns.On(), format)
+		return runUsage(cmd, *since, *runs, *sessions, *source, *allProjects, *listRuns, format.is("text"))
 	}
 	return cmd
 }
@@ -50,8 +51,8 @@ func selectors(flag string, raw []string, pattern ledger.Matcher) ([]string, err
 	return out, nil
 }
 
-func runUsage(cmd *cobra.Command, since *optString, runFlags, sessionFlags, sourceFlags []string,
-	allProjects, listRuns bool, format *format) error {
+func runUsage(cmd *cobra.Command, since string, runFlags, sessionFlags, sourceFlags []string,
+	allProjects, listRuns, asText bool) error {
 	sources := append([]string(nil), usage.Sources...)
 	for _, raw := range sourceFlags {
 		var names []string
@@ -83,10 +84,7 @@ func runUsage(cmd *cobra.Command, since *optString, runFlags, sessionFlags, sour
 	if err != nil {
 		return err
 	}
-	if err := format.exclusive(cmd); err != nil {
-		return err
-	}
-	_, sinceGiven := since.Get()
+	sinceGiven := cmd.Flags().Changed("since")
 	if listRuns && (len(runIDs) > 0 || len(sessionIDs) > 0 || sinceGiven) {
 		return exitf(2, "usage: --list-runs cannot be combined with scope or --since")
 	}
@@ -95,10 +93,9 @@ func runUsage(cmd *cobra.Command, since *optString, runFlags, sessionFlags, sour
 	}
 
 	now := time.Now().UTC()
-	sinceRaw := since.Or("24h")
-	cutoff, ok := usage.ParseSince(sinceRaw, now)
+	cutoff, ok := usage.ParseSince(since, now)
 	if !ok {
-		return exitf(2, "usage: invalid --since: %s (expected <N>m|<N>h|<N>d or an ISO8601 timestamp)", sinceRaw)
+		return exitf(2, "usage: invalid --since: %s (expected <N>m|<N>h|<N>d or an ISO8601 timestamp)", since)
 	}
 
 	cfg := configOrDefaults()
@@ -113,7 +110,7 @@ func runUsage(cmd *cobra.Command, since *optString, runFlags, sessionFlags, sour
 	}
 	if listRuns {
 		runs := usage.ListRuns(usage.RunsOptions{Sources: sources, Cfg: cfg, AllProjects: allProjects})
-		if format.Given("text") {
+		if asText {
 			_, err := io.WriteString(w, usage.FormatRunsText(runs))
 			return err
 		}
@@ -123,7 +120,7 @@ func runUsage(cmd *cobra.Command, since *optString, runFlags, sessionFlags, sour
 		Since: cutoff, Now: now, Sources: sources, AllProjects: allProjects, Cfg: cfg,
 		RunIDs: runIDs, SessionIDs: sessionIDs,
 	})
-	if format.Given("text") {
+	if asText {
 		_, err := io.WriteString(w, usage.FormatText(report))
 		return err
 	}

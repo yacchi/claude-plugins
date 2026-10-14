@@ -18,90 +18,73 @@ import (
 
 func newSandboxCmd() *cobra.Command {
 	sb := groupCommand("sandbox", "the OS sandbox around CLI executors")
-	sub := func(name, short string, args cobra.PositionalArgs) (*cobra.Command, *optBool) {
+	sub := func(name, short string, args cobra.PositionalArgs) (*cobra.Command, *bool) {
 		cmd := &cobra.Command{Use: name, Short: short, Args: args}
-		asJSON := boolFlag(cmd, "json", "JSON output")
+		asJSON := cmd.Flags().Bool("json", false, "JSON output")
 		sb.AddCommand(cmd)
 		return cmd, asJSON
 	}
+	onePositional := func(what string) cobra.PositionalArgs {
+		return func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return exitf(2, "%s: expected one %s", cmdName(cmd), what)
+			}
+			return nil
+		}
+	}
 
-	list, listJSON := sub("list", "effective writable set, learned grants, deny_read", noArgs)
-	listWorkdir := strFlag(list, "workdir", "directory (default cwd)")
-	// Python took `--workdir` only together with its value.
-	list.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		if strings.HasPrefix(err.Error(), "flag needs an argument: ") {
-			return exitf(2, "%s: unknown option: --workdir", errPrefix(cmd))
-		}
-		return flagError(cmd, err)
-	})
+	list, listJSON := sub("list", "effective writable set, learned grants, deny_read", cobra.NoArgs)
+	wd, _ := os.Getwd()
+	listWorkdir := list.Flags().String("workdir", wd, "directory (default cwd)")
 	list.RunE = func(cmd *cobra.Command, _ []string) error {
-		workdir, _ := os.Getwd()
-		if v, ok := listWorkdir.Get(); ok {
-			workdir = v
-		}
-		info := sandbox.ListSection(configOrDefaults(), workdir)
-		if listJSON.On() {
+		info := sandbox.ListSection(configOrDefaults(), *listWorkdir)
+		if *listJSON {
 			return writeJSON(cmd.OutOrStdout(), info)
 		}
 		fmt.Fprint(cmd.OutOrStdout(), sbFormatList(info))
 		return nil
 	}
 
-	allow, allowJSON := sub("allow", "remember a user grant for this machine", cobra.ArbitraryArgs)
-	allowReason := strFlag(allow, "reason", "why")
+	allow, allowJSON := sub("allow", "remember a user grant for this machine", onePositional("path"))
+	allowReason := allow.Flags().String("reason", "", "why")
 	allow.RunE = func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return exitf(2, "sandbox allow: expected one path")
-		}
 		cfg := configOrDefaults()
 		path := sandbox.RealPath(sbExpandUser(args[0]))
 		if refusal := sandbox.UserGrantRefusal(path, sandbox.DenyRead(cfg)); refusal != "" {
 			return exitf(1, "sandbox allow: %s", refusal)
 		}
-		entry, err := sandbox.AddGrantEntry(path, "user", "", allowReason.Or(""))
+		entry, err := sandbox.AddGrantEntry(path, "user", "", *allowReason)
 		if err != nil {
 			return exitf(1, "sandbox allow: %s", err)
 		}
-		if allowJSON.On() {
+		if *allowJSON {
 			return writeJSONLine(cmd.OutOrStdout(), entry.Object())
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "granted: %s\n", entry.Path)
 		return nil
 	}
 
-	forget, forgetJSON := sub("forget", "remove a learned grant", cobra.ArbitraryArgs)
+	forget, forgetJSON := sub("forget", "remove a learned grant", onePositional("path"))
 	forget.RunE = func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return exitf(2, "sandbox forget: expected one path")
-		}
 		configOrDefaults()
 		path := sandbox.RealPath(sbExpandUser(args[0]))
 		err := sandbox.ForgetGrant(path)
 		if err != nil && !errors.Is(err, sandbox.ErrNotFound) {
 			return exitf(1, "sandbox forget: %s", err)
 		}
-		return sbRemovedResult(cmd, forgetJSON.On(), "path", path, err == nil)
+		return sbRemovedResult(cmd, *forgetJSON, "path", path, err == nil)
 	}
 
-	allowDomain, allowDomainJSON := sub("allow-domain", "allow the host network to reach a domain", cobra.ArbitraryArgs)
-	domainReason := strFlag(allowDomain, "reason", "why")
-	allowDomain.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		if strings.HasPrefix(err.Error(), "flag needs an argument: ") {
-			return exitf(2, "sandbox allow-domain: --reason needs a value")
-		}
-		return flagError(cmd, err)
-	})
+	allowDomain, allowDomainJSON := sub("allow-domain", "allow the host network to reach a domain", onePositional("domain"))
+	domainReason := allowDomain.Flags().String("reason", "", "why")
 	allowDomain.RunE = func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return exitf(2, "sandbox allow-domain: expected one domain")
-		}
 		configOrDefaults()
 		domain := config.PyLower(strings.TrimSpace(args[0]))
-		entry, err := sandbox.AddDomainEntry(domain, "user", domainReason.Or(""))
+		entry, err := sandbox.AddDomainEntry(domain, "user", *domainReason)
 		if err != nil {
 			return exitf(1, "sandbox allow-domain: %s", err)
 		}
-		if allowDomainJSON.On() {
+		if *allowDomainJSON {
 			return writeJSONLine(cmd.OutOrStdout(), entry.Object())
 		}
 		fmt.Fprintf(cmd.OutOrStdout(),
@@ -109,38 +92,37 @@ func newSandboxCmd() *cobra.Command {
 		return nil
 	}
 
-	forgetDomain, forgetDomainJSON := sub("forget-domain", "remove a domain grant", cobra.ArbitraryArgs)
+	forgetDomain, forgetDomainJSON := sub("forget-domain", "remove a domain grant", onePositional("domain"))
 	forgetDomain.RunE = func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return exitf(2, "sandbox forget-domain: expected one domain")
-		}
 		configOrDefaults()
 		domain := config.PyLower(strings.TrimSpace(args[0]))
 		err := sandbox.ForgetDomain(domain)
 		if err != nil && !errors.Is(err, sandbox.ErrNotFound) {
 			return exitf(1, "sandbox forget-domain: %s", err)
 		}
-		return sbRemovedResult(cmd, forgetDomainJSON.On(), "domain", domain, err == nil)
+		return sbRemovedResult(cmd, *forgetDomainJSON, "domain", domain, err == nil)
 	}
 
-	probe, probeJSON := sub("probe", "which backend a run would use, and why", noArgs)
-	strFlag(probe, "workdir", "directory (default cwd)") // accepted, ignored (as in Python)
+	probe, probeJSON := sub("probe", "which backend a run would use, and why", cobra.NoArgs)
+	// The backend choice does not depend on the directory; --workdir is
+	// accepted so probe takes the same arguments as list.
+	probe.Flags().String("workdir", "", "directory (default cwd; does not affect the result)")
 	probe.RunE = func(cmd *cobra.Command, _ []string) error {
 		info := sandbox.DoctorSection(configOrDefaults()).(map[string]any)
-		if probeJSON.On() {
+		if *probeJSON {
 			return writeJSON(cmd.OutOrStdout(), info)
 		}
 		out := cmd.OutOrStdout()
-		fmt.Fprintf(out, "mode=%s backend=%s enforced=%s (%s)\n", sbStr(sbGet(info, "mode")),
-			sbStr(sbGet(info, "backend")), sbStr(sbGet(info, "enforced")), sbStr(sbGet(info, "reason")))
-		probes, _ := sbGet(info, "probes").(map[string]any)
+		fmt.Fprintf(out, "mode=%s backend=%s enforced=%s (%s)\n", sbStr(info["mode"]),
+			sbStr(info["backend"]), sbStr(info["enforced"]), sbStr(info["reason"]))
+		probes, _ := info["probes"].(map[string]any)
 		for _, name := range config.OrderedKeys(probes, sandbox.ProbeOrder) {
 			p := config.ObjectAt(probes, name)
 			state := "unavailable"
-			if ok, _ := sbGet(p, "ok").(bool); ok {
+			if ok, _ := p["ok"].(bool); ok {
 				state = "ok"
 			}
-			fmt.Fprintf(out, "  - %s: %s (%s)\n", name, state, sbStr(sbGet(p, "detail")))
+			fmt.Fprintf(out, "  - %s: %s (%s)\n", name, state, sbStr(p["detail"]))
 		}
 		return nil
 	}
@@ -173,26 +155,14 @@ func sbExpandUser(p string) string {
 	return p
 }
 
-func sbGet(o map[string]any, k string) any {
-	if o == nil {
-		return nil
-	}
-	v := o[k]
-	return v
-}
-
-// pyStr is Python's "%s" of a JSON value.
+// sbStr renders a JSON value for the text output: strings as is, null as
+// "-", anything else as JSON.
 func sbStr(v any) string {
 	switch x := v.(type) {
 	case nil:
-		return "None"
+		return "-"
 	case string:
 		return x
-	case bool:
-		if x {
-			return "True"
-		}
-		return "False"
 	}
 	b, err := fsutil.MarshalJSON(v)
 	if err != nil {
@@ -206,7 +176,7 @@ func sbFormatList(info map[string]any) string {
 	line := func(format string, args ...any) { fmt.Fprintf(&b, format+"\n", args...) }
 	strsOf := func(k string) []string {
 		var out []string
-		list, _ := sbGet(info, k).([]any)
+		list, _ := info[k].([]any)
 		for _, v := range list {
 			out = append(out, sbStr(v))
 		}
@@ -214,7 +184,7 @@ func sbFormatList(info map[string]any) string {
 	}
 	objsOf := func(k string) []map[string]any {
 		var out []map[string]any
-		list, _ := sbGet(info, k).([]any)
+		list, _ := info[k].([]any)
 		for _, v := range list {
 			if o, ok := v.(map[string]any); ok {
 				out = append(out, o)
@@ -222,18 +192,18 @@ func sbFormatList(info map[string]any) string {
 		}
 		return out
 	}
-	line("backend: %s (%s)", sbStr(sbGet(info, "backend")), sbStr(sbGet(info, "reason")))
+	line("backend: %s (%s)", sbStr(info["backend"]), sbStr(info["reason"]))
 	if limits := strsOf("limits"); len(limits) > 0 {
 		line("limits: %s", strings.Join(limits, ", "))
 	}
-	line("writable (%s):", sbStr(sbGet(info, "workdir")))
+	line("writable (%s):", sbStr(info["workdir"]))
 	for _, w := range strsOf("writable") {
 		line("  %s", w)
 	}
-	line("learned grants (%s):", sbStr(sbGet(info, "learned_path")))
+	line("learned grants (%s):", sbStr(info["learned_path"]))
 	grants := objsOf("learned")
 	for _, g := range grants {
-		line("  %s  [%s, %s]", sbStr(sbGet(g, "path")), sbStr(sbGet(g, "source")), sbStr(sbGet(g, "added")))
+		line("  %s  [%s, %s]", sbStr(g["path"]), sbStr(g["source"]), sbStr(g["added"]))
 	}
 	if len(grants) == 0 {
 		line("  (none)")
@@ -241,13 +211,13 @@ func sbFormatList(info map[string]any) string {
 	line("domain grants:")
 	domains := objsOf("domains")
 	for _, d := range domains {
-		source := sbGet(d, "source")
+		source := d["source"]
 		if s, ok := source.(string); !ok || s == "" {
 			source = "user"
 		}
-		text := fmt.Sprintf("  %s  [%s, %s]", sbStr(sbGet(d, "domain")), sbStr(source), sbStr(sbGet(d, "added")))
-		if r := sbGet(d, "reason"); r != nil && r != "" && r != false {
-			text += "  " + sbStr(r)
+		text := fmt.Sprintf("  %s  [%s, %s]", sbStr(d["domain"]), sbStr(source), sbStr(d["added"]))
+		if r, _ := d["reason"].(string); r != "" {
+			text += "  " + r
 		}
 		line("%s", text)
 	}
@@ -258,7 +228,7 @@ func sbFormatList(info map[string]any) string {
 	for _, r := range strsOf("deny_read") {
 		line("  %s", r)
 	}
-	if w := sbGet(info, "warning"); w != nil && w != "" {
+	if w := info["warning"]; w != nil && w != "" {
 		line("WARNING: %s", sbStr(w))
 	}
 	return b.String()

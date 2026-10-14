@@ -74,9 +74,9 @@
         "--json",
         "--text"
       ],
-      "exit": 1,
-      "stdout_shape": "text",
-      "stdout": "plan-warning: many: package many owns 4 files; split into packages of 1-3 files so no single package runs for tens of minutes\nplan-warning: long: package long spec is 151 lines; split it into packages with specs of at most 150 lines so no single package runs for tens of minutes\nplan-warning: del: deletes code but owns only literal paths; leftover references (tests, other features) will be out of reach — consider a glob\nplan-warning: ja: deletes code but owns only literal paths; leftover references (tests, other features) will be out of reach — consider a glob\nplan-warning: rule-bad: files_owned matching src/** are missing required ownership: tests/**, docs/**\nplan-warning: rule-ok: files_owned matching src/** are missing required ownership: docs/**\nplan-warning: rule-partial: files_owned matching src/** are missing required ownership: tests/**, docs/**\n"
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
     }
   ]
 }
