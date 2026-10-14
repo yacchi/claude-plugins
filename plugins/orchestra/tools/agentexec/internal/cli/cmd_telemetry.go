@@ -17,73 +17,61 @@ import (
 
 func newTelemetryCmd() *cobra.Command {
 	tel := groupCommand("telemetry", "anonymized, opt-in telemetry")
-	tel.RunE = func(cmd *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			return exitf(2, "telemetry: unknown subcommand: %s", args[0])
-		}
-		return exitf(2, "telemetry: missing subcommand")
-	}
-	sub := func(name, short string, run func(*cobra.Command) error) *cobra.Command {
-		cmd := withPrefix(&cobra.Command{
-			Use:   name,
-			Short: short,
-			Args:  noArgs,
-			RunE:  func(cmd *cobra.Command, _ []string) error { return run(cmd) },
-		}, "telemetry")
+	sub := func(name, short string) *cobra.Command {
+		cmd := &cobra.Command{Use: name, Short: short, Args: cobra.NoArgs}
 		tel.AddCommand(cmd)
 		return cmd
 	}
 
-	toggle := func(name string, enabled bool) {
-		var scopes *[]string
-		cmd := sub(name, "set telemetry.enabled: "+fmt.Sprint(enabled)+" in a scope's orchestra.yaml",
-			func(cmd *cobra.Command) error { return runToggle(cmd, *scopes, enabled) })
-		scopes = listFlag(cmd, "scope", "user|project|local")
+	for _, enabled := range []bool{true, false} {
+		name := "disable"
+		if enabled {
+			name = "enable"
+		}
+		cmd := sub(name, "set telemetry.enabled: "+fmt.Sprint(enabled)+" in a scope's orchestra.yaml")
+		scope := cmd.Flags().String("scope", "user", "user|project|local")
+		cmd.RunE = func(cmd *cobra.Command, _ []string) error { return runToggle(cmd, *scope, enabled) }
 	}
-	toggle("enable", true)
-	toggle("disable", false)
 
-	record := sub("record", "append an anonymized telemetry record", nil)
-	jsonFlag := strFlag(record, "json", "the record as a JSON string")
-	fileFlag := strFlag(record, "file", "a file holding the record")
-	record.RunE = func(cmd *cobra.Command, _ []string) error { return runRecord(cmd, jsonFlag, fileFlag) }
+	record := sub("record", "append an anonymized telemetry record")
+	jsonFlag := record.Flags().String("json", "", "the record as a JSON string")
+	fileFlag := record.Flags().String("file", "", "a file holding the record")
+	record.MarkFlagsOneRequired("json", "file")
+	record.MarkFlagsMutuallyExclusive("json", "file")
+	record.RunE = func(cmd *cobra.Command, _ []string) error {
+		data := []byte(*jsonFlag)
+		if cmd.Flags().Changed("file") {
+			b, err := os.ReadFile(*fileFlag)
+			if err != nil {
+				return exitf(2, "telemetry record: %v", err)
+			}
+			data = b
+		}
+		return runRecord(data)
+	}
 
-	// show and clear ignore anything they do not know, as the Python parser
-	// did (it only looked for --json).
-	show := sub("show", "print recorded telemetry", nil)
-	showJSON := boolFlag(show, "json", "raw JSONL")
-	lenient(show)
-	show.RunE = func(cmd *cobra.Command, _ []string) error { return runShow(cmd, showJSON.On()) }
+	show := sub("show", "print recorded telemetry")
+	showJSON := show.Flags().Bool("json", false, "raw JSONL")
+	show.RunE = func(cmd *cobra.Command, _ []string) error { return runShow(cmd, *showJSON) }
 
-	archive := sub("archive", "tar.gz the telemetry directory", nil)
-	out := strFlag(archive, "out", "archive path")
-	archive.RunE = func(cmd *cobra.Command, _ []string) error { return runArchive(cmd, out) }
+	archive := sub("archive", "tar.gz the telemetry directory")
+	out := archive.Flags().String("out", "", "archive path (default: orchestra-telemetry-archive.tgz beside the telemetry directory)")
+	archive.RunE = func(cmd *cobra.Command, _ []string) error { return runArchive(cmd, *out) }
 
-	clearCmd := sub("clear", "delete all recorded telemetry", func(cmd *cobra.Command) error {
+	sub("clear", "delete all recorded telemetry").RunE = func(*cobra.Command, []string) error {
 		_ = os.Remove(telemetry.RecordsPath(configOrDefaults()))
 		return nil
-	})
-	lenient(clearCmd)
+	}
 	return tel
 }
 
-// lenient makes cmd accept unknown flags and positional arguments.
-func lenient(cmd *cobra.Command) {
-	cmd.Args = cobra.ArbitraryArgs
-	cmd.FParseErrWhitelist.UnknownFlags = true
-}
-
-func runToggle(cmd *cobra.Command, scopes []string, enabled bool) error {
-	scope := "user"
-	for _, s := range scopes {
-		if s != "user" && s != "project" && s != "local" {
-			return exitf(2, "telemetry: invalid --scope: %s", s)
-		}
-		scope = s
+func runToggle(cmd *cobra.Command, scope string, enabled bool) error {
+	if scope != "user" && scope != "project" && scope != "local" {
+		return exitf(2, "%s: invalid --scope: %s", cmdName(cmd), scope)
 	}
 	path, err := telemetry.Toggle(scope, enabled)
 	if err != nil {
-		return exitf(1, "telemetry: %v", err)
+		return exitf(1, "%s: %v", cmdName(cmd), err)
 	}
 	word := "disabled"
 	if enabled {
@@ -93,27 +81,14 @@ func runToggle(cmd *cobra.Command, scopes []string, enabled bool) error {
 	return nil
 }
 
-func runRecord(cmd *cobra.Command, jsonFlag, fileFlag *optString) error {
-	jsonStr, hasJSON := jsonFlag.Get()
-	filePath, hasFile := fileFlag.Get()
-	if !hasJSON && !hasFile {
-		return exitf(2, "telemetry: record requires --json or --file")
-	}
-	data := []byte(jsonStr)
-	if hasFile {
-		b, err := os.ReadFile(filePath)
-		if err != nil {
-			return exitf(2, "telemetry: invalid JSON input")
-		}
-		data = b
-	}
+func runRecord(data []byte) error {
 	v, err := fsutil.DecodeJSON(data)
 	if err != nil {
-		return exitf(2, "telemetry: invalid JSON input")
+		return exitf(2, "telemetry record: invalid JSON input")
 	}
 	rec, ok := v.(map[string]any)
-	if ev, _ := rec["event"]; !ok || (ev != "run_summary" && ev != "dispatch") {
-		return exitf(2, "telemetry: record missing valid 'event'")
+	if ev := rec["event"]; !ok || (ev != "run_summary" && ev != "dispatch") {
+		return exitf(2, `telemetry record: "event" must be "run_summary" or "dispatch"`)
 	}
 	telemetry.Append(rec, configOrDefaults())
 	return nil
@@ -134,18 +109,17 @@ func runShow(cmd *cobra.Command, asJSON bool) error {
 	return err
 }
 
-func runArchive(cmd *cobra.Command, outFlag *optString) error {
+func runArchive(cmd *cobra.Command, out string) error {
 	dir := telemetry.Dir(configOrDefaults())
 	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-		return exitf(1, "telemetry: directory does not exist: %s", dir)
+		return exitf(1, "telemetry archive: directory does not exist: %s", dir)
 	}
-	out, given := outFlag.Get()
-	if !given {
+	if !cmd.Flags().Changed("out") {
 		out = filepath.Join(filepath.Dir(telemetry.AbsPath(dir)), "orchestra-telemetry-archive.tgz")
 	}
 	out = telemetry.AbsPath(out)
 	if err := writeTarGz(out, dir); err != nil {
-		return exitf(1, "telemetry: %v", err)
+		return exitf(1, "telemetry archive: %v", err)
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), out)
 	return nil

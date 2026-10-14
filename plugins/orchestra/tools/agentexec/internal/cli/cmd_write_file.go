@@ -10,28 +10,19 @@ func newWriteFileCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "write-file",
 		Short: "write stdin atomically to --path, optionally checking its length",
-		Args:  noArgs,
+		Args:  cobra.NoArgs,
 	}
-	path := strFlag(cmd, "path", "destination file")
-	expect := strFlag(cmd, "expect-chars", "expected Unicode code points (one trailing newline excluded)")
+	path := cmd.Flags().String("path", "", "destination file")
+	expect := cmd.Flags().Int("expect-chars", 0, "expected Unicode code points (one trailing newline excluded)")
+	_ = cmd.MarkFlagRequired("path")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		expected := dispatch.NoExpect
-		if v, ok := expect.Get(); ok {
-			n, valid := pyInt(v)
-			if !valid || n == dispatch.NoExpect {
-				return exitf(2, "write-file: --expect-chars must be an integer")
-			}
-			expected = n
+		if cmd.Flags().Changed("expect-chars") {
+			expected = *expect
 		}
-		p, ok := path.Get()
-		if !ok {
-			return exitf(2, "write-file: missing required option: --path")
-		}
-		out, code := dispatch.WriteFile(p, expected, cmd.InOrStdin())
+		out, code := dispatch.WriteFile(*path, expected, cmd.InOrStdin())
 		if code == 2 {
-			reason := out["error"]
-			target := out["path"]
-			return exitf(2, "write-file: failed to write %s: %s", target, reason)
+			return exitf(2, "write-file: failed to write %s: %s", out["path"], out["error"])
 		}
 		if err := writeJSONLine(cmd.OutOrStdout(), out); err != nil {
 			return err

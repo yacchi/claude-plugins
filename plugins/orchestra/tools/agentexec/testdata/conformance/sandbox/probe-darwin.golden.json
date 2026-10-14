@@ -45,7 +45,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "mode=auto backend=seatbelt enforced=True (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\n"
+      "stdout": "mode=auto backend=seatbelt enforced=true (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\n"
     }
   ]
 }

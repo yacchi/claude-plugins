@@ -17,96 +17,39 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 )
 
-// The check command parses its own arguments: the Python parser reported
-// duplicates and unknown tokens in argument order, which pflag cannot.
+type checkOpts struct {
+	task, path, since, files, session, repo string
+	hasTask, hasFiles                       bool
+	all, baseline, noRetry                  bool
+	format                                  format
+}
+
 func newCheckCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:                "check",
-		Short:              "run the config-driven checks over a tree's changed files",
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCheck(cmd.OutOrStdout(), args)
-		},
+		Use:   "check",
+		Short: "run the config-driven checks over a tree's changed files",
+		Args:  cobra.NoArgs,
 	}
-	// Declared for --help only; DisableFlagParsing means they are never parsed.
-	strFlag(cmd, "task", "task id (its worktree)")
-	strFlag(cmd, "path", "an arbitrary directory")
-	strFlag(cmd, "since", "ref the changed files are measured from (default HEAD)")
-	strFlag(cmd, "files", "comma-separated changed-file list override")
-	strFlag(cmd, "repo", "repository path (default cwd)")
-	strFlag(cmd, "session", "session id")
-	boolFlag(cmd, "all", "do not stop at the first failure")
-	boolFlag(cmd, "baseline", "re-run failures at the baseline to spot preexisting breakage")
-	boolFlag(cmd, "no-retry", "do not retry failed checks alone")
-	formatFlags(cmd, "json", "text")
+	o := &checkOpts{}
+	fl := cmd.Flags()
+	fl.StringVar(&o.task, "task", "", "task id (its worktree)")
+	fl.StringVar(&o.path, "path", "", "an arbitrary directory")
+	fl.StringVar(&o.since, "since", "", "ref the changed files are measured from (default HEAD)")
+	fl.StringVar(&o.files, "files", "", "comma-separated changed-file list override")
+	repo := repoFlag(cmd)
+	fl.StringVar(&o.session, "session", "", "session id")
+	fl.BoolVar(&o.all, "all", false, "do not stop at the first failure")
+	fl.BoolVar(&o.baseline, "baseline", false, "re-run failures at the baseline to spot preexisting breakage")
+	fl.BoolVar(&o.noRetry, "no-retry", false, "do not retry failed checks alone")
+	o.format = formatFlags(cmd, "json", "text")
+	cmd.MarkFlagsOneRequired("task", "path")
+	cmd.MarkFlagsMutuallyExclusive("task", "path")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		o.repo = *repo
+		o.hasTask, o.hasFiles = cmd.Flags().Changed("task"), cmd.Flags().Changed("files")
+		return runCheck(cmd.OutOrStdout(), o)
+	}
 	return cmd
-}
-
-type checkOpts struct {
-	task, path, since, files, session  *string
-	repo                               string
-	all, baseline, json, text, noRetry bool
-}
-
-func parseCheckArgs(args []string) (checkOpts, string) {
-	o := checkOpts{}
-	if wd, err := os.Getwd(); err == nil {
-		o.repo = wd
-	}
-	seen := map[string]bool{}
-	for i := 0; i < len(args); i++ {
-		tok := args[i]
-		if seen[tok] {
-			return o, "duplicate option: " + tok
-		}
-		switch tok {
-		case "--task", "--path", "--since", "--files", "--repo", "--session":
-			if i+1 >= len(args) {
-				return o, "missing value for " + tok
-			}
-			seen[tok] = true
-			v := args[i+1]
-			i++
-			switch tok {
-			case "--task":
-				o.task = &v
-			case "--path":
-				o.path = &v
-			case "--since":
-				o.since = &v
-			case "--files":
-				o.files = &v
-			case "--repo":
-				o.repo = v
-			case "--session":
-				o.session = &v
-			}
-		case "--all", "--baseline", "--json", "--text", "--no-retry":
-			seen[tok] = true
-			switch tok {
-			case "--all":
-				o.all = true
-			case "--baseline":
-				o.baseline = true
-			case "--json":
-				o.json = true
-			case "--text":
-				o.text = true
-			case "--no-retry":
-				o.noRetry = true
-			}
-		default:
-			return o, "unknown option: " + tok
-		}
-	}
-	if o.json && o.text {
-		return o, "--json and --text are mutually exclusive"
-	}
-	if (o.task == nil) == (o.path == nil) {
-		return o, "provide exactly one of --task or --path"
-	}
-	return o, ""
 }
 
 func checkOutput(w io.Writer, text bool, status string, tree *string, files int, results []checks.CheckResult) {
@@ -159,13 +102,10 @@ func nonBlankLines(s string) []string {
 
 var checkExit = map[string]int{"pass": 0, "no-checks": 0, "fail": 1, "error": 3, "preexisting": 4}
 
-func runCheck(w io.Writer, args []string) error {
-	o, perr := parseCheckArgs(args)
-	if perr != "" {
-		return exitf(2, "check: %s", perr)
-	}
+func runCheck(w io.Writer, o *checkOpts) error {
+	text := o.format.is("text")
 	fail := func(tree *string) error {
-		checkOutput(w, o.text, "error", tree, 0, nil)
+		checkOutput(w, text, "error", tree, 0, nil)
 		return &ExitError{Code: 3}
 	}
 
@@ -173,39 +113,35 @@ func runCheck(w io.Writer, args []string) error {
 	if !ok {
 		return fail(nil)
 	}
-	session := ""
-	if o.session != nil {
-		session = *o.session
-	}
 	var tree string
-	if o.task != nil {
-		wt, _, found := isolate.ResolveWorktree(root, *o.task, session)
+	if o.hasTask {
+		wt, _, found := isolate.ResolveWorktree(root, o.task, o.session)
 		if !found {
 			return fail(nil)
 		}
 		tree = wt
 	} else {
-		tree = *o.path
+		tree = o.path
 		if info, err := os.Stat(tree); tree == "" || err != nil || !info.IsDir() {
 			return fail(&tree)
 		}
 	}
 
+	since := o.since
+	if since == "" {
+		since = "HEAD"
+	}
 	var files []string
 	switch {
-	case o.files != nil:
-		files = splitFilesFlag(*o.files)
-	case o.task != nil:
-		diff, err := isolate.Diff(root, *o.task, session, false)
+	case o.hasFiles:
+		files = splitFilesFlag(o.files)
+	case o.hasTask:
+		diff, err := isolate.Diff(root, o.task, o.session, false)
 		if err != nil || diff.Status == "error" {
 			return fail(&tree)
 		}
 		files = diff.Files
 	default:
-		since := "HEAD"
-		if o.since != nil && *o.since != "" {
-			since = *o.since
-		}
 		set := map[string]bool{}
 		if out, err := gitx.Run(tree, "diff", "--name-only", since); err == nil {
 			for _, f := range nonBlankLines(out) {
@@ -233,7 +169,7 @@ func runCheck(w io.Writer, args []string) error {
 	}
 	slotDir := filepath.Join(filepath.Dir(absPath(ledger.Dir(cfg))), "check-slots")
 	if len(cc.Items) == 0 {
-		checkOutput(w, o.text, "no-checks", &tree, len(files), nil)
+		checkOutput(w, text, "no-checks", &tree, len(files), nil)
 		return nil
 	}
 
@@ -244,19 +180,15 @@ func runCheck(w io.Writer, args []string) error {
 	results := checks.Run(tree, cc.Items, opts).Checks
 
 	if o.baseline {
-		var ref string
-		if o.task != nil {
+		ref := since
+		if o.hasTask {
 			ref, _ = isolate.ReadBaseline(tree)
-		} else if o.since != nil && *o.since != "" {
-			ref = *o.since
-		} else {
-			ref = "HEAD"
 		}
 		markPreexisting(root, ref, tree, files, cfg, cc, slotDir, results)
 	}
 
 	status := checks.Result{Checks: results}.Status()
-	checkOutput(w, o.text, status, &tree, len(files), results)
+	checkOutput(w, text, status, &tree, len(files), results)
 	if code := checkExit[status]; code != 0 {
 		return &ExitError{Code: code}
 	}

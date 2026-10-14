@@ -45,9 +45,9 @@
         "--text",
         "--json"
       ],
-      "exit": 0,
-      "stdout_shape": "json",
-      "stdout": []
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
     }
   ]
 }

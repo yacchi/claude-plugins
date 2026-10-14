@@ -36,25 +36,35 @@ func Execute() int {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	root := newRoot()
+	rejectRepeats(root, args)
 	root.SetArgs(args)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
-	return report(root.Execute(), stderr)
+	cmd, err := root.ExecuteC()
+	return report(cmd, err, stderr)
 }
 
-func report(err error, stderr io.Writer) int {
+// report prints err and returns the exit code.
+func report(cmd *cobra.Command, err error, stderr io.Writer) int {
 	if err == nil {
 		return 0
 	}
-	var ee *ExitError
-	if !errors.As(err, &ee) {
-		// cobra's own failures are usage errors.
-		ee = &ExitError{Code: 2, Msg: err.Error()}
-	}
+	ee := asExitError(cmd, err)
 	if ee.Msg != "" {
 		fmt.Fprintf(stderr, "agent-exec: %s\n", ee.Msg)
 	}
 	return ee.Code
+}
+
+// asExitError passes an ExitError through. Any other error comes from cobra
+// itself (an unknown flag or subcommand, a bad flag value, a missing
+// required or conflicting flag): a usage error, exit 2, named after cmd.
+func asExitError(cmd *cobra.Command, err error) *ExitError {
+	var ee *ExitError
+	if errors.As(err, &ee) {
+		return ee
+	}
+	return &ExitError{Code: 2, Msg: cmdName(cmd) + ": " + err.Error()}
 }
 
 func newRoot() *cobra.Command {
@@ -82,13 +92,10 @@ func newRoot() *cobra.Command {
 		},
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.SetFlagErrorFunc(flagError)
 
 	isolate := groupCommand("isolate", "per-task git worktrees")
 	addIsolateCoreCommands(isolate)
 	addIsolateExtCommands(isolate)
-
-	wave := newWaveCmd()
 
 	root.AddCommand(
 		newInstallCmd(),
@@ -104,7 +111,7 @@ func newRoot() *cobra.Command {
 		newTelemetryCmd(),
 		newSandboxCmd(),
 		newToolsCmd(),
-		wave,
+		newWaveCmd(),
 		newApprovalsCmd(),
 		newUICmd(),
 		newPiCmd(),
@@ -132,52 +139,13 @@ func topLevel(cmd *cobra.Command) *cobra.Command {
 	return cmd
 }
 
-// errPrefix is how a command names itself in usage errors, matching the
-// Python parsers ("isolate" for the shared isolate parser, "dispatch" for
-// dispatch prepare/wait, ...). Set with the "errprefix" annotation; the
-// default is the command path below the root.
-func errPrefix(cmd *cobra.Command) string {
-	if p, ok := cmd.Annotations["errprefix"]; ok {
-		return p
+// cmdName is the command path below the root ("isolate sweep"); it prefixes
+// the command's usage errors.
+func cmdName(cmd *cobra.Command) string {
+	if cmd == nil {
+		return "agent-exec"
 	}
 	return strings.TrimPrefix(cmd.CommandPath(), "agent-exec ")
-}
-
-func withPrefix(cmd *cobra.Command, prefix string) *cobra.Command {
-	if cmd.Annotations == nil {
-		cmd.Annotations = map[string]string{}
-	}
-	cmd.Annotations["errprefix"] = prefix
-	return cmd
-}
-
-// flagError rewrites pflag's messages into the Python parsers' wording:
-// "<cmd>: missing value for --x" and "<cmd>: unknown option: --x", exit 2.
-func flagError(cmd *cobra.Command, err error) error {
-	msg := err.Error()
-	switch {
-	case strings.HasPrefix(msg, "flag needs an argument: "):
-		flag := strings.TrimPrefix(msg, "flag needs an argument: ")
-		if _, short, ok := strings.Cut(flag, " in "); ok {
-			flag = short
-		}
-		return exitf(2, "%s: missing value for %s", errPrefix(cmd), flag)
-	case strings.HasPrefix(msg, "unknown flag: "):
-		return exitf(2, "%s: unknown option: %s", errPrefix(cmd), strings.TrimPrefix(msg, "unknown flag: "))
-	case strings.HasPrefix(msg, "unknown shorthand flag: "):
-		_, arg, _ := strings.Cut(msg, " in ")
-		return exitf(2, "%s: unknown option: %s", errPrefix(cmd), arg)
-	}
-	return exitf(2, "%s: %s", errPrefix(cmd), msg)
-}
-
-// noArgs rejects positional arguments the way the Python parsers did: as an
-// unknown option.
-func noArgs(cmd *cobra.Command, args []string) error {
-	if len(args) > 0 {
-		return exitf(2, "%s: unknown option: %s", errPrefix(cmd), args[0])
-	}
-	return nil
 }
 
 // groupCommand is a command that only holds subcommands: called bare it
@@ -189,18 +157,11 @@ func groupCommand(use, short string) *cobra.Command {
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return exitf(2, "%s: unknown subcommand: %s", errPrefix(cmd), args[0])
+				return exitf(2, "%s: unknown subcommand: %s", cmdName(cmd), args[0])
 			}
 			cmd.SetOut(cmd.ErrOrStderr())
 			_ = cmd.Usage()
 			return &ExitError{Code: 2}
 		},
-	}
-}
-
-// notImplemented is the RunE of a command whose work package has not landed.
-func notImplemented(name string) func(*cobra.Command, []string) error {
-	return func(*cobra.Command, []string) error {
-		return &ExitError{Code: 2, Msg: name + ": not implemented yet"}
 	}
 }

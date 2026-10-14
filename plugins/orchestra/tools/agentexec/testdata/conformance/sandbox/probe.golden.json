@@ -45,7 +45,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "mode=off backend=none enforced=False (sandbox.mode is off)\n  - seatbelt: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - bwrap: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - landlock: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n"
+      "stdout": "mode=off backend=none enforced=false (sandbox.mode is off)\n  - seatbelt: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - bwrap: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - landlock: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n"
     },
     {
       "argv": [
@@ -91,7 +91,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "mode=auto backend=none enforced=False (no sandbox backend usable; running unsandboxed (seatbelt: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; bwrap: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; landlock: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none))\n  - seatbelt: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - bwrap: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - landlock: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n"
+      "stdout": "mode=auto backend=none enforced=false (no sandbox backend usable; running unsandboxed (seatbelt: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; bwrap: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none; landlock: forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none))\n  - seatbelt: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - bwrap: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n  - landlock: unavailable (forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none)\n"
     },
     {
       "argv": [

@@ -3,10 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
-	"math"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -38,97 +35,106 @@ func addIsolateCoreCommands(parent *cobra.Command) {
 	)
 }
 
-func repoOrCwd(repo *optString) string {
-	if v, ok := repo.Get(); ok {
-		return v
-	}
+// repoFlag declares --repo; its value defaults to the working directory.
+func repoFlag(cmd *cobra.Command) *string {
 	wd, err := os.Getwd()
 	if err != nil {
-		return "."
+		wd = "."
 	}
-	return wd
+	return cmd.Flags().String("repo", wd, "repository path (default cwd)")
 }
 
-// usageErr is the exit-2 report of an input the domain rejected (Python's
-// ValueError), under the command's prefix.
-func usageErr(prefix string, err error) error {
-	return exitf(2, "%s: %s", prefix, err)
+// usageErr is the exit-2 report of an input the domain rejected, under the
+// command's name.
+func usageErr(cmd *cobra.Command, err error) error {
+	return exitf(2, "%s: %s", cmdName(cmd), err)
 }
 
-// newIsolateSimpleCmd builds create/list/diff/remove, which share one flag
-// set in the Python parser (each rejects the flags it cannot use itself).
+// carryConfig fills the carry lists of a create or adopt from the config.
+func carryConfig() (extra, files []string, err error) {
+	cfg, err := config.Resolve()
+	if err != nil {
+		return nil, nil, &ExitError{Code: 1, Msg: err.Error()}
+	}
+	extra = cfg.StringList("isolation", "carry_extra")
+	if v, ok := cfg.Lookup("isolation", "carry_files"); ok && v != nil {
+		files = nonNilStrings(cfg.StringList("isolation", "carry_files"))
+	}
+	return extra, files, nil
+}
+
+// newIsolateSimpleCmd builds create/list/diff/remove; each takes only the
+// flags it uses.
 func newIsolateSimpleCmd(name, short string) *cobra.Command {
-	cmd := withPrefix(&cobra.Command{
+	cmd := &cobra.Command{
 		Use:   name,
 		Short: short,
-		Args:  noArgs,
-	}, "isolate")
-	task := strFlag(cmd, "task", "task id")
-	repo := strFlag(cmd, "repo", "repository path (default cwd)")
-	backend := strFlag(cmd, "backend", "auto|gtr|git")
-	session := strFlag(cmd, "session", "session id")
-	noCarry := boolFlag(cmd, "no-carry", "do not carry uncommitted work and dependency dirs")
-	force := boolFlag(cmd, "force", "remove even with uncollected changes")
-	namesOnly := boolFlag(cmd, "names-only", "omit the patch text")
-	boolFlag(cmd, "json", "JSON output (the default)")
+		Args:  cobra.NoArgs,
+	}
+	fl := cmd.Flags()
+	repo := repoFlag(cmd)
+	fl.Bool("json", false, "JSON output (the default and only format)")
+	var task, session, backend string
+	var noCarry, force, namesOnly bool
+	if name != "list" {
+		fl.StringVar(&task, "task", "", "task id")
+	}
+	if name == "list" || name == "remove" {
+		fl.StringVar(&session, "session", "", "session id")
+	}
+	switch name {
+	case "create":
+		fl.StringVar(&backend, "backend", isolate.BackendAuto, "auto|gtr|git")
+		fl.BoolVar(&noCarry, "no-carry", false, "do not carry uncommitted work and dependency dirs")
+		_ = cmd.MarkFlagRequired("task")
+	case "diff":
+		fl.BoolVar(&namesOnly, "names-only", false, "omit the patch text")
+		_ = cmd.MarkFlagRequired("task")
+	case "remove":
+		fl.BoolVar(&force, "force", false, "remove even with uncollected changes")
+		cmd.MarkFlagsOneRequired("task", "session")
+		cmd.MarkFlagsMutuallyExclusive("task", "session")
+	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		taskID, hasTask := task.Get()
-		sess, hasSession := session.Get()
-		switch {
-		case (name == "create" || name == "diff") && !hasTask:
-			return exitf(2, "isolate %s: missing required option: --task", name)
-		case name == "remove" && hasTask == hasSession:
-			return exitf(2, "isolate remove: provide exactly one of --task or --session")
-		case name != "remove" && name != "list" && hasSession:
-			return exitf(2, "isolate %s: --session is not supported", name)
-		}
-		be := backend.Or(isolate.BackendAuto)
-		switch be {
-		case isolate.BackendAuto, isolate.BackendGtr, isolate.BackendGit:
-		default:
-			return exitf(2, "isolate: unknown backend: %s", be)
-		}
-		dir := repoOrCwd(repo)
-
 		var result any
 		status := ""
 		var err error
 		switch name {
 		case "create":
-			opts := isolate.CreateOptions{Backend: be, Carry: !noCarry.On()}
+			switch backend {
+			case isolate.BackendAuto, isolate.BackendGtr, isolate.BackendGit:
+			default:
+				return exitf(2, "isolate create: unknown backend: %s", backend)
+			}
+			opts := isolate.CreateOptions{Backend: backend, Carry: !noCarry}
 			if opts.Carry {
-				cfg, cerr := config.Resolve()
-				if cerr != nil {
-					return &ExitError{Code: 1, Msg: cerr.Error()}
-				}
-				opts.CarryExtra = cfg.StringList("isolation", "carry_extra")
-				if v, ok := cfg.Lookup("isolation", "carry_files"); ok && v != nil {
-					opts.CarryFiles = nonNilStrings(cfg.StringList("isolation", "carry_files"))
+				if opts.CarryExtra, opts.CarryFiles, err = carryConfig(); err != nil {
+					return err
 				}
 			}
 			var r isolate.CreateResult
-			r, err = isolate.Create(dir, taskID, opts)
+			r, err = isolate.Create(*repo, task, opts)
 			result, status = r, r.Status
 		case "list":
 			var entries []isolate.Entry
-			entries, err = isolate.List(dir, sess)
+			entries, err = isolate.List(*repo, session)
 			result = map[string]any{"worktrees": entries}
 		case "diff":
 			var r isolate.DiffResult
-			r, err = isolate.DiffAndCollect(dir, taskID)
-			r.OmitPatch = namesOnly.On()
+			r, err = isolate.DiffAndCollect(*repo, task)
+			r.OmitPatch = namesOnly
 			result, status = r, r.Status
 		case "remove":
 			var r isolate.RemoveResult
-			if hasSession {
-				r, err = isolate.RemoveSession(dir, sess, force.On())
+			if cmd.Flags().Changed("session") {
+				r, err = isolate.RemoveSession(*repo, session, force)
 			} else {
-				r, err = isolate.Remove(dir, taskID, force.On(), "")
+				r, err = isolate.Remove(*repo, task, force, "")
 			}
 			result, status = r, r.Status
 		}
 		if err != nil {
-			return usageErr("isolate", err)
+			return usageErr(cmd, err)
 		}
 		if err := writeJSONLine(cmd.OutOrStdout(), result); err != nil {
 			return err
@@ -148,53 +154,30 @@ func nonNilStrings(s []string) []string {
 	return s
 }
 
-// duplicate reports the first value or presence flag given more than once,
-// in Python's wording.
-func duplicate(cmd *cobra.Command, counts map[string]int, order ...string) error {
-	for _, name := range order {
-		if counts[name] > 1 {
-			return exitf(2, "%s: duplicate option: --%s", errPrefix(cmd), name)
-		}
-	}
-	return nil
-}
-
 func newIsolateCollectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "collect",
 		Short: "mark a task's (or a session's) worktree changes as collected",
-		Args:  noArgs,
+		Args:  cobra.NoArgs,
 	}
-	task := strFlag(cmd, "task", "task id")
-	session := strFlag(cmd, "session", "session id")
-	repo := strFlag(cmd, "repo", "repository path (default cwd)")
+	task := cmd.Flags().String("task", "", "task id")
+	session := cmd.Flags().String("session", "", "session id")
+	repo := repoFlag(cmd)
 	f := formatFlags(cmd, "json", "text")
+	cmd.MarkFlagsOneRequired("task", "session")
+	cmd.MarkFlagsMutuallyExclusive("task", "session")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		counts := map[string]int{"task": task.Count(), "session": session.Count(), "repo": repo.Count(),
-			"json": f.flags["json"].Count(), "text": f.flags["text"].Count()}
-		if err := duplicate(cmd, counts, "task", "session", "repo", "json", "text"); err != nil {
-			return err
-		}
-		if err := f.exclusive(cmd); err != nil {
-			return err
-		}
-		taskID, hasTask := task.Get()
-		sess, hasSession := session.Get()
-		if hasTask == hasSession {
-			return exitf(2, "isolate collect: provide exactly one of --task or --session")
-		}
-		dir := repoOrCwd(repo)
 		var r isolate.CollectResult
 		var err error
-		if hasSession {
-			r, err = isolate.CollectSession(dir, sess)
+		if cmd.Flags().Changed("session") {
+			r, err = isolate.CollectSession(*repo, *session)
 		} else {
-			r, err = isolate.Collect(dir, taskID, "")
+			r, err = isolate.Collect(*repo, *task, "")
 		}
 		if err != nil {
-			return usageErr("isolate collect", err)
+			return usageErr(cmd, err)
 		}
-		if err := writeResult(cmd.OutOrStdout(), f.Given("text"), r, func() string {
+		if err := writeResult(cmd.OutOrStdout(), f.is("text"), r, func() string {
 			return isolate.FormatCollectText(r)
 		}); err != nil {
 			return err
@@ -220,61 +203,35 @@ func newIsolateSweepCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sweep",
 		Short: "reclaim leftover worktrees repo-wide",
-		Args:  noArgs,
+		Args:  cobra.NoArgs,
 	}
-	repo := strFlag(cmd, "repo", "repository path (default cwd)")
-	olderThan := strFlag(cmd, "older-than", "only worktrees older than DAYS")
-	liveWindow := strFlag(cmd, "live-window", "minutes a session counts as live (default 120)")
-	includeCurrent := boolFlag(cmd, "include-current", "include the running session's worktrees")
-	includeLive := boolFlag(cmd, "include-live", "include sessions seen within the live window")
-	branches := boolFlag(cmd, "branches", "also delete orphaned orchestra branches")
-	dryRun := boolFlag(cmd, "dry-run", "report only")
-	force := boolFlag(cmd, "force", "remove even with uncollected changes")
+	fl := cmd.Flags()
+	repo := repoFlag(cmd)
+	olderThan := fl.Float64("older-than", 0, "only worktrees older than DAYS")
+	liveWindow := fl.Float64("live-window", isolate.DefaultLiveWindow.Minutes(), "minutes a session counts as live")
+	var opts isolate.SweepOptions
+	fl.BoolVar(&opts.IncludeCurrent, "include-current", false, "include the running session's worktrees")
+	fl.BoolVar(&opts.IncludeLive, "include-live", false, "include sessions seen within the live window")
+	fl.BoolVar(&opts.Branches, "branches", false, "also delete orphaned orchestra branches")
+	fl.BoolVar(&opts.DryRun, "dry-run", false, "report only")
+	fl.BoolVar(&opts.Force, "force", false, "remove even with uncollected changes")
 	f := formatFlags(cmd, "json", "text")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		counts := map[string]int{
-			"repo": repo.Count(), "older-than": olderThan.Count(), "live-window": liveWindow.Count(),
-			"include-current": includeCurrent.Count(), "include-live": includeLive.Count(),
-			"branches": branches.Count(), "dry-run": dryRun.Count(), "force": force.Count(),
-			"json": f.flags["json"].Count(), "text": f.flags["text"].Count(),
-		}
-		if err := duplicate(cmd, counts, "repo", "older-than", "live-window", "include-current",
-			"include-live", "branches", "dry-run", "force", "json", "text"); err != nil {
-			return err
-		}
-		if err := f.exclusive(cmd); err != nil {
-			return err
-		}
-		opts := isolate.SweepOptions{
-			IncludeCurrent: includeCurrent.On(), IncludeLive: includeLive.On(),
-			Branches: branches.On(), DryRun: dryRun.On(), Force: force.On(),
-		}
-		if v, ok := olderThan.Get(); ok {
-			days, ok := pyFloat(v)
-			if !ok || days < 0 {
+		if cmd.Flags().Changed("older-than") {
+			if !finiteNonNegative(*olderThan) {
 				return exitf(2, "isolate sweep: --older-than takes a number of days")
 			}
-			if !math.IsNaN(days) { // NaN compares false: no tree is "newer"
-				opts.OlderThanDays = &days
-			}
+			opts.OlderThanDays = olderThan
 		}
-		minutes := isolate.DefaultLiveWindow.Minutes()
-		if v, ok := liveWindow.Get(); ok {
-			m, ok := pyFloat(v)
-			if !ok || m < 0 {
-				return exitf(2, "isolate sweep: --live-window takes a number of minutes")
-			}
-			minutes = m
-			if math.IsNaN(m) { // NaN compares false: no session is live
-				minutes = 0
-			}
+		if !finiteNonNegative(*liveWindow) {
+			return exitf(2, "isolate sweep: --live-window takes a number of minutes")
 		}
-		opts.LiveWindow = minutesDuration(minutes)
-		r, err := isolate.Sweep(repoOrCwd(repo), opts)
+		opts.LiveWindow = duration(*liveWindow, time.Minute)
+		r, err := isolate.Sweep(*repo, opts)
 		if err != nil {
-			return usageErr("isolate sweep", err)
+			return usageErr(cmd, err)
 		}
-		if err := writeResult(cmd.OutOrStdout(), f.Given("text"), r, func() string {
+		if err := writeResult(cmd.OutOrStdout(), f.is("text"), r, func() string {
 			return isolate.FormatSweepText(r)
 		}); err != nil {
 			return err
@@ -285,43 +242,4 @@ func newIsolateSweepCmd() *cobra.Command {
 		return nil
 	}
 	return cmd
-}
-
-// minutesDuration converts, saturating instead of overflowing (Python's
-// float window has no upper bound; "inf" means "always live").
-func minutesDuration(m float64) time.Duration {
-	const maxMinutes = float64(1<<63-1) / float64(time.Minute)
-	if m >= maxMinutes {
-		return time.Duration(1<<63 - 1)
-	}
-	return time.Duration(m * float64(time.Minute))
-}
-
-// pyFloat parses a number the way Python's float() does for CLI input:
-// surrounding whitespace allowed, inf/nan spellings, decimal only.
-func pyFloat(s string) (float64, bool) {
-	s = trimSpace(s)
-	if strings.ContainsAny(s, "xXpP") {
-		return 0, false // Go would read hex floats; Python does not
-	}
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
-}
-
-func trimSpace(s string) string {
-	start, end := 0, len(s)
-	for start < end && isPySpace(s[start]) {
-		start++
-	}
-	for end > start && isPySpace(s[end-1]) {
-		end--
-	}
-	return s[start:end]
-}
-
-func isPySpace(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'
 }
