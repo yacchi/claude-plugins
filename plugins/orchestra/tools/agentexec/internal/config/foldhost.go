@@ -14,7 +14,3 @@ func FoldHost(s string) string {
 	}
 	return string(b)
 }
-
-// PyLower is a temporary alias for FoldHost, kept only so packages owned by
-// other workers (host/*, cli) keep compiling until they are renamed.
-func PyLower(s string) string { return FoldHost(s) }

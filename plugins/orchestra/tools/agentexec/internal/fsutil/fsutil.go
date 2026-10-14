@@ -10,10 +10,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"math"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -158,29 +156,6 @@ func encodeJSON(v any, indent bool) ([]byte, error) {
 		return nil, err
 	}
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
-}
-
-// FloatRepr renders f in the shortest round-trip form ("1.0", "0.0001",
-// "1e-05", "1e+16"; Infinity/NaN when not finite). Slated for removal.
-func FloatRepr(f float64) string {
-	switch {
-	case math.IsNaN(f):
-		return "NaN"
-	case math.IsInf(f, 1):
-		return "Infinity"
-	case math.IsInf(f, -1):
-		return "-Infinity"
-	}
-	sci := strconv.FormatFloat(f, 'e', -1, 64)
-	exp, _ := strconv.Atoi(sci[strings.IndexByte(sci, 'e')+1:])
-	if exp < -4 || exp >= 16 {
-		return sci
-	}
-	s := strconv.FormatFloat(f, 'f', -1, 64)
-	if !strings.Contains(s, ".") {
-		s += ".0"
-	}
-	return s
 }
 
 // PIDAlive reports whether a process with this pid exists (a process owned

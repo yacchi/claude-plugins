@@ -79,7 +79,7 @@ func newSandboxCmd() *cobra.Command {
 	domainReason := allowDomain.Flags().String("reason", "", "why")
 	allowDomain.RunE = func(cmd *cobra.Command, args []string) error {
 		configOrDefaults()
-		domain := config.PyLower(strings.TrimSpace(args[0]))
+		domain := config.FoldHost(strings.TrimSpace(args[0]))
 		entry, err := sandbox.AddDomainEntry(domain, "user", *domainReason)
 		if err != nil {
 			return exitf(1, "sandbox allow-domain: %s", err)
@@ -95,7 +95,7 @@ func newSandboxCmd() *cobra.Command {
 	forgetDomain, forgetDomainJSON := sub("forget-domain", "remove a domain grant", onePositional("domain"))
 	forgetDomain.RunE = func(cmd *cobra.Command, args []string) error {
 		configOrDefaults()
-		domain := config.PyLower(strings.TrimSpace(args[0]))
+		domain := config.FoldHost(strings.TrimSpace(args[0]))
 		err := sandbox.ForgetDomain(domain)
 		if err != nil && !errors.Is(err, sandbox.ErrNotFound) {
 			return exitf(1, "sandbox forget-domain: %s", err)
