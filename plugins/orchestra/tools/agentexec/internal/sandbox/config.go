@@ -66,7 +66,7 @@ func normalizeConfig(raw map[string]any) Config {
 			c.Mode = "off" // an explicit `mode: false` means off
 		}
 	case string:
-		if s := config.PyLower(strings.TrimSpace(m)); contains(modes, s) {
+		if s := config.FoldHost(strings.TrimSpace(m)); contains(modes, s) {
 			c.Mode = s
 		}
 	}
@@ -98,7 +98,7 @@ func normalizeNetwork(raw map[string]any) NetworkConfig {
 			mode = "off"
 		}
 	case string:
-		mode = config.PyLower(strings.TrimSpace(m))
+		mode = config.FoldHost(strings.TrimSpace(m))
 	}
 	if contains(networkModes, mode) {
 		n.Mode = mode
@@ -107,7 +107,7 @@ func normalizeNetwork(raw map[string]any) NetworkConfig {
 	case bool:
 		n.Ecosystem = e
 	case string:
-		switch config.PyLower(strings.TrimSpace(e)) {
+		switch config.FoldHost(strings.TrimSpace(e)) {
 		case "off", "false", "no", "0":
 			n.Ecosystem = false
 		}
@@ -125,7 +125,7 @@ func normalizeNetwork(raw map[string]any) NetworkConfig {
 		}
 		var out []string
 		for _, v := range values {
-			if s := config.PyLower(strings.TrimSpace(v)); s != "" {
+			if s := config.FoldHost(strings.TrimSpace(v)); s != "" {
 				out = append(out, s)
 			}
 		}

@@ -249,7 +249,7 @@ func closeAll(files ...*os.File) {
 	}
 }
 
-// exitCode is Python's Popen.returncode: the exit status, or -N when the
+// exitCode is the exit status, or -N when the
 // child was killed by signal N.
 func exitCode(state *os.ProcessState) int {
 	if state == nil {

@@ -13,9 +13,9 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
-// fixtures is testdata/fixtures.json: the retired Python Watchdog driven by
-// a fake clock (recorded by a generator removed at the v0.55.0 cutover; see
-// git history). Frozen regression data: never edit by hand.
+// fixtures is testdata/fixtures.json: Watchdog runs driven by a fake clock,
+// first recorded from the retired Python implementation. Expected values
+// are edited by hand when the behavior intentionally changes.
 type fixtures struct {
 	Cases []struct {
 		Name        string          `json:"name"`
@@ -47,7 +47,7 @@ func plain(t *testing.T, v any) any {
 	return out
 }
 
-func TestWatchdogMatchesPython(t *testing.T) {
+func TestWatchdogFixtures(t *testing.T) {
 	raw, err := os.ReadFile("testdata/fixtures.json")
 	if err != nil {
 		t.Fatal(err)

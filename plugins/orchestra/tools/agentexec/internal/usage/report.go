@@ -62,7 +62,7 @@ func notAttributable(reason string) *Source {
 	return &Source{NotAttributable: true, Reason: reason}
 }
 
-// MarshalJSON writes the entry with the key order of the Python report.
+// MarshalJSON writes the entry with a fixed key order.
 func (s Source) MarshalJSON() ([]byte, error) {
 	o := map[string]any{}
 	if s.NotAttributable {

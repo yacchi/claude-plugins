@@ -4,6 +4,7 @@
 package tools
 
 import (
+	"fmt"
 	"maps"
 	"os"
 	"os/exec"
@@ -21,8 +22,8 @@ var KnownBinaries = map[string]string{"pi": "pi"}
 // InstallHint is the remedy printed next to a missing or stale tool.
 const InstallHint = "run: agent-exec tools install "
 
-// Resolution says where a tool runs from. Empty strings stand for Python's
-// None. Source is "managed" or "system"; Reason is managed-not-installed |
+// Resolution says where a tool runs from. Empty strings stand for an
+// absent value. Source is "managed" or "system"; Reason is managed-not-installed |
 // managed-stale | not-on-path | not-installed.
 type Resolution struct {
 	Name    string
@@ -108,7 +109,7 @@ func ConfigFor(name string, cfg *config.Resolved, defaultBin string) ToolConfig 
 		tc.Spec, _ = s.(string)
 	}
 	if v, ok := entry["version"]; ok && v != nil && v != "" {
-		tc.Version = pyStr(v)
+		tc.Version = fmt.Sprint(v)
 	}
 	if b, _ := entry["bin"]; b != nil {
 		if s, ok := b.(string); ok && s != "" {
@@ -116,24 +117,6 @@ func ConfigFor(name string, cfg *config.Resolved, defaultBin string) ToolConfig 
 		}
 	}
 	return tc
-}
-
-// pyStr is Python's str() for the scalar types a YAML version can load as.
-func pyStr(v any) string {
-	switch x := v.(type) {
-	case string:
-		return x
-	case bool:
-		if x {
-			return "True"
-		}
-		return "False"
-	}
-	b, err := fsutil.MarshalJSON(v)
-	if err != nil {
-		return ""
-	}
-	return string(b)
 }
 
 func executable(p string) bool {
@@ -241,7 +224,7 @@ func mustGet(o map[string]any, k string) any {
 }
 
 // MarkAvailability sets external_executors.<name>.available for every
-// enabled `dispatch: cli` executor, as Python's resolve_config did: whether
+// enabled `dispatch: cli` executor: whether
 // the tool resolves to a path, or null for an executor agent-exec has no
 // built-in binary for. It runs after config.Resolve because tool
 // resolution sits above config in the package graph.

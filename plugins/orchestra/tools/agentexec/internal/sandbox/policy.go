@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // Policy is the one policy every backend enforces, paths realpath'd.
@@ -96,26 +98,16 @@ func gitDirs(tree string) (string, string) {
 	if !ok {
 		return "", ""
 	}
-	lines := splitLines(out)
+	lines := fsutil.SplitLines(out)
 	if len(lines) < 2 {
 		return "", ""
 	}
 	own := realPath(lines[0])
 	common := lines[1]
 	if !strings.HasPrefix(common, "/") {
-		common = pyJoin(tree, common)
+		common = filepath.Join(tree, common)
 	}
 	return own, realPath(common)
-}
-
-// splitLines is str.splitlines() for git's output.
-func splitLines(s string) []string {
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	lines := strings.Split(s, "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	return lines
 }
 
 func repoRoot(tree string) string {
@@ -138,9 +130,9 @@ func executorStateDirs(executor, home string, o policyOpts) []string {
 	}
 	dirs := []string{base}
 	// A managed agent dir symlinks auth.json to the user's real file.
-	auth := pyJoin(expand(base, home), "auth.json")
+	auth := filepath.Join(expand(base, home), "auth.json")
 	if isLink(auth) {
-		realDir := pyDirname(realPath(auth))
+		realDir := filepath.Dir(realPath(auth))
 		if !contains(dirs, realDir) {
 			dirs = append(dirs, realDir)
 		}
@@ -182,7 +174,7 @@ func repoConfigFiles(root string, limit int) []string {
 			}
 			sort.Strings(names)
 			for _, name := range names {
-				full := pyJoin(dir, name)
+				full := filepath.Join(dir, name)
 				if st, err := os.Stat(full); err == nil && st.Mode().IsRegular() && rx.MatchString(full) {
 					found = append(found, full)
 					if len(found) >= limit {
@@ -199,7 +191,7 @@ func repoConfigFiles(root string, limit int) []string {
 			if !isDirEntry || e.Name() == ".git" || e.Name() == "node_modules" {
 				continue
 			}
-			if !walk(pyJoin(dir, e.Name())) {
+			if !walk(filepath.Join(dir, e.Name())) {
 				return false
 			}
 		}
@@ -213,10 +205,10 @@ func piDenyPaths(stateDir string) []string {
 	stateDir = realPath(stateDir)
 	var out []string
 	for _, d := range piDenySubdirs {
-		out = append(out, pyJoin(stateDir, d))
+		out = append(out, filepath.Join(stateDir, d))
 	}
 	for _, f := range piDenyFiles {
-		out = append(out, pyJoin(stateDir, f))
+		out = append(out, filepath.Join(stateDir, f))
 	}
 	return out
 }
@@ -264,7 +256,7 @@ func buildPolicy(tree, executor string, sc Config, o policyOpts) *Policy {
 		if ownGit != commonGit {
 			writable = append(writable, ownGit)
 		}
-		writable = append(writable, pyJoin(commonGit, "objects"))
+		writable = append(writable, filepath.Join(commonGit, "objects"))
 	}
 	if tmp := o.getenv("TMPDIR"); tmp != "" {
 		writable = append(writable, realPath(tmp))

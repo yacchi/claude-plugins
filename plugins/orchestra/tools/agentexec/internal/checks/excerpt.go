@@ -9,9 +9,11 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
-// Python's \s and \w are Unicode-aware for str patterns; RE2's are ASCII.
+// RE2's \s and \w are ASCII only; test output may carry Unicode spaces.
 const (
 	pyS    = `[\t-\r\x1c-\x1f \x{85}\p{Z}]`
 	pyNotS = `[^\t-\r\x1c-\x1f \x{85}\p{Z}]`
@@ -96,34 +98,6 @@ func isAnchor(line string) bool {
 	return false
 }
 
-// pySplitLines is Python's str.splitlines().
-func pySplitLines(s string) []string {
-	var out []string
-	start := 0
-	for i := 0; i < len(s); {
-		r, w := utf8.DecodeRuneInString(s[i:])
-		switch r {
-		case '\n', '\v', '\f', '\x1c', '\x1d', '\x1e', '\u0085', ' ', ' ':
-			out = append(out, s[start:i])
-			i += w
-			start = i
-		case '\r':
-			out = append(out, s[start:i])
-			i += w
-			if i < len(s) && s[i] == '\n' {
-				i++
-			}
-			start = i
-		default:
-			i += w
-		}
-	}
-	if start < len(s) {
-		out = append(out, s[start:])
-	}
-	return out
-}
-
 func collapseMarkup(lines []string) []string {
 	var out, run []string
 	flush := func() {
@@ -146,7 +120,7 @@ func collapseMarkup(lines []string) []string {
 	return out
 }
 
-// clip shortens text to limit code points the way Python's _clip does,
+// clip shortens text to limit code points,
 // including measuring the marker with the full length rather than the
 // omitted count.
 func clip(text string, limit int) string {
@@ -174,7 +148,7 @@ func excerptLimit(text string, limit int) string {
 	if text == "" {
 		return ""
 	}
-	lines := collapseMarkup(pySplitLines(ansiRE.ReplaceAllString(text, "")))
+	lines := collapseMarkup(fsutil.SplitLines(ansiRE.ReplaceAllString(text, "")))
 	var picked []int
 	seen := map[int]bool{}
 	budget := limit * 2 / 3
@@ -222,7 +196,7 @@ func excerptLimit(text string, limit int) string {
 func ParseFailedFiles(output string) []string {
 	var found []string
 	seen := map[string]bool{}
-	for _, line := range pySplitLines(ansiRE.ReplaceAllString(output, "")) {
+	for _, line := range fsutil.SplitLines(ansiRE.ReplaceAllString(output, "")) {
 		var m []string
 		for _, re := range failedFileRE {
 			if m = re.FindStringSubmatch(line); m != nil {

@@ -452,7 +452,7 @@
         "isolation": {
           "isolate": false,
           "mode": "always",
-          "reason": "could not isolate (task id '///' has no usable characters); running in the shared tree"
+          "reason": "could not isolate (task id \"///\" has no usable characters); running in the shared tree"
         },
         "model": "haiku",
         "route": {

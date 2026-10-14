@@ -9,9 +9,9 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 )
 
-// Regression: Go's simple lowercase maps U+0130 (İ) to "i", so `İ.com`
-// became the valid host `i.com` that Python (full mapping: "i̇")
-// refuses. The Go policy must never be wider than Python's.
+// Regression: Unicode lowering maps U+0130 (İ) to "i" and the Kelvin sign
+// to "k", which would turn non-ASCII hosts into valid ASCII allowlist
+// entries. Host folding is ASCII-only, so they stay non-ASCII and refused.
 func TestDottedCapitalINeverBecomesAnASCIIHost(t *testing.T) {
 	home, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -19,9 +19,6 @@ func TestDottedCapitalINeverBecomesAnASCIIHost(t *testing.T) {
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_STATE_HOME", "")
-	if got := config.PyLower("İ.COM ΑΣ"); got != "i̇.com ας" {
-		t.Errorf("PyLower = %q", got)
-	}
 	if DomainRefusal("İ.com") == "" {
 		t.Error("İ.com not refused")
 	}
@@ -46,7 +43,7 @@ func TestDottedCapitalINeverBecomesAnASCIIHost(t *testing.T) {
 			t.Errorf("allowlist got i.com: %v", ConfigOf(cfg).Network.AllowedDomains)
 		}
 	}
-	if !contains(ConfigOf(cfg).Network.AllowedDomains, "i̇.com") {
+	if !contains(ConfigOf(cfg).Network.AllowedDomains, "İ.com") {
 		t.Errorf("allowlist %v", ConfigOf(cfg).Network.AllowedDomains)
 	}
 }

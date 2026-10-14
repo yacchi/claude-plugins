@@ -19,11 +19,11 @@
 //     above, never wraps them.
 //   - none: mode off, or nothing usable on this host.
 //
-// Every path is realpath'd (Python's algorithm, see realPath) before it
+// Every path is realpath'd (see realPath) before it
 // reaches a rule: on macOS /tmp is /private/tmp and $TMPDIR lives under
 // /private/var/folders, and a Seatbelt rule on the unresolved spelling
-// silently never matches. The rendered SBPL is byte-identical to the Python
-// implementation's (sbpl_fixture_darwin_test.go).
+// silently never matches. The rendered SBPL is pinned by
+// sbpl_fixture_darwin_test.go.
 package sandbox
 
 // Modes of sandbox.mode and sandbox.network.mode.

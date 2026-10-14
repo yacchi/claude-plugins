@@ -123,7 +123,7 @@ func Adopt(root, task, path string, o AdoptOptions) (AdoptResult, error) {
 	baseline := ""
 	if o.Baseline != "" {
 		if baseline = RevParseCommit(resolved, o.Baseline); baseline == "" {
-			return fail(fmt.Sprintf("could not resolve --baseline ref %s to a commit", pyRepr(o.Baseline)))
+			return fail(fmt.Sprintf("could not resolve --baseline ref %q to a commit", o.Baseline))
 		}
 	}
 	if isAdopted {

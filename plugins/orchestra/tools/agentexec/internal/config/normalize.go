@@ -100,7 +100,7 @@ func dedupe(list []string) []any {
 	return toAny(out)
 }
 
-// normalize applies the post-merge rules of Python's resolve_config, in
+// normalize applies the post-merge rules in
 // place: the sandbox section is rebuilt from the unions, executor
 // network_domains are replaced by their unions, and the enforcement knobs
 // are coerced to their known values (fail-safe per knob).

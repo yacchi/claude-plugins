@@ -40,7 +40,7 @@ func plain(t *testing.T, v any) any {
 	return out
 }
 
-func TestParseJSONLMatchesPython(t *testing.T) {
+func TestParseJSONLFixtures(t *testing.T) {
 	raw, err := os.ReadFile("testdata/parse_fixtures.json")
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestParseJSONLMatchesPython(t *testing.T) {
 			if g := plain(t, got); !reflect.DeepEqual(g, want) {
 				t.Errorf("got  %v\nwant %v", g, want)
 			}
-			// Key order is Python's.
+			// Key order is part of the output contract.
 			wantObj, _ := fsutil.DecodeJSON(c.Want)
 			if k, w := slices.Sorted(maps.Keys(got)), slices.Sorted(maps.Keys(wantObj.(map[string]any))); !slices.Equal(k, w) {
 				t.Errorf("keys %v, want %v", k, w)

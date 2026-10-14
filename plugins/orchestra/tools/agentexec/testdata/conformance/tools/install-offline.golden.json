@@ -57,7 +57,7 @@
       "stdout_shape": "json",
       "stdout": [
         {
-          "error": "[Errno 2] No such file or directory: 'npm'",
+          "error": "exec: \"npm\": executable file not found in $PATH",
           "installer": "npm",
           "name": "pi",
           "path": null,
@@ -77,7 +77,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "pi  failed  1.2.0  -  [Errno 2] No such file or directory: 'mise'\n"
+      "stdout": "pi  failed  1.2.0  -  exec: \"mise\": executable file not found in $PATH\n"
     },
     {
       "argv": [
@@ -88,7 +88,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "pi  failed  1.2.0  -  [Errno 2] No such file or directory: 'npm'\n"
+      "stdout": "pi  failed  1.2.0  -  exec: \"npm\": executable file not found in $PATH\n"
     },
     {
       "argv": [

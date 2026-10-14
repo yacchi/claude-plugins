@@ -226,7 +226,7 @@ func get(o map[string]any, k string) any {
 	return v
 }
 
-// direct is `dispatch --executor`: Python's `run --capture`.
+// direct is `dispatch --executor`: run one named executor, no routing.
 func direct(ctx context.Context, cfg *config.Resolved, r Request, prompt string) Outcome {
 	mode := orDefault(r.Isolate, IsolateNever)
 	workdir := r.Workdir

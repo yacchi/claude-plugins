@@ -6,11 +6,11 @@ package route
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 )
 
@@ -153,7 +153,7 @@ func skipReason(name, cls string, exhausted map[string]bool, external map[string
 		// availability is the subagent's session, which is not knowable here.
 		return ""
 	}
-	return fmt.Sprintf("unknown-dispatch:%s", pyStr(dispatch))
+	return fmt.Sprintf("unknown-dispatch:%s", show(dispatch))
 }
 
 // Resolve walks the candidates for cls/archetype and returns the first
@@ -220,25 +220,12 @@ func Resolve(cfg *config.Resolved, ready map[string]readiness.ExecReady, cls, ar
 	return r
 }
 
-func pyStr(v any) string {
-	switch x := v.(type) {
-	case nil:
-		return "None"
-	case string:
-		return x
-	case bool:
-		if x {
-			return "True"
-		}
-		return "False"
-	case float64:
-		return fsutil.FloatRepr(x)
+// show formats a nullable route field for text output: nil as "-".
+func show(v any) string {
+	if v == nil {
+		return "-"
 	}
-	b, err := fsutil.MarshalJSON(v)
-	if err != nil {
-		return fmt.Sprint(v)
-	}
-	return string(b)
+	return fmt.Sprint(v)
 }
 
 // FormatText is the human-readable `route --text` rendering (with trailing
@@ -250,7 +237,7 @@ func FormatText(r Route) string {
 	fmt.Fprintf(&b, "candidates: %s\n", strings.Join(r.Candidates, ", "))
 	if r.Routable() {
 		fmt.Fprintf(&b, "resolved: %s (dispatch=%s model=%s effort=%s)\n",
-			r.Executor, pyStr(r.Dispatch), pyStr(r.Model), pyStr(r.Effort))
+			r.Executor, show(r.Dispatch), show(r.Model), show(r.Effort))
 	} else {
 		b.WriteString("resolved: UNROUTABLE\n")
 	}
@@ -261,7 +248,7 @@ func FormatText(r Route) string {
 		}
 	}
 	for _, c := range r.CooldownsApplied {
-		fmt.Fprintf(&b, "cooldown: %s (%s) until %s\n", c.Executor, c.Reason, fsutil.FloatRepr(c.Until))
+		fmt.Fprintf(&b, "cooldown: %s (%s) until %s\n", c.Executor, c.Reason, strconv.FormatFloat(c.Until, 'f', -1, 64))
 	}
 	if r.CooldownBypassed {
 		b.WriteString("cooldown: BYPASSED (all candidates were cooled down)\n")

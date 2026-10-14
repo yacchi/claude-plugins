@@ -16,8 +16,8 @@ import (
 )
 
 // Marker files kept in a worktree's own git dir (never in the tree, so no
-// diff ever shows them). The names are the on-disk contract shared with the
-// Python implementation.
+// diff ever shows them). The names are an on-disk contract with
+// earlier versions.
 const (
 	// baselineFile: the commit the worker started from; every diff is
 	// measured against it.

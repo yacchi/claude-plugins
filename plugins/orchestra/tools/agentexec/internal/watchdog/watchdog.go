@@ -53,8 +53,8 @@ func DefaultConfig() Config {
 		RepeatLimit: DefaultRepeatLimit}
 }
 
-// ConfigFrom reads a `watchdog:` section the way Python's Watchdog read its
-// dict: absent keys take the defaults, `enabled` must be literally true,
+// ConfigFrom reads a `watchdog:` section from a decoded
+// object: absent keys take the defaults, `enabled` must be literally true,
 // a non-object wall_seconds leaves only the 2400 s fallback.
 func ConfigFrom(o map[string]any) Config {
 	c := DefaultConfig()
@@ -121,7 +121,7 @@ type Runaway struct {
 	RepeatCount        int
 }
 
-// Object is the report in Python's key order.
+// Object is the report with its keys in a fixed order.
 func (r *Runaway) Object() map[string]any {
 	var last any
 	if r.LastTool != nil {
@@ -254,7 +254,7 @@ func (w *Watchdog) piEvent(event map[string]any) {
 }
 
 // callKey keys an in-flight call: string ids as is (so they share the
-// space of the anonymous ids, as in Python), anything else by its JSON.
+// space of the anonymous ids), anything else by its JSON.
 func callKey(id any) string {
 	if s, ok := id.(string); ok {
 		return s
@@ -275,7 +275,7 @@ func (w *Watchdog) startTool(name, args, id any) {
 	} else {
 		w.active[callKey(id)] = true
 	}
-	w.lastTool = &ToolInfo{Name: pyStr(name), ArgsPreview: preview(args)}
+	w.lastTool = &ToolInfo{Name: toolName(name), ArgsPreview: preview(args)}
 	if w.cfg.RepeatLimit > 0 && w.repeatCount >= w.cfg.RepeatLimit {
 		w.fire("repeat", w.clock(), w.started)
 	}
@@ -382,7 +382,7 @@ func (w *Watchdog) Result() *Runaway {
 	}
 }
 
-func round2(x float64) float64 { return math.RoundToEven(x*100) / 100 }
+func round2(x float64) float64 { return math.Round(x*100) / 100 }
 
 // TerminateGroup SIGTERMs process group pgid and, unless exited closes
 // within the grace period, SIGKILLs it. A group already gone is left alone.

@@ -160,9 +160,8 @@ func encodeJSON(v any, indent bool) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// FloatRepr renders f as Python's repr(float) does ("1.0", "0.0001",
-// "1e-05", "1e+16"; Infinity/NaN when not finite). Only the py* text helpers
-// that still quote values the Python way use it.
+// FloatRepr renders f in the shortest round-trip form ("1.0", "0.0001",
+// "1e-05", "1e+16"; Infinity/NaN when not finite). Slated for removal.
 func FloatRepr(f float64) string {
 	switch {
 	case math.IsNaN(f):
@@ -207,8 +206,7 @@ func TailLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// ExpandUser replaces a leading "~" or "~/" with $HOME, as Python's
-// os.path.expanduser does; any other path is returned unchanged.
+// ExpandUser replaces a leading "~" or "~/" with $HOME; any other path is returned unchanged.
 func ExpandUser(p string) string {
 	if p != "~" && !strings.HasPrefix(p, "~/") {
 		return p
@@ -220,8 +218,7 @@ func ExpandUser(p string) string {
 	return home + p[1:]
 }
 
-// NowISO is Python's datetime.now(timezone.utc).isoformat():
-// 2026-10-13T08:00:00.123456+00:00 (the fraction is omitted when zero).
+// NowISO is the current UTC time as 2026-10-13T08:00:00.123456+00:00 (the fraction is omitted when zero).
 func NowISO() string {
 	return FormatISO(time.Now())
 }
@@ -234,6 +231,19 @@ func FormatISO(t time.Time) string {
 		s += fmt.Sprintf(".%06d", us)
 	}
 	return s + "+00:00"
+}
+
+// SplitLines splits s on "\n", tolerating "\r\n", and drops the empty piece
+// a trailing newline would leave. "" yields no lines.
+func SplitLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }
 
 // NowISOZ is the second-precision form: 2026-10-13T08:00:00Z.

@@ -35,7 +35,7 @@ func (r *Resolved) Bool(path ...string) (bool, bool) {
 }
 
 // Int is the value at path when it is an integer (booleans and floats are
-// not integers, as in Python's isinstance(v, int) minus bool).
+// not integers).
 func (r *Resolved) Int(path ...string) (int, bool) {
 	v, _ := r.Lookup(path...)
 	switch x := v.(type) {

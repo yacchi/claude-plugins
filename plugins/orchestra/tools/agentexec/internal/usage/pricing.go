@@ -166,7 +166,7 @@ func PriceFor(model string, overrides map[string]any) (Price, bool) {
 
 // CostMicroUSD is one model's token breakdown at a price, in integer
 // micro-USD (a price in USD per 1M tokens is exactly micro-USD per token).
-// Rounded half to even, as Python's round().
+// Rounded to the nearest micro-USD.
 func CostMicroUSD(d Detail, p Price) int64 {
 	total := 0.0
 	for _, c := range []struct {
@@ -180,7 +180,7 @@ func CostMicroUSD(d Detail, p Price) int64 {
 			total += float64(c.count) * c.price
 		}
 	}
-	return int64(math.RoundToEven(total))
+	return int64(math.Round(total))
 }
 
 // ModelCost is one priced model: its breakdown plus its own estimate.

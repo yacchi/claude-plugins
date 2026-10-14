@@ -175,11 +175,16 @@ func loadLayer(path string) (map[string]any, error) {
 // []any, integers int64. An empty document is nil.
 func loadYAML(data []byte) (any, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
-	var v any
-	if err := dec.Decode(&v); err != nil {
+	var doc yaml.Node
+	if err := dec.Decode(&doc); err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, nil
 		}
+		return nil, err
+	}
+	keepTimestampsAsText(&doc)
+	var v any
+	if err := doc.Decode(&v); err != nil {
 		return nil, err
 	}
 	var extra any
@@ -189,6 +194,18 @@ func loadYAML(data []byte) (any, error) {
 		return nil, err
 	}
 	return jsonValue(v), nil
+}
+
+// keepTimestampsAsText retags unquoted timestamp scalars (2024-01-01) as
+// strings, so they load as the text the author wrote instead of a time.Time
+// that would be re-rendered as RFC 3339.
+func keepTimestampsAsText(n *yaml.Node) {
+	if n.Kind == yaml.ScalarNode && n.ShortTag() == "!!timestamp" {
+		n.Tag = "!!str"
+	}
+	for _, c := range n.Content {
+		keepTimestampsAsText(c)
+	}
 }
 
 func jsonValue(v any) any {

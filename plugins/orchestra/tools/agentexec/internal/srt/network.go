@@ -132,7 +132,7 @@ func cleanDomains(values []any) []string {
 	var out []string
 	for _, v := range values {
 		if s, ok := v.(string); ok && sandbox.DomainRefusal(s) == "" {
-			out = append(out, config.PyLower(strings.TrimSpace(s)))
+			out = append(out, config.FoldHost(strings.TrimSpace(s)))
 		}
 	}
 	return dedupe(out)
@@ -176,7 +176,7 @@ func npmrcHosts(path string) []string {
 		if err != nil {
 			continue
 		}
-		host := config.PyLower(u.Hostname())
+		host := config.FoldHost(u.Hostname())
 		if host != "" && sandbox.DomainRefusal(host) == "" {
 			hosts = append(hosts, host)
 		}
@@ -249,7 +249,7 @@ func ExecutorDomains(executor string, ecfg map[string]any, model string) []strin
 		if i := strings.Index(model, "/"); i >= 0 {
 			prefix = model[:i]
 		}
-		return append([]string{}, piProviderDomains[config.PyLower(strings.TrimSpace(prefix))]...)
+		return append([]string{}, piProviderDomains[config.FoldHost(strings.TrimSpace(prefix))]...)
 	}
 	return []string{}
 }
@@ -283,8 +283,7 @@ func executorConfig(cfg *config.Resolved, executor string) map[string]any {
 	return config.ObjectAt(ext, executor)
 }
 
-// planNetwork is the network of one CLI executor run (Python's
-// cli_network); the domains are computed only when srt would be used.
+// planNetwork is the network of one CLI executor run ; the domains are computed only when srt would be used.
 func planNetwork(cfg *config.Resolved, executor, tree, model, task string) *sandbox.Network {
 	net := sandbox.ConfigOf(cfg).Network
 	rid := RunID(task)
