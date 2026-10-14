@@ -8,7 +8,7 @@
         "light"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -39,8 +39,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -49,7 +48,7 @@
         "standard"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -87,8 +86,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -99,7 +97,7 @@
         "investigation"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "investigation",
@@ -137,8 +135,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -149,7 +146,7 @@
         "pi"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -171,8 +168,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -181,7 +177,7 @@
         "review"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -204,8 +200,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -216,8 +211,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: offexec, nopolicy, agentexec, weird, claude\nresolved: claude (dispatch=claude model=sonnet effort=None)\nskipped:\n  - offexec: unknown-executor:offexec\n  - nopolicy: unknown-executor:nopolicy\n  - agentexec: unknown-executor:agentexec\n  - weird: unknown-executor:weird\nsource: priority\n",
-      "stderr": ""
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: offexec, nopolicy, agentexec, weird, claude\nresolved: claude (dispatch=claude model=sonnet effort=None)\nskipped:\n  - offexec: unknown-executor:offexec\n  - nopolicy: unknown-executor:nopolicy\n  - agentexec: unknown-executor:agentexec\n  - weird: unknown-executor:weird\nsource: priority\n"
     }
   ]
 }

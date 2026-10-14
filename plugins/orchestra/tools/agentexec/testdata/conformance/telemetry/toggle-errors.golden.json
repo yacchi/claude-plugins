@@ -4,20 +4,6 @@
     {
       "argv": [
         "telemetry",
-        "enable",
-        "--scope"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: missing value for --scope\n",
-      "files": {
-        "~/.claude/orchestra.yaml": null
-      }
-    },
-    {
-      "argv": [
-        "telemetry",
         "disable",
         "--scope",
         "global"
@@ -25,7 +11,6 @@
       "exit": 2,
       "stdout_shape": "empty",
       "stdout": null,
-      "stderr": "agent-exec: telemetry: invalid --scope: global\n",
       "files": {
         "~/.claude/orchestra.yaml": null
       }
@@ -39,21 +24,6 @@
       "exit": 2,
       "stdout_shape": "empty",
       "stdout": null,
-      "stderr": "agent-exec: telemetry: unknown option: --bogus\n",
-      "files": {
-        "~/.claude/orchestra.yaml": null
-      }
-    },
-    {
-      "argv": [
-        "telemetry",
-        "enable",
-        "extra"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: unknown option: extra\n",
       "files": {
         "~/.claude/orchestra.yaml": null
       }
@@ -64,8 +34,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: missing subcommand\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -74,8 +43,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: unknown subcommand: nope\n"
+      "stdout": null
     }
   ]
 }

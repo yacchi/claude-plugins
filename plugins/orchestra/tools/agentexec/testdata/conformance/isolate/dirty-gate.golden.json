@@ -9,7 +9,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -20,8 +20,7 @@
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -31,7 +30,7 @@
         "t2"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#2>",
@@ -42,8 +41,7 @@
         "path": "<WORK>-orchestra/00000000-t2",
         "status": "created",
         "task": "t2"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -51,7 +49,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -69,8 +67,7 @@
             "task": "t2"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -78,7 +75,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -96,8 +93,7 @@
             "task": "t2"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -107,7 +103,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [
           "scratch/00000000"
@@ -116,8 +112,7 @@
         "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
         "status": "dirty",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -128,7 +123,7 @@
         "--names-only"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#1>",
         "branch": "orchestra/00000000/t1",
@@ -139,8 +134,7 @@
         "session": "00000000",
         "status": "ok",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -148,7 +142,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -166,8 +160,7 @@
             "task": "t2"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -177,7 +170,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [
           "more/00000000",
@@ -187,8 +180,7 @@
         "reason": "worktree holds 2 changed file(s) not yet collected; collect the diff or pass --force",
         "status": "dirty",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -198,7 +190,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#1>",
         "branch": "orchestra/00000000/t1",
@@ -211,8 +203,7 @@
         "session": "00000000",
         "status": "ok",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -222,7 +213,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t1",
         "path": "<WORK>-orchestra/00000000-t1",
@@ -230,7 +221,6 @@
         "status": "removed",
         "task": "t1"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/work-orchestra/00000000-t1/scratch/00000000": null
       }
@@ -243,7 +233,7 @@
         "t2"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [
           "scratch/00000000"
@@ -252,8 +242,7 @@
         "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
         "status": "dirty",
         "task": "t2"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -264,7 +253,7 @@
         "--force"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t2",
         "path": "<WORK>-orchestra/00000000-t2",
@@ -272,7 +261,6 @@
         "status": "removed",
         "task": "t2"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/work-orchestra/00000000-t2/scratch/00000000": null
       }
@@ -283,11 +271,10 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": []
-      },
-      "stderr": ""
+      }
     }
   ]
 }

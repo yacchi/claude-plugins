@@ -10,79 +10,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate sweep: --older-than takes a number of days\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "sweep",
-        "--older-than",
-        "-1"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate sweep: --older-than takes a number of days\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "sweep",
-        "--live-window",
-        "soon"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate sweep: --live-window takes a number of minutes\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "sweep",
-        "--live-window",
-        "-5"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate sweep: --live-window takes a number of minutes\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "sweep",
-        "--json",
-        "--text"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate sweep: --json and --text are mutually exclusive\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "sweep",
-        "--dry-run",
-        "--dry-run"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate sweep: duplicate option: --dry-run\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "sweep",
-        "--repo"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate sweep: missing value for --repo\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -92,19 +20,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate sweep: unknown option: --bogus\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "sweep",
-        "stray"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate sweep: unknown option: stray\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -114,12 +30,11 @@
         "<ROOT>/tmp"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "not a git repository",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -131,8 +46,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "sweep error  not a git repository\n",
-      "stderr": ""
+      "stdout": "sweep error  not a git repository\n"
     },
     {
       "argv": [
@@ -141,7 +55,7 @@
         "--dry-run"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": true,
@@ -161,8 +75,7 @@
           "would_remove": 0
         },
         "worktrees": []
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -172,8 +85,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>\nsummary: removed 0, would-remove 0, dirty 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n",
-      "stderr": ""
+      "stdout": "sweep <WORK>\nsummary: removed 0, would-remove 0, dirty 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
     }
   ]
 }

@@ -7,15 +7,14 @@
         "login"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "providers": [
           "openai-codex",
           "anthropic"
         ],
         "status": "ready"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -26,14 +25,13 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "providers": [
           "openai-codex"
         ],
         "status": "ready"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

@@ -9,7 +9,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -20,8 +20,7 @@
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -31,7 +30,7 @@
         "t2"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#2>",
@@ -42,8 +41,7 @@
         "path": "<WORK>-orchestra/00000000-t2",
         "status": "created",
         "task": "t2"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -53,7 +51,7 @@
         "t3"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#3>",
@@ -64,8 +62,7 @@
         "path": "<WORK>-orchestra/00000000-t3",
         "status": "created",
         "task": "t3"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -75,7 +72,7 @@
         "boot"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#4>",
@@ -86,8 +83,7 @@
         "path": "<WORK>-orchestra/00000000-boot",
         "status": "created",
         "task": "boot"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -95,7 +91,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -127,8 +123,7 @@
             "task": "t3"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -142,7 +137,7 @@
         "sh ../../prep.sh"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
@@ -170,8 +165,7 @@
           "status": "pass",
           "timed_out": false
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -183,7 +177,7 @@
         "int"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/int",
@@ -201,8 +195,7 @@
             "task": "t1"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -216,7 +209,7 @@
         "HEAD"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/int",
@@ -241,7 +234,6 @@
           }
         ]
       },
-      "stderr": "",
       "files": {
         "<ROOT>/work-orchestra/00000000-int/a.txt": {
           "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT\n9\n",
@@ -265,8 +257,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "integrate ok  onto 97779c7ccad9  worktree <WORK>-orchestra/00000000-int\n  t1               applied    1 file(s)\nnote: 1 of 1 task(s) applied cleanly into worktree 'int' at <WORK>-orchestra/00000000-int\n",
-      "stderr": ""
+      "stdout": "integrate ok  onto 97779c7ccad9  worktree <WORK>-orchestra/00000000-int\n  t1               applied    1 file(s)\nnote: 1 of 1 task(s) applied cleanly into worktree 'int' at <WORK>-orchestra/00000000-int\n"
     },
     {
       "argv": [
@@ -277,7 +268,7 @@
         "--names-only"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#1>",
         "branch": "orchestra/00000000/int",
@@ -289,8 +280,7 @@
         "session": "00000000",
         "status": "ok",
         "task": "int"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -300,7 +290,7 @@
         "int"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": null,
         "branch": "orchestra/00000000/int",
@@ -312,8 +302,7 @@
         "path": "<WORK>-orchestra/00000000-int",
         "status": "error",
         "task": "int"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -327,7 +316,7 @@
         "sh ../../build.sh"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep2",
@@ -355,8 +344,7 @@
           "status": "pass",
           "timed_out": false
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -366,13 +354,12 @@
         "int"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "digest": "9444c58b70c68346ee0ac61e680c7d61c88d243bf59eafc8c1c08a83432f0244",
         "status": "collected",
         "task": "int"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -382,15 +369,14 @@
         "int"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/int",
         "path": "<WORK>-orchestra/00000000-int",
         "session": "00000000",
         "status": "removed",
         "task": "int"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

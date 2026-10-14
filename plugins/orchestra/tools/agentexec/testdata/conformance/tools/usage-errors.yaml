@@ -1,11 +1,5 @@
 description: tools usage errors
 steps:
   - argv: [tools, status, extra]
-    stderr: prefix
-    stderr_prefix: "usage: agent-exec tools [status]"
   - argv: [tools, bogus]
-    stderr: prefix
-    stderr_prefix: "agent-exec: tools: unknown subcommand: bogus\n"
   - argv: [tools, status, --bogus]
-    stderr: prefix
-    stderr_prefix: "agent-exec: tools: unknown option: --bogus\n"

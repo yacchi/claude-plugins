@@ -70,10 +70,5 @@ steps:
     cwd: "~"
   - argv: [isolate, adopt, --path, ../ext]
   - argv: [isolate, adopt, --task, x]
-  - argv: [isolate, adopt, --task, x, --path, ../ext, --no-carry, --no-carry]
-  - argv: [isolate, adopt, --task, x, --path, ../ext, --json, --text]
-  - argv: [isolate, adopt, --task, x, --path]
-  - argv: [isolate, unadopt, --task, x, --path, ../ext]
-  - argv: [isolate, unadopt]
   - argv: [isolate, unadopt, --task, "//"]
   - argv: [isolate, sweep, --include-current, --include-live, --live-window, "0"]

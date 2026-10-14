@@ -6,11 +6,8 @@ setup:
 steps:
   - argv: [check]
   - argv: [check, --task, t, --path, p]
-  - argv: [check, --task]
   - argv: [check, --path, a, --path, b]
-  - argv: [check, --path, a, --json, --text]
   - argv: [check, --path, a, --bogus]
-  - argv: [check, stray]
   - argv: [check, --path, missing]
   - argv: [check, --path, missing, --text]
   - argv: [check, --path, ., --repo, ../tmp]

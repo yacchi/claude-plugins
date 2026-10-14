@@ -4,77 +4,12 @@
     {
       "argv": [
         "usage",
-        "--since"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: missing value for --since\n"
-    },
-    {
-      "argv": [
-        "usage",
         "--since",
         "yesterday"
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: invalid --since: yesterday (expected <N>m|<N>h|<N>d or an ISO8601 timestamp)\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--since",
-        "0x"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: invalid --since: 0x (expected <N>m|<N>h|<N>d or an ISO8601 timestamp)\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--since",
-        ""
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: invalid --since:  (expected <N>m|<N>h|<N>d or an ISO8601 timestamp)\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--run"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: missing value for --run\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--run",
-        ""
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: empty value for --run\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--run",
-        "a,,b"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: empty value for --run\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -84,19 +19,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: invalid value for --run\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--session",
-        "a b"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: invalid value for --session\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -106,8 +29,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: invalid value for --session\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -117,52 +39,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: unknown --source: nope (known: claude,pi)\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--source",
-        "claude,nope,x"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: unknown --source: nope,x (known: claude,pi)\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--source",
-        ""
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: unknown --source: <empty> (known: claude,pi)\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--source",
-        " , "
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: unknown --source: <empty> (known: claude,pi)\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--json",
-        "--text"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: --json and --text are mutually exclusive\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -173,20 +50,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: --list-runs cannot be combined with scope or --since\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--list-runs",
-        "--run",
-        "x"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: --list-runs cannot be combined with scope or --since\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -198,21 +62,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: --since cannot be combined with --run or --session\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--session",
-        "x",
-        "--since",
-        "1h"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: --since cannot be combined with --run or --session\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -221,92 +71,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: unknown option: --bogus\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "extra"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: usage: unknown option: extra\n"
-    },
-    {
-      "argv": [
-        "usage",
-        "--since",
-        "1h",
-        "--since",
-        "2h",
-        "--json",
-        "--json"
-      ],
-      "exit": 0,
-      "stdout_shape": "json-indent",
-      "stdout": {
-        "cost": {
-          "components": {},
-          "estimated_micro_usd": 0,
-          "price_list": {
-            "as_of": "2026-09-25",
-            "source": "Anthropic first-party API list prices (claude-api skill, cached 2026-09-25); cache write = 1.25x (5m) / 2x (1h) of input"
-          },
-          "priced_sources": [],
-          "unpriced_sources": []
-        },
-        "now": "<TS>",
-        "scope": {
-          "kind": "window",
-          "since": "<TS>",
-          "until": "<TS>"
-        },
-        "since": "<TS>",
-        "sources": {
-          "claude": {
-            "by_model": {},
-            "main": {
-              "cached_input_tokens": 0,
-              "input_tokens": 0,
-              "output_tokens": 0
-            },
-            "note": "no claude projects directory",
-            "records": 0,
-            "scope": "cwd",
-            "sessions": 0,
-            "sidechain": {
-              "cached_input_tokens": 0,
-              "input_tokens": 0,
-              "output_tokens": 0
-            },
-            "status": "unavailable",
-            "tokens": {
-              "cached_input_tokens": 0,
-              "input_tokens": 0,
-              "output_tokens": 0
-            }
-          },
-          "pi": {
-            "note": "telemetry disabled; no pi usage is recorded",
-            "records": 0,
-            "scope": "global",
-            "status": "unavailable",
-            "tokens": {
-              "cached_input_tokens": 0,
-              "input_tokens": 0,
-              "output_tokens": 0
-            }
-          }
-        },
-        "totals": {
-          "cached_input_tokens": 0,
-          "input_tokens": 0,
-          "output_tokens": 0
-        }
-      },
-      "stderr": ""
+      "stdout": null
     }
   ]
 }

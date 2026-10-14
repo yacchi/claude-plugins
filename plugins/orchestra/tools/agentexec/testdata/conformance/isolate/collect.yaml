@@ -13,13 +13,7 @@ steps:
   - argv: [isolate, list]
     env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t1/scratch"}
   - argv: [isolate, collect]
-  - argv: [isolate, collect, --task, t1, --session, x]
-  - argv: [isolate, collect, --task, t1, --json, --text]
-  - argv: [isolate, collect, --task, t1, --task, t2]
-  - argv: [isolate, collect, --task, t1, --bogus]
-  - argv: [isolate, collect, --task]
   - argv: [isolate, collect, --session, "bad!"]
-  - argv: [isolate, collect, --task, "//"]
   - argv: [isolate, collect, --task, nope]
   - argv: [isolate, collect, --task, nope, --text]
   - argv: [isolate, collect, --task, t1, --repo, <ROOT>/tmp]

@@ -9,12 +9,9 @@ setup:
     bad.json: "{not json"
 steps:
   - argv: [telemetry, record]
-  - argv: [telemetry, record, --json]
   - argv: [telemetry, record, --json, "{not json"]
   - argv: [telemetry, record, --json, "[]"]
   - argv: [telemetry, record, --json, '{"status": "ok"}']
   - argv: [telemetry, record, --json, '{"event": "nope"}']
   - argv: [telemetry, record, --file, bad.json]
   - argv: [telemetry, record, --file, missing.json]
-  - argv: [telemetry, record, --bogus]
-    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]

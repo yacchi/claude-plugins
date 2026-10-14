@@ -8,7 +8,7 @@
         "wf_abc123"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "cost": {
           "components": {
@@ -105,8 +105,7 @@
           "input_tokens": 1602,
           "output_tokens": 2803
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -117,8 +116,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: run wf_abc123\nclaude   [ok]          in=501 out=601 cached=700\n           main: in=501 out=601 cached=700\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           sessions: 1\npi       [ok]          in=1101 out=2202 cached=3303\n           cost: $0.012402\ntotal                  in=1602 out=2803 cached=4003\ncost     ~$0.0266  (claude=$0.0142, pi=$0.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: run wf_abc123\nclaude   [ok]          in=501 out=601 cached=700\n           main: in=501 out=601 cached=700\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           sessions: 1\npi       [ok]          in=1101 out=2202 cached=3303\n           cost: $0.012402\ntotal                  in=1602 out=2803 cached=4003\ncost     ~$0.0266  (claude=$0.0142, pi=$0.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -129,8 +127,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: run wf_abc123\nclaude   [ok]          in=501 out=601 cached=700\n           main: in=501 out=601 cached=700\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           sessions: 1\npi       [ok]          in=1101 out=2202 cached=3303\n           cost: $0.012402\ntotal                  in=1602 out=2803 cached=4003\ncost     ~$0.0266  (claude=$0.0142, pi=$0.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: run wf_abc123\nclaude   [ok]          in=501 out=601 cached=700\n           main: in=501 out=601 cached=700\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           sessions: 1\npi       [ok]          in=1101 out=2202 cached=3303\n           cost: $0.012402\ntotal                  in=1602 out=2803 cached=4003\ncost     ~$0.0266  (claude=$0.0142, pi=$0.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -139,7 +136,7 @@
         "002"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "cost": {
           "components": {
@@ -236,8 +233,7 @@
           "input_tokens": 18,
           "output_tokens": 20
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -248,8 +244,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: run wf_abc123,wf_def456\nclaude   [ok]          in=512 out=613 cached=713\n           main: in=512 out=613 cached=713\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           claude-sonnet-5-5: in=11 out=12 cached=13\n             fresh=11 cache_write(5m)=0 cache_write(1h)=0 cache_read=13 out=12  ~$0.0001\n           sessions: 3\npi       [ok]          in=1108 out=2210 cached=3312\n           cost: $0.012402\ntotal                  in=1620 out=2823 cached=4025\ncost     ~$0.0267  (claude=$0.0143, pi=$0.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: run wf_abc123,wf_def456\nclaude   [ok]          in=512 out=613 cached=713\n           main: in=512 out=613 cached=713\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           claude-sonnet-5-5: in=11 out=12 cached=13\n             fresh=11 cache_write(5m)=0 cache_write(1h)=0 cache_read=13 out=12  ~$0.0001\n           sessions: 3\npi       [ok]          in=1108 out=2210 cached=3312\n           cost: $0.012402\ntotal                  in=1620 out=2823 cached=4025\ncost     ~$0.0267  (claude=$0.0143, pi=$0.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -260,7 +255,7 @@
         "wf_def456"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "cost": {
           "components": {
@@ -378,8 +373,7 @@
           "input_tokens": 1620,
           "output_tokens": 2823
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -390,8 +384,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: run wf_unknown\nclaude: not attributable (no matching transcript data)\npi: not attributable (no matching run ledger data)\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: run wf_unknown\nclaude: not attributable (no matching transcript data)\npi: not attributable (no matching run ledger data)\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -402,8 +395,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: run 9\nclaude: not attributable (no matching transcript data)\npi: not attributable (no matching run ledger data)\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: run 9\nclaude: not attributable (no matching transcript data)\npi: not attributable (no matching run ledger data)\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -414,7 +406,7 @@
         "pi"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "cost": {
           "components": {
@@ -454,8 +446,7 @@
           "input_tokens": 1101,
           "output_tokens": 2202
         }
-      },
-      "stderr": ""
+      }
     }
   ]
 }

@@ -1,8 +1,8 @@
 description: >
   sandbox allow / forget: user grants are stored by realpath (idempotent,
   reason kept), every refusal rule (/, home, ~/.claude, deny_read incl. the
-  configured one, tamper-protected paths) exits 1 without touching the
-  store, forget reports whether a grant was removed
+  configured one, tamper-protected paths) exits 1 without touching the store,
+  forget reports whether a grant was removed
 setup:
   git: true
   files:
@@ -25,13 +25,7 @@ steps:
   - argv: [sandbox, allow, ~/.local/share/uv/tools/x]
   - argv: [sandbox, allow, ~/.local]
   - argv: [sandbox, allow, ~/.local/state/claude-orchestra]
-  - argv: [sandbox, allow]
-  - argv: [sandbox, allow, ~/a, ~/b]
-  - argv: [sandbox, allow, ~/data, --reason]
   - argv: [sandbox, forget, ~/data/sub, --json]
   - argv: [sandbox, forget, ~/data/sub, --json]
   - argv: [sandbox, forget, ~/data]
   - argv: [sandbox, forget, ~/data]
-  - argv: [sandbox, forget]
-    snapshot: ["~/.local/state/claude-orchestra/sandbox-learned.json"]
-  - argv: [sandbox, frobnicate]

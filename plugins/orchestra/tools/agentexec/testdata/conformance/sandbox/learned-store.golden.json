@@ -6,7 +6,7 @@
         "config"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "checks": {
           "ensure": [],
@@ -239,8 +239,7 @@
             "standard": 2400
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -251,7 +250,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "granted: <HOME>/fresh\n",
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -287,7 +285,7 @@
             ],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -300,7 +298,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "allowed domain: new.example.org (running herdr hosts and CLI runs pick it up live)\n",
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -337,7 +334,7 @@
             ],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -349,12 +346,11 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "domain": "ok.example.org",
         "removed": true
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -364,14 +360,13 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "added": "<TS>",
         "example": "<HOME>/fresh2",
         "path": "<HOME>/fresh2",
         "source": "user"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/corrupt/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -385,7 +380,7 @@
             ],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     }

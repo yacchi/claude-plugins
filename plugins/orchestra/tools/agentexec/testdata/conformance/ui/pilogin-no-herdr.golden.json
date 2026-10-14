@@ -7,14 +7,13 @@
         "login"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "herdr is not configured (binary or session name missing)",
         "screen_tail": "",
         "status": "manual",
         "step": "herdr"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -24,14 +23,13 @@
         "anthropic"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "herdr is not configured (binary or session name missing)",
         "screen_tail": "",
         "status": "manual",
         "step": "herdr"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -41,14 +39,13 @@
         "nonesuch"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "no known /login label for provider nonesuch",
         "screen_tail": "",
         "status": "manual",
         "step": "provider"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -57,11 +54,10 @@
         "--cancel"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "status": "cancelled"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -72,13 +68,12 @@
         "1"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "no login in progress (run `agent-exec pi login` first)",
         "screen_tail": "",
         "status": "failed"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

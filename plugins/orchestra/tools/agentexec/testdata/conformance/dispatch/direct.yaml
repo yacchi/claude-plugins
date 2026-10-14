@@ -1,5 +1,5 @@
 description: >
-  direct mode: Python's `run pi --capture` is Go's `dispatch --executor pi`
+  direct mode: `dispatch --executor pi`
   (no routing, no isolation by default, no session store): the bare capture
   result; quota is `unavailable`; DRYRUN prints the resolved argv; a missing
   binary is exit 127 with the not-found line
@@ -12,16 +12,11 @@ setup:
     quota.md: |
       FAKEPI-FAULT: quota
 steps:
-  - argv: [run, pi, --capture, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md, --class, standard, --run-id, run-d]
-    argv_go: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md, --class, standard, --run-id, run-d]
+  - argv: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md, --class, standard, --run-id, run-d]
     snapshot: ["~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-run-d.jsonl"]
-  - argv: [run, pi, --capture, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md, --resume, 99999999-8888-4777-a666-555555555555]
-    argv_go: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md, --resume, 99999999-8888-4777-a666-555555555555]
-  - argv: [run, pi, --capture, --model, m-1, --effort, high, --workdir, ., --prompt-file, quota.md]
-    argv_go: [dispatch, --executor, pi, --model, m-1, --effort, high, --workdir, ., --prompt-file, quota.md]
-  - argv: [run, pi, --capture, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md]
-    argv_go: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md]
+  - argv: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md, --resume, 99999999-8888-4777-a666-555555555555]
+  - argv: [dispatch, --executor, pi, --model, m-1, --effort, high, --workdir, ., --prompt-file, quota.md]
+  - argv: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md]
     env: {AGENT_EXEC_DRYRUN: "1"}
-  - argv: [run, pi, --capture, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md]
-    argv_go: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md]
+  - argv: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md]
     env: {PATH: "/usr/bin:/bin"}

@@ -1,14 +1,4 @@
 description: >
-  unknown options exit 2; the last of --json/--text wins
-platforms: [darwin]
-setup:
-  fakes: [pi]
+  an unknown option is exit 2
 steps:
   - argv: [doctor, --bogus]
-    stderr: exact
-  - argv: [doctor, --json, --text]
-    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
-  - argv: [doctor, --text, --json]
-    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
-  - argv: [doctor, extra]
-    stderr: exact

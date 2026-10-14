@@ -11,5 +11,4 @@ setup:
 steps:
   - argv: [install]
     stdin: "2\n\n"
-    go_replace: [{old: "Quick test: agent-exec list", new: "Quick test: agent-exec doctor"}]
     snapshot: ["~/.local/bin/agent-exec"]

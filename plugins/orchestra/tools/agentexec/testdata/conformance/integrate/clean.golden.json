@@ -9,7 +9,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -20,8 +20,7 @@
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -31,7 +30,7 @@
         "t2"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#2>",
@@ -42,8 +41,7 @@
         "path": "<WORK>-orchestra/00000000-t2",
         "status": "created",
         "task": "t2"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -53,7 +51,7 @@
         "t3"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#3>",
@@ -64,8 +62,7 @@
         "path": "<WORK>-orchestra/00000000-t3",
         "status": "created",
         "task": "t3"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -75,7 +72,7 @@
         "boot"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#4>",
@@ -86,8 +83,7 @@
         "path": "<WORK>-orchestra/00000000-boot",
         "status": "created",
         "task": "boot"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -95,7 +91,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -127,8 +123,7 @@
             "task": "t3"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -142,7 +137,7 @@
         "sh ../../prep.sh"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
@@ -170,8 +165,7 @@
           "status": "pass",
           "timed_out": false
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -181,7 +175,7 @@
         "t1, t2,t3,,ghost"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/integrate",
@@ -218,7 +212,6 @@
           }
         ]
       },
-      "stderr": "",
       "files": {
         "<ROOT>/work-orchestra/00000000-integrate/a.txt": {
           "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT\n9\n",
@@ -237,7 +230,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -283,8 +276,7 @@
             "task": "t3"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -295,7 +287,7 @@
         "--names-only"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#1>",
         "branch": "orchestra/00000000/integrate",
@@ -307,8 +299,7 @@
         "session": "00000000",
         "status": "ok",
         "task": "integrate"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -318,15 +309,14 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t1",
         "path": "<WORK>-orchestra/00000000-t1",
         "session": "00000000",
         "status": "removed",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -336,15 +326,14 @@
         "t3"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t3",
         "path": "<WORK>-orchestra/00000000-t3",
         "session": "00000000",
         "status": "removed",
         "task": "t3"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -360,8 +349,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <WORK>-orchestra/00000000-r2\n  t2               applied    2 file(s)\nnote: 1 of 1 task(s) applied cleanly into worktree 'r2' at <WORK>-orchestra/00000000-r2\n",
-      "stderr": ""
+      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <WORK>-orchestra/00000000-r2\n  t2               applied    2 file(s)\nnote: 1 of 1 task(s) applied cleanly into worktree 'r2' at <WORK>-orchestra/00000000-r2\n"
     },
     {
       "argv": [
@@ -375,7 +363,7 @@
         "nope"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/r3",
@@ -393,8 +381,7 @@
             "task": "t2"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -405,7 +392,7 @@
         "--json"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/integrate",
@@ -423,8 +410,7 @@
             "task": "t2"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -436,7 +422,7 @@
         "r4"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/r4",
@@ -454,8 +440,7 @@
             "task": "ghost"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -469,8 +454,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <WORK>-orchestra/00000000-r4\n  ghost            missing    0 file(s)\nnote: 0 of 1 task(s) applied cleanly (1 had no worktree) into worktree 'r4' at <WORK>-orchestra/00000000-r4\n",
-      "stderr": ""
+      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <WORK>-orchestra/00000000-r4\n  ghost            missing    0 file(s)\nnote: 0 of 1 task(s) applied cleanly (1 had no worktree) into worktree 'r4' at <WORK>-orchestra/00000000-r4\n"
     }
   ]
 }

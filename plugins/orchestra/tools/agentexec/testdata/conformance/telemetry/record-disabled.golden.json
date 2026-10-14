@@ -11,7 +11,6 @@
       "exit": 0,
       "stdout_shape": "empty",
       "stdout": null,
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/telemetry/records.jsonl": null
       }
@@ -26,7 +25,6 @@
       "exit": 0,
       "stdout_shape": "empty",
       "stdout": null,
-      "stderr": "",
       "files": {
         "custom-tel/records.jsonl": {
           "content": {
@@ -36,7 +34,7 @@
             "status": "ok",
             "ts": "<TS>"
           },
-          "shape": "json-line"
+          "shape": "json"
         },
         "~/.claude/orchestra/telemetry/records.jsonl": null
       }

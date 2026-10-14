@@ -10,21 +10,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n",
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "wave",
-        "status",
-        "--state",
-        "wave/state.json",
-        "--text"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n",
-      "stderr": ""
+      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n"
     },
     {
       "argv": [
@@ -35,7 +21,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "base": "abc123",
@@ -138,8 +124,7 @@
         "updated": 100000000001.5,
         "version": 1,
         "wave": 2
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -150,7 +135,7 @@
         "--line"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "counts": {
           "failed": 1,
@@ -165,50 +150,7 @@
         "stopped": true,
         "updated_ago": "<UPDATED_AGO>",
         "wave": 2
-      },
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "wave",
-        "status",
-        "--state",
-        "wave/state.json",
-        "--json",
-        "--line"
-      ],
-      "exit": 0,
-      "stdout_shape": "json-line",
-      "stdout": {
-        "counts": {
-          "failed": 1,
-          "implementing": 1,
-          "integrated": 1,
-          "needs": 1,
-          "pending": 1,
-          "verifying": 1
-        },
-        "in_flight": 2,
-        "needs": 2,
-        "stopped": true,
-        "updated_ago": "<UPDATED_AGO>",
-        "wave": 2
-      },
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "wave",
-        "status",
-        "--state",
-        "wave/state.json",
-        "--line",
-        "--text"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n",
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -220,8 +162,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n",
-      "stderr": ""
+      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n"
     },
     {
       "argv": [
@@ -233,7 +174,7 @@
         "--live"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "base": "abc123",
@@ -337,8 +278,7 @@
         "updated": 100000000001.5,
         "version": 1,
         "wave": 2
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -350,7 +290,7 @@
         "--live"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "counts": {
           "failed": 1,
@@ -366,8 +306,7 @@
         "stopped": true,
         "updated_ago": "<UPDATED_AGO>",
         "wave": 2
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -380,64 +319,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\nrecent:\n  e  status  pending->verifying  ünïcode detail\n  -  stop  by test\n  f  custom  free form\n",
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "wave",
-        "status",
-        "--state",
-        "wave/state.json",
-        "--events",
-        "100"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\nrecent:\n  d  status  pending->needs  needs wider scope\n  -  need  wave level need\n  e  status  pending->verifying  ünïcode detail\n  -  stop  by test\n  f  custom  free form\n",
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "wave",
-        "status",
-        "--state",
-        "wave/state.json",
-        "--events",
-        "0"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n",
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "wave",
-        "status",
-        "--state",
-        "wave/state.json",
-        "--events",
-        "-2"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\nrecent:\n  d  status  pending->needs  needs wider scope\n  -  need  wave level need\n  e  status  pending->verifying  ünïcode detail\n  -  stop  by test\n  f  custom  free form\n",
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "wave",
-        "status",
-        "--state",
-        "wave/state.json",
-        "--events",
-        " 2 "
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\nrecent:\n  -  stop  by test\n  f  custom  free form\n",
-      "stderr": ""
+      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\nrecent:\n  e  status  pending->verifying  ünïcode detail\n  -  stop  by test\n  f  custom  free form\n"
     },
     {
       "argv": [
@@ -451,8 +333,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\nrecent:\n  -  stop  by test\n  f  custom  free form\n",
-      "stderr": ""
+      "stdout": "wave 2  pending=1 implementing=1 verifying=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  -  1\n  e  verifying  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\nrecent:\n  -  stop  by test\n  f  custom  free form\n"
     },
     {
       "argv": [
@@ -463,8 +344,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave: no state file at wave/missing.json\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -475,8 +355,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave: no state file at wave\n"
+      "stdout": null
     }
   ]
 }

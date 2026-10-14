@@ -6,8 +6,13 @@
         "doctor"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
+        "build": {
+          "binary": "<BUILD>",
+          "go": "<BUILD>",
+          "source_hash": "<BUILD>"
+        },
         "cli_network": {
           "ecosystem": true,
           "executors": {
@@ -417,22 +422,8 @@
         "user_config": {
           "herdr": "isolate",
           "orca": "isolate"
-        },
-        "uv": {
-          "present": false
         }
-      },
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "doctor",
-        "--text"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: True)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nuv: NOT found\nconfig: resolved (3 layer(s) found)\n  - <HOME>/.claude/orchestra.yaml\n  - <WORK>/.claude/orchestra.yml\n  - <WORK>/.claude/orchestra.local.yaml\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=True dispatch=cli binary=pi available=True\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=sonnet effort=None source=priority)\n  - standard: pi (dispatch=cli model=openai-codex/gpt-5.6-luna effort=medium source=priority)\n  - deep: claude (dispatch=claude model=opus effort=None source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=None source=priority)\nsandbox: mode=off backend=none enforced=False (sandbox.mode is off)\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=False (sandbox.mode is off)\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=False srt=-  network not restricted: host not sandboxed: sandbox.mode is off\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=False backend=none domains=chatgpt.com, auth.openai.com  sandbox.mode is off\n",
-      "stderr": ""
+      }
     }
   ]
 }

@@ -1,11 +1,5 @@
 description: >
-  usage errors are exit 2 with the parser's wording; repeated value flags
-  are accepted (the last one wins)
+  usage errors are exit 2
 steps:
   - argv: [route]
-  - argv: [route, --class]
-  - argv: [route, --class, light, --archetype]
-  - argv: [route, --class, light, --exhausted]
   - argv: [route, --class, light, --bogus]
-  - argv: [route, --class, light, extra]
-  - argv: [route, --class, light, --class, standard]

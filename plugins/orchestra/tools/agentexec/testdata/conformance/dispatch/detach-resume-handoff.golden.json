@@ -17,14 +17,13 @@
         "run-m"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml"
         ],
         "token": "<TOKEN#1>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -33,7 +32,7 @@
         "<@TOK>"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "mixed",
         "effort": "medium",
@@ -87,8 +86,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -99,13 +97,12 @@
         "--detach"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pid": "<PID>",
         "status": "detached",
         "token": "<TOKEN#1>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -117,7 +114,7 @@
         "60"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "mixed",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
@@ -172,8 +169,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -187,14 +183,13 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml"
         ],
         "token": "<TOKEN#2>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -204,13 +199,12 @@
         "--detach"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pid": "<PID>",
         "status": "detached",
         "token": "<TOKEN#2>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -223,7 +217,7 @@
         "--summary"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "mixed",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#2>.answer.txt",
@@ -278,8 +272,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -289,7 +282,7 @@
         "<@TOK2>"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "mixed",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#2>.answer.txt",
@@ -344,8 +337,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     }
   ]
 }

@@ -11,8 +11,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: window since=<TS> until=<TS>\nclaude   [ok]          in=1001031 out=1000838 cached=1840\n           main: in=1000980 out=1000776 cached=1815\n           sidechain: in=51 out=62 cached=25\n           claude-haiku-4-5-20251001: in=1000000 out=1000000 cached=0\n             fresh=1000000 cache_write(5m)=0 cache_write(1h)=0 cache_read=0 out=1000000  ~$6.0000\n           claude-mystery-9: in=8 out=3 cached=2\n             fresh=7 cache_write(5m)=1 cache_write(1h)=0 cache_read=2 out=3  ~$0.0000\n           claude-opus-5-5: in=961 out=761 cached=1800\n             fresh=671 cache_write(5m)=240 cache_write(1h)=50 cache_read=1800 out=761  ~$0.0205\n           claude-sonnet-5-5: in=62 out=74 cached=38\n             fresh=52 cache_write(5m)=10 cache_write(1h)=0 cache_read=38 out=74  ~$0.0009\n           sessions: 5\npi       [ok]          in=12 out=23 cached=33\n           cost: $0.000000\ntotal                  in=1001043 out=1000861 cached=1873\ncost     ~$6.0214  (claude=$6.0214, pi=$0.0000)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: window since=<TS> until=<TS>\nclaude   [ok]          in=1001031 out=1000838 cached=1840\n           main: in=1000980 out=1000776 cached=1815\n           sidechain: in=51 out=62 cached=25\n           claude-haiku-4-5-20251001: in=1000000 out=1000000 cached=0\n             fresh=1000000 cache_write(5m)=0 cache_write(1h)=0 cache_read=0 out=1000000  ~$6.0000\n           claude-mystery-9: in=8 out=3 cached=2\n             fresh=7 cache_write(5m)=1 cache_write(1h)=0 cache_read=2 out=3  ~$0.0000\n           claude-opus-5-5: in=961 out=761 cached=1800\n             fresh=671 cache_write(5m)=240 cache_write(1h)=50 cache_read=1800 out=761  ~$0.0205\n           claude-sonnet-5-5: in=62 out=74 cached=38\n             fresh=52 cache_write(5m)=10 cache_write(1h)=0 cache_read=38 out=74  ~$0.0009\n           sessions: 5\npi       [ok]          in=12 out=23 cached=33\n           cost: $0.000000\ntotal                  in=1001043 out=1000861 cached=1873\ncost     ~$6.0214  (claude=$6.0214, pi=$0.0000)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -24,7 +23,7 @@
         "2026-03-01T00:00:00Z"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "cost": {
           "components": {
@@ -169,8 +168,7 @@
           "input_tokens": 1001031,
           "output_tokens": 1000838
         }
-      },
-      "stderr": ""
+      }
     }
   ]
 }

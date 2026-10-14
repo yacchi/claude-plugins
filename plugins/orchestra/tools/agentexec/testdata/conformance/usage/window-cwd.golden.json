@@ -8,7 +8,7 @@
         "2026-03-01T00:00:00Z"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "cost": {
           "components": {
@@ -71,8 +71,7 @@
           "input_tokens": 12,
           "output_tokens": 23
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -83,8 +82,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: window since=<TS> until=<TS>\nclaude   [empty]       in=0 out=0 cached=0\npi       [ok]          in=12 out=23 cached=33\n           cost: $0.000000\ntotal                  in=12 out=23 cached=33\ncost     ~$0.0000  (pi=$0.0000)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: window since=<TS> until=<TS>\nclaude   [empty]       in=0 out=0 cached=0\npi       [ok]          in=12 out=23 cached=33\n           cost: $0.000000\ntotal                  in=12 out=23 cached=33\ncost     ~$0.0000  (pi=$0.0000)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     }
   ]
 }

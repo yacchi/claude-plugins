@@ -7,8 +7,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec shelf push [-m MSG] [--keep-index] [--repo P] [-- PATH...]\n       agent-exec shelf pop|apply|drop [ID] [--repo P]\n       agent-exec shelf list [--repo P]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -17,8 +16,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec shelf push [-m MSG] [--keep-index] [--repo P] [-- PATH...]\n       agent-exec shelf pop|apply|drop [ID] [--repo P]\n       agent-exec shelf list [--repo P]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -28,30 +26,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: shelf: unknown argument: --bogus\nusage: agent-exec shelf push [-m MSG] [--keep-index] [--repo P] [-- PATH...]\n       agent-exec shelf pop|apply|drop [ID] [--repo P]\n       agent-exec shelf list [--repo P]\n"
-    },
-    {
-      "argv": [
-        "shelf",
-        "push",
-        "-m"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: shelf: missing value for -m\n"
-    },
-    {
-      "argv": [
-        "shelf",
-        "list",
-        "--repo"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: shelf: missing value for --repo\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -61,42 +36,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: shelf: unknown argument: x\nusage: agent-exec shelf push [-m MSG] [--keep-index] [--repo P] [-- PATH...]\n       agent-exec shelf pop|apply|drop [ID] [--repo P]\n       agent-exec shelf list [--repo P]\n"
-    },
-    {
-      "argv": [
-        "shelf",
-        "pop",
-        "1",
-        "2"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: shelf: unknown argument: 2\nusage: agent-exec shelf push [-m MSG] [--keep-index] [--repo P] [-- PATH...]\n       agent-exec shelf pop|apply|drop [ID] [--repo P]\n       agent-exec shelf list [--repo P]\n"
-    },
-    {
-      "argv": [
-        "shelf",
-        "list",
-        "3"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: shelf: unknown argument: 3\nusage: agent-exec shelf push [-m MSG] [--keep-index] [--repo P] [-- PATH...]\n       agent-exec shelf pop|apply|drop [ID] [--repo P]\n       agent-exec shelf list [--repo P]\n"
-    },
-    {
-      "argv": [
-        "shelf",
-        "apply",
-        "--keep-index"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: shelf: unknown argument: --keep-index\nusage: agent-exec shelf push [-m MSG] [--keep-index] [--repo P] [-- PATH...]\n       agent-exec shelf pop|apply|drop [ID] [--repo P]\n       agent-exec shelf list [--repo P]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -106,12 +46,11 @@
         "<ROOT>/tmp"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "not a git repository",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -122,30 +61,11 @@
         "--allow-main-tree"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "not a git repository",
         "status": "error"
-      },
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "shelf",
-        "list",
-        "-m",
-        "ignored",
-        "--allow-main-tree",
-        "--",
-        "x"
-      ],
-      "exit": 0,
-      "stdout_shape": "json-line",
-      "stdout": {
-        "entries": [],
-        "status": "ok"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

@@ -6,8 +6,13 @@
         "doctor"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
+        "build": {
+          "binary": "<BUILD>",
+          "go": "<BUILD>",
+          "source_hash": "<BUILD>"
+        },
         "cli_network": {
           "ecosystem": true,
           "executors": {
@@ -417,12 +422,8 @@
         "user_config": {
           "herdr": "isolate",
           "orca": "isolate"
-        },
-        "uv": {
-          "present": false
         }
-      },
-      "stderr": ""
+      }
     }
   ]
 }

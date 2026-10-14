@@ -8,7 +8,7 @@
         "--all-projects"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "runs": [
           {
@@ -26,8 +26,7 @@
             "run_id": "wf_abc123"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -38,8 +37,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "002 wf_def456 2 <TS> <TS>\n001 wf_abc123 1 <TS> <TS>\n",
-      "stderr": ""
+      "stdout": "002 wf_def456 2 <TS> <TS>\n001 wf_abc123 1 <TS> <TS>\n"
     },
     {
       "argv": [
@@ -52,8 +50,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "002 wf_def456 0 <TS> <TS>\n001 wf_abc123 0 <TS> <TS>\n",
-      "stderr": ""
+      "stdout": "002 wf_def456 0 <TS> <TS>\n001 wf_abc123 0 <TS> <TS>\n"
     },
     {
       "argv": [
@@ -64,7 +61,7 @@
         "claude"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "runs": [
           {
@@ -82,8 +79,7 @@
             "run_id": "wf_def456"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -93,8 +89,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "002 wf_def456 0 <TS> <TS>\n001 wf_abc123 0 <TS> <TS>\n",
-      "stderr": ""
+      "stdout": "002 wf_def456 0 <TS> <TS>\n001 wf_abc123 0 <TS> <TS>\n"
     }
   ]
 }

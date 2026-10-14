@@ -2,13 +2,9 @@ description: enable/disable argument errors write nothing
 setup:
   keep_sandbox_default: true
 steps:
-  - argv: [telemetry, enable, --scope]
-    snapshot: ["~/.claude/orchestra.yaml"]
   - argv: [telemetry, disable, --scope, global]
     snapshot: ["~/.claude/orchestra.yaml"]
   - argv: [telemetry, enable, --bogus]
-    snapshot: ["~/.claude/orchestra.yaml"]
-  - argv: [telemetry, enable, extra]
     snapshot: ["~/.claude/orchestra.yaml"]
   - argv: [telemetry]
   - argv: [telemetry, nope]

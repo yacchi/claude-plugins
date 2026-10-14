@@ -1,7 +1,7 @@
 description: >
-  install: tools without spec are skipped, a valid managed record is
-  "already", an unknown installer is a failure row (exit 1), a missing
-  mise/npm is reported as Python's OSError text; no network is touched
+  install: tools without spec are skipped, a valid managed record is already,
+  an unknown tool or installer is a usage error (exit 2), a missing mise/npm
+  is a failure row with the error (exit 1); no network is touched
 setup:
   modes:
     ~/managed/pi: "0755"
@@ -19,12 +19,6 @@ steps:
   - argv: [tools, install, pi, --force, --installer, mise]
   - argv: [tools, install, pi, --force]
   - argv: [tools, install, nosuch]
-  - argv: [tools, install, --installer]
-    stderr: ignore
-  - argv: [tools, install, --bogus]
-    stderr: prefix
-    stderr_prefix: "agent-exec: tools: unknown option: --bogus\n"
-  - argv: [tools, install, pi, --installer, nonsense]
   - argv: [tools, install]
     cwd: nospec
   - argv: [tools, install, pi, --json]

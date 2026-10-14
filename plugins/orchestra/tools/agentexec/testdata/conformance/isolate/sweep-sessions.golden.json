@@ -9,7 +9,7 @@
         "mine"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -20,8 +20,7 @@
         "path": "<WORK>-orchestra/00000000-mine",
         "status": "created",
         "task": "mine"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -31,7 +30,7 @@
         "theirs"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#2>",
@@ -42,8 +41,7 @@
         "path": "<WORK>-orchestra/11111111-theirs",
         "status": "created",
         "task": "theirs"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -53,7 +51,7 @@
         "legacy"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#3>",
@@ -64,8 +62,7 @@
         "path": "<WORK>-orchestra/legacy",
         "status": "created",
         "task": "legacy"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -76,7 +73,7 @@
         "--include-live"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": true,
@@ -127,8 +124,7 @@
             "task": "legacy"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -136,7 +132,7 @@
         "sweep"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": false,
@@ -189,8 +185,7 @@
             "task": "legacy"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -198,7 +193,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -216,8 +211,7 @@
             "task": "theirs"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -228,7 +222,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": false,
@@ -270,8 +264,7 @@
             "task": "theirs"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -280,7 +273,7 @@
         "--include-current"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": false,
@@ -311,8 +304,7 @@
             "task": "mine"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -320,11 +312,10 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": []
-      },
-      "stderr": ""
+      }
     }
   ]
 }

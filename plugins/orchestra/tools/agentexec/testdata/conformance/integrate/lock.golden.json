@@ -9,7 +9,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -20,8 +20,7 @@
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -31,7 +30,7 @@
         "boot"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#2>",
@@ -42,8 +41,7 @@
         "path": "<WORK>-orchestra/00000000-boot",
         "status": "created",
         "task": "boot"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -51,7 +49,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -69,8 +67,7 @@
             "task": "t1"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -84,7 +81,7 @@
         "sh ../../prep.sh"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
@@ -112,8 +109,7 @@
           "status": "pass",
           "timed_out": false
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -125,15 +121,14 @@
         "fail"
       ],
       "exit": 6,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "holder": "held-by-test",
         "into": "integrate",
         "lock": "<WORK>/.git/orchestra/integrate-integrate.lock",
         "note": "another integrate holds the lock for this target",
         "status": "locked"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -147,8 +142,7 @@
       ],
       "exit": 6,
       "stdout_shape": "text",
-      "stdout": "integrate locked  into integrate  holder held-by-test\n",
-      "stderr": ""
+      "stdout": "integrate locked  into integrate  holder held-by-test\n"
     },
     {
       "argv": [
@@ -160,15 +154,14 @@
         "0.3"
       ],
       "exit": 6,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "holder": "held-by-test",
         "into": "integrate",
         "lock": "<WORK>/.git/orchestra/integrate-integrate.lock",
         "note": "another integrate holds the lock for this target",
         "status": "locked"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -182,7 +175,7 @@
         "fail"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/other",
@@ -201,7 +194,6 @@
           }
         ]
       },
-      "stderr": "",
       "files": {
         "<WORK>/.git/orchestra/integrate-integrate.lock": {
           "content": "held-by-test\n",
@@ -215,7 +207,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -247,8 +239,7 @@
             "task": "t1"
           }
         ]
-      },
-      "stderr": ""
+      }
     }
   ]
 }

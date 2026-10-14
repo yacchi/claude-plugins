@@ -14,7 +14,7 @@
         "t-w"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": null,
         "effort": "medium",
@@ -67,7 +67,6 @@
         "status": "runaway",
         "usage": null
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/executor-state.json": null,
         "~/.claude/orchestra/sessions/pi-t-w.json": {
@@ -78,7 +77,7 @@
             "updated": "<TS>",
             "workdir": "<WORK>"
           },
-          "shape": "json-line"
+          "shape": "json"
         }
       }
     }

@@ -8,7 +8,7 @@
         "s1"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "cost": {
           "components": {
@@ -152,8 +152,7 @@
           "input_tokens": 1002869,
           "output_tokens": 1001757
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -164,8 +163,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: session s1\nclaude   [ok]          in=1002869 out=1001757 cached=2739\n           main: in=1002818 out=1001695 cached=2714\n           sidechain: in=51 out=62 cached=25\n           claude-haiku-4-5-20251001: in=1000000 out=1000000 cached=0\n             fresh=1000000 cache_write(5m)=0 cache_write(1h)=0 cache_read=0 out=1000000  ~$6.0000\n           claude-mystery-9: in=8 out=3 cached=2\n           claude-opus-5-5: in=2799 out=1680 cached=2699\n             fresh=1600 cache_write(5m)=1149 cache_write(1h)=50 cache_read=2699 out=1680  ~$0.0467\n           claude-sonnet-5-5: in=62 out=74 cached=38\n             fresh=52 cache_write(5m)=10 cache_write(1h)=0 cache_read=38 out=74  ~$0.0009\n             claude-mystery-9: no price (set pricing.models in orchestra.yaml)\n           sessions: 5\npi: not attributable (no matching run ledger data)\ntotal                  in=1002869 out=1001757 cached=2739\ncost     ~$6.0476  (claude=$6.0476)  PARTIAL: unpriced claude:claude-mystery-9\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: session s1\nclaude   [ok]          in=1002869 out=1001757 cached=2739\n           main: in=1002818 out=1001695 cached=2714\n           sidechain: in=51 out=62 cached=25\n           claude-haiku-4-5-20251001: in=1000000 out=1000000 cached=0\n             fresh=1000000 cache_write(5m)=0 cache_write(1h)=0 cache_read=0 out=1000000  ~$6.0000\n           claude-mystery-9: in=8 out=3 cached=2\n           claude-opus-5-5: in=2799 out=1680 cached=2699\n             fresh=1600 cache_write(5m)=1149 cache_write(1h)=50 cache_read=2699 out=1680  ~$0.0467\n           claude-sonnet-5-5: in=62 out=74 cached=38\n             fresh=52 cache_write(5m)=10 cache_write(1h)=0 cache_read=38 out=74  ~$0.0009\n             claude-mystery-9: no price (set pricing.models in orchestra.yaml)\n           sessions: 5\npi: not attributable (no matching run ledger data)\ntotal                  in=1002869 out=1001757 cached=2739\ncost     ~$6.0476  (claude=$6.0476)  PARTIAL: unpriced claude:claude-mystery-9\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -176,8 +174,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: session <UUID#1>\nclaude: not attributable (no matching transcript data)\npi       [ok]          in=112 out=215 cached=318\n           cost: $1.012400\n           runs: no-run=1 wf_abc123=2 wf_def456=1\ntotal                  in=112 out=215 cached=318\ncost     ~$1.0124  (pi=$1.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: session <UUID#1>\nclaude: not attributable (no matching transcript data)\npi       [ok]          in=112 out=215 cached=318\n           cost: $1.012400\n           runs: no-run=1 wf_abc123=2 wf_def456=1\ntotal                  in=112 out=215 cached=318\ncost     ~$1.0124  (pi=$1.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -186,7 +183,7 @@
         "s1,00000000-0000-4000-8000-0000000c0f0e"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "cost": {
           "components": {
@@ -345,8 +342,7 @@
           "input_tokens": 1002981,
           "output_tokens": 1001972
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -357,8 +353,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: session other-session\nclaude: not attributable (no matching transcript data)\npi       [ok]          in=1000 out=2000 cached=3000\n           cost: $0.000002\n           runs: wf_abc123=1\ntotal                  in=1000 out=2000 cached=3000\ncost     ~$0.0000  (pi=$0.0000)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: session other-session\nclaude: not attributable (no matching transcript data)\npi       [ok]          in=1000 out=2000 cached=3000\n           cost: $0.000002\n           runs: wf_abc123=1\ntotal                  in=1000 out=2000 cached=3000\ncost     ~$0.0000  (pi=$0.0000)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -369,8 +364,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: session nope\nclaude: not attributable (no matching transcript data)\npi: not attributable (no matching run ledger data)\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: session nope\nclaude: not attributable (no matching transcript data)\npi: not attributable (no matching run ledger data)\ntotal                  in=0 out=0 cached=0\ncost     ~$0.0000  (nothing priced)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -383,8 +377,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: run+session runs=wf_abc123 sessions=<UUID#1>\nclaude   [ok]          in=501 out=601 cached=700\n           main: in=501 out=601 cached=700\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           sessions: 1\npi       [ok]          in=1112 out=2215 cached=3318\n           cost: $1.012402\n           runs: no-run=1 wf_abc123=1 wf_def456=1\ntotal                  in=1613 out=2816 cached=4018\ncost     ~$1.0266  (claude=$0.0142, pi=$1.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: run+session runs=wf_abc123 sessions=<UUID#1>\nclaude   [ok]          in=501 out=601 cached=700\n           main: in=501 out=601 cached=700\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=501 out=601 cached=700\n             fresh=501 cache_write(5m)=0 cache_write(1h)=0 cache_read=700 out=601  ~$0.0142\n           sessions: 1\npi       [ok]          in=1112 out=2215 cached=3318\n           cost: $1.012402\n           runs: no-run=1 wf_abc123=1 wf_def456=1\ntotal                  in=1613 out=2816 cached=4018\ncost     ~$1.0266  (claude=$0.0142, pi=$1.0124)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     },
     {
       "argv": [
@@ -397,8 +390,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "scope: session s2\nclaude   [ok]          in=160 out=80 cached=100\n           main: in=160 out=80 cached=100\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=160 out=80 cached=100\n             fresh=70 cache_write(5m)=90 cache_write(1h)=0 cache_read=100 out=80  ~$0.0024\n           sessions: 1\ntotal                  in=160 out=80 cached=100\ncost     ~$0.0024  (claude=$0.0024)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n",
-      "stderr": ""
+      "stdout": "scope: session s2\nclaude   [ok]          in=160 out=80 cached=100\n           main: in=160 out=80 cached=100\n           sidechain: in=0 out=0 cached=0\n           claude-opus-5-5: in=160 out=80 cached=100\n             fresh=70 cache_write(5m)=90 cache_write(1h)=0 cache_read=100 out=80  ~$0.0024\n           sessions: 1\ntotal                  in=160 out=80 cached=100\ncost     ~$0.0024  (claude=$0.0024)\n         estimate from list prices as of 2026-09-25; claude = list price, pi = provider-reported\n"
     }
   ]
 }

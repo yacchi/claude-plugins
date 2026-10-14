@@ -10,8 +10,7 @@
       ],
       "exit": 0,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": ""
+      "stdout": null
     },
     {
       "argv": [
@@ -22,9 +21,8 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
-      "stdout": [],
-      "stderr": ""
+      "stdout_shape": "json",
+      "stdout": []
     },
     {
       "argv": [
@@ -36,8 +34,7 @@
       ],
       "exit": 0,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": ""
+      "stdout": null
     },
     {
       "argv": [
@@ -49,9 +46,8 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
-      "stdout": [],
-      "stderr": ""
+      "stdout_shape": "json",
+      "stdout": []
     }
   ]
 }

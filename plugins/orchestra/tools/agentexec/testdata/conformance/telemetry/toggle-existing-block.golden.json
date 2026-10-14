@@ -9,7 +9,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "telemetry enabled -> <HOME>/.claude/orchestra.yaml\n",
-      "stderr": "",
       "files": {
         "~/.claude/orchestra.yaml": {
           "content": "# my config\ntiers:\n  light: sonnet   # cheap\n\ntelemetry:\n  enabled: true  # opt-in, anonymized\n  dir: ~/t\nother: 1\n",
@@ -25,7 +24,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "telemetry disabled -> <HOME>/.claude/orchestra.yaml\n",
-      "stderr": "",
       "files": {
         "~/.claude/orchestra.yaml": {
           "content": "# my config\ntiers:\n  light: sonnet   # cheap\n\ntelemetry:\n  enabled: false  # opt-in, anonymized\n  dir: ~/t\nother: 1\n",
@@ -43,7 +41,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "telemetry enabled -> <WORK>/.claude/orchestra.yaml\n",
-      "stderr": "",
       "files": {
         ".claude/orchestra.yaml": {
           "content": "telemetry: # comment on the anchor\n    enabled: true\n    dir: /tmp/t\n    retention: 3\nwatchdog:\n  enabled: true\n",
@@ -61,7 +58,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "telemetry disabled -> <WORK>/.claude/orchestra.yaml\n",
-      "stderr": "",
       "files": {
         ".claude/orchestra.yaml": {
           "content": "telemetry: # comment on the anchor\n    enabled: false\n    dir: /tmp/t\n    retention: 3\nwatchdog:\n  enabled: true\n",
@@ -79,7 +75,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "telemetry enabled -> <WORK>/.claude/orchestra.local.yaml\n",
-      "stderr": "",
       "files": {
         ".claude/orchestra.local.yaml": {
           "content": "telemetry:\n\tenabled: true\n\tdir: /tmp/t\n",
@@ -97,7 +92,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "telemetry enabled -> <WORK>/.claude/orchestra.local.yaml\n",
-      "stderr": "",
       "files": {
         ".claude/orchestra.local.yaml": {
           "content": "telemetry:\n\tenabled: true\n\tdir: /tmp/t\n",

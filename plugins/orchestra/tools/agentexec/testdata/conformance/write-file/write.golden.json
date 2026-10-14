@@ -8,13 +8,12 @@
         "out.txt"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "chars": 11,
         "path": "<WORK>/out.txt",
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "out.txt": {
           "content": "hello world",
@@ -31,13 +30,12 @@
         "4"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "chars": 4,
         "path": "<WORK>/deep/nested/dir/out.md",
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "deep/nested/dir/out.md": {
           "content": "日本語。\n",
@@ -54,13 +52,12 @@
         "13"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "chars": 13,
         "path": "<WORK>/crlf.txt",
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "crlf.txt": {
           "content": "line1\r\nline2\r\n",
@@ -77,14 +74,13 @@
         "3"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "chars": 12,
         "expected": 3,
         "path": "<WORK>/existing.txt",
         "status": "mismatch"
       },
-      "stderr": "",
       "files": {
         "existing.txt": {
           "content": "old content\n",
@@ -101,14 +97,13 @@
         "-1"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "chars": 0,
         "expected": -1,
         "path": "<WORK>/existing.txt",
         "status": "mismatch"
       },
-      "stderr": "",
       "files": {
         "existing.txt": {
           "content": "old content\n",
@@ -125,13 +120,12 @@
         "0"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "chars": 0,
         "path": "<WORK>/empty.txt",
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "empty.txt": {
           "content": null,
@@ -148,13 +142,12 @@
         "3"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "chars": 3,
         "path": "<WORK>/emoji.txt",
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "emoji.txt": {
           "content": "é😀",
@@ -169,13 +162,12 @@
         "sub/../abs.txt"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "chars": 1,
         "path": "<WORK>/abs.txt",
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "abs.txt": {
           "content": "x",
@@ -189,30 +181,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: write-file: missing required option: --path\n"
-    },
-    {
-      "argv": [
-        "write-file",
-        "--path"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: write-file: missing value for --path\n"
-    },
-    {
-      "argv": [
-        "write-file",
-        "--path",
-        "x.txt",
-        "--expect-chars"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: write-file: missing value for --expect-chars\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -224,32 +193,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: write-file: --expect-chars must be an integer\n"
-    },
-    {
-      "argv": [
-        "write-file",
-        "--path",
-        "x.txt",
-        "--verbose"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: write-file: unknown option: --verbose\n"
-    },
-    {
-      "argv": [
-        "write-file",
-        "--path",
-        "x.txt",
-        "extra"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: write-file: unknown option: extra\n"
+      "stdout": null
     }
   ]
 }

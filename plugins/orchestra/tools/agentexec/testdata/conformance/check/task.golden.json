@@ -9,7 +9,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -20,8 +20,7 @@
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -31,7 +30,7 @@
         "--no-retry"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -47,8 +46,7 @@
         "files": 0,
         "status": "no-checks",
         "tree": "<WORK>-orchestra/00000000-t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -60,7 +58,7 @@
         "--no-retry"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -76,8 +74,7 @@
         "files": 1,
         "status": "fail",
         "tree": "<WORK>-orchestra/00000000-t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -90,7 +87,7 @@
         "--baseline"
       ],
       "exit": 4,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -106,8 +103,7 @@
         "files": 1,
         "status": "preexisting",
         "tree": "<WORK>-orchestra/00000000-t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -116,14 +112,13 @@
         "nope"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [],
         "files": 0,
         "status": "error",
         "tree": null
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -134,8 +129,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": ""
+      "stdout": null
     },
     {
       "argv": [
@@ -146,14 +140,13 @@
         "../tmp"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [],
         "files": 0,
         "status": "error",
         "tree": null
-      },
-      "stderr": ""
+      }
     }
   ]
 }

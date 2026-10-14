@@ -14,7 +14,7 @@
         "t-r"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": null,
         "effort": "medium",
@@ -62,7 +62,6 @@
         "status": "unavailable",
         "usage": null
       },
-      "stderr": "",
       "files": {
         "spawned.txt": null,
         "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl": {
@@ -73,7 +72,7 @@
             "status": "unavailable",
             "ts": "<TS>"
           },
-          "shape": "json-line"
+          "shape": "json"
         },
         "~/.claude/orchestra/sessions/pi-t-r.json": null
       }

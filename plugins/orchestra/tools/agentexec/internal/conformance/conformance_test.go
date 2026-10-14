@@ -1,13 +1,54 @@
-// Package conformance replays the CLI contract scenarios under
-// testdata/conformance against an agent-exec implementation and compares
-// the normalized result with the recorded golden.
+// Package conformance replays the agent-exec CLI contract scenarios under
+// testdata/conformance against the built binary and compares the normalized
+// result with the recorded golden (<area>/<name>.golden.json beside each
+// <area>/<name>.yaml).
 //
-//	go test ./internal/conformance                      # Go vs goldens
-//	go test ./internal/conformance -impl=go -update     # rewrite goldens (add a CHANGES.md line)
-//	go test ./internal/conformance -run 'TestConformance/config'
+//	go test ./internal/conformance                       # check the goldens
+//	go test ./internal/conformance -update               # rewrite every golden
+//	go test ./internal/conformance -run 'TestConformance/config' [-update]
 //
-// The goldens were first recorded from the retired Python implementation;
-// since the cutover Go is the only implementation and the goldens are Go's.
+// Compared per step: the argv, the exit code (exactly), stdout and the
+// snapshot files. JSON (one document, or JSON lines) is compared as values:
+// key order, whitespace and number spelling (1, 1.0, 1e0) do not matter, but
+// field presence and null vs absent do. Any other text is compared exactly
+// after normalization. stderr is not recorded; a step pins the part of it
+// that is a contract with stderr_contains. After an intended output change,
+// rerun with -update and review the golden diff.
+//
+// A scenario file:
+//
+//	description: what the scenario pins
+//	platforms: [darwin]          # optional; skipped elsewhere
+//	setup:
+//	  git: true                  # git init <WORK> and commit `files`
+//	  files:                     # written before the commit; "~/x" is under
+//	    .claude/orchestra.yaml: | #   HOME, anything else under WORK
+//	      tiers: {light: sonnet}
+//	  dirty: {src/a.txt: "x\n"}  # written after the commit
+//	  modes: {bin/tool: "0755"}  # chmod after writing
+//	  env: {ORCHESTRA_CONFIG_ROOT: "<WORK>/other"}
+//	  fakes: [pi]                # fake executors on PATH
+//	  keep_sandbox_default: true # skip the harness's `sandbox: {mode: off}` user layer
+//	normalize_keys: [elapsed_s]  # JSON keys whose non-null values are masked
+//	normalize_text:              # regex rewrites of every string (after the
+//	  - pattern: '"seconds": [0-9.e-]+'   #   built-in masks), e.g. durations
+//	    replace: '"seconds": <S>'         #   inside JSON-in-a-string details
+//	steps:
+//	  - argv: [config, --json]
+//	    cwd: sub/dir             # relative to WORK ("~" or "~/x" for HOME)
+//	    stdin: "..."
+//	    env: {K: V}
+//	    stderr_contains: ["agent-exec: invalid YAML in <WORK>/"]  # normalized stderr
+//	    snapshot: ["~/.claude/orchestra.yaml"]  # files captured after the step
+//	    save: {TOK: token}       # top-level stdout JSON key later steps use as <@TOK>
+//
+// <ROOT>, <HOME> and <WORK> are substituted in file contents, env values and
+// cwd; <@NAME> (a saved value) in argv, stdin, env values and snapshot
+// paths. Every step also sees AGENT_EXEC_UNDER_TEST, an executable running
+// the binary under test, for a PATH shim that must reach it
+// (`exec "$AGENT_EXEC_UNDER_TEST" "$@"`: a detached child re-runs the shim).
+// Normalization (see normalizer) masks the sandbox paths, dispatch tokens,
+// uuids, SHAs, timestamps and the pid/port keys.
 package conformance
 
 import (
@@ -24,10 +65,7 @@ import (
 	"testing"
 )
 
-var (
-	implFlag   = flag.String("impl", "go", "implementation under test (go is the only one)")
-	updateFlag = flag.Bool("update", false, "rewrite the goldens from this run")
-)
+var updateFlag = flag.Bool("update", false, "rewrite the goldens from this run")
 
 var env struct {
 	git   string
@@ -106,9 +144,6 @@ func setupEnv() (string, error) {
 		return dir, err
 	}
 	env.fakes = map[string]string{"pi": fakepi}
-	if *implFlag != "go" {
-		return dir, fmt.Errorf("-impl must be go (the only implementation), not %q", *implFlag)
-	}
 	bin := filepath.Join(dir, "agent-exec")
 	if err := build("./cmd/agent-exec", bin); err != nil {
 		return dir, err
@@ -134,7 +169,7 @@ func TestConformance(t *testing.T) {
 			}
 			got := runScenario(t, sc)
 			if *updateFlag {
-				writeGolden(t, sc.GoldenPath(), bakeGoDeviations(t, sc, got))
+				writeGolden(t, sc.GoldenPath(), got)
 				return
 			}
 			want := readGolden(t, sc.GoldenPath())
@@ -143,17 +178,24 @@ func TestConformance(t *testing.T) {
 	}
 }
 
+// runScenario runs every step and returns the normalized result. Each
+// step's stderr_contains is checked here, so -update cannot record a run
+// that breaks it.
 func runScenario(t *testing.T, sc *Scenario) Golden {
 	s := newSandbox(t, sc)
 	n := newNormalizer(s, sc.NormalizeKeys, sc.NormalizeText)
 	g := Golden{Scenario: sc.ID()}
 	vars := map[string]string{}
-	for _, st := range sc.Steps {
-		argv := st.Argv
-		if len(st.ArgvGo) > 0 {
-			argv = st.ArgvGo
+	for i, st := range sc.Steps {
+		raw := s.run(t, env.impl, st.Argv, st, vars)
+		if len(st.StderrContains) > 0 {
+			stderr := n.text(raw.stderr)
+			for _, want := range st.StderrContains {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("step %d (%s): stderr lacks %q\nstderr: %s", i, describe(st.Argv), want, stderr)
+				}
+			}
 		}
-		raw := s.run(t, env.impl, argv, st, vars)
 		for name, key := range st.Save {
 			vars[name] = savedValue(t, raw.stdout, key)
 		}
@@ -191,7 +233,7 @@ func writeGolden(t *testing.T, path string, g Golden) {
 func readGolden(t *testing.T, path string) Golden {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("missing golden (capture with -impl=go -update): %v", err)
+		t.Fatalf("missing golden (capture with -update): %v", err)
 	}
 	var g Golden
 	must(t, json.Unmarshal(b, &g))
@@ -199,7 +241,7 @@ func readGolden(t *testing.T, path string) Golden {
 }
 
 // compare checks got against want through a JSON round trip, so both sides
-// hold the same Go types (float64 numbers: 1.0 and 1 are equal).
+// hold the same Go types (float64 numbers: 1, 1.0 and 1e0 are equal).
 func compare(t *testing.T, sc *Scenario, want, got Golden) {
 	var gotRT Golden
 	b, err := json.Marshal(got)
@@ -210,36 +252,19 @@ func compare(t *testing.T, sc *Scenario, want, got Golden) {
 	}
 	for i, w := range want.Steps {
 		g := gotRT.Steps[i]
-		st := sc.Steps[i]
-		where := fmt.Sprintf("step %d (%s)", i, describe(st.Argv))
+		where := fmt.Sprintf("step %d (%s)", i, describe(sc.Steps[i].Argv))
 		if !reflect.DeepEqual(w.Argv, g.Argv) {
 			t.Errorf("%s: golden argv %v differs from the scenario (re-capture?)", where, w.Argv)
 			continue
 		}
-		for _, msg := range applyGoDeviations(st, &w, &g) {
-			t.Errorf("%s: %s", where, msg)
-		}
 		if w.Exit != g.Exit {
-			t.Errorf("%s: exit %d, want %d\nstderr: %s", where, g.Exit, w.Exit, g.Stderr)
+			t.Errorf("%s: exit %d, want %d", where, g.Exit, w.Exit)
 		}
 		if w.StdoutShape != g.StdoutShape {
 			t.Errorf("%s: stdout shape %s, want %s", where, g.StdoutShape, w.StdoutShape)
 		}
 		if !reflect.DeepEqual(w.Stdout, g.Stdout) {
 			t.Errorf("%s: stdout differs\n%s", where, diffJSON(w.Stdout, g.Stdout))
-		}
-		switch st.Stderr {
-		case "ignore":
-		case "prefix":
-			for _, side := range []struct{ name, text string }{{"golden", w.Stderr}, {"got", g.Stderr}} {
-				if !strings.HasPrefix(side.text, st.StderrPrefix) {
-					t.Errorf("%s: %s stderr %q lacks prefix %q", where, side.name, side.text, st.StderrPrefix)
-				}
-			}
-		default:
-			if w.Stderr != g.Stderr {
-				t.Errorf("%s: stderr\n got %q\nwant %q", where, g.Stderr, w.Stderr)
-			}
 		}
 		if !reflect.DeepEqual(w.Files, g.Files) {
 			t.Errorf("%s: files differ\n%s", where, diffJSON(w.Files, g.Files))
@@ -284,12 +309,39 @@ func diffJSON(want, got any) string {
 			}
 			return
 		}
+		ws, wok := w.(string)
+		gs, gok := g.(string)
+		if wok && gok && ws != gs && (strings.Contains(ws, "\n") || strings.Contains(gs, "\n")) {
+			lines = append(lines, fmt.Sprintf("  %s: text differs\n%s", path, diffLines(ws, gs)))
+			return
+		}
 		if !reflect.DeepEqual(w, g) {
 			lines = append(lines, fmt.Sprintf("  %s: got %s, want %s", path, short(g), short(w)))
 		}
 	}
 	walk("$", want, got)
 	return strings.Join(lines, "\n")
+}
+
+// diffLines shows where two texts first differ, with a little context.
+func diffLines(want, got string) string {
+	wl := strings.Split(want, "\n")
+	gl := strings.Split(got, "\n")
+	i := 0
+	for i < len(wl) && i < len(gl) && wl[i] == gl[i] {
+		i++
+	}
+	var b strings.Builder
+	for j := max(0, i-2); j < i; j++ {
+		fmt.Fprintf(&b, "      %s\n", wl[j])
+	}
+	for j := i; j < min(len(wl), i+3); j++ {
+		fmt.Fprintf(&b, "    - %s\n", wl[j])
+	}
+	for j := i; j < min(len(gl), i+3); j++ {
+		fmt.Fprintf(&b, "    + %s\n", gl[j])
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func short(v any) string {

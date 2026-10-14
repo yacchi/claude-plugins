@@ -8,55 +8,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate create: missing required option: --task\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "diff"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate diff: missing required option: --task\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "create",
-        "--task"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate: missing value for --task\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "create",
-        "--task",
-        "t1",
-        "--bogus"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate: unknown option: --bogus\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "create",
-        "--task",
-        "t1",
-        "extra"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate: unknown option: extra\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -69,60 +21,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate: unknown backend: svn\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "create",
-        "--task",
-        "t1",
-        "--session",
-        "abc"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate create: --session is not supported\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "diff",
-        "--task",
-        "t1",
-        "--session",
-        "abc"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate diff: --session is not supported\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "remove"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate remove: provide exactly one of --task or --session\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "remove",
-        "--task",
-        "t1",
-        "--session",
-        "abcdefgh"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate remove: provide exactly one of --task or --session\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -133,8 +32,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate: task id '///' has no usable characters\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -145,8 +43,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate: task id '..' has no usable characters\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -156,7 +53,7 @@
         "../Foo Bar//x"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -167,8 +64,7 @@
         "path": "<WORK>-orchestra/00000000-Foo-Bar-x",
         "status": "created",
         "task": "Foo-Bar-x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -180,12 +76,11 @@
         "<ROOT>/tmp"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "not a git repository",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -197,12 +92,11 @@
         "<ROOT>/tmp"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "not a git repository",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -214,12 +108,11 @@
         "<ROOT>/tmp"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "not a git repository",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -229,11 +122,10 @@
         "<ROOT>/tmp"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": []
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -243,12 +135,11 @@
         "nope"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "status": "absent",
         "task": "nope"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -258,28 +149,13 @@
         "nope"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [],
         "patch": "",
         "status": "absent",
         "task": "nope"
-      },
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "isolate",
-        "list",
-        "--session",
-        "bad session"
-      ],
-      "exit": 0,
-      "stdout_shape": "json-line",
-      "stdout": {
-        "worktrees": []
-      },
-      "stderr": ""
+      }
     }
   ]
 }

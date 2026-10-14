@@ -8,7 +8,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": [
         {
           "hint": null,
@@ -37,8 +37,7 @@
           "version": null,
           "wanted": "0.0.79"
         }
-      ],
-      "stderr": ""
+      ]
     },
     {
       "argv": [
@@ -47,8 +46,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "pi  managed  1.2.0  <HOME>/managed/pi\nherdr  -  -  -  not-installed  run: agent-exec tools install herdr\nsrt  -  -  -  not-installed  run: agent-exec tools install srt\n",
-      "stderr": ""
+      "stdout": "pi  managed  1.2.0  <HOME>/managed/pi\nherdr  -  -  -  not-installed  run: agent-exec tools install herdr\nsrt  -  -  -  not-installed  run: agent-exec tools install srt\n"
     },
     {
       "argv": [
@@ -57,7 +55,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": [
         {
           "hint": "run: agent-exec tools install pi",
@@ -86,8 +84,7 @@
           "version": null,
           "wanted": "0.0.79"
         }
-      ],
-      "stderr": ""
+      ]
     },
     {
       "argv": [
@@ -96,7 +93,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": [
         {
           "hint": "run: agent-exec tools install pi",
@@ -125,8 +122,7 @@
           "version": null,
           "wanted": "0.0.79"
         }
-      ],
-      "stderr": ""
+      ]
     }
   ]
 }

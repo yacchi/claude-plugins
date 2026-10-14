@@ -9,7 +9,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -26,11 +26,10 @@
         "status": "created",
         "task": "t1"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/work-orchestra/00000000-t1/.claude/settings.local.json": {
           "content": {},
-          "shape": "json-line"
+          "shape": "json"
         },
         "<ROOT>/work-orchestra/00000000-t1/CLAUDE.local.md": null,
         "<ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js": {
@@ -60,7 +59,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "existing",
         "branch": "orchestra/00000000/t1",
@@ -70,8 +69,7 @@
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "exists",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -79,7 +77,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -90,8 +88,7 @@
             "task": "t1"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -101,7 +98,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#1>",
         "branch": "orchestra/00000000/t1",
@@ -111,8 +108,7 @@
         "session": "00000000",
         "status": "ok",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -122,7 +118,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t1",
         "path": "<WORK>-orchestra/00000000-t1",
@@ -130,7 +126,6 @@
         "status": "removed",
         "task": "t1"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/work-orchestra/00000000-t1/src/a.txt": null
       }
@@ -141,11 +136,10 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": []
-      },
-      "stderr": ""
+      }
     }
   ]
 }

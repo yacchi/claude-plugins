@@ -9,7 +9,7 @@
         "--baseline"
       ],
       "exit": 4,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -34,8 +34,7 @@
         "files": 1,
         "status": "preexisting",
         "tree": "."
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -47,7 +46,7 @@
         "no-such-ref"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -72,8 +71,7 @@
         "files": 0,
         "status": "fail",
         "tree": "."
-      },
-      "stderr": ""
+      }
     }
   ]
 }

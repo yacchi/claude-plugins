@@ -8,7 +8,7 @@
         "dsp-0123456789ab"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -47,8 +47,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -58,8 +57,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: invalid token: <TOKEN#1>\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -69,8 +67,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: invalid token: <TOKEN#2>\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -84,15 +81,14 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml",
           "<WORK>/proj/.claude/orchestra.yaml"
         ],
-        "token": "<TOKEN#3>"
+        "token": "<TOKEN#1>"
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/tokens/<@TOK>.json": {
           "content": {
@@ -107,7 +103,7 @@
             "task": null,
             "workdir": "<WORK>/proj"
           },
-          "shape": "json-line"
+          "shape": "json"
         }
       }
     },
@@ -118,7 +114,7 @@
         "<@TOK>"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -155,8 +151,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -169,7 +164,7 @@
         "proj"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -212,8 +207,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

@@ -14,7 +14,7 @@
         "t-1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "round",
         "effort": "medium",
@@ -69,7 +69,6 @@
           }
         }
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/sessions/pi-t-1.json": {
           "content": {
@@ -79,7 +78,7 @@
             "updated": "<TS>",
             "workdir": "<WORK>"
           },
-          "shape": "json-line"
+          "shape": "json"
         }
       }
     },
@@ -96,7 +95,7 @@
         "t-1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "round",
         "effort": "medium",
@@ -150,8 +149,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -167,7 +165,7 @@
         "--no-resume"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "round",
         "effort": "medium",
@@ -221,8 +219,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -239,7 +236,7 @@
         "99999999-8888-4777-a666-555555555555"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "round",
         "effort": "medium",
@@ -293,8 +290,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -309,7 +305,7 @@
         "t-foreign"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "round",
         "effort": "medium",
@@ -364,7 +360,6 @@
           }
         }
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/sessions/pi-t-foreign.json": {
           "content": {
@@ -374,7 +369,7 @@
             "updated": "<TS>",
             "workdir": "<WORK>"
           },
-          "shape": "json-line"
+          "shape": "json"
         }
       }
     },
@@ -391,7 +386,7 @@
         "t-bad"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "round",
         "effort": "medium",
@@ -445,8 +440,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -461,7 +455,7 @@
         "99999999-8888-4777-a666-555555555555"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "round",
         "effort": "medium",
@@ -515,8 +509,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     }
   ]
 }

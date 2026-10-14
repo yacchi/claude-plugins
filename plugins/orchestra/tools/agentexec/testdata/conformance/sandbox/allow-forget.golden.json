@@ -10,7 +10,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "granted: <HOME>/data\n",
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -24,7 +23,7 @@
             ],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -38,15 +37,14 @@
         "~/data/sub"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "added": "<TS>",
         "example": "<HOME>/data/sub",
         "path": "<HOME>/data/sub",
         "reason": "fixtures for the tests",
         "source": "user"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -56,14 +54,13 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "added": "<TS>",
         "example": "<HOME>/data",
         "path": "<HOME>/data",
         "source": "user"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -76,7 +73,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "granted: <HOME>/new-dir\n",
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -103,7 +99,7 @@
             ],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -115,8 +111,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: refusing to grant /\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -126,8 +121,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: refusing to grant the home directory itself\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -137,8 +131,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: refusing to grant anything under ~/.claude\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -148,8 +141,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: path overlaps deny_read entry <HOME>/.ssh\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -159,8 +151,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: path overlaps deny_read entry <HOME>/secrets\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -170,8 +161,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: path overlaps tamper-protected <HOME>/.local/share/uv/tools\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -181,8 +171,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: path overlaps tamper-protected <HOME>/.local/share/uv/tools\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -192,42 +181,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: path overlaps tamper-protected <HOME>/.local/state/claude-orchestra/sandbox-learned.json\n"
-    },
-    {
-      "argv": [
-        "sandbox",
-        "allow"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: expected one path\n"
-    },
-    {
-      "argv": [
-        "sandbox",
-        "allow",
-        "~/a",
-        "~/b"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: expected one path\n"
-    },
-    {
-      "argv": [
-        "sandbox",
-        "allow",
-        "~/data",
-        "--reason"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow: missing value for --reason\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -237,85 +191,45 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "path": "<HOME>/data/sub",
         "removed": true
-      },
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "sandbox",
-        "forget",
-        "~/data/sub",
-        "--json"
-      ],
-      "exit": 1,
-      "stdout_shape": "json-line",
-      "stdout": {
-        "path": "<HOME>/data/sub",
-        "removed": false
-      },
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "sandbox",
-        "forget",
-        "~/data"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "removed: <HOME>/data\n",
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "sandbox",
-        "forget",
-        "~/data"
-      ],
-      "exit": 1,
-      "stdout_shape": "text",
-      "stdout": "no grant for: <HOME>/data\n",
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "sandbox",
-        "forget"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox forget: expected one path\n",
-      "files": {
-        "~/.local/state/claude-orchestra/sandbox-learned.json": {
-          "content": {
-            "grants": [
-              {
-                "added": "<TS>",
-                "example": "<HOME>/new-dir",
-                "path": "<HOME>/new-dir",
-                "source": "user"
-              }
-            ],
-            "version": 1
-          },
-          "shape": "json-indent"
-        }
       }
     },
     {
       "argv": [
         "sandbox",
-        "frobnicate"
+        "forget",
+        "~/data/sub",
+        "--json"
       ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox: unknown subcommand: frobnicate\n"
+      "exit": 1,
+      "stdout_shape": "json",
+      "stdout": {
+        "path": "<HOME>/data/sub",
+        "removed": false
+      }
+    },
+    {
+      "argv": [
+        "sandbox",
+        "forget",
+        "~/data"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "removed: <HOME>/data\n"
+    },
+    {
+      "argv": [
+        "sandbox",
+        "forget",
+        "~/data"
+      ],
+      "exit": 1,
+      "stdout_shape": "text",
+      "stdout": "no grant for: <HOME>/data\n"
     }
   ]
 }

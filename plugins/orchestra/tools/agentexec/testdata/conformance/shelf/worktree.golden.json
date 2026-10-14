@@ -9,7 +9,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -20,8 +20,7 @@
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -29,12 +28,11 @@
         "push"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [],
         "status": "empty"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -42,7 +40,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -53,8 +51,7 @@
             "task": "t1"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -64,12 +61,11 @@
         "<ROOT>/work-orchestra/00000000-t1"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "not a git repository",
         "status": "error"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/work-orchestra/00000000-t1/scratch/00000000": {
           "content": null,
@@ -85,12 +81,11 @@
         "<ROOT>/work-orchestra/00000000-t1"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "not a git repository",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -98,12 +93,11 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "entries": [],
         "status": "ok"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -111,12 +105,11 @@
         "pop"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "no such shelf entry",
         "status": "error"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/work-orchestra/00000000-t1/scratch/00000000": {
           "content": null,
@@ -130,12 +123,11 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "entries": [],
         "status": "ok"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

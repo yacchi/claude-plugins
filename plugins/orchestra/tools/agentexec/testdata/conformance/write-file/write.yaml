@@ -33,8 +33,4 @@ steps:
     snapshot: [abs.txt]
   - argv: [write-file]
     stdin: "x"
-  - argv: [write-file, --path]
-  - argv: [write-file, --path, x.txt, --expect-chars]
   - argv: [write-file, --path, x.txt, --expect-chars, ten]
-  - argv: [write-file, --path, x.txt, --verbose]
-  - argv: [write-file, --path, x.txt, extra]

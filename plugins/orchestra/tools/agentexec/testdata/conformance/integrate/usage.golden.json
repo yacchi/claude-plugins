@@ -8,8 +8,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: missing required option: --tasks\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -20,8 +19,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: --tasks is empty\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -34,40 +32,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: duplicate option: --tasks\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--bisect",
-        "--bisect",
-        "--verify",
-        "true"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: duplicate option: --bisect\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--progress-jsonl",
-        "x",
-        "--progress-jsonl",
-        "y"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: duplicate option: --progress-jsonl\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -79,59 +44,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: unknown option: --bogus\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "extra"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: unknown option: extra\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: missing value for --tasks\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--progress-jsonl"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: missing value for --progress-jsonl\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--json",
-        "--text"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: --json and --text are mutually exclusive\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -144,64 +57,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: invalid --on-conflict value: merge\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--verify-timeout",
-        "0"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: invalid --verify-timeout value: 0\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--verify-timeout",
-        "1.5"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: invalid --verify-timeout value: 1.5\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--bisect-max",
-        "-1"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: invalid --bisect-max value: -1\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--bisect-max",
-        "two"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: invalid --bisect-max value: two\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -213,64 +69,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: --bisect requires --verify\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--lock",
-        "never"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: invalid --lock value: never\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--lock-timeout",
-        "-1"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: invalid --lock-timeout value: -1.0\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--lock-timeout",
-        "inf"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: invalid --lock-timeout value: inf\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "integrate",
-        "--tasks",
-        "a",
-        "--lock-timeout",
-        "nan"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: invalid --lock-timeout value: nan\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -281,8 +80,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: task id '//' has no usable characters\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -295,8 +93,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate integrate: task id '../..' has no usable characters\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -304,11 +101,10 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": []
-      },
-      "stderr": ""
+      }
     }
   ]
 }

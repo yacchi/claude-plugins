@@ -18,8 +18,6 @@ setup:
         enabled: true
     ~/.claude/orchestra/executor-state.json: |
       {"pi": {"reason": "quota", "until": 4102444800.5}, "old": {"reason": "quota", "until": 1.5}}
+normalize_keys: [build]
 steps:
   - argv: [doctor]
-    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
-  - argv: [doctor, --text]
-    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}

@@ -52,8 +52,4 @@ steps:
     cwd: "~"
   - argv: [isolate, list]
   - argv: [isolate, refresh]
-  - argv: [isolate, refresh, --task, t1, --task, t2]
-  - argv: [isolate, refresh, --task, t1, --bogus]
-  - argv: [isolate, refresh, --task, t1, --onto]
-  - argv: [isolate, refresh, --task, t1, --json, --text]
   - argv: [isolate, refresh, --task, "//"]

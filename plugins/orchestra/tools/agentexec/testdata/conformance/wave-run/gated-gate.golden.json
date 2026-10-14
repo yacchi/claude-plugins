@@ -19,7 +19,7 @@
         "! test -f b.txt"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -40,7 +40,6 @@
         "status": "done",
         "waves": 2
       },
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/wave/state.events.jsonl": {
           "content": [
@@ -356,7 +355,7 @@
             "version": 1,
             "wave": 2
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -381,7 +380,6 @@
       "exit": 5,
       "stdout_shape": "text",
       "stdout": "wave run stopped  waves=1  reason: integration tree red before this wave\n  integrated: A\n  pending: B\n",
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/red/state.json": {
           "content": {
@@ -424,7 +422,7 @@
             "version": 1,
             "wave": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -444,7 +442,7 @@
         "true"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -460,8 +458,7 @@
         "state": "<HOME>/green/state.json",
         "status": "done",
         "waves": 1
-      },
-      "stderr": "max-in-flight: 4 (auto)\n"
+      }
     }
   ]
 }

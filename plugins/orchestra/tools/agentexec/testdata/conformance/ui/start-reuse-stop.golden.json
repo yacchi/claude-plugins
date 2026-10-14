@@ -7,13 +7,12 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pid": "<PID>",
         "reused": false,
         "url": "<URL>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -21,13 +20,12 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pid": "<PID>",
         "reused": true,
         "url": "<URL>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -36,11 +34,10 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "stopped": true
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -49,11 +46,10 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "stopped": false
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -62,8 +58,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "not running\n",
-      "stderr": ""
+      "stdout": "not running\n"
     }
   ]
 }

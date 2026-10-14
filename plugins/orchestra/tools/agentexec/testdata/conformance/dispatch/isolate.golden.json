@@ -14,7 +14,7 @@
         "t-dirty"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "isolated",
         "effort": "medium",
@@ -73,8 +73,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -89,7 +88,7 @@
         "t-dirty"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "isolated",
         "effort": "medium",
@@ -147,96 +146,6 @@
             "output_tokens": 0,
             "reasoning_output_tokens": 0
           }
-        }
-      },
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "dispatch",
-        "--class",
-        "standard",
-        "--prompt-file",
-        "p.md",
-        "--workdir",
-        "sub",
-        "--task",
-        "t-sub",
-        "--isolate",
-        "always"
-      ],
-      "exit": 0,
-      "stdout_shape": "json-line",
-      "stdout": {
-        "answer": "isolated",
-        "effort": "medium",
-        "executor": "pi",
-        "exit_code": 0,
-        "isolation": {
-          "backend": "git",
-          "branch": "orchestra/00000000/t-sub",
-          "carried": [],
-          "created": true,
-          "isolate": true,
-          "mode": "always",
-          "path": "<WORK>-orchestra/00000000-t-sub",
-          "reason": "isolation forced (--isolate always)",
-          "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
-        },
-        "model": "openai-codex/gpt-5.6-luna",
-        "reason": null,
-        "resumed": false,
-        "route": {
-          "agent_type": null,
-          "archetype": "default",
-          "candidates": [
-            "pi",
-            "claude"
-          ],
-          "class": "standard",
-          "cooldown_bypassed": false,
-          "cooldowns_applied": [],
-          "dispatch": "cli",
-          "effort": "medium",
-          "executor": "pi",
-          "model": "openai-codex/gpt-5.6-luna",
-          "remaining": [
-            "claude"
-          ],
-          "skipped": [],
-          "source": "priority"
-        },
-        "sandbox": {
-          "backend": "none",
-          "enforced": false,
-          "limits": [],
-          "reason": "sandbox.mode is off",
-          "writable": []
-        },
-        "session_id": "<UUID#1>",
-        "status": "ok",
-        "usage": {
-          "cost_micro_usd": 0,
-          "tokens": {
-            "cache_write_input_tokens": 0,
-            "cached_input_tokens": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "reasoning_output_tokens": 0
-          }
-        }
-      },
-      "stderr": "",
-      "files": {
-        "~/.claude/orchestra/sessions/pi-t-sub.json": {
-          "content": {
-            "executor": "pi",
-            "session_id": "<UUID#1>",
-            "task": "t-sub",
-            "updated": "<TS>",
-            "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
-          },
-          "shape": "json-line"
         }
       }
     },
@@ -255,7 +164,95 @@
         "always"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
+      "stdout": {
+        "answer": "isolated",
+        "effort": "medium",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "backend": "git",
+          "branch": "orchestra/00000000/t-sub",
+          "carried": [],
+          "created": true,
+          "isolate": true,
+          "mode": "always",
+          "path": "<WORK>-orchestra/00000000-t-sub",
+          "reason": "isolation forced (--isolate always)",
+          "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "medium",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority"
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      },
+      "files": {
+        "~/.claude/orchestra/sessions/pi-t-sub.json": {
+          "content": {
+            "executor": "pi",
+            "session_id": "<UUID#1>",
+            "task": "t-sub",
+            "updated": "<TS>",
+            "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
+          },
+          "shape": "json"
+        }
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        "sub",
+        "--task",
+        "t-sub",
+        "--isolate",
+        "always"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
       "stdout": {
         "answer": "isolated",
         "effort": "medium",
@@ -314,8 +311,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -332,7 +328,7 @@
         "always"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -377,8 +373,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -393,7 +388,7 @@
         "always"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -432,8 +427,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -450,7 +444,7 @@
         "always"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -489,8 +483,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -507,7 +500,7 @@
         "never"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -546,8 +539,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -564,7 +556,7 @@
         "always"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -603,8 +595,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

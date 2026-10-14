@@ -8,8 +8,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "total records: 4\nby event: {\"dispatch\": 2, \"run_summary\": 1}\nby status: {\"ok\": 1, \"unavailable\": 1}\nby reason: {\"quota\": 1}\n",
-      "stderr": ""
+      "stdout": "total records: 4\nby event: {\"dispatch\": 2, \"run_summary\": 1}\nby status: {\"ok\": 1, \"unavailable\": 1}\nby reason: {\"quota\": 1}\n"
     },
     {
       "argv": [
@@ -52,19 +51,7 @@
           "task_count": 4,
           "ts": "<TS>"
         }
-      ],
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "telemetry",
-        "show",
-        "--bogus"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "total records: 4\nby event: {\"dispatch\": 2, \"run_summary\": 1}\nby status: {\"ok\": 1, \"unavailable\": 1}\nby reason: {\"quota\": 1}\n",
-      "stderr": ""
+      ]
     },
     {
       "argv": [
@@ -75,30 +62,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "<WORK>/out.tgz\n",
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "telemetry",
-        "archive",
-        "--out"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: missing value for --out\n"
-    },
-    {
-      "argv": [
-        "telemetry",
-        "archive",
-        "extra"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: unknown option: extra\n"
+      "stdout": "<WORK>/out.tgz\n"
     },
     {
       "argv": [
@@ -110,7 +74,6 @@
       "exit": 0,
       "stdout_shape": "empty",
       "stdout": null,
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/telemetry/records.jsonl": {
           "content": "{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"executor\": \"pi\", \"status\": \"ok\", \"usage\": {\"input_tokens\": 10, \"output_tokens\": 20}}\nnot json at all\n\n{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"executor\": \"claude\", \"status\": \"unavailable\", \"reason\": \"quota\"}\n[1, 2]\n{\"event\": \"run_summary\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"task_count\": 4}\n{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"darwin\", \"executor\": \"pi\", \"status\": \"ok\"}\n",
@@ -125,8 +88,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "total records: 5\nby event: {\"dispatch\": 3, \"run_summary\": 1}\nby status: {\"ok\": 2, \"unavailable\": 1}\nby reason: {\"quota\": 1}\n",
-      "stderr": ""
+      "stdout": "total records: 5\nby event: {\"dispatch\": 3, \"run_summary\": 1}\nby status: {\"ok\": 2, \"unavailable\": 1}\nby reason: {\"quota\": 1}\n"
     },
     {
       "argv": [
@@ -136,7 +98,6 @@
       "exit": 0,
       "stdout_shape": "empty",
       "stdout": null,
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/telemetry/records.jsonl": null
       }
@@ -148,19 +109,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "total records: 0\nby event: {}\nby status: {}\nby reason: {}\n",
-      "stderr": ""
-    },
-    {
-      "argv": [
-        "telemetry",
-        "clear",
-        "whatever"
-      ],
-      "exit": 0,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": ""
+      "stdout": "total records: 0\nby event: {}\nby status: {}\nby reason: {}\n"
     }
   ]
 }

@@ -13,8 +13,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n",
-      "stderr": ""
+      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n"
     },
     {
       "argv": [
@@ -30,8 +29,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium --session <UUID#1>\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n",
-      "stderr": ""
+      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium --session <UUID#1>\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n"
     },
     {
       "argv": [
@@ -48,8 +46,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n",
-      "stderr": ""
+      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n"
     },
     {
       "argv": [
@@ -62,7 +59,7 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -102,8 +99,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

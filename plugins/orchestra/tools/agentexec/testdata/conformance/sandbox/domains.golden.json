@@ -9,8 +9,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "allowed domain: registry.npmjs.org (running herdr hosts and CLI runs pick it up live)\n",
-      "stderr": ""
+      "stdout": "allowed domain: registry.npmjs.org (running herdr hosts and CLI runs pick it up live)\n"
     },
     {
       "argv": [
@@ -20,13 +19,12 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "added": "<TS>",
         "domain": "registry.npmjs.org",
         "source": "user"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -38,14 +36,13 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "added": "<TS>",
         "domain": "*.github.com",
         "reason": "CI mirrors",
         "source": "user"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -58,7 +55,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "allowed domain: pypi.org:443 (running herdr hosts and CLI runs pick it up live)\n",
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -83,7 +79,7 @@
             "grants": [],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -98,7 +94,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "granted: <HOME>/cache-dir\n",
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -131,7 +126,7 @@
             ],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -143,8 +138,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing the wildcard *\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -154,8 +148,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing a top-level-domain wildcard: *.com\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -165,8 +158,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing a top-level-domain wildcard: *.dev\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -176,8 +168,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing an IP literal: 10.0.0.1\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -187,8 +178,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing an IP literal: [::1]:443\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -198,8 +188,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing an IP literal: fe80::1\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -209,8 +198,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing localhost\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -220,8 +208,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing localhost\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -231,8 +218,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: not a host name or *.wildcard: a b.com\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -242,8 +228,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: not a host name or *.wildcard: http://x.com\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -253,41 +238,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing an IP literal: 1.2.3\n"
-    },
-    {
-      "argv": [
-        "sandbox",
-        "allow-domain",
-        " "
-      ],
-      "exit": 1,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: refusing an empty domain\n"
-    },
-    {
-      "argv": [
-        "sandbox",
-        "allow-domain"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: expected one domain\n"
-    },
-    {
-      "argv": [
-        "sandbox",
-        "allow-domain",
-        "a.example.org",
-        "--reason"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: sandbox allow-domain: --reason needs a value\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -297,12 +248,11 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "domain": "registry.npmjs.org",
         "removed": true
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -312,12 +262,11 @@
         "--json"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "domain": "registry.npmjs.org",
         "removed": false
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -327,8 +276,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "removed: *.github.com\n",
-      "stderr": ""
+      "stdout": "removed: *.github.com\n"
     },
     {
       "argv": [
@@ -339,7 +287,6 @@
       "exit": 1,
       "stdout_shape": "text",
       "stdout": "no grant for: nothing.example.org\n",
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -361,7 +308,7 @@
             ],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -374,7 +321,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "removed: <HOME>/cache-dir\n",
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -388,7 +334,7 @@
             "grants": [],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     }

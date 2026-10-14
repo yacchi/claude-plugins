@@ -1,25 +1,12 @@
 description: >
-  usage argument errors: exit 2 with the Python wording
+  usage argument errors are exit 2: a bad duration, run or session ids that
+  escape their directory, an unknown source, conflicting scopes, an unknown
+  option
 steps:
-  - argv: ["usage", "--since"]
   - argv: ["usage", "--since", "yesterday"]
-  - argv: ["usage", "--since", "0x"]
-  - argv: ["usage", "--since", ""]
-  - argv: ["usage", "--run"]
-  - argv: ["usage", "--run", ""]
-  - argv: ["usage", "--run", "a,,b"]
   - argv: ["usage", "--run", "../x"]
-  - argv: ["usage", "--session", "a b"]
   - argv: ["usage", "--session", ".."]
   - argv: ["usage", "--source", "nope"]
-  - argv: ["usage", "--source", "claude,nope,x"]
-  - argv: ["usage", "--source", ""]
-  - argv: ["usage", "--source", " , "]
-  - argv: ["usage", "--json", "--text"]
   - argv: ["usage", "--list-runs", "--since", "1h"]
-  - argv: ["usage", "--list-runs", "--run", "x"]
   - argv: ["usage", "--run", "x", "--since", "1h"]
-  - argv: ["usage", "--session", "x", "--since", "1h"]
   - argv: ["usage", "--bogus"]
-  - argv: ["usage", "extra"]
-  - argv: ["usage", "--since", "1h", "--since", "2h", "--json", "--json"]

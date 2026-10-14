@@ -8,7 +8,6 @@
       "exit": 1,
       "stdout_shape": "text",
       "stdout": "Choose an install directory for the agent-exec shim:\n  1) <HOME>/.local/bin (on PATH) [default]\n  2) /usr/local/bin (NOT on PATH)\n  3) <HOME>/bin (NOT on PATH)\n  4) <HOME>/.claude/bin (NOT on PATH)\n  5) enter a custom absolute path\nChoice [1]: <HOME>/.local/bin/agent-exec already exists. Overwrite? (y/N): Aborted: not overwriting existing <HOME>/.local/bin/agent-exec\n",
-      "stderr": "",
       "files": {
         "~/.local/bin/agent-exec": {
           "content": "old shim\n",

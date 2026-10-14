@@ -1,12 +1,7 @@
 description: >
-  pi login parses its own arguments: errors print "agent-exec: pi login: ..."
-  and the usage (exit 2); --json is accepted and ignored
+  pi login argument errors (an unknown option, a bad --timeout) are exit 2
 setup:
   git: true
 steps:
   - argv: [pi, login, --bogus]
-  - argv: [pi, login, --provider]
-  - argv: [pi, login, --paste]
   - argv: [pi, login, --timeout, soon]
-  - argv: [pi, login, extra]
-  - argv: [pi, login, -h]

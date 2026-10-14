@@ -9,4 +9,3 @@ setup:
 steps:
   - argv: [install]
     stdin: ""
-    stderr: exact
