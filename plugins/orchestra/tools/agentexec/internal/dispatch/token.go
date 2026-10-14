@@ -83,8 +83,7 @@ func privateDir(dir string) error {
 	return os.Chmod(dir, 0o700)
 }
 
-// compactJSON is Python's json.dumps(v, ensure_ascii=False,
-// separators=(",", ":")).
+// compactJSON is v as compact JSON without a trailing newline.
 func compactJSON(v any) ([]byte, error) {
 	b, err := fsutil.MarshalJSON(v)
 	if err != nil {

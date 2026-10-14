@@ -214,7 +214,7 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
-        "note": "could not resolve --baseline ref 'nope' to a commit",
+        "note": "could not resolve --baseline ref \"nope\" to a commit",
         "path": "<ROOT>/ext",
         "status": "error",
         "task": "x"

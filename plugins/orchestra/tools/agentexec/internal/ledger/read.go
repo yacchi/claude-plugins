@@ -16,7 +16,7 @@ import (
 const NoOrdinal = -1
 
 // ForEachLine calls fn with every line of path, splitting on \n, \r\n and a
-// lone \r as Python's text-mode iteration does. Unreadable files yield
+// lone \r. Unreadable files yield
 // nothing. A streaming reader: a long transcript is never held in memory.
 func ForEachLine(path string, fn func(line string)) {
 	f, err := os.Open(path)

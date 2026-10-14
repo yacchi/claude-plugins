@@ -298,7 +298,7 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 	}
 	ontoSHA := isolate.RevParseCommit(resolved, ref)
 	if ontoSHA == "" {
-		return failure(fmt.Sprintf("could not resolve --onto ref %s to a commit", isolate.PyRepr(ref)))
+		return failure(fmt.Sprintf("could not resolve --onto ref %q to a commit", ref))
 	}
 	created, err := isolate.Create(resolved, intoTask, isolate.CreateOptions{Backend: isolate.BackendGit, Onto: ontoSHA})
 	if err != nil {

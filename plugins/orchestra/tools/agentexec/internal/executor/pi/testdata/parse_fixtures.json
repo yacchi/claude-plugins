@@ -675,7 +675,7 @@
   },
   {
    "name": "whitespace-answer",
-   "stdout": "{\"type\": \"session\", \"version\": 3, \"id\": \"01a11b14-6032-733f-aa30-17504543f162\", \"cwd\": \"/w\"}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \" \\n\\t\\u001c　\"}], \"usage\": {\"input\": 0, \"output\": 0, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 0, \"cost\": {\"total\": 0.0}}, \"stopReason\": \"stop\"}}\n",
+   "stdout": "{\"type\": \"session\", \"version\": 3, \"id\": \"01a11b14-6032-733f-aa30-17504543f162\", \"cwd\": \"/w\"}\n{\"type\": \"message_end\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \" \\n\\t　\"}], \"usage\": {\"input\": 0, \"output\": 0, \"cacheRead\": 0, \"cacheWrite\": 0, \"reasoning\": 0, \"totalTokens\": 0, \"cost\": {\"total\": 0.0}}, \"stopReason\": \"stop\"}}\n",
    "stderr": "",
    "exit_code": 0,
    "resumed": false,

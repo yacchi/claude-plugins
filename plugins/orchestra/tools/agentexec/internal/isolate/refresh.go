@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
@@ -155,7 +156,7 @@ func Refresh(root, task, onto, session string) (RefreshResult, error) {
 	}
 	ontoSHA := RevParseCommit(resolved, ref)
 	if ontoSHA == "" {
-		return fail(fmt.Sprintf("could not resolve --onto ref %s to a commit", pyRepr(ref)))
+		return fail(fmt.Sprintf("could not resolve --onto ref %q to a commit", ref))
 	}
 	res.OldBaseline, _ = ReadBaseline(wt.Path)
 	if res.OldBaseline == ontoSHA {
@@ -287,9 +288,9 @@ func writePatchFile(dir, name, patch string) (string, error) {
 	return path, nil
 }
 
-// PyRepr quotes s the way Python's repr() of a str does, for messages that
-// quote user input as the Python implementation did.
-func PyRepr(s string) string { return pyRepr(s) }
+// PyRepr is a temporary alias of strconv.Quote, kept only so packages owned
+// by other workers (cli) keep compiling; callers should use %q instead.
+func PyRepr(s string) string { return strconv.Quote(s) }
 
 // RevParseCommit resolves ref to a commit SHA in root, "" when it does not
 // name one.

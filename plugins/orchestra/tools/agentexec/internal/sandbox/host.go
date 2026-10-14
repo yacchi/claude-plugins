@@ -87,18 +87,18 @@ func claudePaths(home string, o policyOpts) ([]string, []string) {
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			p := pyJoin(real, name)
+			p := filepath.Join(real, name)
 			if isLink(p) {
 				target := realPath(p)
 				writable = append(writable, target)
-				parents = append(parents, pyDirname(target))
+				parents = append(parents, filepath.Dir(target))
 			}
 		}
 	}
 	var deny []string
 	for _, parent := range dedupe(parents) {
 		for _, name := range claudeTamperNames {
-			p := pyJoin(parent, name)
+			p := filepath.Join(parent, name)
 			deny = append(deny, p)
 			if lexists(p) {
 				deny = append(deny, realPath(p))
@@ -126,14 +126,14 @@ func hostPolicy(in HostInput, sc Config, o policyOpts) *Policy {
 	var readonly []string
 	_, commonGit := gitDirs(in.Repo)
 	if commonGit != "" {
-		writable = append(writable, pyJoin(commonGit, "worktrees"), pyJoin(commonGit, "objects"))
+		writable = append(writable, filepath.Join(commonGit, "worktrees"), filepath.Join(commonGit, "objects"))
 	}
 	claudeW, claudeDeny := claudePaths(home, o)
 	writable = append(writable, claudeW...)
 	// plugins/ becomes a read-only carve-out with only the inline plugin's
 	// data dir writable inside it.
-	plugins := pyJoin(claudeW[0], "plugins")
-	inline := pyJoin(claudeW[0], inlinePluginData)
+	plugins := filepath.Join(claudeW[0], "plugins")
+	inline := filepath.Join(claudeW[0], inlinePluginData)
 	_ = os.MkdirAll(inline, 0o700)
 	if isDir(inline) {
 		realPlugins := realPath(plugins)
@@ -147,10 +147,10 @@ func hostPolicy(in HostInput, sc Config, o policyOpts) *Policy {
 		readonly = append(readonly, realPlugins)
 		writable = append(writable, realPath(inline))
 		for _, n := range claudePluginNames {
-			claudeDeny = append(claudeDeny, pyJoin(realPlugins, n))
+			claudeDeny = append(claudeDeny, filepath.Join(realPlugins, n))
 		}
 	}
-	writable = append(writable, pyJoin(home, ".local", "state", "claude"))
+	writable = append(writable, filepath.Join(home, ".local", "state", "claude"))
 	for _, p := range seeds(platform) {
 		writable = append(writable, expand(p, home))
 	}
@@ -185,12 +185,12 @@ func hostPolicy(in HostInput, sc Config, o policyOpts) *Policy {
 	// regex, the other backends by what exists.
 	writableRx := []string{"^" + rxEscape(home) + `/\.claude\.json.*$`}
 	if platform != "darwin" {
-		matches, _ := filepath.Glob(pyJoin(globEscape(home), ".claude.json*"))
+		matches, _ := filepath.Glob(filepath.Join(globEscape(home), ".claude.json*"))
 		writable = append(writable, matches...)
 	}
 	state := realPath(stateDir(home))
 	denyWrite := append(stateDenies(home), claudeDeny...)
-	denyWrite = append(denyWrite, pyJoin(state, "pi-agent"))
+	denyWrite = append(denyWrite, filepath.Join(state, "pi-agent"))
 	denyRx := []string{}
 	for _, tree := range []string{in.Repo, base} {
 		root := ""

@@ -9,11 +9,11 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
-// realPath is Python's os.path.realpath (non-strict), step for step: the
+// realPath resolves symlinks like a non-strict realpath: the
 // components are walked left to right, every symlink met is resolved
 // before a following ".." is applied, and a component that does not exist
 // is kept as given. The policy's paths must be spelled exactly as the
-// Python implementation spelled them (a Seatbelt rule on another spelling
+// kernel reports them (a Seatbelt rule on another spelling
 // silently never matches), so this does not use filepath.EvalSymlinks,
 // which cleans ".." lexically first.
 func realPath(name string) string {
@@ -95,7 +95,7 @@ func realPath(name string) string {
 	return path
 }
 
-// RealPath is Python's os.path.realpath (see realPath).
+// RealPath is the exported form of realPath.
 func RealPath(p string) string { return realPath(p) }
 
 func reversed(in []string) []string {
@@ -106,34 +106,7 @@ func reversed(in []string) []string {
 	return out
 }
 
-// pyJoin is os.path.join for two parts: no cleaning, an absolute second
-// part replaces the first.
-func pyJoin(a string, more ...string) string {
-	out := a
-	for _, b := range more {
-		switch {
-		case strings.HasPrefix(b, "/"):
-			out = b
-		case out == "" || strings.HasSuffix(out, "/"):
-			out += b
-		default:
-			out += "/" + b
-		}
-	}
-	return out
-}
-
-// pyDirname is os.path.dirname.
-func pyDirname(p string) string {
-	i := strings.LastIndex(p, "/") + 1
-	head := p[:i]
-	if head != "" && strings.Trim(head, "/") != "" {
-		head = strings.TrimRight(head, "/")
-	}
-	return head
-}
-
-// absPath is os.path.abspath: lexical, no symlinks.
+// absPath makes p absolute lexically, without resolving symlinks.
 func absPath(p string) string {
 	if abs, err := filepath.Abs(p); err == nil {
 		return abs
@@ -149,7 +122,7 @@ func expand(p, home string) string {
 	return realPath(p)
 }
 
-// expandUser is os.path.expanduser for "~" and "~/..." against $HOME.
+// expandUser expands a leading "~" or "~/" against $HOME.
 func expandUser(p string) string {
 	if p == "~" || strings.HasPrefix(p, "~/") {
 		return paths.Home() + p[1:]

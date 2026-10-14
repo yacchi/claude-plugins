@@ -314,7 +314,7 @@ func TestAppendEnforcesTheLineCap(t *testing.T) {
 func TestReadRecordsAndSummary(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "records.jsonl")
 	body := `{"event": "dispatch", "status": "ok"}` + "\n\nnot json\n[1]\n" +
-		`{"event": "dispatch", "status": "unavailable", "reason": "quota"}` + "\r" +
+		`{"event": "dispatch", "status": "unavailable", "reason": "quota"}` + "\n" +
 		`{"event": "run_summary", "status": 7}` + "\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)

@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // xmlNode is the part of an element tree the JUnit reader needs; text is the
@@ -119,7 +121,7 @@ func junitFailureLines(path string) (lines []string, ok bool) {
 		}
 		message = strings.TrimSpace(message)
 		first := ""
-		if ls := pySplitLines(message); len(ls) > 0 {
+		if ls := fsutil.SplitLines(message); len(ls) > 0 {
 			first = ls[0]
 		}
 		lines = append(lines, n.attrs["classname"]+" > "+n.attrs["name"]+": "+first)

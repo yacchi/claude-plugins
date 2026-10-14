@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Home is $HOME (os.path.expanduser("~")).
+// Home is $HOME.
 func Home() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -48,8 +48,8 @@ func StateDir() string {
 }
 
 // AliveDir holds the per-session heartbeat files: $ORCHESTRA_ALIVE_DIR, else
-// ~/.claude/orchestra/alive. (The Python default followed a relocated
-// ledger dir; callers holding a config may do the same.)
+// ~/.claude/orchestra/alive. (Callers holding a config may follow a
+// relocated ledger dir instead.)
 func AliveDir() string {
 	if v := os.Getenv("ORCHESTRA_ALIVE_DIR"); v != "" {
 		return expandUser(v)
@@ -89,7 +89,7 @@ func SessionID() (string, bool) {
 	return v, v != ""
 }
 
-// RealPath is Python's os.path.realpath: an absolute path with every
+// RealPath is an absolute path with every
 // existing symlink resolved; components that do not exist are kept as given.
 func RealPath(p string) string {
 	abs, err := filepath.Abs(p)

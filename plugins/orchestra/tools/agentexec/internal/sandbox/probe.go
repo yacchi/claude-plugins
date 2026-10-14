@@ -29,7 +29,7 @@ type ProbeReport struct {
 	Seatbelt, Bwrap, Landlock Probe
 }
 
-// MarshalJSON keeps Python's shape: {"ok", "detail"} plus "path" for a
+// MarshalJSON writes {"ok", "detail"} plus "path" for a
 // passing bwrap and "abi" for landlock.
 func (r ProbeReport) MarshalJSON() ([]byte, error) {
 	return fsutil.MarshalJSON(r.Object())
@@ -92,7 +92,7 @@ func runProbe(argv ...string) (int, string, error) {
 	return 0, stderr.String(), err
 }
 
-// truncRunes is Python's s[:n] on a str.
+// truncRunes keeps the first n runes of s.
 func truncRunes(s string, n int) string {
 	r := []rune(s)
 	if len(r) > n {

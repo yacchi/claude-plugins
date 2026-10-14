@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"os/exec"
-	"strings"
 	"syscall"
 	"time"
 
@@ -101,7 +100,7 @@ func RunVerify(dir, cmd string, timeout time.Duration) VerifyResult {
 		res.Excerpt = checks.FailureExcerpt(out.String())
 	}
 	if status, err := gitx.Run(dir, "status", "--porcelain"); err == nil {
-		res.Dirtied = len(splitLines(status))
+		res.Dirtied = len(fsutil.SplitLines(status))
 	}
 	if res.Dirtied > 0 {
 		_, _ = gitx.Run(dir, "reset", "-q", "--hard", "HEAD")
@@ -110,8 +109,7 @@ func RunVerify(dir, cmd string, timeout time.Duration) VerifyResult {
 	return res
 }
 
-// exitCode is Python's returncode: the exit status, or minus the signal
-// that killed the process.
+// exitCode is the exit status, or minus the signal that killed the process.
 func exitCode(ps interface{ Sys() any }) int {
 	if ws, ok := ps.Sys().(syscall.WaitStatus); ok {
 		if ws.Signaled() {
@@ -120,14 +118,4 @@ func exitCode(ps interface{ Sys() any }) int {
 		return ws.ExitStatus()
 	}
 	return -1
-}
-
-// splitLines is Python's str.splitlines for the separators git can emit.
-func splitLines(s string) []string {
-	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
-	s = strings.TrimSuffix(s, "\n")
-	if s == "" {
-		return nil
-	}
-	return strings.Split(s, "\n")
 }

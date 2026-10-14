@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
@@ -24,8 +23,8 @@ const SkipVersionCheckEnv = "PI_SKIP_VERSION_CHECK=1"
 //
 // The prompt is never in argv (it goes on stdin), pi has no workdir flag
 // (the workdir is the child's cwd) and json is the only output mode the
-// parser reads, so workdir, prompt and outFmt are accepted for signature
-// parity and ignored. resume "" is a fresh session.
+// parser reads, so workdir, prompt and outFmt are accepted so every
+// executor shares one signature, and ignored. resume "" is a fresh session.
 func BuildArgv(exe, model, effort, workdir, prompt, resume, outFmt string, contextFiles bool) []string {
 	_, _, _ = workdir, prompt, outFmt
 	argv := []string{exe, "-p", "--mode", "json", "--no-approve", "--no-extensions",
@@ -70,7 +69,7 @@ var contentEventPrefixes = []string{"tool", "message", "turn", "agent", "session
 // event that says the run did not succeed.
 func IsErrorBearingEvent(event map[string]any) bool {
 	etype := event["type"]
-	if s, ok := etype.(string); ok && strings.Contains(config.PyLower(s), "error") {
+	if s, ok := etype.(string); ok && strings.Contains(strings.ToLower(s), "error") {
 		return true
 	}
 	if v, _ := event["error"]; truthy(v) {
@@ -90,7 +89,7 @@ func IsErrorBearingEvent(event map[string]any) bool {
 	return false
 }
 
-// truthy is Python's bool() of a decoded JSON value.
+// truthy reports whether a decoded JSON value is set: not null, false, zero or empty.
 func truthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -157,10 +156,7 @@ func mustGet(o map[string]any, k string) any {
 	return v
 }
 
-// isSpace is Python's str.isspace for one rune.
-func isSpace(r rune) bool { return unicode.IsSpace(r) || (r >= 0x1c && r <= 0x1f) }
-
-func blank(s string) bool { return strings.TrimFunc(s, isSpace) == "" }
+func blank(s string) bool { return strings.TrimFunc(s, unicode.IsSpace) == "" }
 
 // ParseJSONL turns `pi -p --mode json` stdout + stderr + exit code into
 // the normalized result: status, answer, session_id, resumed, reason,
@@ -275,7 +271,7 @@ func ParseJSONL(stdout, stderr string, exitCode int, resumed bool) map[string]an
 			u["tokens"] = tokens
 		}
 		if sawCost {
-			u["cost_micro_usd"] = int64(math.RoundToEven(costUSD * 1000000))
+			u["cost_micro_usd"] = int64(math.Round(costUSD * 1000000))
 		}
 		usage = u
 	}

@@ -31,7 +31,7 @@ func TestSanitizeTaskID(t *testing.T) {
 		}
 	}
 	_, err := SanitizeTaskID("///")
-	if err == nil || err.Error() != "task id '///' has no usable characters" {
+	if err == nil || err.Error() != `task id "///" has no usable characters` {
 		t.Errorf("message: %v", err)
 	}
 }

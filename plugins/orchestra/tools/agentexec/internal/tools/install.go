@@ -69,8 +69,8 @@ func withEnv(base []string, set [][2]string) []string {
 	return out
 }
 
-// run executes argv capturing output. A failure to start is reported with
-// Python's OSError wording, which the install rows carry through.
+// run executes argv capturing output. A failure to start (a missing binary,
+// say) comes back as err and the install rows carry its message through.
 func run(argv, env []string, dir string) (stdout, stderr string, code int, err error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env, cmd.Dir = env, dir
@@ -80,9 +80,6 @@ func run(argv, env []string, dir string) (stdout, stderr string, code int, err e
 		var ee *exec.ExitError
 		if errors.As(runErr, &ee) {
 			return out.String(), errb.String(), ee.ExitCode(), nil
-		}
-		if errors.Is(runErr, exec.ErrNotFound) {
-			return "", "", 0, fmt.Errorf("[Errno 2] No such file or directory: '%s'", argv[0])
 		}
 		return "", "", 0, runErr
 	}

@@ -125,10 +125,10 @@ func short(digest string) string {
 	return digest
 }
 
-// noneIfEmpty prints a missing value the way Python's "%s" % None did.
+// noneIfEmpty prints "-" for a missing value.
 func noneIfEmpty(s string) string {
 	if s == "" {
-		return "None"
+		return "-"
 	}
 	return s
 }

@@ -17,7 +17,7 @@ import (
 const previewRunes = 200
 
 // decodeObject parses one JSONL record that is an object. Numbers stay
-// json.Number so an integer of any size keeps its digits, as in Python.
+// json.Number so an integer of any size keeps its digits.
 func decodeObject(line string) (map[string]any, bool) {
 	dec := json.NewDecoder(bytes.NewReader([]byte(line)))
 	dec.UseNumber()
@@ -32,8 +32,9 @@ func decodeObject(line string) (map[string]any, bool) {
 	return m, ok
 }
 
-// Canonical is Python's json.dumps(v, sort_keys=True, separators=(",", ":"),
-// ensure_ascii=False) of a decoded JSON value: the identity of a tool call's args.
+// Canonical is the compact JSON of a decoded value with object keys sorted
+// and non-ASCII text left as is: the identity of a tool call's args. Numbers
+// are compared by value, so 1 and 1.0 are the same argument.
 func Canonical(v any) string {
 	var b strings.Builder
 	canonical(&b, v)
@@ -51,7 +52,7 @@ func canonical(b *strings.Builder, v any) {
 	case int:
 		b.WriteString(strconv.Itoa(x))
 	case float64:
-		b.WriteString(fsutil.FloatRepr(x))
+		b.WriteString(strconv.FormatFloat(x, 'g', -1, 64))
 	case json.Number:
 		b.WriteString(number(x))
 	case string:
@@ -123,8 +124,8 @@ func writeString(b *strings.Builder, s string) {
 	b.WriteByte('"')
 }
 
-// number renders a JSON number literal as Python re-dumps it: integers
-// keep their digits (int), anything with a fraction or exponent is a float.
+// number renders a JSON number literal: integers keep every digit at any
+// size, anything with a fraction or exponent is formatted by value.
 func number(n json.Number) string {
 	s := string(n)
 	if !strings.ContainsAny(s, ".eE") {
@@ -134,7 +135,7 @@ func number(n json.Number) string {
 		return s
 	}
 	f, _ := strconv.ParseFloat(s, 64)
-	return fsutil.FloatRepr(f)
+	return strconv.FormatFloat(f, 'g', -1, 64)
 }
 
 func preview(v any) string {
@@ -145,24 +146,11 @@ func preview(v any) string {
 	return string([]rune(text)[:previewRunes])
 }
 
-// pyStr is Python's str() of a decoded JSON value (the tool name).
-func pyStr(v any) string {
-	switch x := v.(type) {
-	case string:
-		return x
-	case nil:
-		return "None"
-	case bool:
-		if x {
-			return "True"
-		}
-		return "False"
-	case int64:
-		return strconv.FormatInt(x, 10)
-	case float64:
-		return fsutil.FloatRepr(x)
-	case json.Number:
-		return number(x)
+// toolName is a tool's name for reports: the string itself, else the
+// canonical form of whatever the event carried.
+func toolName(v any) string {
+	if s, ok := v.(string); ok {
+		return s
 	}
 	return Canonical(v)
 }

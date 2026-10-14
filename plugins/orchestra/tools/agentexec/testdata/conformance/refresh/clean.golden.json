@@ -338,7 +338,7 @@
         "branch": "orchestra/00000000/t1",
         "conflicts": [],
         "files": [],
-        "note": "could not resolve --onto ref 'nope' to a commit",
+        "note": "could not resolve --onto ref \"nope\" to a commit",
         "old_baseline": null,
         "patch_file": null,
         "path": "<WORK>-orchestra/00000000-t1",

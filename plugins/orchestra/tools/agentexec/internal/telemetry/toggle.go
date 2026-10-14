@@ -9,9 +9,8 @@ import (
 	"unicode/utf8"
 )
 
-// ws is Python's \s for str patterns (str.isspace): RE2's own \s is ASCII
-// only, and the line edit must treat the same characters as whitespace.
-const ws = `\t\n\v\f\r\x1c-\x1f \x{85}\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}`
+// ws is the whitespace YAML allows around the key and value.
+const ws = ` \t`
 
 var (
 	topLevelRE     = regexp.MustCompile(`^telemetry:[` + ws + `]*(#.*)?$`)
@@ -35,54 +34,14 @@ func block(enabled bool) string {
 	return strings.Replace(blockTemplate, "%s", boolText(enabled), 1)
 }
 
-func isPySpace(r rune) bool {
-	switch r {
-	case '\t', '\n', '\v', '\f', '\r', ' ', 0x1c, 0x1d, 0x1e, 0x1f, 0x85, 0xa0,
-		0x1680, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000:
-		return true
-	}
-	return r >= 0x2000 && r <= 0x200a
-}
-
-// pyStrip is Python's str.strip().
-func pyStrip(s string) string { return strings.TrimFunc(s, isPySpace) }
-
-// splitLinesKeepEnds is Python's str.splitlines(keepends=True): it breaks at
-// \n, \r, \r\n, \v, \f, \x1c-\x1e, \x85,   and  .
+// splitLinesKeepEnds splits s after every "\n", so "\r\n" endings stay on
+// their line and joining the pieces restores s exactly.
 func splitLinesKeepEnds(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); {
-		r, size := utf8.DecodeRuneInString(s[i:])
-		switch r {
-		case '\r':
-			end := i + 1
-			if end < len(s) && s[end] == '\n' {
-				end++
-			}
-			lines = append(lines, s[start:end])
-			start, i = end, end
-		case '\n', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
-			lines = append(lines, s[start:i+size])
-			start, i = i+size, i+size
-		default:
-			i += size
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
+	lines := strings.SplitAfter(s, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
 	}
 	return lines
-}
-
-// endsWithBreak reports whether s ends in a splitlines line terminator.
-func endsWithBreak(s string) bool {
-	r, _ := utf8.DecodeLastRuneInString(s)
-	switch r {
-	case '\n', '\r', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
-		return true
-	}
-	return false
 }
 
 // SetEnabledInText returns the content of an orchestra.yaml layer file (nil
@@ -118,7 +77,7 @@ func SetEnabledInText(text *string, enabled bool) string {
 	endIdx := len(lines)
 	for j := telemetryIdx + 1; j < len(lines); j++ {
 		raw := strings.TrimRight(lines[j], "\r\n")
-		if pyStrip(raw) == "" {
+		if strings.TrimSpace(raw) == "" {
 			continue
 		}
 		if raw[0] != ' ' && raw[0] != '\t' {
@@ -147,7 +106,7 @@ func SetEnabledInText(text *string, enabled bool) string {
 	childIndent := "  "
 	for j := telemetryIdx + 1; j < endIdx; j++ {
 		raw := strings.TrimRight(lines[j], "\r\n")
-		if pyStrip(raw) == "" {
+		if strings.TrimSpace(raw) == "" {
 			continue
 		}
 		if m := leadingWSRE.FindStringSubmatch(raw); m != nil {
@@ -157,8 +116,8 @@ func SetEnabledInText(text *string, enabled bool) string {
 	}
 	insert := childIndent + "enabled: " + b + "\n"
 	// An anchor that is the last line and has no terminator would get the
-	// child glued onto it (Python's behavior); end the anchor line first.
-	if anchor := lines[telemetryIdx]; telemetryIdx == len(lines)-1 && !endsWithBreak(anchor) {
+	// child glued onto it ; end the anchor line first.
+	if anchor := lines[telemetryIdx]; telemetryIdx == len(lines)-1 && !strings.HasSuffix(anchor, "\n") {
 		insert = "\n" + insert
 	}
 	lines = append(lines[:telemetryIdx+1], append([]string{insert}, lines[telemetryIdx+1:]...)...)
@@ -211,8 +170,7 @@ func isFile(p string) bool {
 
 // Toggle sets telemetry.enabled in the scope's config file, creating it (and
 // its directory) from a template when absent, and returns the absolute path
-// edited. Like Python's text-mode open, CRLF and lone CR line endings of an
-// existing file are read as LF, so the file is rewritten with LF endings.
+// edited. Line endings of an existing file are preserved.
 func Toggle(scope string, enabled bool) (string, error) {
 	path, ok := ScopeTarget(scope)
 	if !ok {
@@ -227,8 +185,7 @@ func Toggle(scope string, enabled bool) (string, error) {
 		if !utf8.Valid(data) {
 			return "", &os.PathError{Op: "read", Path: path, Err: os.ErrInvalid}
 		}
-		s := strings.ReplaceAll(string(data), "\r\n", "\n")
-		s = strings.ReplaceAll(s, "\r", "\n")
+		s := string(data)
 		text = &s
 	} else if err := os.MkdirAll(filepath.Dir(path), 0o777); err != nil {
 		return "", err
@@ -240,8 +197,7 @@ func Toggle(scope string, enabled bool) (string, error) {
 	return AbsPath(path), nil
 }
 
-// AbsPath is os.path.abspath: the kernel's cwd (never $PWD) joined and
-// cleaned.
+// AbsPath makes p absolute from the kernel's cwd (never $PWD) and cleans it.
 func AbsPath(p string) string {
 	if filepath.IsAbs(p) {
 		return filepath.Clean(p)
