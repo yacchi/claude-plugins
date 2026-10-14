@@ -1,6 +1,5 @@
 // Command fakepi is a stand-in `pi` for tests: no model, no auth, and fully
-// deterministic, so the Python and Go agent-exec can be driven by the same
-// binary on PATH.
+// deterministic, so agent-exec can be driven by it as a binary on PATH.
 //
 // The prompt (stdin) lists shell commands, one per line after a `COMMANDS:`
 // line; each runs with bash in the cwd and the output is pi 1.1.0-shaped

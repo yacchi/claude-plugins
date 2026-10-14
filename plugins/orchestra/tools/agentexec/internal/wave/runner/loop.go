@@ -254,7 +254,7 @@ func (r *runner) report() Report {
 		}
 		_ = json.Unmarshal([]byte(str(detail)), &d)
 		for _, f := range d.Files {
-			flaky[pyStr(f)]++
+			flaky[valText(f)]++
 		}
 	}
 	approvalsN := 0

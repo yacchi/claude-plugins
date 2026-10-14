@@ -22,7 +22,7 @@ import (
 func TestRegistryFixturesRoundTrip(t *testing.T) {
 	files, _ := filepath.Glob("testdata/registry/*.json")
 	if len(files) < 5 {
-		t.Fatalf("expected the Python fixtures, found %v", files)
+		t.Fatalf("expected the registry fixtures, found %v", files)
 	}
 	for _, f := range files {
 		want, _ := os.ReadFile(f)
@@ -48,9 +48,9 @@ func TestRegistryFixturesRoundTrip(t *testing.T) {
 	}
 }
 
-// A registry Go builds from scratch is the file the Python host writes for
+// A registry Go builds from scratch is the file earlier versions wrote for
 // the same sessions.
-func TestRegistryWrittenByGoMatchesPython(t *testing.T) {
+func TestRegistryWrittenByGoMatchesFixture(t *testing.T) {
 	dir := t.TempDir()
 	reg := &Registry{FileName: "herdr-sessions.json"}
 	session := func(pkg string, extra map[string]any) *Session {
@@ -148,10 +148,10 @@ func TestMergeConfigKeepsDefaultsUnderNullAndMergesModels(t *testing.T) {
 	}
 	h := MergeConfig(resolved(t, `{"herdr": {"warm": {"min_packages": 5}}}`), "herdr")
 	w := h.Sub("warm")
-	if v, _ := w["min_packages"]; PyFloat(v, 0) != 5 {
+	if v, _ := w["min_packages"]; ConfigFloat(v, 0) != 5 {
 		t.Error(v)
 	}
-	if v, _ := w["ttl_seconds"]; PyFloat(v, 0) != 3000 {
+	if v, _ := w["ttl_seconds"]; ConfigFloat(v, 0) != 3000 {
 		t.Error("warm defaults lost", v)
 	}
 	if MergeConfig(nil, "herdr").Settings().StartupTimeout != 90*time.Second {

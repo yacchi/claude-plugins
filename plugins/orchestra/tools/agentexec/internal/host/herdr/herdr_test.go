@@ -266,7 +266,7 @@ func TestNamesAndPayloads(t *testing.T) {
 	if len(long) != 32 || !nameRE.MatchString(long) {
 		t.Error(long)
 	}
-	if n := AgentName("日本"); n != "p-" { // as Python: nothing usable left, still a valid name
+	if n := AgentName("日本"); n != "p-" { // nothing usable left, still a valid name
 		t.Error(n)
 	}
 	if SessionName("", []string{"CLAUDE_CODE_SESSION_ID=ABCDEF12-x"}) != session {

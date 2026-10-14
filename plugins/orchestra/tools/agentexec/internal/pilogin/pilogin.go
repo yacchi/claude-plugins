@@ -178,7 +178,7 @@ func (l *login) saveState(state map[string]any) error {
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", " ")
-	if err := enc.Encode(state); err != nil { // sorted keys, indent 1, like json.dump
+	if err := enc.Encode(state); err != nil { // sorted keys, indent 1
 		return err
 	}
 	tmp := l.statePath() + ".tmp"
@@ -423,7 +423,7 @@ func (l *login) start(provider string) (int, map[string]any, error) {
 
 var unsafeShellRE = regexp.MustCompile(`[^A-Za-z0-9_@%+=:,./-]`)
 
-// shellQuote is Python's shlex.quote.
+// shellQuote quotes s for a POSIX shell.
 func shellQuote(s string) string {
 	if s == "" {
 		return "''"

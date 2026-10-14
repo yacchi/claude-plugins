@@ -233,7 +233,7 @@ steps:
   - argv: ["wave", "lint", "--plan", "self.json"]
     stderr_contains: ["dependency cycle: a -> a"]
   - argv: ["wave", "lint", "--plan", "missing-dep.json"]
-    stderr_contains: ["ghost"]
+    stderr_contains: ["ghost", "is unknown"]
   - argv: ["wave", "lint", "--plan", "dup.json"]
     stderr_contains: ["duplicate package id: a"]
   - argv: ["wave", "lint", "--plan", "noid.json"]

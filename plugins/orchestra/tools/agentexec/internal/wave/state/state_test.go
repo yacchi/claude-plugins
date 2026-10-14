@@ -33,7 +33,7 @@ func TestInitCreatesSchemaExactFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Python's json.dump(indent=2, sort_keys=True), no trailing newline.
+	// indent=2, sorted keys, no trailing newline.
 	want := `{
   "integration": {
     "base": null,
@@ -124,7 +124,7 @@ func TestSetStatusSinceAndEvents(t *testing.T) {
 	if !strings.HasPrefix(string(line), `{"at":1002.5,"detail":"go","event":"status","from":"pending","pkg":"a","to":"implementing"}`) {
 		t.Fatalf("event shape: %s", line)
 	}
-	// A package not in the file is created like Python's setdefault.
+	// A package not in the file is created.
 	if err := s.SetStatus("new", "failed", "d", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +454,7 @@ func TestStatusLine(t *testing.T) {
 }
 
 func TestFirstLine(t *testing.T) {
-	for in, want := range map[string]string{"": "", "a": "a", "a\nb": "a", "a\r\nb": "a", "\nb": "", "a b": "a"} {
+	for in, want := range map[string]string{"": "", "a": "a", "a\nb": "a", "a\r\nb": "a", "\nb": ""} {
 		if got := firstLine(in); got != want {
 			t.Errorf("firstLine(%q) = %q", in, got)
 		}

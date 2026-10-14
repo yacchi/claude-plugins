@@ -12,12 +12,9 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
-// Config is a host's config section merged over its defaults the way the
-// Python hosts' merged_config did: `models` (and `warm`) merge key by key,
+// Config is a host's config section merged over its defaults: `models` (and `warm`) merge key by key,
 // a null value keeps the default, `enabled` is normalized.
 type Config struct {
 	values  map[string]any
@@ -73,19 +70,19 @@ func (c Config) Get(key string) any {
 	return v
 }
 
-// Str is str(value) of a scalar key ("" for null or a container).
-func (c Config) Str(key string) string { return pyStr(c.Get(key)) }
+// Str is the text of a scalar key ("" for null or a container).
+func (c Config) Str(key string) string { return scalarText(c.Get(key)) }
 
-// Truthy is Python's truthiness of key.
+// Truthy reports whether key holds a set value (see Truthy).
 func (c Config) Truthy(key string) bool { return Truthy(c.Get(key)) }
 
-// Seconds is float(value) of key as a duration (def when not numeric).
+// Seconds is the numeric value of key as a duration (def when not numeric).
 func (c Config) Seconds(key string, def float64) time.Duration {
-	return secondsDuration(PyFloat(c.Get(key), def))
+	return secondsDuration(ConfigFloat(c.Get(key), def))
 }
 
-// Float is float(value) of key (def when not numeric).
-func (c Config) Float(key string, def float64) float64 { return PyFloat(c.Get(key), def) }
+// Float is the numeric value of key (def when not numeric).
+func (c Config) Float(key string, def float64) float64 { return ConfigFloat(c.Get(key), def) }
 
 // Model is models[cls], "" when unset.
 func (c Config) Model(cls string) string {
@@ -97,7 +94,7 @@ func (c Config) Model(cls string) string {
 	if !Truthy(v) {
 		return ""
 	}
-	return pyStr(v)
+	return scalarText(v)
 }
 
 // Sub is the merged sub-object key (nil when absent).
@@ -141,7 +138,7 @@ func NormalizeEnabled(v any) Tri {
 		}
 		return TriFalse
 	case string:
-		switch config.PyLower(strings.TrimSpace(x)) {
+		switch strings.ToLower(strings.TrimSpace(x)) {
 		case "true", "yes", "on", "required":
 			return TriTrue
 		case "false", "no", "off", "never":
@@ -151,7 +148,8 @@ func NormalizeEnabled(v any) Tri {
 	return TriAuto
 }
 
-// Truthy is Python's bool(v) for JSON values.
+// Truthy reports whether a decoded JSON value is set: non-null, non-zero,
+// non-empty.
 func Truthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -179,50 +177,47 @@ func Truthy(v any) bool {
 	return true
 }
 
-// PyFloat is float(v) for config scalars (numbers and numeric strings);
-// def otherwise.
-func PyFloat(v any, def float64) float64 {
+// ConfigFloat is the number in a config scalar (a number or a numeric
+// string); def for anything else, including NaN and infinities.
+func ConfigFloat(v any, def float64) float64 {
 	switch x := v.(type) {
-	case bool:
-		if x {
-			return 1
-		}
-		return 0
 	case int:
 		return float64(x)
 	case int64:
 		return float64(x)
 	case float64:
-		return x
+		if isFinite(x) {
+			return x
+		}
 	case json.Number:
-		if f, err := x.Float64(); err == nil {
+		if f, err := x.Float64(); err == nil && isFinite(f) {
 			return f
 		}
 	case string:
-		if f, err := strconv.ParseFloat(strings.TrimSpace(x), 64); err == nil {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(x), 64); err == nil && isFinite(f) {
 			return f
 		}
 	}
 	return def
 }
 
-func pyStr(v any) string {
+func isFinite(f float64) bool { return !math.IsNaN(f) && !math.IsInf(f, 0) }
+
+// scalarText is the text of a string or number; "" for null and containers.
+func scalarText(v any) string {
 	switch x := v.(type) {
 	case nil:
 		return ""
 	case string:
 		return x
 	case bool:
-		if x {
-			return "True"
-		}
-		return "False"
+		return strconv.FormatBool(x)
 	case int:
 		return strconv.Itoa(x)
 	case int64:
 		return strconv.FormatInt(x, 10)
 	case float64:
-		return fsutil.FloatRepr(x)
+		return strconv.FormatFloat(x, 'g', -1, 64)
 	case json.Number:
 		return string(x)
 	}

@@ -82,7 +82,7 @@ func errorBody(err error) map[string]any {
 	return map[string]any{"error": msg}
 }
 
-// Body renders a snapshot like json.dumps(ensure_ascii=False, sort_keys=True).
+// Body renders a snapshot as JSON with sorted keys and no HTML escaping.
 func Body(snapshot any) string {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -183,7 +183,8 @@ func liveChanges(pid, status, tree string) any {
 	return count
 }
 
-func pyJoinAbs(dir, p string) string {
+// absJoin is p made absolute, relative to dir when it is relative.
+func absJoin(dir, p string) string {
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(dir, p)
 	}
@@ -198,6 +199,8 @@ func isFile(p string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
+// statusString is a package status as a counts key; a null status is counted
+// under "None" (part of the snapshot's JSON contract).
 func statusString(v any) string {
 	if v == nil {
 		return "None"
@@ -235,7 +238,7 @@ func waveSnapshot(entry state.Registration) map[string]any {
 		plan, _ := get(st, "plan").(string)
 		planDir := ""
 		if plan != "" {
-			planDir = filepath.Dir(pyJoinAbs("", plan))
+			planDir = filepath.Dir(absJoin("", plan))
 		}
 		specs := planSpecs(plan)
 		stateDir := filepath.Dir(statePath)
@@ -256,7 +259,7 @@ func waveSnapshot(entry state.Registration) map[string]any {
 				row["files_live"] = liveChanges(pid, s, tree)
 			}
 			if spec, ok := specs[pid]; ok && planDir != "" {
-				row["spec"] = pyJoinAbs(planDir, spec)
+				row["spec"] = absJoin(planDir, spec)
 			}
 			if p := filepath.Join(stateDir, "context", pid+".md"); isFile(p) {
 				row["context"] = p
@@ -300,7 +303,7 @@ func planSpecs(plan string) map[string]string {
 			continue
 		}
 		spec := get(obj, "spec")
-		if !pyTruthy(spec) {
+		if s, _ := spec.(string); s == "" {
 			spec = get(obj, "path")
 		}
 		if s, ok := spec.(string); ok {
@@ -308,26 +311,6 @@ func planSpecs(plan string) map[string]string {
 		}
 	}
 	return out
-}
-
-func pyTruthy(v any) bool {
-	switch x := v.(type) {
-	case nil:
-		return false
-	case bool:
-		return x
-	case string:
-		return x != ""
-	case int64:
-		return x != 0
-	case float64:
-		return x != 0
-	case []any:
-		return len(x) > 0
-	case map[string]any:
-		return len(x) > 0
-	}
-	return true
 }
 
 func worktreesSnapshot(entries []state.Registration) []any {
@@ -484,7 +467,7 @@ func runningSnapshot(cfg *config.Resolved, entries []state.Registration) map[str
 				continue
 			}
 			ws := get(obj, "wave_state")
-			if !pyTruthy(ws) {
+			if s, _ := ws.(string); s == "" {
 				ws = entry.State
 			}
 			sessions = append(sessions, map[string]any{

@@ -157,7 +157,7 @@ func (r *runner) integrateReady() int {
 	integrated := 0
 	for _, pid := range ready {
 		entry, ok := byTask[r.sanitized(pid)]
-		status := "None"
+		status := "missing"
 		if ok {
 			status = entry.Status
 		}
@@ -406,7 +406,7 @@ func (r *runner) full() []string {
 		r.emit("integration-dirty", "", map[string]any{"files": res.Dirtied, "after": "full"})
 	}
 	r.emit("full-end", "", map[string]any{"status": res.Status, "seconds": res.Seconds})
-	r.event("full", "", fmt.Sprintf("%s exit=%s\n%s", res.Status, pyStr(exitValue(res.Exit)), res.Excerpt))
+	r.event("full", "", fmt.Sprintf("%s exit=%s\n%s", res.Status, valText(exitValue(res.Exit)), res.Excerpt))
 	if res.Status == "pass" || (!ensureFailed && r.fullFlaky(res)) {
 		r.fullGreen()
 		return nil

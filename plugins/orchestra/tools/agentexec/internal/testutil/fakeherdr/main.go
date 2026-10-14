@@ -1,7 +1,7 @@
 // Command fakeherdr is a stand-in `herdr` (and, invoked as `orca`, a
 // stand-in `orca`) for tests of the interactive hosts: no terminal, no
-// Claude, fully scripted, so the Python and Go agent-exec can be driven by
-// the same binary on PATH.
+// Claude, fully scripted, so agent-exec can be driven by it as a
+// binary on PATH.
 //
 // All state lives in $FAKEHERDR_DIR: scenario.json (read on every call, so
 // a test may change it between calls), state.json (what the fake

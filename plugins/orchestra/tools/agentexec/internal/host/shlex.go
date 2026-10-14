@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// ShellSplit is Python's shlex.split (POSIX mode, no comments): words
+// ShellSplit splits a command line POSIX-shell style (no comments): words
 // split on whitespace, with single quotes, double quotes (where only \ " $
 // ` and newline may be escaped) and backslash escapes.
 func ShellSplit(s string) ([]string, error) {

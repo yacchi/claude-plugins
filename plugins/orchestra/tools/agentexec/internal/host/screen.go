@@ -114,8 +114,8 @@ func TailLines(screen []string) string {
 // TailText is TailLines of a screen given as text.
 func TailText(text string) string { return TailLines(SplitLines(text)) }
 
-// SplitLines is Python's str.splitlines() for the line breaks a terminal
-// screen holds.
+// SplitLines splits terminal screen text on newlines (CRLF-tolerant),
+// dropping the trailing empty line.
 func SplitLines(text string) []string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
@@ -164,7 +164,7 @@ func PromptLine(promptFiles []string, resultPath string) string {
 // escalated), the session handle, the worktree as isolation, and the
 // network denials when there were any.
 func ResultOutput(hostName string, s *Session, sessionID string, resumed bool, data map[string]any) map[string]any {
-	summary := pyStr(data["summary"])
+	summary, _ := data["summary"].(string)
 	if _, isStr := data["summary"].(string); !isStr && Truthy(data["summary"]) {
 		b, _ := json.Marshal(data["summary"])
 		summary = string(b)

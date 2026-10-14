@@ -167,7 +167,7 @@ func networkNeedHosts(st *state.State, pid string) []string {
 		list, _ := data["hosts"].([]any)
 		hosts := []string{}
 		for _, h := range list {
-			hosts = append(hosts, strings.ToLower(strings.TrimSpace(pyStr(h))))
+			hosts = append(hosts, strings.ToLower(strings.TrimSpace(valText(h))))
 		}
 		return hosts
 	}
@@ -237,7 +237,7 @@ func decidePath(cfg *config.Resolved, statePath string, it *Item, decision, reas
 			return nil, &DecisionError{Code: 1, Msg: "refused: the denial names no path"}
 		}
 		if text == "" {
-			text = pyStr(target)
+			text = valText(target)
 		}
 		real := sandbox.RealPath(fsutil.ExpandUser(text))
 		if r := sandbox.UserGrantRefusal(real, sandbox.DenyRead(cfg)); r != "" {
@@ -248,7 +248,7 @@ func decidePath(cfg *config.Resolved, statePath string, it *Item, decision, reas
 		}
 		_ = appendNote(stateDir, pid, fmt.Sprintf("%s is now granted (%s). Continue the task.", real, reason))
 	} else {
-		_ = appendNote(stateDir, pid, fmt.Sprintf("%s is off-limits: %s", pyStr(it.Path), reason))
+		_ = appendNote(stateDir, pid, fmt.Sprintf("%s is off-limits: %s", valText(it.Path), reason))
 	}
 	verb := "declined"
 	if decision == "allow" {
@@ -258,7 +258,7 @@ func decidePath(cfg *config.Resolved, statePath string, it *Item, decision, reas
 	if err != nil {
 		return nil, &DecisionError{Code: 1, Msg: err.Error()}
 	}
-	_ = resume(store, pid, fmt.Sprintf("permission %s %s", pyStr(target), verb))
+	_ = resume(store, pid, fmt.Sprintf("permission %s %s", valText(target), verb))
 	return []string{pid}, nil
 }
 
@@ -297,7 +297,7 @@ func decideDialog(env Env, statePath string, it *Item, decision string) ([]strin
 	return []string{pid}, nil
 }
 
-// capitalize is Python's str.capitalize for the host names.
+// capitalize is the host name with an upper-case first letter.
 func capitalize(s string) string {
 	if s == "" {
 		return s

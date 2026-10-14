@@ -1,7 +1,7 @@
 // Package state owns a wave's state.json / events.jsonl pair, the STOP flag,
 // the wave registry and the status rendering. The on-disk format is shared
-// with the Python runner (and read by the UI), so it is kept byte-compatible:
-// state.json is indent=2 with sorted keys, floats in Python repr form.
+// with the runner and the UI, and files written by earlier versions stay
+// loadable: state.json is indent=2 with sorted keys.
 package state
 
 import ()
@@ -94,7 +94,7 @@ func NewPackage(now float64) *Package {
 	return &Package{Status: "pending", Since: now, Session: false}
 }
 
-// Pkg returns the package, creating a pending one like Python's setdefault.
+// Pkg returns the package, creating a pending one.
 func (s *State) Pkg(id string) *Package {
 	if s.Packages == nil {
 		s.Packages = map[string]*Package{}

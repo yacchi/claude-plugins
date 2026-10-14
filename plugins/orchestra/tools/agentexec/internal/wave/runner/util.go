@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -155,9 +154,10 @@ func (r *runner) cleanIntegration(after string) int {
 	return files
 }
 
-// --- Python-compatible text helpers ------------------------------------------------
+// --- text helpers ------------------------------------------------------------
 
-// splitLines is str.splitlines for the separators commands emit.
+// splitLines splits command output on newlines (CRLF-tolerant), dropping the
+// trailing newline.
 func splitLines(s string) []string {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
 	s = strings.TrimSuffix(s, "\n")
@@ -195,30 +195,20 @@ func containsStr(list []string, s string) bool {
 	return false
 }
 
-// pyStr is Python's str() of a decoded JSON value.
-func pyStr(v any) string {
+// valText renders a decoded JSON value for text output; "-" for null.
+func valText(v any) string {
 	switch x := v.(type) {
 	case nil:
-		return "None"
+		return "-"
 	case string:
 		return x
-	case bool:
-		if x {
-			return "True"
-		}
-		return "False"
-	case int:
-		return strconv.Itoa(x)
-	case int64:
-		return strconv.FormatInt(x, 10)
-	case float64:
-		return fsutil.FloatRepr(x)
 	}
 	b, _ := fsutil.MarshalJSON(v)
 	return string(b)
 }
 
-// truthy is Python's truthiness of a decoded JSON value.
+// truthy reports whether a decoded JSON value is set: non-null, non-zero,
+// non-empty.
 func truthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -271,7 +261,7 @@ func asList(v any) []any {
 	return nil
 }
 
-// \w as Python's str patterns read it (Unicode letters, digits, _).
+// word is \w for Unicode: letters, digits, _.
 const word = `\p{L}\p{N}_`
 
 var (

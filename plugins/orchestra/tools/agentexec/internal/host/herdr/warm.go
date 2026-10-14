@@ -104,7 +104,7 @@ func (e *Executor) warmFor(ctx context.Context, pkg, repo, baseRef, model, state
 	e.warmMu.Lock()
 	defer e.warmMu.Unlock()
 	if !host.Truthy(get("enabled")) || len(e.warmPaths) == 0 ||
-		float64(e.warmCounts[model]) < host.PyFloat(get("min_packages"), 2) {
+		float64(e.warmCounts[model]) < host.ConfigFloat(get("min_packages"), 2) {
 		return nil
 	}
 	if e.warmFailed[model] {
@@ -127,9 +127,9 @@ func (e *Executor) warmUsable(r warmRecord, repo, baseRev string, paths []string
 	ttlSeconds := 3000.0
 	if ttl != nil {
 		v := ttl["ttl_seconds"]
-		ttlSeconds = host.PyFloat(v, 3000)
+		ttlSeconds = host.ConfigFloat(v, 3000)
 	}
-	if now-host.PyFloat(r["last_used"], 0) >= ttlSeconds {
+	if now-host.ConfigFloat(r["last_used"], 0) >= ttlSeconds {
 		return false
 	}
 	if r.str("base_rev") == baseRev {
@@ -153,7 +153,7 @@ func (e *Executor) warmUsable(r warmRecord, repo, baseRev string, paths []string
 	return true
 }
 
-// sameList is Python's `record["requested"] == paths` for a stored list.
+// sameList reports whether the stored "requested" list equals paths.
 func sameList(v any, paths []string) bool {
 	var stored []any
 	switch x := v.(type) {
@@ -226,7 +226,7 @@ func (e *Executor) ensureWarm(ctx context.Context, model, baseRef string, paths 
 		if err != nil {
 			reason = err.Error()
 		}
-		return nil, host.Need(host.KindError, "could not create the warm worktree: "+pyNone(reason))
+		return nil, host.Need(host.KindError, "could not create the warm worktree: "+orUnknown(reason))
 	}
 	built := false
 	defer func() {

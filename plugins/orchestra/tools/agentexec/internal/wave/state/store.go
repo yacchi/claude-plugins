@@ -15,7 +15,7 @@ import (
 // Store is every read and write of one wave's state.json + events.jsonl.
 // Mutations hold an exclusive flock on <state>.lock for the whole
 // read-mutate-write-append cycle, so threads and separate processes (the Go
-// runner, the Python runner, `wave mark`) can share the file.
+// runner, `wave mark`) can share the file.
 type Store struct {
 	Path string
 	// Clock returns epoch seconds; injectable for tests.
@@ -95,7 +95,7 @@ func (s *Store) appendEvents(events []map[string]any) error {
 	return nil
 }
 
-// eventObject orders a record like Python's dict: at, pkg, from, to, event,
+// eventObject orders a record: at, pkg, from, to, event,
 // detail, then any extra keys sorted.
 func eventObject(ev map[string]any) map[string]any {
 	o := map[string]any{}
@@ -214,7 +214,7 @@ func (s *Store) Init(planPath string, packageIDs []string, integrationTask strin
 	return st.clone(), nil
 }
 
-// Event appends one event record (and bumps `updated`, like Python). Errors
+// Event appends one event record (and bumps `updated`). Errors
 // are swallowed: an event is diagnostics, never a reason to stop the run.
 func (s *Store) Event(kind string, fields map[string]any) {
 	_ = s.Update(func(st *State) error {

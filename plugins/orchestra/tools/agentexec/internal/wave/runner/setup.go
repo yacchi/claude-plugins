@@ -216,7 +216,7 @@ func (r *runner) init() error {
 			pkg = *w.Pkg
 		}
 		r.emit("plan-warning", pkg, map[string]any{"message": w.Message})
-		fmt.Fprintf(r.stderr, "plan-warning: %s: %s\n", pyStrPtr(w.Pkg), w.Message)
+		fmt.Fprintf(r.stderr, "plan-warning: %s: %s\n", derefOr(w.Pkg, "-"), w.Message)
 	}
 	_ = state.Register(state.Registration{
 		State: r.statePath, Plan: r.opts.Plan, Repo: r.root, Into: r.into, RegisteredAt: r.clock(),
@@ -234,7 +234,7 @@ func (r *runner) init() error {
 		if err != nil {
 			reason = err.Error()
 		}
-		return fmt.Errorf("could not create the integration worktree %s: %s", r.into, pyNone(reason))
+		return fmt.Errorf("could not create the integration worktree %s: %s", r.into, orUnknown(reason))
 	}
 	_ = isolate.WriteRole(created.Path, isolate.RoleIntegration)
 	r.intPath = created.Path
@@ -276,9 +276,9 @@ func (r *runner) init() error {
 	return nil
 }
 
-func pyNone(s string) string {
+func orUnknown(s string) string {
 	if s == "" {
-		return "None"
+		return "unknown"
 	}
 	return s
 }
@@ -339,7 +339,7 @@ func (r *runner) resolveSettings() {
 	mode := strings.ToLower(strings.TrimSpace(r.opts.VerifyMode))
 	if mode == "" {
 		if v := objGet(wave, "verify_mode"); v != nil {
-			mode = strings.ToLower(strings.TrimSpace(pyStr(v)))
+			mode = strings.ToLower(strings.TrimSpace(valText(v)))
 		} else {
 			mode = defaultVerifyMode
 		}
@@ -382,7 +382,7 @@ func (r *runner) interactiveMode() string {
 	if mode == "" {
 		if cfg := r.config(); cfg != nil {
 			if v, ok := cfg.Lookup("interactive_host"); ok && v != nil {
-				mode = pyStr(v)
+				mode = valText(v)
 			}
 		}
 	}

@@ -167,6 +167,5 @@ type Clock struct {
 // RealClock is the wall clock.
 func RealClock() Clock { return Clock{Now: time.Now, Sleep: sleepCtx} }
 
-// Seconds renders a duration the way Python's "%s" renders the seconds
-// value of the host config ("60", "1.5").
+// Seconds renders a duration as seconds without trailing zeros ("60", "1.5").
 func Seconds(d time.Duration) string { return formatSeconds(d.Seconds()) }

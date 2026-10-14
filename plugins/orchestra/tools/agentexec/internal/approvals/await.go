@@ -73,7 +73,7 @@ func isDir(p string) bool {
 	return err == nil && st.IsDir()
 }
 
-// --- Python value helpers ------------------------------------------------------
+// --- decoded JSON value helpers ------------------------------------------------
 
 // asMap is a decoded JSON object as a map (nil when v is not an object).
 func asMap(v any) map[string]any {
@@ -81,24 +81,17 @@ func asMap(v any) map[string]any {
 	return m
 }
 
-// pyStr is Python's str() of a decoded JSON value.
-func pyStr(v any) string {
+// valText renders a decoded JSON value for text output; "-" for null.
+func valText(v any) string {
 	switch x := v.(type) {
 	case nil:
-		return "None"
+		return "-"
 	case string:
 		return x
-	case bool:
-		if x {
-			return "True"
-		}
-		return "False"
 	case int:
 		return strconv.Itoa(x)
 	case int64:
 		return strconv.FormatInt(x, 10)
-	case float64:
-		return fsutil.FloatRepr(x)
 	case json.Number:
 		return x.String()
 	}
@@ -106,7 +99,8 @@ func pyStr(v any) string {
 	return string(b)
 }
 
-// truthy is Python's truthiness of a decoded JSON value.
+// truthy reports whether a decoded JSON value is set: non-null, non-zero,
+// non-empty.
 func truthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -129,12 +123,12 @@ func truthy(v any) bool {
 	return true
 }
 
-// pyStrOr is str(v or "").
-func pyStrOr(v any) string {
+// textOrEmpty is valText, but "" for an unset value.
+func textOrEmpty(v any) string {
 	if !truthy(v) {
 		return ""
 	}
-	return pyStr(v)
+	return valText(v)
 }
 
 func number(v any) (float64, bool) {
@@ -152,58 +146,37 @@ func number(v any) (float64, bool) {
 	return 0, false
 }
 
-// pyEqual is == between decoded JSON scalars (443 == 443.0).
-func pyEqual(a, b any) bool {
-	if x, ok := number(a); ok {
-		if y, ok := number(b); ok {
-			return x == y
-		}
-		return false
+// samePort reports whether two denial ports are the same: numbers compare by
+// value (443 == 443.0), anything else by its text.
+func samePort(a, b any) bool {
+	x, aNum := number(a)
+	y, bNum := number(b)
+	if aNum || bNum {
+		return aNum && bNum && x == y
 	}
-	return a == b
+	return valText(a) == valText(b)
 }
 
-func containsAny(list []any, v any) bool {
+func containsPort(list []any, v any) bool {
 	for _, e := range list {
-		if pyEqual(e, v) {
+		if samePort(e, v) {
 			return true
 		}
 	}
 	return false
 }
 
-// typeKey is str(type(v)) of the Python value v decodes to.
-func typeKey(v any) string {
-	switch v.(type) {
-	case nil:
-		return "<class 'NoneType'>"
-	case bool:
-		return "<class 'bool'>"
-	case string:
-		return "<class 'str'>"
-	case int, int64:
-		return "<class 'int'>"
-	case float64:
-		return "<class 'float'>"
+// portLess sorts numeric ports first (by value), then any others by text.
+func portLess(a, b any) bool {
+	x, aNum := number(a)
+	y, bNum := number(b)
+	if aNum != bNum {
+		return aNum
 	}
-	return "<class 'object'>"
-}
-
-// pyLess orders ports like sorted(key=lambda p: (str(type(p)), p)).
-func pyLess(a, b any) bool {
-	ta, tb := typeKey(a), typeKey(b)
-	if ta != tb {
-		return ta < tb
-	}
-	if x, ok := number(a); ok {
-		y, _ := number(b)
+	if aNum {
 		return x < y
 	}
-	if x, ok := a.(string); ok {
-		y, _ := b.(string)
-		return x < y
-	}
-	return false
+	return valText(a) < valText(b)
 }
 
 func contains(list []string, s string) bool {

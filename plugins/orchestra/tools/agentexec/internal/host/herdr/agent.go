@@ -348,7 +348,7 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 		if err != nil {
 			reason = err.Error()
 		}
-		return nil, host.Need(host.KindError, "could not create the worktree for "+pkgID+": "+pyNone(reason))
+		return nil, host.Need(host.KindError, "could not create the worktree for "+pkgID+": "+orUnknown(reason))
 	}
 	s := &host.Session{Pkg: pkgID, Name: e.Name(), Worktree: created.Path, Extra: map[string]any{
 		"branch": created.Branch, "workspace": nil, "pane": nil, "repo": repo,
@@ -437,9 +437,9 @@ func toStrings(v any) []string {
 	return out
 }
 
-func pyNone(s string) string {
+func orUnknown(s string) string {
 	if s == "" {
-		return "None"
+		return "unknown"
 	}
 	return s
 }

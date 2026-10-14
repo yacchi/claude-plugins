@@ -426,7 +426,7 @@ func allowedFile(path string) (string, bool) {
 		}
 		planDir := filepath.Dir(plan)
 		resolve := func(v string) string {
-			return paths.RealPath(pyJoinAbs(planDir, v))
+			return paths.RealPath(absJoin(planDir, v))
 		}
 		var allowed []string
 		switch pre := get(data, "preamble").(type) {
@@ -449,7 +449,7 @@ func allowedFile(path string) (string, bool) {
 				}
 			}
 		}
-		stateDir := filepath.Dir(pyJoinAbs("", e.State))
+		stateDir := filepath.Dir(absJoin("", e.State))
 		for _, dirname := range []string{"context", "corrections", "carry"} {
 			if filepath.Dir(real) == paths.RealPath(filepath.Join(stateDir, dirname)) {
 				allowed = append(allowed, real)

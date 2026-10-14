@@ -228,7 +228,7 @@ func (e *Executor) pollShort() time.Duration {
 // --- names and environment ----------------------------------------------------
 
 func sanitize(text string) string {
-	s := regexp.MustCompile(`[^a-z0-9_-]+`).ReplaceAllString(config.PyLower(text), "-")
+	s := regexp.MustCompile(`[^a-z0-9_-]+`).ReplaceAllString(strings.ToLower(text), "-")
 	return strings.Trim(s, "-_")
 }
 
@@ -265,10 +265,10 @@ func SessionName(runID string, env []string) string {
 	if len(r) > 8 {
 		r = r[:8]
 	}
-	if c := config.PyLower(string(r)); sessionRE.MatchString(c) {
+	if c := strings.ToLower(string(r)); sessionRE.MatchString(c) {
 		return "orchestra-" + c
 	}
-	c := regexp.MustCompile(`[^a-z0-9]`).ReplaceAllString(config.PyLower(runID), "")
+	c := regexp.MustCompile(`[^a-z0-9]`).ReplaceAllString(strings.ToLower(runID), "")
 	if len(c) > 8 {
 		c = c[:8]
 	}
@@ -574,7 +574,7 @@ func ServerRunning(out string) bool {
 			text = joined
 		}
 	}
-	text = config.PyLower(text)
+	text = strings.ToLower(text)
 	if notRunningRE.MatchString(text) {
 		return false
 	}

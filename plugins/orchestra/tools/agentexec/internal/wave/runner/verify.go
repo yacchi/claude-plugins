@@ -176,7 +176,7 @@ func (r *runner) handle(pid, token string, result map[string]any) bool {
 		r.need(pid, "runaway", marshal(map[string]any{"reason": reason, "last_tool": lastTool}))
 		return false
 	}
-	detail := pyStr(result["reason"])
+	detail := valText(result["reason"])
 	if !truthy(result["reason"]) {
 		detail = marshal(map[string]any{
 			"status":    result["status"],
@@ -357,11 +357,11 @@ func failureText(c checkOutcome) string {
 	var parts []string
 	for _, it := range c.items() {
 		if it["status"] == "fail" {
-			parts = append(parts, fmt.Sprintf("## %s\n%s", pyStr(it["name"]), str(it["excerpt"])))
+			parts = append(parts, fmt.Sprintf("## %s\n%s", valText(it["name"]), str(it["excerpt"])))
 		}
 	}
 	if len(parts) == 0 {
-		return "check status " + pyStr(c["status"])
+		return "check status " + valText(c["status"])
 	}
 	return strings.Join(parts, "\n\n")
 }
@@ -440,7 +440,7 @@ func (r *runner) verifyFast(pid string) {
 		for _, it := range c.items() {
 			if it["status"] == "fail" {
 				failed = append(failed, it["name"])
-				names = append(names, pyStr(it["name"]))
+				names = append(names, valText(it["name"]))
 			}
 		}
 		detail = fastNote + strings.Join(names, ", ")
@@ -470,7 +470,7 @@ func (r *runner) verify(pid string) {
 			return
 		}
 		if status != "fail" {
-			r.need(pid, "self-verify", "check could not run (status "+pyStr(c["status"])+")")
+			r.need(pid, "self-verify", "check could not run (status "+valText(c["status"])+")")
 			return
 		}
 		failures := failureText(c)

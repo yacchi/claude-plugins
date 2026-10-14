@@ -12,7 +12,7 @@ import (
 )
 
 // Session is one package's registered session. Its registry record is the
-// flat JSON object the Python hosts wrote: "pkg", "worktree" and
+// flat JSON object: "pkg", "worktree" and
 // "terminal" (null when no agent is open) are fields here, every other key
 // (repo, model, cls, state_dir, created, add_dirs, workspace, pane,
 // herdr_session, net_mark, warm_session, warm_worktree, request_ids, ...)
@@ -92,7 +92,7 @@ func (s *Session) Str(k string) string {
 	return str
 }
 
-// Truthy is Python's truthiness of the Extra value under k.
+// Truthy reports whether the Extra value under k is set.
 func (s *Session) Truthy(k string) bool {
 	v, _ := s.Get(k)
 	return Truthy(v)
@@ -104,7 +104,7 @@ func (s *Session) Strings(k string) []string {
 	return stringList(v)
 }
 
-// Pop removes k and reports its truthiness (Python's dict.pop(k, False)).
+// Pop removes k and reports its truthiness (false when absent).
 func (s *Session) Pop(k string) bool {
 	v, ok := s.Get(k)
 	if !ok {
@@ -141,8 +141,8 @@ func stringList(v any) []string {
 
 // Registry is a host's session registry, `<state dir>/<Name>`: package id
 // -> session record, plus host-private keys (herdr's "_warm"). Writes are
-// serialized per Registry; the file is json.dump(indent=1, sort_keys=True)
-// + "\n", byte-identical to the Python hosts'.
+// serialized per Registry; the file is JSON with indent=1 and sorted
+// keys plus a trailing newline, the layout earlier versions wrote.
 type Registry struct {
 	FileName string
 	mu       sync.Mutex

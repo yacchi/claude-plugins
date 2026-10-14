@@ -76,7 +76,7 @@ type Deps struct {
 	// selects from (either may be nil).
 	Herdr, Orca host.Host
 	// Config loads the config each time the runner consults it (the
-	// Python runner re-read it, so edits apply to a running wave); nil is
+	// runner re-reads it, so edits apply to a running wave); nil is
 	// config.Resolve.
 	Config func() (*config.Resolved, error)
 	// AgentExec is the argv prefix running this agent-exec (the default
@@ -179,7 +179,7 @@ func ExitCode(r Report) int {
 // FormatText is the `--text` report.
 func FormatText(r Report) string {
 	if r.Status == "error" {
-		return "wave run error: " + pyStrPtr(r.Reason)
+		return "wave run error: " + derefOr(r.Reason, "unknown")
 	}
 	line := fmt.Sprintf("wave run %s  waves=%d", r.Status, r.Waves)
 	if r.Reason != nil && *r.Reason != "" {
@@ -197,7 +197,7 @@ func FormatText(r Report) string {
 	if len(r.Needs) > 0 {
 		parts := make([]string, len(r.Needs))
 		for i, n := range r.Needs {
-			parts[i] = fmt.Sprintf("%s(%s)", pyStrPtr(n.ID), n.Kind)
+			parts[i] = fmt.Sprintf("%s(%s)", derefOr(n.ID, "-"), n.Kind)
 		}
 		lines = append(lines, "  needs: "+strings.Join(parts, ", "))
 	}
@@ -207,7 +207,7 @@ func FormatText(r Report) string {
 			id := d["id"]
 			h := d["host"]
 			port := d["port"]
-			parts[i] = fmt.Sprintf("%s(%s:%s)", pyStr(id), pyStr(h), pyStr(port))
+			parts[i] = fmt.Sprintf("%s(%s:%s)", valText(id), valText(h), valText(port))
 		}
 		lines = append(lines, "  network denied: "+strings.Join(parts, ", "))
 	}
@@ -217,9 +217,9 @@ func FormatText(r Report) string {
 	return strings.Join(lines, "\n")
 }
 
-func pyStrPtr(s *string) string {
+func derefOr(s *string, def string) string {
 	if s == nil {
-		return "None"
+		return def
 	}
 	return *s
 }

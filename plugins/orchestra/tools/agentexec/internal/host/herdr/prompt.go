@@ -118,7 +118,7 @@ func (e *Executor) WaitResult(ctx context.Context, s *host.Session, resultPath s
 	e.NetworkTick()
 	mark := 0
 	if v, ok := s.Get("net_mark"); ok {
-		mark = int(host.PyFloat(v, 0))
+		mark = int(host.ConfigFloat(v, 0))
 	}
 	denials := e.denials(mark)
 	if leaked := e.warmLeak(s); len(leaked) > 0 {

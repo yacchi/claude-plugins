@@ -217,7 +217,7 @@ func requestID(result any) string {
 var nameUnsafe = regexp.MustCompile(`[^a-z0-9._-]+`)
 
 func sanitizeName(text string) string {
-	s := strings.Trim(nameUnsafe.ReplaceAllString(config.PyLower(text), "-"), "-.")
+	s := strings.Trim(nameUnsafe.ReplaceAllString(strings.ToLower(text), "-"), "-.")
 	if s == "" {
 		return "wave"
 	}
@@ -454,7 +454,7 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	if err != nil || baseSHA == "" {
 		return nil, host.Need(host.KindError, "could not resolve "+baseRef+" to a commit")
 	}
-	run8 := nonAlnum.ReplaceAllString(config.PyLower(runID), "")
+	run8 := nonAlnum.ReplaceAllString(strings.ToLower(runID), "")
 	if len(run8) > 8 {
 		run8 = run8[:8]
 	}

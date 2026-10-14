@@ -60,7 +60,7 @@ func abs(p string) string {
 }
 
 // Register appends a registry line (paths made absolute; RegisteredAt 0 =
-// now). The line's keys are sorted like Python's sort_keys.
+// now). The line's keys are sorted.
 func Register(r Registration) error {
 	if r.RegisteredAt == 0 {
 		r.RegisteredAt = wallClock()

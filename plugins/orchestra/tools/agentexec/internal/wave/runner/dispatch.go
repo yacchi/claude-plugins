@@ -340,7 +340,7 @@ func (r *runner) hostStart(pid, token string, delegated map[string]any, promptFi
 			res, err := isolate.Remove(r.root, r.task(pid), false, "")
 			if err != nil || (res.Status != "removed" && res.Status != "absent") {
 				return r.hostNeed(token, host.Need(host.KindError, fmt.Sprintf(
-					"could not drop the dispatch worktree %s (%s)", stray, pyNone(res.Status))), "")
+					"could not drop the dispatch worktree %s (%s)", stray, orUnknown(res.Status))), "")
 			}
 		}
 	}

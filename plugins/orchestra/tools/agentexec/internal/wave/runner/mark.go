@@ -69,7 +69,7 @@ func Mark(o MarkOptions) (map[string]any, int) {
 	if o.Pkg == "" || st.Packages[o.Pkg] == nil {
 		pkg := o.Pkg
 		if pkg == "" {
-			pkg = "None"
+			pkg = "(none)"
 		}
 		return fail(2, "unknown package: "+pkg)
 	}

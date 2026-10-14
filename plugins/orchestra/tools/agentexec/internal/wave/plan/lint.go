@@ -24,25 +24,12 @@ type Warning struct {
 
 func pkgPtr(id string) *string { return &id }
 
-// countLines is len(text.splitlines()).
+// countLines is the number of lines in text; a final line without a
+// trailing newline counts.
 func countLines(text string) int {
-	n := 0
-	for i := 0; i < len(text); {
-		r, w := utf8.DecodeRuneInString(text[i:])
-		i += w
-		switch r {
-		case '\r':
-			if i < len(text) && text[i] == '\n' {
-				i++
-			}
-			n++
-		case '\n', '\v', '\f', '\x1c', '\x1d', '\x1e', '\u0085', ' ', ' ':
-			n++
-		default:
-			if i >= len(text) {
-				n++
-			}
-		}
+	n := strings.Count(text, "\n")
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		n++
 	}
 	return n
 }

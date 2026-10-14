@@ -47,23 +47,22 @@ func formatElapsed(seconds float64) string {
 	return fmt.Sprintf("%dh%02dm", s/3600, s%3600/60)
 }
 
-// firstLine is detail.splitlines()[0] ("" when empty).
+// firstLine is the first line of s ("" when empty).
 func firstLine(s string) string {
-	for i, r := range s {
-		switch r {
-		case '\n', '\r', '\v', '\f', '\x1c', '\x1d', '\x1e', '\u0085', ' ', ' ':
-			return s[:i]
-		}
-	}
-	return s
+	line, _, _ := strings.Cut(s, "\n")
+	return strings.TrimSuffix(line, "\r")
 }
 
-func pyStr(v any, present bool) string {
-	if !present || v == nil {
-		return "None"
-	}
-	if s, ok := v.(string); ok {
-		return s
+// valText renders a decoded JSON value for text output; "-" for null/absent.
+func valText(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return "-"
+	case string:
+		if x == "" {
+			return "-"
+		}
+		return x
 	}
 	b, _ := fsutil.MarshalJSON(v)
 	return string(b)
@@ -77,10 +76,8 @@ func formatEventLine(ev map[string]any) string {
 	}
 	event, _ := get("event").(string)
 	parts := []string{pkg, event}
-	fromV, fromOK := ev["from"]
-	toV, toOK := ev["to"]
-	if truthy(fromV) || truthy(toV) {
-		parts = append(parts, pyStr(fromV, fromOK)+"->"+pyStr(toV, toOK))
+	if from, to := valText(ev["from"]), valText(ev["to"]); from != "-" || to != "-" {
+		parts = append(parts, from+"->"+to)
 	}
 	if d, ok := get("detail").(string); ok && d != "" {
 		parts = append(parts, firstLine(d))
@@ -92,22 +89,6 @@ func formatEventLine(ev map[string]any) string {
 		}
 	}
 	return strings.Join(kept, "  ")
-}
-
-func truthy(v any) bool {
-	switch x := v.(type) {
-	case nil:
-		return false
-	case string:
-		return x != ""
-	case bool:
-		return x
-	case int64:
-		return x != 0
-	case float64:
-		return x != 0
-	}
-	return true
 }
 
 // LiveChanges counts, per in-flight package whose tree exists, the lines of
@@ -241,19 +222,7 @@ func RenderStatus(st *State, now float64, o RenderOptions) string {
 	for _, id := range ids {
 		for _, d := range st.Packages[id].NetworkDenials {
 			obj, _ := d.(map[string]any)
-			if obj == nil {
-				if m, ok := d.(map[string]any); ok {
-					obj = map[string]any{}
-					for k, v := range m {
-						obj[k] = v
-					}
-				} else {
-					obj = map[string]any{}
-				}
-			}
-			h, hok := obj["host"]
-			pt, pok := obj["port"]
-			denied = append(denied, fmt.Sprintf("  %s  %s:%s", id, pyStr(h, hok), pyStr(pt, pok)))
+			denied = append(denied, fmt.Sprintf("  %s  %s:%s", id, valText(obj["host"]), valText(obj["port"])))
 		}
 	}
 	if len(denied) > 0 {

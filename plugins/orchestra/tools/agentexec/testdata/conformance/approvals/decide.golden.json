@@ -123,7 +123,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "net:10.0.0.1  ports=443  packages=A(needs)\nnet:files.example.com  ports=80,443  packages=A(needs),B(implementing)\nnet:other.example.org  ports=8443  packages=B(implementing)\npath:C:0  <HOME>/.toolcache/f  grant=<HOME>/.toolcache  why=not cache\npath:D:0  <HOME>/.claude/settings.json  grant=None  why=config\ndialog:E  orca terminal=term-E  Allow write to /x? /   1. Yes /   2. No\ndecide: agent-exec approvals decide --state wave/state.json ITEM allow|deny --reason TEXT\n"
+      "stdout": "net:10.0.0.1  ports=443  packages=A(needs)\nnet:files.example.com  ports=80,443  packages=A(needs),B(implementing)\nnet:other.example.org  ports=8443  packages=B(implementing)\npath:C:0  <HOME>/.toolcache/f  grant=<HOME>/.toolcache  why=not cache\npath:D:0  <HOME>/.claude/settings.json  grant=-  why=config\ndialog:E  orca terminal=term-E  Allow write to /x? /   1. Yes /   2. No\ndecide: agent-exec approvals decide --state wave/state.json ITEM allow|deny --reason TEXT\n"
     },
     {
       "argv": [

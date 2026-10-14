@@ -4,13 +4,13 @@
 package plan
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
@@ -83,12 +83,13 @@ func resolve(p, base string) string {
 	return filepath.Join(base, p)
 }
 
-func readError(p string, err error) string {
-	var pe *os.PathError
-	if errors.As(err, &pe) && errors.Is(pe.Err, syscall.ENOENT) {
-		return "[Errno 2] No such file or directory: " + pyStrRepr(p)
+// jsonText renders a decoded JSON value as compact JSON for error messages.
+func jsonText(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprint(v)
 	}
-	return err.Error()
+	return string(b)
 }
 
 func stringList(v any) ([]string, bool) {
@@ -118,7 +119,7 @@ func Load(file string) (*Plan, error) {
 
 	data, err := os.ReadFile(file)
 	if err != nil {
-		return nil, errf("invalid JSON in plan %s: %s", file, readError(file, err))
+		return nil, errf("cannot read plan %s: %s", file, err)
 	}
 	doc, err := fsutil.DecodeJSON(data)
 	if err != nil {
@@ -214,12 +215,12 @@ func Load(file string) (*Plan, error) {
 	for _, e := range entries {
 		entry, isObj := e.(map[string]any)
 		if !isObj {
-			return nil, errf("plan packages entries must be objects: %s", pyRepr(e))
+			return nil, errf("plan packages entries must be objects: %s", jsonText(e))
 		}
 		idV := entry["id"]
 		id, isStr := idV.(string)
 		if !isStr || id == "" {
-			return nil, errf("package missing required field 'id': %s", pyRepr(entry))
+			return nil, errf("package missing required field 'id': %s", jsonText(entry))
 		}
 		if seen[id] {
 			return nil, errf("duplicate package id: %s", id)
@@ -233,11 +234,11 @@ func Load(file string) (*Plan, error) {
 		}
 		clsV := entry["cls"]
 		cls, _ := clsV.(string)
-		if falsy(clsV) {
+		if clsV == nil || clsV == "" {
 			return nil, errf("%s: missing required field 'cls'", id)
 		}
 		if !contains(ValidCls, cls) {
-			return nil, errf("%s: invalid cls %s (must be one of %s)", id, pyRepr(clsV), strings.Join(ValidCls, ", "))
+			return nil, errf("%s: invalid cls %s (must be one of %s)", id, jsonText(clsV), strings.Join(ValidCls, ", "))
 		}
 		specPath := resolve(spec, base)
 		if _, err := os.Stat(specPath); err != nil {
@@ -276,7 +277,7 @@ func Load(file string) (*Plan, error) {
 	for _, pkg := range p.Packages {
 		for _, dep := range pkg.DependsOn {
 			if !seen[dep] && !external[dep] {
-				return nil, errf("%s: depends_on unknown id %s", pkg.ID, pyStrRepr(dep))
+				return nil, errf("%s: depends_on %s is unknown", pkg.ID, strconv.Quote(dep))
 			}
 		}
 	}
@@ -284,27 +285,6 @@ func Load(file string) (*Plan, error) {
 		return nil, err
 	}
 	return p, nil
-}
-
-// falsy is Python truthiness for a decoded JSON value.
-func falsy(v any) bool {
-	switch x := v.(type) {
-	case nil:
-		return true
-	case bool:
-		return !x
-	case string:
-		return x == ""
-	case int64:
-		return x == 0
-	case float64:
-		return x == 0
-	case []any:
-		return len(x) == 0
-	case map[string]any:
-		return len(x) == 0
-	}
-	return false
 }
 
 func contains(list []string, s string) bool {

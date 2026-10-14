@@ -70,7 +70,7 @@ func NotePath(stateDir, pid string) string {
 // that is not a host, so trailing prose never yields a bogus host.
 func NetworkEscalateHosts(answer string) []map[string]any {
 	first := ""
-	for _, line := range pySplitLines(answer) {
+	for _, line := range splitLines(answer) {
 		if t := strings.TrimSpace(line); t != "" {
 			first = t
 			break
@@ -110,8 +110,8 @@ func NetworkEscalateHosts(answer string) []map[string]any {
 	return out
 }
 
-// pySplitLines is str.splitlines for the separators answers carry.
-func pySplitLines(s string) []string {
+// splitLines splits on newlines (CRLF-tolerant), dropping the trailing one.
+func splitLines(s string) []string {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
 	s = strings.TrimSuffix(s, "\n")
 	if s == "" {
@@ -123,7 +123,7 @@ func pySplitLines(s string) []string {
 // --- config / stores ---------------------------------------------------------
 
 // resolveConfig is the resolved config, or the defaults when a layer is
-// broken (approvals keep working on a broken config, like the Python tool).
+// broken (approvals keep working on a broken config).
 func resolveConfig() *config.Resolved {
 	cfg, err := config.Resolve()
 	if err != nil || cfg == nil {
@@ -352,7 +352,7 @@ func dialogOf(n state.Need) (text string, terminal any, ok bool) {
 		if data == nil || data["orca"] != "stalled" {
 			return "", nil, false
 		}
-		detail = pyStr(data["detail"])
+		detail = valText(data["detail"])
 	default:
 		return "", nil, false
 	}
@@ -418,7 +418,7 @@ func PendingIn(statePath string, cfg *config.Resolved) ([]Item, error) {
 			if m == nil {
 				continue
 			}
-			h := strings.TrimRight(strings.ToLower(strings.TrimSpace(pyStrOr(m["host"]))), ".")
+			h := strings.TrimRight(strings.ToLower(strings.TrimSpace(textOrEmpty(m["host"]))), ".")
 			if h == "" || stateOf(h) != "" {
 				continue
 			}
@@ -427,7 +427,7 @@ func PendingIn(statePath string, cfg *config.Resolved) ([]Item, error) {
 				e = &hostEntry{}
 				hosts[h] = e
 			}
-			if !containsAny(e.ports, m["port"]) {
+			if !containsPort(e.ports, m["port"]) {
 				e.ports = append(e.ports, m["port"])
 			}
 			known := false
@@ -451,7 +451,7 @@ func PendingIn(statePath string, cfg *config.Resolved) ([]Item, error) {
 	for _, h := range names {
 		e := hosts[h]
 		ports := append([]any{}, e.ports...)
-		sort.SliceStable(ports, func(i, j int) bool { return pyLess(ports[i], ports[j]) })
+		sort.SliceStable(ports, func(i, j int) bool { return portLess(ports[i], ports[j]) })
 		items = append(items, Item{
 			ID: "net:" + h, Kind: "net", Host: h, Ports: ports, Packages: e.pkgs,
 			FirstSeen: seen[h], Spec: e.pkgs[0].Spec,
@@ -495,7 +495,7 @@ func FormatLine(it Item) string {
 	case "net":
 		ports := make([]string, len(it.Ports))
 		for i, p := range it.Ports {
-			ports[i] = pyStr(p)
+			ports[i] = valText(p)
 		}
 		pkgs := make([]string, len(it.Packages))
 		for i, p := range it.Packages {
@@ -503,10 +503,10 @@ func FormatLine(it Item) string {
 		}
 		return fmt.Sprintf("%s  ports=%s  packages=%s", it.ID, strings.Join(ports, ","), strings.Join(pkgs, ","))
 	case "path":
-		return fmt.Sprintf("%s  %s  grant=%s  why=%s", it.ID, pyStr(it.Path), pyStr(it.GrantCandidate), pyStr(it.Why))
+		return fmt.Sprintf("%s  %s  grant=%s  why=%s", it.ID, valText(it.Path), valText(it.GrantCandidate), valText(it.Why))
 	}
 	var tail []string
-	for _, ln := range pySplitLines(it.Dialog) {
+	for _, ln := range splitLines(it.Dialog) {
 		if strings.TrimSpace(ln) != "" {
 			tail = append(tail, ln)
 		}
@@ -514,5 +514,5 @@ func FormatLine(it Item) string {
 	if len(tail) > 3 {
 		tail = tail[len(tail)-3:]
 	}
-	return fmt.Sprintf("%s  %s terminal=%s  %s", it.ID, it.HostName, pyStr(it.Terminal), strings.Join(tail, " / "))
+	return fmt.Sprintf("%s  %s terminal=%s  %s", it.ID, it.HostName, valText(it.Terminal), strings.Join(tail, " / "))
 }
