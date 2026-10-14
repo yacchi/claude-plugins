@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -13,37 +12,22 @@ import (
 
 func newDoctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:                "doctor",
-		Short:              "structured readiness report (--json is the default)",
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDoctor(cmd.OutOrStdout(), args)
-		},
+		Use:   "doctor",
+		Short: "structured readiness report (--json is the default)",
+		Args:  cobra.NoArgs,
 	}
-	// Declared for --help only; DisableFlagParsing means they are never
-	// parsed (the last of --json/--text wins, like the Python parser).
-	formatFlags(cmd, "json", "text")
-	return cmd
-}
-
-func runDoctor(w io.Writer, args []string) error {
-	format := "--json"
-	for _, a := range args {
-		if a != "--json" && a != "--text" {
-			return exitf(2, "doctor: unknown option: %s", a)
+	format := formatFlags(cmd, "json", "text")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		cfg, err := config.Resolve()
+		if err == nil {
+			tools.MarkAvailability(cfg)
 		}
-		format = a
+		report := doctor.Build(cfg, err)
+		if format.is("text") {
+			_, werr := fmt.Fprint(cmd.OutOrStdout(), doctor.FormatText(report))
+			return werr
+		}
+		return writeJSON(cmd.OutOrStdout(), report.Object())
 	}
-
-	cfg, err := config.Resolve()
-	if err == nil {
-		tools.MarkAvailability(cfg)
-	}
-	report := doctor.Build(cfg, err)
-	if format == "--text" {
-		_, werr := fmt.Fprint(w, doctor.FormatText(report))
-		return werr
-	}
-	return writeJSON(w, report.Object())
+	return cmd
 }

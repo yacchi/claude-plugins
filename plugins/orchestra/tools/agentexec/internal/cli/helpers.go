@@ -9,7 +9,7 @@ import (
 )
 
 // loadConfig resolves the config layers and annotates executor availability.
-// A bad layer is exit 1 with the layer's error (Python printed it verbatim).
+// A bad layer is exit 1 with the layer's error.
 func loadConfig() (*config.Resolved, error) {
 	cfg, err := config.Resolve()
 	if err != nil {
@@ -29,7 +29,7 @@ func configOrDefaults() *config.Resolved {
 	return cfg
 }
 
-// writeJSON prints v as Python's json.dumps(v, indent=2) plus a newline.
+// writeJSON prints v as indented JSON plus a newline.
 func writeJSON(w io.Writer, v any) error {
 	b, err := fsutil.MarshalJSONIndent(v)
 	if err != nil {
@@ -39,7 +39,7 @@ func writeJSON(w io.Writer, v any) error {
 	return err
 }
 
-// writeJSONLine prints v as one line (Python's json.dumps(v)) plus a newline.
+// writeJSONLine prints v as one line of JSON plus a newline.
 func writeJSONLine(w io.Writer, v any) error {
 	b, err := fsutil.MarshalJSON(v)
 	if err != nil {

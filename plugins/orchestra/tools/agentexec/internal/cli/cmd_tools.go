@@ -9,12 +9,8 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
 )
 
-const toolsUsage = "usage: agent-exec tools [status] [--json|--text] | " +
-	"install [NAME ...] [--installer auto|mise|npm] [--force] " +
-	"[--json|--text]\n"
-
 // newToolsCmd: bare `tools` is `tools status`. Output is text unless --json
-// is given without --text.
+// is given.
 func newToolsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tools",
@@ -24,37 +20,36 @@ func newToolsCmd() *cobra.Command {
 	format := formatFlags(cmd, "json", "text")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
-			fmt.Fprint(cmd.ErrOrStderr(), "agent-exec: tools: unknown subcommand: "+args[0]+"\n"+toolsUsage)
-			return &ExitError{Code: 2}
+			return exitf(2, "tools: unknown subcommand: %s", args[0])
 		}
-		return runToolsStatus(cmd, format)
+		return runToolsStatus(cmd, format.is("json"))
 	}
 
-	status := withPrefix(&cobra.Command{
+	status := &cobra.Command{
 		Use:   "status",
 		Short: "where each tool resolves from",
-		Args:  cobra.ArbitraryArgs,
-	}, "tools")
+		Args:  cobra.NoArgs,
+	}
 	statusFormat := formatFlags(status, "json", "text")
-	status.RunE = func(cmd *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			fmt.Fprint(cmd.ErrOrStderr(), toolsUsage)
-			return &ExitError{Code: 2}
-		}
-		return runToolsStatus(cmd, statusFormat)
+	status.RunE = func(cmd *cobra.Command, _ []string) error {
+		return runToolsStatus(cmd, statusFormat.is("json"))
 	}
 
-	install := withPrefix(&cobra.Command{
+	install := &cobra.Command{
 		Use:   "install [NAME...]",
 		Short: "install or update the pinned tools",
 		Args:  cobra.ArbitraryArgs,
-	}, "tools")
-	installer := strFlag(install, "installer", "auto|mise|npm")
-	force := boolFlag(install, "force", "reinstall even when current")
+	}
+	installer := install.Flags().String("installer", "", "auto|mise|npm (default: the configured installer)")
+	force := install.Flags().Bool("force", false, "reinstall even when current")
 	installFormat := formatFlags(install, "json", "text")
 	install.RunE = func(cmd *cobra.Command, args []string) error {
-		if v, ok := installer.Get(); ok && v != "auto" && v != "mise" && v != "npm" {
-			return exitf(2, "tools: unknown installer: %s", v)
+		switch *installer {
+		case "auto", "mise", "npm":
+		default:
+			if cmd.Flags().Changed("installer") {
+				return exitf(2, "tools install: unknown installer: %s", *installer)
+			}
 		}
 		cfg := configOrDefaults()
 		valid := map[string]bool{}
@@ -63,7 +58,7 @@ func newToolsCmd() *cobra.Command {
 		}
 		for _, n := range args {
 			if !valid[n] {
-				return exitf(2, "tools: unknown tool: %s", n)
+				return exitf(2, "tools install: unknown tool: %s", n)
 			}
 		}
 		names := args
@@ -74,9 +69,9 @@ func newToolsCmd() *cobra.Command {
 				}
 			}
 		}
-		results := tools.Install(cfg, names, installer.Or(""), force.On())
+		results := tools.Install(cfg, names, *installer, *force)
 		out := cmd.OutOrStdout()
-		if asJSON(installFormat) {
+		if installFormat.is("json") {
 			if err := writeJSON(out, results); err != nil {
 				return err
 			}
@@ -90,14 +85,12 @@ func newToolsCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(status, install)
-	return withPrefix(cmd, "tools")
+	return cmd
 }
 
-func asJSON(f *format) bool { return f.Given("json") && !f.Given("text") }
-
-func runToolsStatus(cmd *cobra.Command, f *format) error {
+func runToolsStatus(cmd *cobra.Command, asJSON bool) error {
 	items := tools.Status(configOrDefaults())
-	if asJSON(f) {
+	if asJSON {
 		return writeJSON(cmd.OutOrStdout(), items)
 	}
 	printLines(cmd.OutOrStdout(), items, tools.StatusLine)

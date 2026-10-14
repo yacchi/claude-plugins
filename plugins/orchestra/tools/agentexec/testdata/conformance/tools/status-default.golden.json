@@ -100,9 +100,9 @@
         "--json",
         "--text"
       ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "pi  system  -  <ROOT>/bin/pi  run: agent-exec tools install pi\nherdr  -  -  -  not-installed  run: agent-exec tools install herdr\nsrt  -  -  -  not-installed  run: agent-exec tools install srt\n"
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
     }
   ]
 }
