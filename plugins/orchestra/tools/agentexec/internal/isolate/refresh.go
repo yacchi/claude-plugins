@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
@@ -287,10 +286,6 @@ func writePatchFile(dir, name, patch string) (string, error) {
 	}
 	return path, nil
 }
-
-// PyRepr is a temporary alias of strconv.Quote, kept only so packages owned
-// by other workers (cli) keep compiling; callers should use %q instead.
-func PyRepr(s string) string { return strconv.Quote(s) }
 
 // RevParseCommit resolves ref to a commit SHA in root, "" when it does not
 // name one.

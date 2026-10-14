@@ -262,4 +262,3 @@ func TestLint(t *testing.T) {
 		t.Fatalf("without a root the warm_read warning is dropped: %d", n)
 	}
 }
-

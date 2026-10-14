@@ -125,7 +125,7 @@ func normalizeSandbox(raw map[string]any, u *union) map[string]any {
 			mode = "off" // an explicit `mode: false` means off
 		}
 	case string:
-		if s := PyLower(strings.TrimSpace(x)); contains(sandboxModes, s) {
+		if s := strings.ToLower(strings.TrimSpace(x)); contains(sandboxModes, s) {
 			mode = s
 		}
 	}
@@ -145,7 +145,7 @@ func normalizeNetwork(raw map[string]any, u *union) map[string]any {
 			mode = "off"
 		}
 	case string:
-		if PyLower(strings.TrimSpace(x)) == "off" {
+		if strings.ToLower(strings.TrimSpace(x)) == "off" {
 			mode = "off"
 		}
 	}
@@ -154,7 +154,7 @@ func normalizeNetwork(raw map[string]any, u *union) map[string]any {
 	case bool:
 		ecosystem = !ok || x
 	case string:
-		switch PyLower(strings.TrimSpace(x)) {
+		switch strings.ToLower(strings.TrimSpace(x)) {
 		case "off", "false", "no", "0":
 			ecosystem = false
 		}
@@ -163,7 +163,7 @@ func normalizeNetwork(raw map[string]any, u *union) map[string]any {
 	for _, key := range []string{"allowed_domains", "denied_domains", "quiet_domains"} {
 		var norm []string
 		for _, v := range u.network[key] {
-			if s := PyLower(strings.TrimSpace(v)); s != "" {
+			if s := FoldHost(strings.TrimSpace(v)); s != "" {
 				norm = append(norm, s)
 			}
 		}
@@ -177,7 +177,7 @@ func isOff(v any) bool {
 	case bool:
 		return !x
 	case string:
-		return PyLower(strings.TrimSpace(x)) == "off"
+		return strings.ToLower(strings.TrimSpace(x)) == "off"
 	}
 	return false
 }
