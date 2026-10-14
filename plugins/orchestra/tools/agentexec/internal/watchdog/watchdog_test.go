@@ -193,3 +193,24 @@ func TestDisabledNeverStartsTimer(t *testing.T) {
 		t.Fatalf("result %+v", r)
 	}
 }
+
+func TestCanonicalNumbersCompareByValue(t *testing.T) {
+	pairs := [][2]string{
+		{"1", "1.0"},
+		{"1000000", "1000000.0"},
+		{"1e16", "10000000000000000"},
+		{"0", "-0.0"},
+		{"-0", "0.0"},
+		{"2.5e0", "2.5"},
+	}
+	for _, p := range pairs {
+		a, _ := decodeObject(`{"n": ` + p[0] + `}`)
+		b, _ := decodeObject(`{"n": ` + p[1] + `}`)
+		if Canonical(a) != Canonical(b) {
+			t.Errorf("%s vs %s: %s != %s", p[0], p[1], Canonical(a), Canonical(b))
+		}
+	}
+	if got := Canonical(map[string]any{"n": json.Number("1e-05")}); got != `{"n":1e-05}` {
+		t.Errorf("small float = %s", got)
+	}
+}
