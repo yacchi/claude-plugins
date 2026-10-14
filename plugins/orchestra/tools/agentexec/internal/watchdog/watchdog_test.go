@@ -13,9 +13,9 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
-// fixtures is testdata/fixtures.json: the retired Python Watchdog driven by
-// a fake clock (recorded by a generator removed at the v0.55.0 cutover; see
-// git history). Frozen regression data: never edit by hand.
+// fixtures is testdata/fixtures.json: Watchdog runs driven by a fake clock,
+// first recorded from the retired Python implementation. Expected values
+// are edited by hand when the behavior intentionally changes.
 type fixtures struct {
 	Cases []struct {
 		Name        string          `json:"name"`
@@ -47,7 +47,7 @@ func plain(t *testing.T, v any) any {
 	return out
 }
 
-func TestWatchdogMatchesPython(t *testing.T) {
+func TestWatchdogFixtures(t *testing.T) {
 	raw, err := os.ReadFile("testdata/fixtures.json")
 	if err != nil {
 		t.Fatal(err)
@@ -191,5 +191,26 @@ func TestDisabledNeverStartsTimer(t *testing.T) {
 	w.Stop()
 	if r := w.Result(); r != nil {
 		t.Fatalf("result %+v", r)
+	}
+}
+
+func TestCanonicalNumbersCompareByValue(t *testing.T) {
+	pairs := [][2]string{
+		{"1", "1.0"},
+		{"1000000", "1000000.0"},
+		{"1e16", "10000000000000000"},
+		{"0", "-0.0"},
+		{"-0", "0.0"},
+		{"2.5e0", "2.5"},
+	}
+	for _, p := range pairs {
+		a, _ := decodeObject(`{"n": ` + p[0] + `}`)
+		b, _ := decodeObject(`{"n": ` + p[1] + `}`)
+		if Canonical(a) != Canonical(b) {
+			t.Errorf("%s vs %s: %s != %s", p[0], p[1], Canonical(a), Canonical(b))
+		}
+	}
+	if got := Canonical(map[string]any{"n": json.Number("1e-05")}); got != `{"n":1e-05}` {
+		t.Errorf("small float = %s", got)
 	}
 }

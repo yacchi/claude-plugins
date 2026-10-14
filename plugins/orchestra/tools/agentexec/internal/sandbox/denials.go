@@ -3,10 +3,13 @@ package sandbox
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // Denial is one sandbox denial in a finished run. Source is "tool" (a pi
@@ -62,37 +65,10 @@ func candidates(line string) []string {
 	return out
 }
 
-// pySplitLines is str.splitlines().
-func pySplitLines(s string) []string {
-	var out []string
-	rs := []rune(s)
-	b := strings.Builder{}
-	for i := 0; i < len(rs); i++ {
-		r := rs[i]
-		switch r {
-		case '\n', '\v', '\f', '\x1c', '\x1d', '\x1e', '\u0085', '\u2028', '\u2029':
-			out = append(out, b.String())
-			b.Reset()
-		case '\r':
-			out = append(out, b.String())
-			b.Reset()
-			if i+1 < len(rs) && rs[i+1] == '\n' {
-				i++
-			}
-		default:
-			b.WriteRune(r)
-		}
-	}
-	if b.Len() > 0 {
-		out = append(out, b.String())
-	}
-	return out
-}
-
 func nearestExisting(path string) string {
 	p := path
 	for p != "" && !lexists(p) {
-		parent := pyDirname(p)
+		parent := filepath.Dir(p)
 		if parent == p {
 			break
 		}
@@ -187,7 +163,7 @@ func detectDenials(toolTexts []string, stderr, cwd string, p *Policy, access fun
 		return false
 	}
 	for _, s := range sources {
-		for _, line := range pySplitLines(s.text) {
+		for _, line := range fsutil.SplitLines(s.text) {
 			if !markerRe.MatchString(line) {
 				continue
 			}
@@ -195,7 +171,7 @@ func detectDenials(toolTexts []string, stderr, cwd string, p *Policy, access fun
 			for _, cand := range candidates(line) {
 				path := cand
 				if !strings.HasPrefix(cand, "/") {
-					path = pyJoin(cwd, cand)
+					path = filepath.Join(cwd, cand)
 				}
 				real := realPath(path)
 				if seen[real] {

@@ -59,7 +59,7 @@ func oneOf(v any, allowed []string) (string, bool) {
 	return "", false
 }
 
-// nonNegInt is Python's _is_nonneg_int: an integer (never a bool) >= 0.
+// nonNegInt is v as an integer (never a bool) >= 0.
 func nonNegInt(v any) (int64, bool) {
 	switch x := v.(type) {
 	case int64:

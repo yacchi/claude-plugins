@@ -62,8 +62,7 @@ func modelEffort(model, effort string) map[string]any {
 	return obj("model", model, "effort", effort)
 }
 
-// Defaults returns a fresh copy of the built-in configuration (Python's
-// DEFAULTS), the lowest layer every resolution starts from. Integers are
+// Defaults returns a fresh copy of the built-in configuration, the lowest layer every resolution starts from. Integers are
 // int64, as the YAML and JSON loaders produce them.
 func Defaults() map[string]any {
 	claudeModels := func() map[string]any {

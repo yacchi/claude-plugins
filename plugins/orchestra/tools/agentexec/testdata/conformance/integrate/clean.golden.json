@@ -370,7 +370,7 @@
           "path": null,
           "task": "r3"
         },
-        "note": "could not resolve --onto ref 'nope' to a commit",
+        "note": "could not resolve --onto ref \"nope\" to a commit",
         "onto": null,
         "status": "error",
         "tasks": [

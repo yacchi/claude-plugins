@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -18,7 +19,7 @@ import (
 func SeatbeltProfile(p *Policy) (string, [][2]string) {
 	var params [][2]string
 	param := func(prefix, path string) string {
-		// Numbered per prefix the way the Python implementation counts: by
+		// Numbered per prefix, counting
 		// every key STARTING with the prefix (so R continues after RO/RW).
 		n := 0
 		for _, kv := range params {
@@ -171,7 +172,7 @@ func landlockArgv(argv []string, p *Policy) []string {
 
 var shUnsafe = regexp.MustCompile(`[^A-Za-z0-9_@%+=:,./-]`)
 
-// ShellQuote is Python's shlex.quote.
+// ShellQuote quotes s for a POSIX shell.
 func ShellQuote(s string) string {
 	if s == "" {
 		return "''"
@@ -244,7 +245,7 @@ func carveOut(ro string, inner []string) []string {
 	sort.Strings(names)
 	var out []string
 	for _, name := range names {
-		entry := pyJoin(ro, name)
+		entry := filepath.Join(ro, name)
 		var holders []string
 		for _, w := range inner {
 			if under(w, entry) {
@@ -277,7 +278,7 @@ func srtSettings(p *Policy, sockets, allowed, denied []string, home string, allo
 	}
 	allow = dedupe(allow)
 	if len(p.WritableRegex) > 0 {
-		allow = append(allow, pyJoin(home, ".claude.json*"))
+		allow = append(allow, filepath.Join(home, ".claude.json*"))
 	}
 	var deny []string
 	for _, d := range p.DenyWrite {

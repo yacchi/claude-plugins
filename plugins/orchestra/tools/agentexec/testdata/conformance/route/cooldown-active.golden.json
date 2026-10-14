@@ -78,7 +78,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: claude (dispatch=claude model=sonnet effort=None)\nskipped:\n  - pi: cooldown:quota\ncooldown: pi (quota) until 4102444800.5\nsource: priority\n"
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: claude (dispatch=claude model=sonnet effort=-)\nskipped:\n  - pi: cooldown:quota\ncooldown: pi (quota) until 4102444800.5\nsource: priority\n"
     },
     {
       "argv": [

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,7 +26,7 @@ func StateDir() string { return stateDir("") }
 func stateDir(home string) string {
 	home = homeOf(home)
 	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" && strings.HasPrefix(xdg, "/") {
-		return realPath(pyJoin(xdg, "claude-orchestra"))
+		return realPath(filepath.Join(xdg, "claude-orchestra"))
 	}
 	return expand(stateDirRel, home)
 }
@@ -34,7 +35,7 @@ func stateDir(home string) string {
 func LearnedPath() string { return learnedPath("") }
 
 func learnedPath(home string) string {
-	return pyJoin(stateDir(home), "sandbox-learned.json")
+	return filepath.Join(stateDir(home), "sandbox-learned.json")
 }
 
 func cacheRoots(home string) []string {
@@ -57,7 +58,7 @@ func tamperPaths(home string) []string {
 		out = append(out, expand(p, home))
 	}
 	store := learnedPath(home)
-	out = append(out, store, pyDirname(store))
+	out = append(out, store, filepath.Dir(store))
 	return dedupe(out)
 }
 
@@ -73,8 +74,8 @@ func stateDenies(home string) []string {
 			out = append(out, p)
 		}
 	}
-	out = append(out, pyJoin(state, "tools"), pyJoin(state, SrtSettingsDir),
-		pyJoin(state, CLISrtDir), pyJoin(state, AuditDir))
+	out = append(out, filepath.Join(state, "tools"), filepath.Join(state, SrtSettingsDir),
+		filepath.Join(state, CLISrtDir), filepath.Join(state, AuditDir))
 	return dedupe(out)
 }
 
@@ -102,7 +103,7 @@ func grantFor(path, home string) string {
 			}
 			candidate = root
 			if found {
-				candidate = pyJoin(root, first)
+				candidate = filepath.Join(root, first)
 			}
 		}
 		if candidate == "" {
@@ -138,7 +139,7 @@ func userGrantRefusal(path string, denyRead []string, home string) string {
 		return "refusing to grant the home directory itself"
 	}
 	lexical := absPath(path)
-	for _, claude := range []string{expand("~/.claude", home), pyJoin(home, ".claude")} {
+	for _, claude := range []string{expand("~/.claude", home), filepath.Join(home, ".claude")} {
 		if overlaps(real, claude) || overlaps(lexical, claude) {
 			return "refusing to grant anything under ~/.claude"
 		}
@@ -157,7 +158,7 @@ func userGrantRefusal(path string, denyRead []string, home string) string {
 }
 
 // Grant is one learned path grant. The entry is kept as stored (unknown
-// keys and key order survive a rewrite of the store).
+// keys survive a rewrite of the store; keys are written sorted).
 type Grant struct {
 	Path, Source, Added, Example, Reason string
 	raw                                  map[string]any
@@ -322,7 +323,7 @@ const storeLockTimeout = 10 * time.Second
 // file.
 func lockStore(home string) (func() error, error) {
 	path := learnedPath(home)
-	if err := os.MkdirAll(pyDirname(path), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
 	return fsutil.Lock(path+".lock", fsutil.Exclusive, storeLockTimeout)
@@ -332,7 +333,7 @@ func lockStore(home string) (func() error, error) {
 // list keeps that list of the store as it is.
 func saveLearned(home string, grants, domains []any) error {
 	path := learnedPath(home)
-	if err := os.MkdirAll(pyDirname(path), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	raw := rawStore(home)

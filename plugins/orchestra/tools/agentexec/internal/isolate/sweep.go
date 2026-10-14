@@ -141,16 +141,10 @@ func (r SweepResult) MarshalJSON() ([]byte, error) {
 	return fsutil.MarshalJSON(o)
 }
 
-// pyRound is Python's round(x, n): the correctly rounded decimal of the
-// exact binary value.
-func pyRound(x float64, n int) float64 {
-	v, _ := strconv.ParseFloat(strconv.FormatFloat(x, 'f', n, 64), 64)
-	return v
-}
-
-// pyG is Python's "%g".
-func pyG(x float64) string {
-	return strconv.FormatFloat(x, 'g', 6, 64)
+// round returns x rounded to n decimal places.
+func round(x float64, n int) float64 {
+	p := math.Pow10(n)
+	return math.Round(x*p) / p
 }
 
 func branchAgeDays(root, branch string, now time.Time) *float64 {
@@ -167,7 +161,7 @@ func branchAgeDays(root, branch string, now time.Time) *float64 {
 		return nil
 	}
 	nowSec := float64(now.UnixNano()) / 1e9
-	age := pyRound(math.Max(0, (nowSec-float64(committed))/86400.0), 2)
+	age := round(math.Max(0, (nowSec-float64(committed))/86400.0), 2)
 	return &age
 }
 
@@ -215,7 +209,7 @@ func Sweep(root string, o SweepOptions) (SweepResult, error) {
 		return o.OlderThanDays != nil && (age == nil || *age < *o.OlderThanDays)
 	}
 	newerReason := func() string {
-		return fmt.Sprintf("newer than --older-than %s day(s)", pyG(*o.OlderThanDays))
+		return fmt.Sprintf("newer than --older-than %s day(s)", strconv.FormatFloat(*o.OlderThanDays, 'g', -1, 64))
 	}
 
 	res := SweepResult{Status: "ok", Repo: resolved, DryRun: o.DryRun, Pruned: pruned,
@@ -229,7 +223,7 @@ func Sweep(root string, o SweepOptions) (SweepResult, error) {
 			AgeDays: branchAgeDays(resolved, e.Branch, now),
 		}
 		if seen, ok := sessionLastSeen(session); ok {
-			idle := pyRound(math.Max(0, now.Sub(seen).Minutes()), 1)
+			idle := round(math.Max(0, now.Sub(seen).Minutes()), 1)
 			rec.SessionIdleMinutes = &idle
 		}
 		switch {

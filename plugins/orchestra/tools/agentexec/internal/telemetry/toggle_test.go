@@ -36,7 +36,8 @@ func TestSetEnabledInTextBytes(t *testing.T) {
 		{"odd indent", "telemetry:\n   enabled: false\n", true, "telemetry:\n   enabled: true\n"},
 		{"no trailing newline", "telemetry:\n  enabled: false", true, "telemetry:\n  enabled: true"},
 		{"CRLF preserved", "a: 1\r\ntelemetry:\r\n  enabled: false\r\nb: 2\r\n", true, "a: 1\r\ntelemetry:\r\n  enabled: true\r\nb: 2\r\n"},
-		{"lone CR preserved", "telemetry:\r  enabled: false\rb: 2\r", true, "telemetry:\r  enabled: true\rb: 2\r"},
+		{"CRLF insert stays CRLF", "telemetry:\r\n  dir: x\r\n", true, "telemetry:\r\n  enabled: true\r\n  dir: x\r\n"},
+		{"CRLF append stays CRLF", "a: 1\r\n", true, "a: 1\r\n\r\n" + strings.ReplaceAll(strings.Replace(tmpl, "%s", "true", 1), "\n", "\r\n")},
 		{"anchor with comment", "telemetry: # c\n  enabled: false\n", true, "telemetry: # c\n  enabled: true\n"},
 		{"anchor with trailing spaces", "telemetry:   \n  enabled: false\n", true, "telemetry:   \n  enabled: true\n"},
 		{"insert uses the block indent", "telemetry:\n    dir: x\n", true, "telemetry:\n    enabled: true\n    dir: x\n"},
@@ -52,9 +53,6 @@ func TestSetEnabledInTextBytes(t *testing.T) {
 		{"empty file", "", true, "\n" + strings.Replace(tmpl, "%s", "true", 1)},
 		{"whitespace only", "   \n\t\n", false, "   \n\t\n\n" + strings.Replace(tmpl, "%s", "false", 1)},
 		{"first anchor wins", "telemetry:\n  enabled: false\ntelemetry:\n  enabled: false\n", true, "telemetry:\n  enabled: true\ntelemetry:\n  enabled: false\n"},
-		{"unicode separator ends a line", "telemetry:   enabled: false b: 2", true, "telemetry:   enabled: true b: 2"},
-		{"NEL ends a line", "a: 1\u0085telemetry:\n  enabled: false\n", true, "a: 1\u0085telemetry:\n  enabled: true\n"},
-		{"unicode space after colon is whitespace", "telemetry: \n  enabled: false\n", true, "telemetry: \n  enabled: true\n"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -76,18 +74,14 @@ func TestSetEnabledInTextStubForMissingFile(t *testing.T) {
 	}
 }
 
-func TestSplitLinesKeepEndsMatchesPython(t *testing.T) {
+func TestSplitLinesKeepEnds(t *testing.T) {
 	cases := map[string][]string{
-		"":                      nil,
-		"a":                     {"a"},
-		"a\n":                   {"a\n"},
-		"a\r\nb":                {"a\r\n", "b"},
-		"a\rb\n":                {"a\r", "b\n"},
-		"a\n\nb":                {"a\n", "\n", "b"},
-		"a\vb\fc":               {"a\v", "b\f", "c"},
-		"a\x1cb\x1dc\x1ed\x1fe": {"a\x1c", "b\x1d", "c\x1e", "d\x1fe"},
-		"a\u0085b c d":          {"a\u0085", "b ", "c ", "d"},
-		"\r\r\n\n":              {"\r", "\r\n", "\n"},
+		"":       nil,
+		"a":      {"a"},
+		"a\n":    {"a\n"},
+		"a\r\nb": {"a\r\n", "b"},
+		"a\n\nb": {"a\n", "\n", "b"},
+		"\r\n\n": {"\r\n", "\n"},
 	}
 	for in, want := range cases {
 		got := splitLinesKeepEnds(in)
@@ -202,7 +196,7 @@ func FuzzSetEnabledInText(f *testing.F) {
 	})
 }
 
-func TestToggleWritesFilesLikePythonsTextMode(t *testing.T) {
+func TestToggleWritesFiles(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	work := t.TempDir()
@@ -217,19 +211,19 @@ func TestToggleWritesFilesLikePythonsTextMode(t *testing.T) {
 		t.Errorf("new file = %q", got)
 	}
 
-	// An existing .yml is edited only while the .yaml is absent; CRLF and a
-	// lone CR are read as LF.
+	// An existing .yml is edited only while the .yaml is absent; its line
+	// endings are kept.
 	if err := os.MkdirAll(".claude", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(".claude/orchestra.yml", []byte("a: 1\r\ntelemetry:\r  enabled: false\r"), 0o644); err != nil {
+	if err := os.WriteFile(".claude/orchestra.yml", []byte("a: 1\r\ntelemetry:\r\n  enabled: false\r\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	path, err = Toggle("project", true)
 	if err != nil || !strings.HasSuffix(path, ".claude/orchestra.yml") || !filepath.IsAbs(path) {
 		t.Fatalf("Toggle = %q, %v", path, err)
 	}
-	if got, _ := os.ReadFile(path); string(got) != "a: 1\ntelemetry:\n  enabled: true\n" {
+	if got, _ := os.ReadFile(path); string(got) != "a: 1\r\ntelemetry:\r\n  enabled: true\r\n" {
 		t.Errorf("edited = %q", got)
 	}
 	if err := os.WriteFile(".claude/orchestra.yaml", []byte("x: 1\n"), 0o644); err != nil {

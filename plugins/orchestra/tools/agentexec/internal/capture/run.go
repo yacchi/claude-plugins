@@ -15,6 +15,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/executor/pi"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
@@ -36,7 +37,7 @@ func ExecutorEnv(executor string, cfg *config.Resolved) map[string]string {
 }
 
 // ErrExecutorNotFound is a run whose executor binary does not resolve
-// (Python's `(127, None)`): nothing was spawned and there is no result.
+// nothing was spawned and there is no result.
 var ErrExecutorNotFound = errors.New("executor not found")
 
 // NotFoundExitCode is the exit code of an ErrExecutorNotFound dispatch.
@@ -106,7 +107,7 @@ func runPi(ctx context.Context, r Request, spec sandbox.Spec, prompt, resume str
 }
 
 // newWatchdog guards a run with the `watchdog:` section, or not at all
-// when the section is not an object (Python: watchdog=None).
+// when the section is not an object.
 func newWatchdog(r Request) *watchdog.Watchdog {
 	if r.Cfg == nil || r.Cfg.Values == nil {
 		return watchdog.New(watchdog.DefaultConfig(), classOr(r.Class))
@@ -155,11 +156,11 @@ func netDenials(list []srt.NetDenial) []any {
 // stderrTailChars characters; "" when nothing is left.
 func stderrTail(stderr string) string {
 	var lines []string
-	for _, line := range pySplitLines(stderr) {
-		if strings.TrimFunc(line, isSpace) == "" || strings.HasPrefix(line, "[SandboxDebug]") {
+	for _, line := range fsutil.SplitLines(stderr) {
+		if strings.TrimFunc(line, unicode.IsSpace) == "" || strings.HasPrefix(line, "[SandboxDebug]") {
 			continue
 		}
-		lines = append(lines, strings.TrimRightFunc(line, isSpace))
+		lines = append(lines, strings.TrimRightFunc(line, unicode.IsSpace))
 	}
 	if len(lines) > stderrTailLines {
 		lines = lines[len(lines)-stderrTailLines:]
@@ -171,37 +172,8 @@ func stderrTail(stderr string) string {
 	return string(runes)
 }
 
-// isSpace is Python's str.isspace for one rune.
-func isSpace(r rune) bool { return unicode.IsSpace(r) || (r >= 0x1c && r <= 0x1f) }
-
-// pySplitLines is str.splitlines().
-func pySplitLines(s string) []string {
-	var out []string
-	var b strings.Builder
-	rs := []rune(s)
-	for i := 0; i < len(rs); i++ {
-		switch r := rs[i]; r {
-		case '\n', '\v', '\f', '\x1c', '\x1d', '\x1e', '\u0085', ' ', ' ':
-			out = append(out, b.String())
-			b.Reset()
-		case '\r':
-			out = append(out, b.String())
-			b.Reset()
-			if i+1 < len(rs) && rs[i+1] == '\n' {
-				i++
-			}
-		default:
-			b.WriteRune(r)
-		}
-	}
-	if b.Len() > 0 {
-		out = append(out, b.String())
-	}
-	return out
-}
-
-// ReadPromptFiles reads UTF-8 prompt files (universal newlines, as Python's
-// text mode) and joins them in order: one file verbatim; several with each
+// ReadPromptFiles reads UTF-8 prompt files (CRLF and lone CR read as LF)
+// and joins them in order: one file verbatim; several with each
 // non-last non-empty text's trailing newlines replaced by one blank line,
 // empty files skipped. The error names the path that could not be read.
 func ReadPromptFiles(paths []string) (string, error) {

@@ -108,7 +108,7 @@ func ParseSince(value string, now time.Time) (time.Time, bool) {
 	}
 	if m := windowRE.FindStringSubmatch(text); m != nil {
 		amount, err := strconv.ParseInt(m[1], 10, 64)
-		// Beyond ~290 years Python's datetime arithmetic overflows too.
+		// Beyond ~290 years the duration arithmetic would overflow.
 		if err != nil || amount > 9_000_000_000/windowSeconds[m[2]] {
 			return time.Time{}, false
 		}

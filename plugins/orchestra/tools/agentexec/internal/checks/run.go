@@ -89,8 +89,8 @@ type CheckResult struct {
 	Flaky    []string
 }
 
-// Object is the result as Python's dict (key order name, status, exit,
-// seconds, timed_out, excerpt, reason, then flaky when a retry passed).
+// Object is the result as a JSON object (name, status, exit, seconds,
+// timed_out, excerpt, reason, then flaky when a retry passed).
 func (r CheckResult) Object() map[string]any {
 	o := map[string]any{"name": r.Name, "status": r.Status}
 	if r.Exit == nil {

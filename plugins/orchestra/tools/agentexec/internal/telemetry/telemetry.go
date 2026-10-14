@@ -322,11 +322,9 @@ func ReadRecords(path string) []any {
 	if err != nil {
 		return nil
 	}
-	text := strings.ReplaceAll(string(data), "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
 	var out []any
-	for _, line := range strings.Split(text, "\n") {
-		line = pyStrip(line)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}

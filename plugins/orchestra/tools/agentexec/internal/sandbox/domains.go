@@ -18,8 +18,8 @@ import (
 var domainRe = regexp.MustCompile(`^(\*\.)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*` +
 	`[a-z0-9]([a-z0-9-]*[a-z0-9])?(:[0-9]{1,5})?$`)
 
-// pyStrip is str.strip() / str.lower() for the domain checks.
-func normDomain(s string) string { return config.PyLower(strings.TrimSpace(s)) }
+// normDomain trims and ASCII-folds a domain for comparison.
+func normDomain(s string) string { return config.FoldHost(strings.TrimSpace(s)) }
 
 func isIP(text string) bool {
 	host := text
@@ -195,6 +195,7 @@ func forgetDomain(domain, home string) error {
 func DomainMatches(host string, patterns []string) bool {
 	host = strings.TrimRight(normDomain(host), ".")
 	for _, p := range patterns {
+		p = config.FoldHost(p)
 		if strings.HasPrefix(p, "*.") {
 			if strings.HasSuffix(host, p[1:]) {
 				return true

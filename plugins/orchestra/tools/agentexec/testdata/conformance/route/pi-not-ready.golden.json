@@ -102,7 +102,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: claude (dispatch=claude model=sonnet effort=None)\nskipped:\n  - pi: not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable\nsource: priority\n"
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: claude (dispatch=claude model=sonnet effort=-)\nskipped:\n  - pi: not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable\nsource: priority\n"
     },
     {
       "argv": [

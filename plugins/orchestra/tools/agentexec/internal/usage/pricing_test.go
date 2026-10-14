@@ -104,9 +104,9 @@ func TestEstimateSkipsEmptyAndReportsUnpriced(t *testing.T) {
 	}
 }
 
-func TestCostRoundsHalfToEven(t *testing.T) {
-	// 0.5, 1.5, 2.5 and 3.5 micro-USD: Python's round() gives 0, 2, 2 and 4.
-	for _, c := range []struct{ out, want int64 }{{1, 0}, {3, 2}, {5, 2}, {7, 4}} {
+func TestCostRoundsToNearest(t *testing.T) {
+	// 0.5, 1.5, 2.5 and 3.5 micro-USD round half away from zero.
+	for _, c := range []struct{ out, want int64 }{{1, 1}, {3, 2}, {5, 3}, {7, 4}} {
 		if got := CostMicroUSD(Detail{Output: c.out}, Price{Output: 0.5}); got != c.want {
 			t.Errorf("%d tokens at 0.5 -> %d, want %d", c.out, got, c.want)
 		}

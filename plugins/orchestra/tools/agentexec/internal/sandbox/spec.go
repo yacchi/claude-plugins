@@ -3,6 +3,7 @@ package sandbox
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -164,14 +165,14 @@ func srtSpec(spec *Spec, executor, tree string, sc Config, results ProbeReport, 
 	if session == "" {
 		session = runID
 	}
-	dir := pyJoin(stateDir(""), CLISrtDir)
+	dir := filepath.Join(stateDir(""), CLISrtDir)
 	spec.Backend, spec.Enforced, spec.Policy = "srt", true, policy
 	spec.Writable = append([]string(nil), policy.Writable...)
 	spec.Reason = "sandbox-runtime (srt): filesystem policy and network allowlist"
 	spec.Srt = &SrtInfo{
 		Path: n.Srt, ID: runID, Session: session,
-		SettingsPath: pyJoin(dir, runID+".json"),
-		LogPath:      pyJoin(dir, runID+".log"),
+		SettingsPath: filepath.Join(dir, runID+".json"),
+		LogPath:      filepath.Join(dir, runID+".log"),
 		Domains:      domains,
 		Quiet:        append([]string{}, sc.Network.QuietDomains...),
 		Settings:     SrtSettings(policy, nil, domains, sc.Network.DeniedDomains, false),
@@ -317,7 +318,7 @@ func ChildEnv(s Spec, env []string) []string {
 			if tmp == "" {
 				tmp = "/tmp"
 			}
-			out = append(out, "UV_TOOL_DIR="+pyJoin(realPath(tmp), uvToolDirName))
+			out = append(out, "UV_TOOL_DIR="+filepath.Join(realPath(tmp), uvToolDirName))
 		}
 	}
 	if s.Backend == "srt" {

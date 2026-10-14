@@ -107,7 +107,7 @@ func filesForCommand(tree, cwdDir string, matched []string) []string {
 	return out
 }
 
-// shellQuote is Python's shlex.quote.
+// shellQuote quotes s for a POSIX shell.
 func shellQuote(s string) string {
 	if s == "" {
 		return "''"

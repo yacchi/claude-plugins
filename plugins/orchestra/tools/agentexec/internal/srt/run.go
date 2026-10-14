@@ -80,9 +80,9 @@ func NewRun(o RunOptions) *Run {
 		Label: label, ControlPath: o.ControlPath, stderr: os.Stderr}
 }
 
-// --- JSON in Python's shapes -------------------------------------------------
+// --- JSON for srt ------------------------------------------------------------
 
-// asciiEscape is json.dumps' ensure_ascii applied to compact output.
+// asciiEscape escapes every non-ASCII rune of compact JSON as \uXXXX.
 func asciiEscape(b []byte) []byte {
 	var out bytes.Buffer
 	for _, r := range string(b) {
@@ -111,7 +111,7 @@ func settingsFile(settings map[string]any) ([]byte, error) {
 	return asciiEscape(buf.Bytes()), nil
 }
 
-// controlLine is json.dumps(settings, sort_keys=True) + "\n".
+// controlLine is the settings as key-sorted JSON plus a newline.
 func controlLine(settings map[string]any) ([]byte, error) {
 	b, err := fsutil.MarshalJSON(settings)
 	if err != nil {

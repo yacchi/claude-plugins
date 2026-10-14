@@ -21,26 +21,26 @@ func FormatText(r Report) string {
 	p("agent-exec doctor")
 	p("-----------------")
 	if r.Shim.Installed {
-		p("shim: installed at %s (on PATH: %s)", pyStr(deref(r.Shim.Path)), pyStr(r.Shim.OnPath))
+		p("shim: installed at %s (on PATH: %s)", show(deref(r.Shim.Path)), show(r.Shim.OnPath))
 		if r.Shim.Target != nil {
-			p("  target: %s (%s)", *r.Shim.Target, pyStr(deref(r.Shim.AnchoredTo)))
+			p("  target: %s (%s)", *r.Shim.Target, show(deref(r.Shim.AnchoredTo)))
 		}
 	} else {
 		p("shim: NOT installed")
 	}
 
-	p("build: binary=%s source_hash=%s go=%s", pyStr(get(r.Build, "binary")),
-		pyStr(get(r.Build, "source_hash")), pyStr(get(r.Build, "go")))
+	p("build: binary=%s source_hash=%s go=%s", show(get(r.Build, "binary")),
+		show(get(r.Build, "source_hash")), show(get(r.Build, "go")))
 
 	cfg := r.Config
 	if get(cfg, "resolved") == true {
 		layers := list(get(cfg, "layers_found"))
 		p("config: resolved (%d layer(s) found)", len(layers))
 		for _, l := range layers {
-			p("  - %s", pyStr(l))
+			p("  - %s", show(l))
 		}
 	} else {
-		p("config: FAILED to resolve: %s", pyStr(get(cfg, "error")))
+		p("config: FAILED to resolve: %s", show(get(cfg, "error")))
 	}
 
 	p("permission rule %s: %s", r.Permission.Rule, map[bool]string{true: "found", false: "NOT found"}[r.Permission.Found])
@@ -53,8 +53,8 @@ func FormatText(r Report) string {
 		for _, name := range sortedKeys(r.Executors) {
 			info, _ := r.Executors[name].(map[string]any)
 			p("  - %s: enabled=%s dispatch=%s binary=%s available=%s", name,
-				pyStr(get(info, "enabled")), pyStr(get(info, "dispatch")),
-				pyStr(get(info, "binary")), pyStr(get(info, "available")))
+				show(get(info, "enabled")), show(get(info, "dispatch")),
+				show(get(info, "binary")), show(get(info, "available")))
 			if note, _ := get(info, "note").(string); note != "" {
 				p("      note: %s", note)
 			}
@@ -89,7 +89,7 @@ func FormatText(r Report) string {
 		for _, rt := range r.Route {
 			if rt.Executor != "" {
 				p("  - %s: %s (dispatch=%s model=%s effort=%s source=%s)", rt.Class, rt.Executor,
-					pyStr(rt.Dispatch), pyStr(rt.Model), pyStr(rt.Effort), rt.Source)
+					show(rt.Dispatch), show(rt.Model), show(rt.Effort), rt.Source)
 			} else {
 				p("  - %s: UNROUTABLE", rt.Class)
 			}
@@ -104,14 +104,14 @@ func FormatText(r Report) string {
 			if reason == nil {
 				reason = "unknown"
 			}
-			p("  - %s: %s (until %s)", name, pyStr(reason), pyStr(get(e, "until")))
+			p("  - %s: %s (until %s)", name, show(reason), show(get(e, "until")))
 		}
 	}
 
 	sb := norm(r.Sandbox)
 	if len(sb) > 0 {
-		p("sandbox: mode=%s backend=%s enforced=%s (%s)", pyStr(get(sb, "mode")),
-			pyStr(get(sb, "backend")), pyStr(get(sb, "enforced")), pyStr(get(sb, "reason")))
+		p("sandbox: mode=%s backend=%s enforced=%s (%s)", show(get(sb, "mode")),
+			show(get(sb, "backend")), show(get(sb, "enforced")), show(get(sb, "reason")))
 		probes := obj(get(sb, "probes"))
 		for _, name := range config.OrderedKeys(probes, sandbox.ProbeOrder) {
 			probe := obj(get(probes, name))
@@ -119,14 +119,14 @@ func FormatText(r Report) string {
 			if truthy(get(probe, "ok")) {
 				state = "ok"
 			}
-			p("  - %s: %s (%s)", name, state, pyStr(get(probe, "detail")))
+			p("  - %s: %s (%s)", name, state, show(get(probe, "detail")))
 		}
 		host := norm(r.HerdrHost)
-		p("herdr host: home=%s sandboxed=%s (%s)", pyStr(get(host, "home")),
-			pyStr(get(host, "sandboxed")), pyStr(get(host, "reason")))
+		p("herdr host: home=%s sandboxed=%s (%s)", show(get(host, "home")),
+			show(get(host, "sandboxed")), show(get(host, "reason")))
 		uc := r.UserConfig
-		p("herdr host: user_config=%s", pyStr(get(uc, "herdr")))
-		p("orca host: user_config=%s", pyStr(get(uc, "orca")))
+		p("herdr host: user_config=%s", show(get(uc, "herdr")))
+		p("orca host: user_config=%s", show(get(uc, "orca")))
 		if net := obj(get(host, "network")); len(net) > 0 {
 			srt := obj(get(net, "srt"))
 			path := get(srt, "path")
@@ -135,30 +135,30 @@ func FormatText(r Report) string {
 			}
 			version := ""
 			if v := get(srt, "version"); truthy(v) {
-				version = " (" + pyStr(v) + ")"
+				version = " (" + show(v) + ")"
 			}
 			reason := ""
 			if v := get(net, "reason"); truthy(v) {
-				reason = "  " + pyStr(v)
+				reason = "  " + show(v)
 			}
-			p("  network: mode=%s restricted=%s srt=%s%s%s", pyStr(get(net, "mode")),
-				pyStr(get(net, "restricted")), pyStr(path), version, reason)
+			p("  network: mode=%s restricted=%s srt=%s%s%s", show(get(net, "mode")),
+				show(get(net, "restricted")), show(path), version, reason)
 		}
 		learned := obj(get(sb, "learned"))
 		count := int64(0)
 		if n, ok := get(learned, "count").(int64); ok {
 			count = n
 		}
-		p("  learned grants: %d (%s)", count, pyStr(get(learned, "path")))
+		p("  learned grants: %d (%s)", count, show(get(learned, "path")))
 		if w := get(learned, "warning"); truthy(w) {
-			p("  WARNING: %s", pyStr(w))
+			p("  WARNING: %s", show(w))
 		}
 		if cli := norm(r.CLINetwork); len(cli) > 0 {
 			presets := joinList(get(cli, "preset_domains"))
 			if presets == "" {
 				presets = "-"
 			}
-			p("CLI executors network: mode=%s presets=%s", pyStr(get(cli, "mode")), presets)
+			p("CLI executors network: mode=%s presets=%s", show(get(cli, "mode")), presets)
 			execs := obj(get(cli, "executors"))
 			for _, name := range sortedStrings(slices.Sorted(maps.Keys(execs))) {
 				item := obj(get(execs, name))
@@ -168,10 +168,10 @@ func FormatText(r Report) string {
 				}
 				reason := ""
 				if v := get(item, "reason"); truthy(v) {
-					reason = "  " + pyStr(v)
+					reason = "  " + show(v)
 				}
 				p("  - %s: restricted=%s backend=%s domains=%s%s", name,
-					pyStr(get(item, "restricted")), pyStr(get(item, "backend")), domains, reason)
+					show(get(item, "restricted")), show(get(item, "backend")), domains, reason)
 			}
 		}
 	}
@@ -210,7 +210,7 @@ func list(v any) []any {
 func joinList(v any) string {
 	var parts []string
 	for _, e := range list(v) {
-		parts = append(parts, pyStr(e))
+		parts = append(parts, show(e))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -236,7 +236,7 @@ func sortedStrings(s []string) []string {
 	return s
 }
 
-// truthy is Python truthiness for decoded JSON values.
+// truthy reports whether a decoded JSON value is set: not null, false, zero or empty.
 func truthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -257,24 +257,16 @@ func truthy(v any) bool {
 	return true
 }
 
-// pyStr formats a value the way Python's %s does.
-func pyStr(v any) string {
+// show formats a value for the text report: nil as "-", floats without an
+// exponent, everything else the way fmt prints it.
+func show(v any) string {
 	switch x := v.(type) {
 	case nil:
-		return "None"
-	case bool:
-		if x {
-			return "True"
-		}
-		return "False"
+		return "-"
 	case string:
 		return x
-	case int64:
-		return strconv.FormatInt(x, 10)
-	case int:
-		return strconv.Itoa(x)
 	case float64:
-		return fsutil.FloatRepr(x)
+		return strconv.FormatFloat(x, 'f', -1, 64)
 	}
 	return fmt.Sprint(v)
 }

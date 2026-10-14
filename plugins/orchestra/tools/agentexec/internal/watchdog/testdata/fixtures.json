@@ -473,13 +473,13 @@
     "runtime_s": 0.0,
     "last_tool": {
      "name": "bash",
-     "args_preview": "{\"a\":1,\"b\":[1.0,\"é\"]}"
+     "args_preview": "{\"a\":1,\"b\":[1,\"é\"]}"
     },
     "repeat_count": 2
    }
   },
   {
-   "name": "repeat-int-float-differ",
+   "name": "repeat-int-float-equal",
    "config": {
     "repeat_limit": 2
    },
@@ -498,10 +498,19 @@
     }
    ],
    "checks": [
-    900.0
+    null
    ],
    "tool_running": true,
-   "result": null
+   "result": {
+    "reason": "repeat",
+    "elapsed_s": 0.0,
+    "runtime_s": 0.0,
+    "last_tool": {
+     "name": "bash",
+     "args_preview": "{\"a\":1}"
+    },
+    "repeat_count": 2
+   }
   },
   {
    "name": "anonymous-calls",
@@ -868,7 +877,7 @@
     "elapsed_s": 0.0,
     "runtime_s": 0.0,
     "last_tool": {
-     "name": "None",
+     "name": "null",
      "args_preview": "{\"id\":\"a\"}"
     },
     "repeat_count": 1
@@ -929,7 +938,7 @@
     "runtime_s": 0.0,
     "last_tool": {
      "name": "bash",
-     "args_preview": "{\"f\":[1e+16,1e-05,0.1,2.0,123456789012345678901234567890]}"
+     "args_preview": "{\"f\":[10000000000000000,1e-05,0.1,2,123456789012345678901234567890]}"
     },
     "repeat_count": 1
    }

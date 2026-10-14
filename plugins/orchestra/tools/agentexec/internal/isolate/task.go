@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
@@ -47,7 +46,7 @@ func SanitizeTaskID(raw string) (string, error) {
 	}
 	out := strings.Trim(reDashes.ReplaceAllString(strings.Join(segments, "-"), "-"), "-.")
 	if out == "" {
-		return "", fmt.Errorf("task id %s has no usable characters", pyRepr(raw))
+		return "", fmt.Errorf("task id %q has no usable characters", raw)
 	}
 	return out, nil
 }
@@ -131,53 +130,13 @@ func Home(root string) string {
 	return filepath.Join(filepath.Dir(abs), filepath.Base(abs)+"-orchestra")
 }
 
-// pyRepr renders s as Python's repr() of a str, for messages that quote
-// user input the way the Python implementation did.
-func pyRepr(s string) string {
-	quote := byte('\'')
-	if strings.Contains(s, "'") && !strings.Contains(s, "\"") {
-		quote = '"'
-	}
-	var b strings.Builder
-	b.WriteByte(quote)
-	for _, r := range s {
-		switch {
-		case r == '\\':
-			b.WriteString(`\\`)
-		case r == rune(quote):
-			b.WriteByte('\\')
-			b.WriteRune(r)
-		case r == '\n':
-			b.WriteString(`\n`)
-		case r == '\r':
-			b.WriteString(`\r`)
-		case r == '\t':
-			b.WriteString(`\t`)
-		case r < 0x20 || r == 0x7f:
-			fmt.Fprintf(&b, `\x%02x`, r)
-		case r > 0x7f && !unicode.IsPrint(r):
-			if r > 0xffff {
-				fmt.Fprintf(&b, `\U%08x`, r)
-			} else if r > 0xff {
-				fmt.Fprintf(&b, `\u%04x`, r)
-			} else {
-				fmt.Fprintf(&b, `\x%02x`, r)
-			}
-		default:
-			b.WriteRune(r)
-		}
-	}
-	b.WriteByte(quote)
-	return b.String()
-}
-
-// isDir is os.path.isdir (symlinks followed).
+// isDir reports whether p is a directory (symlinks followed).
 func isDir(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()
 }
 
-// lexists is os.path.lexists.
+// lexists reports whether p exists, without following a final symlink.
 func lexists(p string) bool {
 	_, err := os.Lstat(p)
 	return err == nil
