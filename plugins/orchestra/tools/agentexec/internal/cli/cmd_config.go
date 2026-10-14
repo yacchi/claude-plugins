@@ -3,7 +3,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 )
 
 func newConfigCmd() *cobra.Command {
@@ -18,18 +18,18 @@ func newConfigCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		out := cfg.Values.Clone()
+		out := config.CloneValue(cfg.Values).(map[string]any)
 		// Legacy-config warnings were removed with the legacy compatibility
 		// layer; only a learned-grants problem is still reported.
 		warnings := []any{}
-		out.Set("warnings", warnings)
+		out["warnings"] = warnings
 		learned, warning := learnedGrants()
-		if sb := out.Object("sandbox"); sb != nil {
-			sb.Set("learned", learned)
+		if sb := config.ObjectAt(out, "sandbox"); sb != nil {
+			sb["learned"] = learned
 		}
 		if warning != "" {
-			out.Set("warnings", append(warnings,
-				jsonx.NewObject().Set("type", "sandbox_learned").Set("detail", warning)))
+			out["warnings"] = append(warnings,
+				map[string]any{"type": "sandbox_learned", "detail": warning})
 		}
 		return writeJSON(cmd.OutOrStdout(), out)
 	}

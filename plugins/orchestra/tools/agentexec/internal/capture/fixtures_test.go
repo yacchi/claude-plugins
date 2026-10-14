@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +17,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/executor/pi"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 )
 
@@ -51,7 +52,7 @@ func TestMain(m *testing.M) {
 
 func plain(t *testing.T, v any) any {
 	t.Helper()
-	raw, err := jsonx.Marshal(v)
+	raw, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,13 +63,13 @@ func plain(t *testing.T, v any) any {
 	return out
 }
 
-func decodeObj(t *testing.T, raw []byte) *jsonx.Object {
+func decodeObj(t *testing.T, raw []byte) map[string]any {
 	t.Helper()
-	v, err := jsonx.Decode(raw)
+	v, err := fsutil.DecodeJSON(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	o, _ := v.(*jsonx.Object)
+	o, _ := v.(map[string]any)
 	return o
 }
 
@@ -119,9 +120,9 @@ func TestCaptureMatchesPython(t *testing.T) {
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
 			cfg := defaultsCfg()
-			cfg.Values.Object("sandbox").Set("mode", "off")
+			config.ObjectAt(cfg.Values, "sandbox")["mode"] = "off"
 			if string(c.Watchdog) != "null" && len(c.Watchdog) > 0 {
-				cfg.Values.Set("watchdog", decodeObj(t, c.Watchdog))
+				cfg.Values["watchdog"] = decodeObj(t, c.Watchdog)
 			}
 			spec := sandbox.Prepare("pi", work, cfg, "m", "")
 			resume := ""
@@ -151,7 +152,7 @@ func TestCaptureMatchesPython(t *testing.T) {
 			if !reflect.DeepEqual(any(g), want) {
 				t.Errorf("got  %v\nwant %v", g, want)
 			}
-			if k, w := got.Keys(), decodeObj(t, c.Want).Keys(); !slices.Equal(k, w) {
+			if k, w := slices.Sorted(maps.Keys(got)), slices.Sorted(maps.Keys(decodeObj(t, c.Want))); !slices.Equal(k, w) {
 				t.Errorf("keys %v, want %v", k, w)
 			}
 		})
@@ -205,7 +206,7 @@ func TestGrantLoopMatchesPython(t *testing.T) {
 			queue := append([]cannedRun(nil), c.Runs...)
 			var calls []any
 			restore := swapSeams(
-				func(_ context.Context, _ Request, _ sandbox.Spec, prompt, resume string) (*jsonx.Object, *denialInput, error) {
+				func(_ context.Context, _ Request, _ sandbox.Spec, prompt, resume string) (map[string]any, *denialInput, error) {
 					var r any
 					if resume != "" {
 						r = resume
@@ -232,7 +233,7 @@ func TestGrantLoopMatchesPython(t *testing.T) {
 				t.Fatal(err)
 			}
 			norm := func(v any) any {
-				raw, _ := jsonx.Marshal(v)
+				raw, _ := fsutil.MarshalJSON(v)
 				var out any
 				_ = json.Unmarshal([]byte(strings.ReplaceAll(string(raw), home, "<HOME>")), &out)
 				return out
@@ -261,7 +262,7 @@ func TestGrantLoopMatchesPython(t *testing.T) {
 	}
 }
 
-func swapSeams(run func(context.Context, Request, sandbox.Spec, string, string) (*jsonx.Object, *denialInput, error),
+func swapSeams(run func(context.Context, Request, sandbox.Spec, string, string) (map[string]any, *denialInput, error),
 	prep func(string, string, *config.Resolved, string, string) sandbox.Spec) func() {
 	oldRun, oldPrep := runner, prepareSpec
 	runner, prepareSpec = run, prep

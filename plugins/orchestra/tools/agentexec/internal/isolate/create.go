@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // Backends of Create.
@@ -54,23 +54,27 @@ type CreateResult struct {
 }
 
 func (r CreateResult) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().Set("status", r.Status)
 	if r.Status == "error" {
-		return jsonx.Marshal(o.Set("reason", r.Reason))
+		return fsutil.MarshalJSON(map[string]any{"status": r.Status, "reason": r.Reason})
 	}
-	o.Set("task", r.Task).Set("branch", r.Branch).Set("path", r.Path).Set("backend", r.Backend)
+	o := map[string]any{"status": r.Status}
+	o["task"] = r.Task
+	o["branch"] = r.Branch
+	o["path"] = r.Path
+	o["backend"] = r.Backend
 	if r.Status == "created" {
-		o.Set("baseline", nullable(r.Baseline))
+		o["baseline"] = nullable(r.Baseline)
 	}
-	o.Set("carried", nonNil(r.Carried)).Set("carry_method", r.CarryMethod).
-		Set("carried_files", nonNil(r.CarriedFiles))
+	o["carried"] = nonNil(r.Carried)
+	o["carry_method"] = r.CarryMethod
+	o["carried_files"] = nonNil(r.CarriedFiles)
 	if len(r.AlreadyPresent) > 0 {
-		o.Set("already_present", r.AlreadyPresent)
+		o["already_present"] = r.AlreadyPresent
 	}
 	if r.CarryNote != "" {
-		o.Set("carry_note", r.CarryNote)
+		o["carry_note"] = r.CarryNote
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 func nullable(s string) any {

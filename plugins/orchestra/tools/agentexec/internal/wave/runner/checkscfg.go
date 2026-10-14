@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 )
 
@@ -56,7 +56,7 @@ func (r *runner) checksConfig() checksCfg {
 func (c checksCfg) itemsWhere(fast bool) []checks.Item {
 	var out []checks.Item
 	for _, raw := range c.raw {
-		obj, ok := raw.(*jsonx.Object)
+		obj, ok := raw.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -64,7 +64,7 @@ func (c checksCfg) itemsWhere(fast bool) []checks.Item {
 		if isFast != fast {
 			continue
 		}
-		b, err := jsonx.Marshal(obj)
+		b, err := fsutil.MarshalJSON(obj)
 		if err != nil {
 			continue
 		}

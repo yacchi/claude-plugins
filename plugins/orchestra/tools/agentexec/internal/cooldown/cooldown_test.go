@@ -7,16 +7,19 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 func testConfig(t *testing.T, enabled bool) *config.Resolved {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "state", "cd.json")
-	return &config.Resolved{Values: jsonx.NewObject().Set("cooldown", jsonx.NewObject().
-		Set("enabled", enabled).
-		Set("path", path).
-		Set("seconds", jsonx.NewObject().Set("quota", int64(3600)).Set("auth", int64(0))))}
+	return &config.Resolved{Values: map[string]any{
+		"cooldown": map[string]any{
+			"enabled": enabled,
+			"path":    path,
+			"seconds": map[string]any{"quota": int64(3600), "auth": int64(0)},
+		},
+	}}
 }
 
 func TestRecordAndActive(t *testing.T) {
@@ -67,8 +70,8 @@ func TestRecordKeepsLongerExistingAndPrunes(t *testing.T) {
 		t.Fatalf("active = %+v", got)
 	}
 	raw, _ := os.ReadFile(path)
-	v, _ := jsonx.Decode(raw)
-	if _, ok := v.(*jsonx.Object).Get("old"); ok {
+	v, _ := fsutil.DecodeJSON(raw)
+	if _, ok := v.(map[string]any)["old"]; ok {
 		t.Fatal("expired entry not pruned")
 	}
 }

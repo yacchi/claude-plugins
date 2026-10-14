@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 var fakeOrca string
@@ -45,11 +45,11 @@ func TestMain(m *testing.M) {
 }
 
 type env struct {
-	t                             *testing.T
+	t                              *testing.T
 	tmp, repo, state, fake, result string
-	mu                            sync.Mutex
-	now                           time.Time
-	events                        []map[string]any
+	mu                             sync.Mutex
+	now                            time.Time
+	events                         []map[string]any
 }
 
 func gitRun(t *testing.T, dir string, args ...string) string {
@@ -98,11 +98,11 @@ func (e *env) executor(cfg string) *Executor {
 	if cfg == "" {
 		cfg = "{}"
 	}
-	v, err := jsonx.Decode([]byte(cfg))
+	v, err := fsutil.DecodeJSON([]byte(cfg))
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	x := New(&config.Resolved{Values: jsonx.DeepMerge(config.Defaults(), v.(*jsonx.Object))})
+	x := New(&config.Resolved{Values: config.DeepMerge(config.Defaults(), v.(map[string]any))})
 	x.Binary = fakeOrca
 	x.Stderr = &bytes.Buffer{}
 	x.Clock = host.Clock{
@@ -241,8 +241,8 @@ func TestInvalidSetupAndPermissionModesAreRejected(t *testing.T) {
 		t.Error(n)
 	}
 	for cfg, want := range map[string]string{
-		`{"orca": {"permission_mode": "yolo"}}`:                                   "invalid orca.permission_mode: yolo",
-		`{"orca": {"permission_mode": "bypassPermissions"}}`:                      "invalid orca.permission_mode: bypassPermissions",
+		`{"orca": {"permission_mode": "yolo"}}`:                                    "invalid orca.permission_mode: yolo",
+		`{"orca": {"permission_mode": "bypassPermissions"}}`:                       "invalid orca.permission_mode: bypassPermissions",
 		`{"orca": {"command": "claude --dangerously-skip-permissions --model x"}}`: "orca permission bypass is not allowed",
 	} {
 		_, err := e.start(e.executor(cfg))

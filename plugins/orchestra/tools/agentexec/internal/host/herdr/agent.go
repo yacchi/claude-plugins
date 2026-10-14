@@ -95,7 +95,7 @@ func (e *Executor) screen(ctx context.Context, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if payload.Len() > 0 {
+	if len(payload) > 0 {
 		return strings.Join(Strings(payload), "\n"), nil
 	}
 	return out, nil

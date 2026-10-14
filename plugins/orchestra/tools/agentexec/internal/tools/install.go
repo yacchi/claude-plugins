@@ -7,21 +7,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 const errorTail = 500
 
 func installResult(name, status string, installer, version, path any, errMsg any) Item {
-	return jsonx.NewObject().Set("name", name).Set("status", status).
-		Set("installer", installer).Set("version", version).
-		Set("path", path).Set("error", errMsg)
+	return map[string]any{
+		"name":      name,
+		"status":    status,
+		"installer": installer,
+		"version":   version,
+		"path":      path,
+		"error":     errMsg,
+	}
 }
 
 func tail(text string) string {
@@ -155,7 +158,7 @@ func Install(cfg *config.Resolved, names []string, installer string, force bool)
 	base := os.Environ()
 	chosen := installer
 	if chosen == "" {
-		v, _ := section(cfg).Get("installer")
+		v := section(cfg)["installer"]
 		chosen, _ = v.(string)
 		if chosen == "" {
 			chosen = "auto"
@@ -194,30 +197,29 @@ func Install(cfg *config.Resolved, names []string, installer string, force bool)
 			results = append(results, installResult(name, "failed", how, tc.Version, nil, errMsg))
 			continue
 		}
-		saveRecord(name, jsonx.NewObject().
-			Set("spec", tc.Spec).Set("version", tc.Version).Set("installer", how).
-			Set("path", path).Set("installed_at", fsutil.NowISOZ()))
+		saveRecord(name, map[string]any{
+			"spec":         tc.Spec,
+			"version":      tc.Version,
+			"installer":    how,
+			"path":         path,
+			"installed_at": fsutil.NowISOZ(),
+		})
 		results = append(results, installResult(name, "installed", how, tc.Version, path, nil))
 	}
 	return results
 }
 
 // saveRecord stores one tool's record and rewrites the manifest (sorted
-// keys, indent 2, ASCII-escaped, as Python's json.dump(..., sort_keys=True)).
-func saveRecord(name string, rec *jsonx.Object) {
-	tools := jsonx.NewObject()
+// keys, indent 2, ASCII-escaped).
+func saveRecord(name string, rec map[string]any) {
+	tools := map[string]any{}
 	records := LoadManifest()
 	records[name] = rec
-	names := make([]string, 0, len(records))
-	for n := range records {
-		names = append(names, n)
+	for n, r := range records {
+		tools[n] = r
 	}
-	sort.Strings(names)
-	for _, n := range names {
-		tools.Set(n, sortKeys(records[n]))
-	}
-	manifest := jsonx.NewObject().Set("tools", tools).Set("version", int64(1))
-	data, err := jsonx.MarshalIndent(manifest)
+	manifest := map[string]any{"tools": tools, "version": int64(1)}
+	data, err := fsutil.MarshalJSONIndent(manifest)
 	if err != nil {
 		return
 	}
@@ -226,27 +228,6 @@ func saveRecord(name string, rec *jsonx.Object) {
 		return
 	}
 	_ = fsutil.AtomicWriteFile(ManifestPath(), data, 0o600)
-}
-
-func sortKeys(v any) any {
-	switch x := v.(type) {
-	case *jsonx.Object:
-		keys := x.Keys()
-		sort.Strings(keys)
-		out := jsonx.NewObject()
-		for _, k := range keys {
-			val, _ := x.Get(k)
-			out.Set(k, sortKeys(val))
-		}
-		return out
-	case []any:
-		out := make([]any, len(x))
-		for i, e := range x {
-			out[i] = sortKeys(e)
-		}
-		return out
-	}
-	return v
 }
 
 func asciiEscape(b []byte) []byte {

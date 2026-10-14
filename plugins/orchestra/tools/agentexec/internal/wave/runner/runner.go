@@ -31,8 +31,8 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 )
 
@@ -107,7 +107,7 @@ type Report struct {
 	State          string
 	Integrated     []string
 	Needs          []NeedRef
-	NetworkDenials []*jsonx.Object
+	NetworkDenials []map[string]any
 	Pending        []string
 	Blocked        []string
 	FlakyTests     []FlakyTest
@@ -134,14 +134,21 @@ func orEmpty[T any](s []T) []T {
 
 func (r Report) MarshalJSON() ([]byte, error) {
 	if r.Status == "error" {
-		return jsonx.Marshal(jsonx.NewObject().Set("status", r.Status).Set("reason", deref(r.Reason)).Set("kind", r.Kind))
+		return fsutil.MarshalJSON(map[string]any{"status": r.Status, "reason": deref(r.Reason), "kind": r.Kind})
 	}
-	return jsonx.Marshal(jsonx.NewObject().
-		Set("status", r.Status).Set("reason", deref(r.Reason)).Set("waves", r.Waves).
-		Set("approvals", r.Approvals).Set("state", r.State).
-		Set("integrated", orEmpty(r.Integrated)).Set("needs", orEmpty(r.Needs)).
-		Set("network_denials", orEmpty(r.NetworkDenials)).Set("pending", orEmpty(r.Pending)).
-		Set("blocked", orEmpty(r.Blocked)).Set("flaky_tests", orEmpty(r.FlakyTests)))
+	return fsutil.MarshalJSON(map[string]any{
+		"status":          r.Status,
+		"reason":          deref(r.Reason),
+		"waves":           r.Waves,
+		"approvals":       r.Approvals,
+		"state":           r.State,
+		"integrated":      orEmpty(r.Integrated),
+		"needs":           orEmpty(r.Needs),
+		"network_denials": orEmpty(r.NetworkDenials),
+		"pending":         orEmpty(r.Pending),
+		"blocked":         orEmpty(r.Blocked),
+		"flaky_tests":     orEmpty(r.FlakyTests),
+	})
 }
 
 func deref(s *string) any {
@@ -197,9 +204,9 @@ func FormatText(r Report) string {
 	if len(r.NetworkDenials) > 0 {
 		parts := make([]string, len(r.NetworkDenials))
 		for i, d := range r.NetworkDenials {
-			id, _ := d.Get("id")
-			h, _ := d.Get("host")
-			port, _ := d.Get("port")
+			id := d["id"]
+			h := d["host"]
+			port := d["port"]
 			parts[i] = fmt.Sprintf("%s(%s:%s)", pyStr(id), pyStr(h), pyStr(port))
 		}
 		lines = append(lines, "  network denied: "+strings.Join(parts, ", "))
@@ -249,7 +256,9 @@ func Run(ctx context.Context, o Options, d Deps) (Report, int) {
 	}()
 	rep := r.report()
 	if rep.Status == "done" {
-		payload := reportObject(rep).Set("event", "done").Set("at", r.clock())
+		payload := reportObject(rep)
+		payload["event"] = "done"
+		payload["at"] = r.clock()
 		r.notify("done", payload)
 	}
 	r.notifyWG.Wait()
@@ -260,14 +269,14 @@ func Run(ctx context.Context, o Options, d Deps) (Report, int) {
 }
 
 // reportObject is the report as an ordered object (the notify payload).
-func reportObject(rep Report) *jsonx.Object {
-	o := jsonx.NewObject()
+func reportObject(rep Report) map[string]any {
+	o := map[string]any{}
 	b, err := rep.MarshalJSON()
 	if err != nil {
 		return o
 	}
-	if v, err := jsonx.Decode(b); err == nil {
-		if obj, ok := v.(*jsonx.Object); ok {
+	if v, err := fsutil.DecodeJSON(b); err == nil {
+		if obj, ok := v.(map[string]any); ok {
 			return obj
 		}
 	}

@@ -3,8 +3,8 @@ package isolate
 import (
 	"strings"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // DiffResult is `isolate diff`'s output: what the worker changed, measured
@@ -24,24 +24,28 @@ type DiffResult struct {
 }
 
 func (r DiffResult) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().Set("status", r.Status)
+	o := map[string]any{"status": r.Status}
 	switch r.Status {
 	case "error":
-		o.Set("reason", r.Reason)
+		o["reason"] = r.Reason
 	case "absent":
-		o.Set("task", r.Task).Set("files", nonNil(r.Files))
+		o["task"] = r.Task
+		o["files"] = nonNil(r.Files)
 		if !r.OmitPatch {
-			o.Set("patch", r.Patch)
+			o["patch"] = r.Patch
 		}
 	default:
-		o.Set("task", r.Task).Set("path", r.Path).Set("baseline", r.Baseline).
-			Set("files", nonNil(r.Files))
+		o["task"] = r.Task
+		o["path"] = r.Path
+		o["baseline"] = r.Baseline
+		o["files"] = nonNil(r.Files)
 		if !r.OmitPatch {
-			o.Set("patch", r.Patch)
+			o["patch"] = r.Patch
 		}
-		o.Set("branch", nullable(r.Branch)).Set("session", nullable(r.Session))
+		o["branch"] = nullable(r.Branch)
+		o["session"] = nullable(r.Session)
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 // Diff reports task's changes in its worktree. withPatch=false skips the

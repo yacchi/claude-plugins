@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
@@ -41,21 +41,24 @@ type AdoptResult struct {
 }
 
 func (r AdoptResult) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().Set("status", r.Status).Set("task", r.Task).Set("path", nullable(r.Path))
+	o := map[string]any{"status": r.Status, "task": r.Task, "path": nullable(r.Path)}
 	if r.IsUnadopt {
-		return jsonx.Marshal(o)
+		return fsutil.MarshalJSON(o)
 	}
 	method := r.CarryMethod
 	if method == "" {
 		method = carryNone
 	}
-	o.Set("branch", nullable(r.Branch)).Set("baseline", nullable(r.Baseline)).Set("note", r.Note).
-		Set("carried", nonNil(r.Carried)).Set("carry_method", method).
-		Set("carried_files", nonNil(r.CarriedFiles))
+	o["branch"] = nullable(r.Branch)
+	o["baseline"] = nullable(r.Baseline)
+	o["note"] = r.Note
+	o["carried"] = nonNil(r.Carried)
+	o["carry_method"] = method
+	o["carried_files"] = nonNil(r.CarriedFiles)
 	if len(r.AlreadyPresent) > 0 {
-		o.Set("already_present", r.AlreadyPresent)
+		o["already_present"] = r.AlreadyPresent
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 // Adopt registers path, a linked worktree of root that orchestra did not

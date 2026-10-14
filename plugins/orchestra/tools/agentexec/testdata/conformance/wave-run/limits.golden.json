@@ -152,7 +152,7 @@
           "content": [
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -176,7 +176,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "A",
@@ -184,7 +184,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "A",
@@ -208,7 +208,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"A\"]}",
+              "detail": "{\"tasks\":[\"A\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -216,7 +216,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "A",
@@ -224,7 +224,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,
@@ -256,7 +256,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -272,7 +272,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -296,7 +296,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "B",
@@ -304,7 +304,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "B",
@@ -328,7 +328,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"B\"]}",
+              "detail": "{\"tasks\":[\"B\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -336,7 +336,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "B",
@@ -344,7 +344,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,
@@ -376,7 +376,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -400,7 +400,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "C",
@@ -408,7 +408,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "C",
@@ -432,7 +432,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"C\"]}",
+              "detail": "{\"tasks\":[\"C\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -440,7 +440,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "C",
@@ -448,7 +448,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,

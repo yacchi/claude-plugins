@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // Config is a well-formed `sandbox` section.
@@ -28,9 +27,9 @@ type NetworkConfig struct {
 // resolved config is normalized already; this re-applies the same rules so
 // a hand-built section can never widen the sandbox.
 func ConfigOf(cfg *config.Resolved) Config {
-	var sec *jsonx.Object
+	var sec map[string]any
 	if cfg == nil {
-		sec = config.Defaults().Object("sandbox")
+		sec = config.ObjectAt(config.Defaults(), "sandbox")
 	} else {
 		sec = cfg.Section("sandbox")
 	}
@@ -59,12 +58,12 @@ func strList(v any) []string {
 	return out
 }
 
-func normalizeConfig(raw *jsonx.Object) Config {
+func normalizeConfig(raw map[string]any) Config {
 	c := Config{Mode: "auto"}
 	switch m := mustGetNil(raw, "mode").(type) {
 	case bool:
 		if !m {
-			c.Mode = "off" // YAML 1.1 loads a bareword `off` as false
+			c.Mode = "off" // an explicit `mode: false` means off
 		}
 	case string:
 		if s := config.PyLower(strings.TrimSpace(m)); contains(modes, s) {
@@ -77,20 +76,20 @@ func normalizeConfig(raw *jsonx.Object) Config {
 	return c
 }
 
-func objOf(v any) *jsonx.Object {
-	o, _ := v.(*jsonx.Object)
+func objOf(v any) map[string]any {
+	o, _ := v.(map[string]any)
 	return o
 }
 
-func mustGetNil(o *jsonx.Object, k string) any {
+func mustGetNil(o map[string]any, k string) any {
 	if o == nil {
 		return nil
 	}
-	v, _ := o.Get(k)
+	v := o[k]
 	return v
 }
 
-func normalizeNetwork(raw *jsonx.Object) NetworkConfig {
+func normalizeNetwork(raw map[string]any) NetworkConfig {
 	n := NetworkConfig{Mode: "allowlist", Ecosystem: true}
 	mode := ""
 	switch m := mustGetNil(raw, "mode").(type) {
@@ -116,7 +115,7 @@ func normalizeNetwork(raw *jsonx.Object) NetworkConfig {
 	list := func(key string, def []string) []string {
 		var values []string
 		if raw != nil {
-			if v, ok := raw.Get(key); ok {
+			if v, ok := raw[key]; ok {
 				values = strList(v)
 			} else {
 				values = def

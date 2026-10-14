@@ -14,7 +14,6 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 var (
@@ -73,38 +72,38 @@ func nonNegInt(v any) (int64, bool) {
 
 // Sanitize allowlists and validates one record; nil means it carries nothing
 // worth keeping and must be dropped.
-func Sanitize(raw *jsonx.Object) *jsonx.Object {
+func Sanitize(raw map[string]any) map[string]any {
 	if raw == nil {
 		return nil
 	}
-	out := jsonx.NewObject()
-	if v, _ := raw.Get("ts"); v != nil {
+	out := map[string]any{}
+	if v, _ := raw["ts"]; v != nil {
 		if ts, ok := v.(string); ok && ts != "" && !strings.ContainsAny(ts, "\r\n") {
-			out.Set("ts", ts)
+			out["ts"] = ts
 		}
 	}
 	for _, f := range []struct {
 		key     string
 		allowed []string
 	}{{"executor", executors}, {"cls", classes}, {"status", statuses}} {
-		v, _ := raw.Get(f.key)
+		v := raw[f.key]
 		if s, ok := oneOf(v, f.allowed); ok {
-			out.Set(f.key, s)
+			out[f.key] = s
 		}
 	}
-	if v, _ := raw.Get("model"); v != nil {
+	if v, _ := raw["model"]; v != nil {
 		if m, ok := v.(string); ok && modelPattern.MatchString(m) {
-			out.Set("model", m)
+			out["model"] = m
 		}
 	}
 	for _, key := range intKeys {
-		v, _ := raw.Get(key)
+		v := raw[key]
 		if n, ok := nonNegInt(v); ok {
-			out.Set(key, n)
+			out[key] = n
 		}
 	}
 	for _, key := range []string{"executor", "cls", "status", "model"} {
-		if _, ok := out.Get(key); ok {
+		if _, ok := out[key]; ok {
 			return out
 		}
 	}
@@ -113,47 +112,50 @@ func Sanitize(raw *jsonx.Object) *jsonx.Object {
 
 // sandboxCounts is the denial/grant counts (never paths) of a result's
 // sandbox block; ok is false when the result has no sandbox denials field.
-func sandboxCounts(result *jsonx.Object) (denials, granted int, ok bool) {
-	sb := result.Object("sandbox")
+func sandboxCounts(result map[string]any) (denials, granted int, ok bool) {
+	sb := config.ObjectAt(result, "sandbox")
 	if sb == nil {
 		return 0, 0, false
 	}
-	d, has := sb.Get("denials")
+	d, has := sb["denials"]
 	if !has {
 		return 0, 0, false
 	}
 	dl, _ := d.([]any)
-	g, _ := sb.Get("granted")
+	g := sb["granted"]
 	gl, _ := g.([]any)
 	return len(dl), len(gl), true
 }
 
 // BuildRecord flattens a normalized capture result into a (pre-sanitize)
 // ledger record.
-func BuildRecord(executor, model, cls string, result *jsonx.Object) *jsonx.Object {
-	rec := jsonx.NewObject()
-	rec.Set("executor", executor).Set("model", model).Set("cls", cls)
-	status, _ := result.Get("status")
-	rec.Set("status", status)
+func BuildRecord(executor, model, cls string, result map[string]any) map[string]any {
+	rec := map[string]any{}
+	rec["executor"] = executor
+	rec["model"] = model
+	rec["cls"] = cls
+	status := result["status"]
+	rec["status"] = status
 	if d, g, ok := sandboxCounts(result); ok {
-		rec.Set("sandbox_denials", int64(d)).Set("sandbox_granted", int64(g))
+		rec["sandbox_denials"] = int64(d)
+		rec["sandbox_granted"] = int64(g)
 	}
-	usage := result.Object("usage")
+	usage := config.ObjectAt(result, "usage")
 	if usage == nil {
 		return rec
 	}
 	for _, key := range []string{"api_duration_ms", "session_duration_ms", "cost_micro_usd"} {
-		if v, ok := usage.Get(key); ok {
-			rec.Set(key, v)
+		if v, ok := usage[key]; ok {
+			rec[key] = v
 		}
 	}
-	if tokens := usage.Object("tokens"); tokens != nil {
+	if tokens := config.ObjectAt(usage, "tokens"); tokens != nil {
 		for _, key := range []string{
 			"input_tokens", "output_tokens", "cached_input_tokens",
 			"cache_write_input_tokens", "reasoning_output_tokens",
 		} {
-			if v, ok := tokens.Get(key); ok {
-				rec.Set(key, v)
+			if v, ok := tokens[key]; ok {
+				rec[key] = v
 			}
 		}
 	}
@@ -240,7 +242,7 @@ func SweepOlder(dir string, cutoff time.Time) {
 // Append writes one sanitized, compact record for the current session
 // ($CLAUDE_CODE_SESSION_ID) under runID ("" = the session's no.run file).
 // It never fails the caller: anything wrong means nothing is written.
-func Append(rec *jsonx.Object, runID string, cfg *config.Resolved) {
+func Append(rec map[string]any, runID string, cfg *config.Resolved) {
 	if _, set := cfg.Lookup("ledger", "enabled"); set {
 		if enabled, _ := cfg.Bool("ledger", "enabled"); !enabled {
 			return // anything but a real true switches the ledger off
@@ -258,8 +260,8 @@ func Append(rec *jsonx.Object, runID string, cfg *config.Resolved) {
 	if clean == nil {
 		return
 	}
-	if _, ok := clean.Get("ts"); !ok {
-		clean.Set("ts", fsutil.NowISO())
+	if _, ok := clean["ts"]; !ok {
+		clean["ts"] = fsutil.NowISO()
 	}
 	dir := Dir(cfg)
 	if err := private(dir); err != nil {

@@ -57,7 +57,7 @@
           "content": [
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -81,7 +81,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "A",
@@ -89,7 +89,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "A",
@@ -105,7 +105,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -113,7 +113,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"no-checks\"}",
+              "detail": "{\"name\":\"self-verify\",\"seconds\": <N>,\"status\":\"no-checks\"}",
               "event": "check-end",
               "from": null,
               "pkg": "A",
@@ -129,7 +129,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"A\"]}",
+              "detail": "{\"tasks\":[\"A\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -137,7 +137,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "A",
@@ -145,7 +145,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"at_commit\": \"<SHA#2>\"}",
+              "detail": "{\"at_commit\":\"<SHA#2>\"}",
               "event": "verify-start",
               "from": null,
               "pkg": null,
@@ -153,7 +153,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "detail": "{\"seconds\": <N>,\"status\":\"pass\"}",
               "event": "verify-end",
               "from": null,
               "pkg": null,
@@ -161,7 +161,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,
@@ -193,7 +193,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "detail": "{\"seconds\": <N>,\"status\":\"pass\"}",
               "event": "full-end",
               "from": null,
               "pkg": null,
@@ -209,7 +209,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"exit\": 0, \"seconds\": <N>, \"sha\": \"<SHA#2>\"}",
+              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#2>\"}",
               "event": "on-green",
               "from": null,
               "pkg": null,
@@ -233,7 +233,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "B",
@@ -241,7 +241,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "B",
@@ -257,7 +257,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-B\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-B\"}",
               "event": "check-start",
               "from": null,
               "pkg": "B",
@@ -265,7 +265,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"no-checks\"}",
+              "detail": "{\"name\":\"self-verify\",\"seconds\": <N>,\"status\":\"no-checks\"}",
               "event": "check-end",
               "from": null,
               "pkg": "B",
@@ -281,7 +281,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"B\"]}",
+              "detail": "{\"tasks\":[\"B\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -289,7 +289,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "B",
@@ -297,7 +297,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"at_commit\": \"<SHA#1>\"}",
+              "detail": "{\"at_commit\":\"<SHA#1>\"}",
               "event": "verify-start",
               "from": null,
               "pkg": null,
@@ -305,7 +305,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "detail": "{\"seconds\": <N>,\"status\":\"pass\"}",
               "event": "verify-end",
               "from": null,
               "pkg": null,
@@ -313,7 +313,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,
@@ -345,7 +345,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "detail": "{\"seconds\": <N>,\"status\":\"pass\"}",
               "event": "full-end",
               "from": null,
               "pkg": null,
@@ -361,7 +361,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"exit\": 0, \"seconds\": <N>, \"sha\": \"<SHA#1>\"}",
+              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#1>\"}",
               "event": "on-green",
               "from": null,
               "pkg": null,
@@ -595,7 +595,7 @@
           "content": [
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -619,7 +619,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "A",
@@ -627,7 +627,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "A",
@@ -651,7 +651,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"A\"]}",
+              "detail": "{\"tasks\":[\"A\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -659,7 +659,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "A",
@@ -667,7 +667,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,
@@ -707,7 +707,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "B",
@@ -715,7 +715,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "B",
@@ -739,7 +739,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"B\"]}",
+              "detail": "{\"tasks\":[\"B\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -747,7 +747,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "B",
@@ -755,7 +755,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,
@@ -779,7 +779,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"mode\": \"final\"}",
+              "detail": "{\"mode\":\"final\"}",
               "event": "full-start",
               "from": null,
               "pkg": null,
@@ -787,7 +787,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"mode\": \"final\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "detail": "{\"mode\":\"final\",\"seconds\": <N>,\"status\":\"fail\"}",
               "event": "full-end",
               "from": null,
               "pkg": null,
@@ -803,7 +803,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"checks\": [\"full\"], \"cls\": \"deep\", \"for\": null, \"round\": 1}",
+              "detail": "{\"checks\":[\"full\"],\"cls\":\"deep\",\"for\":null,\"round\":1}",
               "event": "fixup",
               "from": null,
               "pkg": "fix-1",
@@ -835,7 +835,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"deep\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"deep\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "fix-1",
@@ -843,7 +843,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"claude\", \"seconds\": <N>, \"status\": \"delegate\"}",
+              "detail": "{\"executor\":\"claude\",\"seconds\": <N>,\"status\":\"delegate\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "fix-1",
@@ -851,7 +851,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+              "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "fix-1",
@@ -859,7 +859,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"mode\": \"final\"}",
+              "detail": "{\"mode\":\"final\"}",
               "event": "full-start",
               "from": null,
               "pkg": null,
@@ -867,7 +867,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"mode\": \"final\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "detail": "{\"mode\":\"final\",\"seconds\": <N>,\"status\":\"fail\"}",
               "event": "full-end",
               "from": null,
               "pkg": null,
@@ -883,7 +883,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"checks\": [\"full\"], \"cls\": \"deep\", \"for\": null, \"round\": 2}",
+              "detail": "{\"checks\":[\"full\"],\"cls\":\"deep\",\"for\":null,\"round\":2}",
               "event": "fixup",
               "from": null,
               "pkg": "fix-2",
@@ -915,7 +915,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"deep\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"deep\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "fix-2",
@@ -923,7 +923,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"claude\", \"seconds\": <N>, \"status\": \"delegate\"}",
+              "detail": "{\"executor\":\"claude\",\"seconds\": <N>,\"status\":\"delegate\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "fix-2",
@@ -931,7 +931,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+              "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "fix-2",
@@ -939,7 +939,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"mode\": \"final\"}",
+              "detail": "{\"mode\":\"final\"}",
               "event": "full-start",
               "from": null,
               "pkg": null,
@@ -947,7 +947,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"mode\": \"final\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "detail": "{\"mode\":\"final\",\"seconds\": <N>,\"status\":\"fail\"}",
               "event": "full-end",
               "from": null,
               "pkg": null,
@@ -990,13 +990,13 @@
             "needs": [
               {
                 "at": "<AT>",
-                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
                 "id": "fix-1",
                 "kind": "delegate"
               },
               {
                 "at": "<AT>",
-                "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
                 "id": "fix-2",
                 "kind": "delegate"
               },
@@ -1033,7 +1033,7 @@
               "fix-1": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,
@@ -1044,7 +1044,7 @@
               "fix-2": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"opus\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,

@@ -2,15 +2,17 @@ package host
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // The fixtures are registries the retired Python hosts wrote (recorded by a
@@ -78,16 +80,17 @@ func TestRegistryWrittenByGoMatchesPython(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Errorf("go-written registry differs:\n%s\nwant:\n%s", got, want)
 	}
-	// floats as Python's repr
+	// floats survive a rewrite as numbers
 	if err := reg.Update(dir, func(d map[string]any) bool {
 		d["_warm"] = map[string]any{"x": map[string]any{"last_used": 100000.0, "created_at": 1e-05}}
 		return true
 	}); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := os.ReadFile(reg.Path(dir))
-	if !strings.Contains(string(raw), `"last_used": 100000.0`) || !strings.Contains(string(raw), `"created_at": 1e-05`) {
-		t.Errorf("floats not in repr form:\n%s", raw)
+	warm := config.ObjectAt(config.ObjectAt(reg.Load(dir), "_warm"), "x")
+	num := func(v any) float64 { f, _ := strconv.ParseFloat(fmt.Sprint(v), 64); return f }
+	if num(warm["last_used"]) != 100000 || num(warm["created_at"]) != 1e-05 {
+		t.Errorf("floats not kept: %v", warm)
 	}
 	if err := reg.Forget(dir, "a"); err != nil {
 		t.Fatal(err)
@@ -128,11 +131,11 @@ func TestNormalizeEnabled(t *testing.T) {
 
 func resolved(t *testing.T, js string) *config.Resolved {
 	t.Helper()
-	v, err := jsonx.Decode([]byte(js))
+	v, err := fsutil.DecodeJSON([]byte(js))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &config.Resolved{Values: jsonx.DeepMerge(config.Defaults(), v.(*jsonx.Object))}
+	return &config.Resolved{Values: config.DeepMerge(config.Defaults(), v.(map[string]any))}
 }
 
 func TestMergeConfigKeepsDefaultsUnderNullAndMergesModels(t *testing.T) {
@@ -145,10 +148,10 @@ func TestMergeConfigKeepsDefaultsUnderNullAndMergesModels(t *testing.T) {
 	}
 	h := MergeConfig(resolved(t, `{"herdr": {"warm": {"min_packages": 5}}}`), "herdr")
 	w := h.Sub("warm")
-	if v, _ := w.Get("min_packages"); PyFloat(v, 0) != 5 {
+	if v, _ := w["min_packages"]; PyFloat(v, 0) != 5 {
 		t.Error(v)
 	}
-	if v, _ := w.Get("ttl_seconds"); PyFloat(v, 0) != 3000 {
+	if v, _ := w["ttl_seconds"]; PyFloat(v, 0) != 3000 {
 		t.Error("warm defaults lost", v)
 	}
 	if MergeConfig(nil, "herdr").Settings().StartupTimeout != 90*time.Second {
@@ -221,7 +224,7 @@ func TestScreenClassifiers(t *testing.T) {
 func TestShellSplit(t *testing.T) {
 	for in, want := range map[string][]string{
 		`--model opus --permission-mode auto`: {"--model", "opus", "--permission-mode", "auto"},
-		`a 'b c' "d \"e\" \$f \x" g\ h`:      {"a", "b c", `d "e" $f \x`, "g h"},
+		`a 'b c' "d \"e\" \$f \x" g\ h`:       {"a", "b c", `d "e" $f \x`, "g h"},
 		``:                                    {},
 	} {
 		got, err := ShellSplit(in)

@@ -8,28 +8,28 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // ReadEvents returns the last limit event records (all when limit < 0),
 // tolerating a truncated last line.
-func ReadEvents(statePath string, limit int) []*jsonx.Object {
+func ReadEvents(statePath string, limit int) []map[string]any {
 	data, err := os.ReadFile(EventsPath(statePath))
 	if err != nil {
 		return nil
 	}
-	var records []*jsonx.Object
+	var records []map[string]any
 	for _, line := range bytes.Split(data, []byte("\n")) {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}
-		doc, err := jsonx.Decode(line)
+		doc, err := fsutil.DecodeJSON(line)
 		if err != nil {
 			continue // a concurrent writer's last line may still be mid-flush
 		}
-		if o, ok := doc.(*jsonx.Object); ok {
+		if o, ok := doc.(map[string]any); ok {
 			records = append(records, o)
 		}
 	}
@@ -65,20 +65,20 @@ func pyStr(v any, present bool) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
-	b, _ := jsonx.Marshal(v)
+	b, _ := fsutil.MarshalJSON(v)
 	return string(b)
 }
 
-func formatEventLine(ev *jsonx.Object) string {
-	get := func(k string) any { v, _ := ev.Get(k); return v }
+func formatEventLine(ev map[string]any) string {
+	get := func(k string) any { return ev[k] }
 	pkg := "-"
 	if s, ok := get("pkg").(string); ok && s != "" {
 		pkg = s
 	}
 	event, _ := get("event").(string)
 	parts := []string{pkg, event}
-	fromV, fromOK := ev.Get("from")
-	toV, toOK := ev.Get("to")
+	fromV, fromOK := ev["from"]
+	toV, toOK := ev["to"]
 	if truthy(fromV) || truthy(toV) {
 		parts = append(parts, pyStr(fromV, fromOK)+"->"+pyStr(toV, toOK))
 	}
@@ -141,7 +141,7 @@ func boolInt(b bool) int {
 // RenderOptions are the optional parts of RenderStatus.
 type RenderOptions struct {
 	PlanTitles map[string]string
-	Events     []*jsonx.Object
+	Events     []map[string]any
 	Live       bool
 	// ApprovalsPending > 0 adds the "approvals: N pending" line.
 	ApprovalsPending int
@@ -240,19 +240,19 @@ func RenderStatus(st *State, now float64, o RenderOptions) string {
 	var denied []string
 	for _, id := range ids {
 		for _, d := range st.Packages[id].NetworkDenials {
-			obj, _ := d.(*jsonx.Object)
+			obj, _ := d.(map[string]any)
 			if obj == nil {
 				if m, ok := d.(map[string]any); ok {
-					obj = jsonx.NewObject()
+					obj = map[string]any{}
 					for k, v := range m {
-						obj.Set(k, v)
+						obj[k] = v
 					}
 				} else {
-					obj = jsonx.NewObject()
+					obj = map[string]any{}
 				}
 			}
-			h, hok := obj.Get("host")
-			pt, pok := obj.Get("port")
+			h, hok := obj["host"]
+			pt, pok := obj["port"]
 			denied = append(denied, fmt.Sprintf("  %s  %s:%s", id, pyStr(h, hok), pyStr(pt, pok)))
 		}
 	}
@@ -301,6 +301,6 @@ func StatusLine(st *State, now float64, live bool) string {
 	if live {
 		payload["live_changes"] = LiveChanges(st)
 	}
-	b, _ := jsonx.Marshal(payload)
+	b, _ := fsutil.MarshalJSON(payload)
 	return string(b)
 }

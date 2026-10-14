@@ -22,7 +22,7 @@ func piHome(t *testing.T) string {
 
 func cfgWithPi(key string, v any) *config.Resolved {
 	r := &config.Resolved{Values: config.Defaults()}
-	r.Values.Object("external_executors").Object("pi").Set(key, v)
+	config.ObjectAt(config.ObjectAt(r.Values, "external_executors"), "pi")[key] = v
 	return r
 }
 

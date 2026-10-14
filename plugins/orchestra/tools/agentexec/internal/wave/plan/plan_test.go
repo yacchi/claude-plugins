@@ -46,7 +46,7 @@ func TestLoadValidation(t *testing.T) {
 	}{
 		{"invalid json", `{nope`, "invalid JSON in plan ", nil},
 		{"missing packages", `{"rules": []}`, "missing required key 'packages'", nil},
-		{"missing id", `{"packages":[{"spec":"a.md","cls":"light"}]}`, "package missing required field 'id': {'spec': 'a.md', 'cls': 'light'}", []string{"a.md"}},
+		{"missing id", `{"packages":[{"spec":"a.md","cls":"light"}]}`, "package missing required field 'id': {'cls': 'light', 'spec': 'a.md'}", []string{"a.md"}},
 		{"missing spec", `{"packages":[{"id":"a","cls":"light"}]}`, "a: missing required field 'spec'", nil},
 		{"missing cls", `{"packages":[{"id":"a","spec":"a.md"}]}`, "a: missing required field 'cls'", []string{"a.md"}},
 		{"bad cls", `{"packages":[{"id":"a","spec":"a.md","cls":"huge"}]}`, "a: invalid cls 'huge' (must be one of light, standard, deep)", []string{"a.md"}},

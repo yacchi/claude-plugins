@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/telemetry"
 )
 
@@ -107,12 +107,12 @@ func runRecord(cmd *cobra.Command, jsonFlag, fileFlag *optString) error {
 		}
 		data = b
 	}
-	v, err := jsonx.Decode(data)
+	v, err := fsutil.DecodeJSON(data)
 	if err != nil {
 		return exitf(2, "telemetry: invalid JSON input")
 	}
-	rec, ok := v.(*jsonx.Object)
-	if ev, _ := rec.Get("event"); !ok || (ev != "run_summary" && ev != "dispatch") {
+	rec, ok := v.(map[string]any)
+	if ev, _ := rec["event"]; !ok || (ev != "run_summary" && ev != "dispatch") {
 		return exitf(2, "telemetry: record missing valid 'event'")
 	}
 	telemetry.Append(rec, configOrDefaults())

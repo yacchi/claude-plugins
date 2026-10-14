@@ -49,7 +49,7 @@
           "content": [
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -73,7 +73,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"light\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"light\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "A",
@@ -81,7 +81,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"claude\", \"seconds\": <N>, \"status\": \"delegate\"}",
+              "detail": "{\"executor\":\"claude\",\"seconds\": <N>,\"status\":\"delegate\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "A",
@@ -89,7 +89,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "A",
@@ -113,7 +113,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"light\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"light\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "C",
@@ -121,7 +121,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"claude\", \"seconds\": <N>, \"status\": \"delegate\"}",
+              "detail": "{\"executor\":\"claude\",\"seconds\": <N>,\"status\":\"delegate\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "C",
@@ -129,7 +129,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
+              "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "C",
@@ -148,13 +148,13 @@
             "needs": [
               {
                 "at": "<AT>",
-                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
                 "id": "A",
                 "kind": "delegate"
               },
               {
                 "at": "<AT>",
-                "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
                 "id": "C",
                 "kind": "delegate"
               }
@@ -163,7 +163,7 @@
               "A": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,
@@ -185,7 +185,7 @@
               "C": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"token\": \"<TOKEN#2>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,
@@ -346,7 +346,7 @@
             "needs": [
               {
                 "at": "<AT>",
-                "detail": "{\"token\": \"<TOKEN#3>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#3>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B\"}",
                 "id": "B",
                 "kind": "delegate"
               }
@@ -366,7 +366,7 @@
               "B": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"token\": \"<TOKEN#3>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#3>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,

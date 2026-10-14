@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // Probe is one backend's availability on this host.
@@ -32,25 +32,29 @@ type ProbeReport struct {
 // MarshalJSON keeps Python's shape: {"ok", "detail"} plus "path" for a
 // passing bwrap and "abi" for landlock.
 func (r ProbeReport) MarshalJSON() ([]byte, error) {
-	return jsonx.Marshal(r.Object())
+	return fsutil.MarshalJSON(r.Object())
 }
 
-// Object is the report as an ordered JSON object.
-func (r ProbeReport) Object() *jsonx.Object {
-	one := func(p Probe, landlock bool) *jsonx.Object {
-		o := jsonx.NewObject().Set("ok", p.OK).Set("detail", p.Detail)
+// ProbeOrder is the order the backends are probed in and listed.
+var ProbeOrder = []string{"seatbelt", "bwrap", "landlock"}
+
+// Object is the report as a JSON object keyed by backend.
+func (r ProbeReport) Object() map[string]any {
+	one := func(p Probe, landlock bool) map[string]any {
+		o := map[string]any{"ok": p.OK, "detail": p.Detail}
 		if p.Path != "" {
-			o.Set("path", p.Path)
+			o["path"] = p.Path
 		}
 		if landlock {
-			o.Set("abi", int64(p.ABI))
+			o["abi"] = int64(p.ABI)
 		}
 		return o
 	}
-	return jsonx.NewObject().
-		Set("seatbelt", one(r.Seatbelt, false)).
-		Set("bwrap", one(r.Bwrap, false)).
-		Set("landlock", one(r.Landlock, true))
+	return map[string]any{
+		"seatbelt": one(r.Seatbelt, false),
+		"bwrap":    one(r.Bwrap, false),
+		"landlock": one(r.Landlock, true),
+	}
 }
 
 var (

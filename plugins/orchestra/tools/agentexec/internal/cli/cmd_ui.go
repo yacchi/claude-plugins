@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ui"
 )
 
@@ -117,7 +116,7 @@ func runUI(out, errw io.Writer, args []string) error {
 			return fail(err)
 		}
 		if o.json {
-			return writeJSONLine(out, jsonx.NewObject().Set("stopped", res["stopped"]))
+			return writeJSONLine(out, map[string]any{"stopped": res["stopped"]})
 		}
 		if res["stopped"] == true {
 			fmt.Fprintln(out, "stopped")

@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // Lookup walks path through nested objects. ok is false when any step is
@@ -14,11 +14,11 @@ func (r *Resolved) Lookup(path ...string) (any, bool) {
 	}
 	var cur any = r.Values
 	for _, k := range path {
-		obj, isObj := cur.(*jsonx.Object)
+		obj, isObj := cur.(map[string]any)
 		if !isObj || obj == nil {
 			return nil, false
 		}
-		v, ok := obj.Get(k)
+		v, ok := obj[k]
 		if !ok {
 			return nil, false
 		}
@@ -69,9 +69,9 @@ func (r *Resolved) StringList(path ...string) []string {
 }
 
 // Section is the top-level object name, or nil when absent or not an object.
-func (r *Resolved) Section(name string) *jsonx.Object {
+func (r *Resolved) Section(name string) map[string]any {
 	v, _ := r.Lookup(name)
-	obj, _ := v.(*jsonx.Object)
+	obj, _ := v.(map[string]any)
 	return obj
 }
 
@@ -82,9 +82,60 @@ func Decode(r *Resolved, section string, out any) error {
 	if !ok {
 		return nil
 	}
-	data, err := jsonx.Marshal(v)
+	data, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		return err
 	}
 	return json.Unmarshal(data, out)
+}
+
+// ObjectAt is the object stored under key in m, or nil when it is absent or
+// not an object.
+func ObjectAt(m map[string]any, key string) map[string]any {
+	obj, _ := m[key].(map[string]any)
+	return obj
+}
+
+// CloneValue deep-copies the containers of a JSON value (objects and
+// arrays); every other value is returned as is.
+func CloneValue(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		if x == nil {
+			return x
+		}
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = CloneValue(e)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = CloneValue(e)
+		}
+		return out
+	}
+	return v
+}
+
+// DeepMerge merges over onto base with the config layering rules: only
+// object+object recurses; every other value (lists included, and an explicit
+// null) replaces the base value wholesale. Neither input is modified; values
+// taken from over are shared, not copied.
+func DeepMerge(base, over map[string]any) map[string]any {
+	out, _ := CloneValue(base).(map[string]any)
+	if out == nil {
+		out = map[string]any{}
+	}
+	for k, v := range over {
+		curObj, curIsObj := out[k].(map[string]any)
+		vObj, vIsObj := v.(map[string]any)
+		if curIsObj && vIsObj && curObj != nil && vObj != nil {
+			out[k] = DeepMerge(curObj, vObj)
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }

@@ -48,7 +48,7 @@
             "needs": [
               {
                 "at": "<AT>",
-                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
                 "id": "A",
                 "kind": "delegate"
               }
@@ -57,7 +57,7 @@
               "A": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,
@@ -143,7 +143,7 @@
           "content": [
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"auto\", \"value\": 4}",
+              "detail": "{\"source\":\"auto\",\"value\":4}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -167,7 +167,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"light\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"light\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "A",
@@ -175,7 +175,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"claude\", \"seconds\": <N>, \"status\": \"delegate\"}",
+              "detail": "{\"executor\":\"claude\",\"seconds\": <N>,\"status\":\"delegate\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "A",
@@ -183,7 +183,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"token\": \"<TOKEN#1>\", \"agent_type\": null, \"model\": \"haiku\", \"effort\": null, \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "A",
@@ -199,7 +199,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"auto\", \"value\": 4}",
+              "detail": "{\"source\":\"auto\",\"value\":4}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -223,7 +223,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"A\"]}",
+              "detail": "{\"tasks\":[\"A\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -231,7 +231,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"empty\"}",
+              "detail": "{\"status\":\"empty\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "A",
@@ -239,7 +239,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,
@@ -279,7 +279,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "B",
@@ -287,7 +287,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "B",
@@ -311,7 +311,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"B\"]}",
+              "detail": "{\"tasks\":[\"B\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -319,7 +319,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "B",
@@ -327,7 +327,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,

@@ -8,9 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -69,8 +72,7 @@ func EnsureDir(path string, perm fs.FileMode) error {
 	return os.MkdirAll(path, perm)
 }
 
-// ReadJSONFile decodes the JSON file at path into v. Pass a *jsonx.Object to
-// keep key order.
+// ReadJSONFile decodes the JSON file at path into v.
 func ReadJSONFile(path string, v any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -98,6 +100,53 @@ func AppendJSONLine(path string, v any, perm fs.FileMode) error {
 	return f.Close()
 }
 
+// MarshalJSON renders v as one line of JSON without HTML escaping.
+func MarshalJSON(v any) ([]byte, error) {
+	return encodeJSON(v, false)
+}
+
+// MarshalJSONIndent renders v as JSON indented by two spaces, without HTML
+// escaping and without a trailing newline.
+func MarshalJSONIndent(v any) ([]byte, error) {
+	return encodeJSON(v, true)
+}
+
+// DecodeJSON parses one JSON document into generic values: objects become
+// map[string]any, arrays []any, integers int64 and other numbers float64, so
+// callers can tell 3 from 3.0 as the JSON text does.
+func DecodeJSON(data []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("trailing data after JSON value")
+	}
+	return numbers(v), nil
+}
+
+func numbers(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, e := range x {
+			x[k] = numbers(e)
+		}
+	case []any:
+		for i, e := range x {
+			x[i] = numbers(e)
+		}
+	case json.Number:
+		if n, err := x.Int64(); err == nil && !strings.ContainsAny(string(x), ".eE") {
+			return n
+		}
+		f, _ := x.Float64()
+		return f
+	}
+	return v
+}
+
 func encodeJSON(v any, indent bool) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -109,6 +158,30 @@ func encodeJSON(v any, indent bool) ([]byte, error) {
 		return nil, err
 	}
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
+// FloatRepr renders f as Python's repr(float) does ("1.0", "0.0001",
+// "1e-05", "1e+16"; Infinity/NaN when not finite). Only the py* text helpers
+// that still quote values the Python way use it.
+func FloatRepr(f float64) string {
+	switch {
+	case math.IsNaN(f):
+		return "NaN"
+	case math.IsInf(f, 1):
+		return "Infinity"
+	case math.IsInf(f, -1):
+		return "-Infinity"
+	}
+	sci := strconv.FormatFloat(f, 'e', -1, 64)
+	exp, _ := strconv.Atoi(sci[strings.IndexByte(sci, 'e')+1:])
+	if exp < -4 || exp >= 16 {
+		return sci
+	}
+	s := strconv.FormatFloat(f, 'f', -1, 64)
+	if !strings.Contains(s, ".") {
+		s += ".0"
+	}
+	return s
 }
 
 // PIDAlive reports whether a process with this pid exists (a process owned

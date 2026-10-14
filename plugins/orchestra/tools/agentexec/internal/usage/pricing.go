@@ -1,11 +1,13 @@
 package usage
 
 import (
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 )
 
 // WHAT IS AND IS NOT PRICED. Only models with a known per-token price get a
@@ -122,33 +124,33 @@ func optNumber(v any) *float64 {
 // PriceFor is the price of a model id, or false when it is not priced. The
 // user's pricing.models entries win over the built-in list; a malformed entry
 // is ignored rather than failing (the report must still render).
-func PriceFor(model string, overrides *jsonx.Object) (Price, bool) {
+func PriceFor(model string, overrides map[string]any) (Price, bool) {
 	if model == "" {
 		return Price{}, false
 	}
-	if configured := overrides.Object("models"); configured != nil {
-		keys := configured.Keys()
+	if configured := config.ObjectAt(overrides, "models"); configured != nil {
+		keys := slices.Sorted(maps.Keys(configured))
 		sort.SliceStable(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
 		for _, key := range keys {
-			specV, _ := configured.Get(key)
-			spec, ok := specV.(*jsonx.Object)
+			specV := configured[key]
+			spec, ok := specV.(map[string]any)
 			if !ok || !strings.HasPrefix(model, key) {
 				continue
 			}
-			inV, _ := spec.Get("input")
-			outV, _ := spec.Get("output")
+			inV := spec["input"]
+			outV := spec["output"]
 			input, ok1 := number(inV)
 			output, ok2 := number(outV)
 			if !ok1 || !ok2 {
 				continue
 			}
-			crV, _ := spec.Get("cache_read")
+			crV := spec["cache_read"]
 			cacheRead, ok := number(crV)
 			if !ok {
 				cacheRead = input * 0.1
 			}
-			w5, _ := spec.Get("cache_write_5m")
-			w1, _ := spec.Get("cache_write_1h")
+			w5 := spec["cache_write_5m"]
+			w1 := spec["cache_write_1h"]
 			return derived(input, output, cacheRead, optNumber(w5), optNumber(w1)), true
 		}
 	}
@@ -205,7 +207,7 @@ type Cost struct {
 // skipped; a model with no known price is listed in UnpricedModels with its
 // token total, so the report can say exactly how much the dollar figure
 // leaves out.
-func Estimate(byModel map[string]Detail, overrides *jsonx.Object) Cost {
+func Estimate(byModel map[string]Detail, overrides map[string]any) Cost {
 	c := Cost{
 		Models:         map[string]ModelCost{},
 		UnpricedModels: map[string]int64{},

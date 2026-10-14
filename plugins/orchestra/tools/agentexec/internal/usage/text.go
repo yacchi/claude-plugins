@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 func tokensLine(t Tokens) string {
@@ -129,21 +128,22 @@ func Snapshot24h(cfg *config.Resolved) any {
 		Since: now.Add(-24 * time.Hour), Now: now,
 		Sources: Sources, AllProjects: true, Cfg: cfg,
 	})
-	out := jsonx.NewObject()
+	out := map[string]any{}
 	for _, name := range rep.Sources.Names {
 		e := rep.Sources.Entries[name]
 		if e.NotAttributable {
 			continue
 		}
 		emit := func(model string, t Tokens) {
-			o := jsonx.NewObject().
-				Set("input_tokens", t.InputTokens).
-				Set("output_tokens", t.OutputTokens).
-				Set("cached_input_tokens", t.CachedInputTokens)
-			if e.HasCostMicroUSD {
-				o.Set("cost_micro_usd", e.CostMicroUSD)
+			o := map[string]any{
+				"input_tokens":        t.InputTokens,
+				"output_tokens":       t.OutputTokens,
+				"cached_input_tokens": t.CachedInputTokens,
 			}
-			out.Set(name+"/"+model, o)
+			if e.HasCostMicroUSD {
+				o["cost_micro_usd"] = e.CostMicroUSD
+			}
+			out[name+"/"+model] = o
 		}
 		if len(e.ByModel) > 0 {
 			for _, model := range sortedKeys(e.ByModel) {

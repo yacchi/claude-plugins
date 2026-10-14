@@ -10,7 +10,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 )
 
@@ -57,40 +57,45 @@ func strs(l []string) []any {
 	return out
 }
 
-// Object renders the route in `route --json` key order.
-func (r Route) Object() *jsonx.Object {
+// Object renders the route as `route --json` prints it.
+func (r Route) Object() map[string]any {
 	skipped := make([]any, len(r.Skipped))
 	for i, s := range r.Skipped {
-		skipped[i] = jsonx.NewObject().Set("executor", s.Executor).Set("reason", s.Reason)
+		skipped[i] = map[string]any{"executor": s.Executor, "reason": s.Reason}
 	}
 	applied := make([]any, len(r.CooldownsApplied))
 	for i, c := range r.CooldownsApplied {
-		applied[i] = jsonx.NewObject().Set("executor", c.Executor).Set("reason", c.Reason).Set("until", c.Until)
+		applied[i] = map[string]any{"executor": c.Executor, "reason": c.Reason, "until": c.Until}
 	}
-	o := jsonx.NewObject().
-		Set("class", r.Class).
-		Set("archetype", r.Archetype).
-		Set("candidates", strs(r.Candidates)).
-		Set("skipped", skipped).
-		Set("source", r.Source).
-		Set("cooldowns_applied", applied).
-		Set("cooldown_bypassed", r.CooldownBypassed)
+	o := map[string]any{
+		"class":             r.Class,
+		"archetype":         r.Archetype,
+		"candidates":        strs(r.Candidates),
+		"skipped":           skipped,
+		"source":            r.Source,
+		"cooldowns_applied": applied,
+		"cooldown_bypassed": r.CooldownBypassed,
+	}
 	if !r.Routable() {
-		return o.Set("executor", nil).Set("dispatch", nil).Set("model", nil).
-			Set("effort", nil).Set("agent_type", nil).Set("remaining", []any{})
+		for _, k := range []string{"executor", "dispatch", "model", "effort", "agent_type"} {
+			o[k] = nil
+		}
+		o["remaining"] = []any{}
+		return o
 	}
-	return o.Set("remaining", strs(r.Remaining)).
-		Set("executor", r.Executor).
-		Set("dispatch", r.Dispatch).
-		Set("model", r.Model).
-		Set("effort", r.Effort).
-		Set("agent_type", r.AgentType)
+	o["remaining"] = strs(r.Remaining)
+	o["executor"] = r.Executor
+	o["dispatch"] = r.Dispatch
+	o["model"] = r.Model
+	o["effort"] = r.Effort
+	o["agent_type"] = r.AgentType
+	return o
 }
 
 func candidates(cfg *config.Resolved, cls, archetype string) ([]string, string) {
-	cp := cfg.Section("priority").Object(cls)
+	cp := config.ObjectAt(cfg.Section("priority"), cls)
 	for _, key := range []string{archetype, "default"} {
-		v, _ := cp.Get(key)
+		v := cp[key]
 		if list, ok := v.([]any); ok && len(list) > 0 {
 			out := make([]string, 0, len(list))
 			for _, e := range list {
@@ -104,7 +109,7 @@ func candidates(cfg *config.Resolved, cls, archetype string) ([]string, string) 
 	return []string{"claude"}, "tiers-default"
 }
 
-func skipReason(name, cls string, exhausted map[string]bool, external *jsonx.Object,
+func skipReason(name, cls string, exhausted map[string]bool, external map[string]any,
 	ready map[string]readiness.ExecReady, cd map[string]cooldown.Entry) string {
 	if _, known := readiness.KnownExecutors[name]; name != "claude" && !known {
 		return "unknown-executor:" + name
@@ -122,17 +127,17 @@ func skipReason(name, cls string, exhausted map[string]bool, external *jsonx.Obj
 	if name == "claude" {
 		return ""
 	}
-	ecfg := external.Object(name)
+	ecfg := config.ObjectAt(external, name)
 	if ecfg == nil {
 		return "not-configured"
 	}
-	if v, _ := ecfg.Get("enabled"); v != true {
+	if v, _ := ecfg["enabled"]; v != true {
 		return "disabled"
 	}
-	if ecfg.Object("class_policy").Object(cls) == nil {
+	if config.ObjectAt(config.ObjectAt(ecfg, "class_policy"), cls) == nil {
 		return "no-class-policy"
 	}
-	dispatch, _ := ecfg.Get("dispatch")
+	dispatch := ecfg["dispatch"]
 	switch dispatch {
 	case "cli":
 		entry, ok := ready[name]
@@ -199,18 +204,18 @@ func Resolve(cfg *config.Resolved, ready map[string]readiness.ExecReady, cls, ar
 	r.Executor = winner
 	r.Remaining = append([]string{}, cands[idx+1:]...)
 	if winner == "claude" {
-		model, _ := cfg.Section("tiers").Get(cls)
+		model := cfg.Section("tiers")[cls]
 		r.Dispatch, r.Model = "claude", model
 		return r
 	}
-	ecfg := external.Object(winner)
-	dispatch, _ := ecfg.Get("dispatch")
-	policy := ecfg.Object("class_policy").Object(cls)
+	ecfg := config.ObjectAt(external, winner)
+	dispatch := ecfg["dispatch"]
+	policy := config.ObjectAt(config.ObjectAt(ecfg, "class_policy"), cls)
 	r.Dispatch = dispatch
-	r.Model, _ = policy.Get("model")
-	r.Effort, _ = policy.Get("effort")
+	r.Model = policy["model"]
+	r.Effort = policy["effort"]
 	if dispatch == "agent" {
-		r.AgentType, _ = ecfg.Get("agent_type")
+		r.AgentType = ecfg["agent_type"]
 	}
 	return r
 }
@@ -227,9 +232,9 @@ func pyStr(v any) string {
 		}
 		return "False"
 	case float64:
-		return jsonx.FormatFloat(x)
+		return fsutil.FloatRepr(x)
 	}
-	b, err := jsonx.Marshal(v)
+	b, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		return fmt.Sprint(v)
 	}
@@ -256,7 +261,7 @@ func FormatText(r Route) string {
 		}
 	}
 	for _, c := range r.CooldownsApplied {
-		fmt.Fprintf(&b, "cooldown: %s (%s) until %s\n", c.Executor, c.Reason, jsonx.FormatFloat(c.Until))
+		fmt.Fprintf(&b, "cooldown: %s (%s) until %s\n", c.Executor, c.Reason, fsutil.FloatRepr(c.Until))
 	}
 	if r.CooldownBypassed {
 		b.WriteString("cooldown: BYPASSED (all candidates were cooled down)\n")

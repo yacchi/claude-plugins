@@ -9,7 +9,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
@@ -17,7 +16,7 @@ import (
 // `isolation` object; path and wd are the worktree root and the effective
 // workdir inside it when isolated.
 type isolation struct {
-	obj      *jsonx.Object
+	obj      map[string]any
 	isolated bool
 	path, wd string
 }
@@ -39,25 +38,28 @@ func (i isolation) tree(workdir string) string {
 }
 
 // shouldIsolate is the mode's verdict on the tree at path.
-func shouldIsolate(path, mode string) (bool, *jsonx.Object) {
-	o := jsonx.NewObject()
+func shouldIsolate(path, mode string) (bool, map[string]any) {
+	verdict := func(isolate bool, reason, repo string) (bool, map[string]any) {
+		o := map[string]any{"isolate": isolate, "mode": mode, "reason": reason}
+		if repo != "" {
+			o["repo"] = repo
+		}
+		return isolate, o
+	}
 	if mode == IsolateNever {
-		return false, o.Set("isolate", false).Set("mode", mode).Set("reason", "isolation disabled (--isolate never)")
+		return verdict(false, "isolation disabled (--isolate never)", "")
 	}
 	root, ok := gitx.RepoRoot(path)
 	if !ok {
-		return false, o.Set("isolate", false).Set("mode", mode).Set("reason", "not a git repository, cannot isolate")
+		return verdict(false, "not a git repository, cannot isolate", "")
 	}
 	if mode == IsolateAlways {
-		return true, o.Set("isolate", true).Set("mode", mode).Set("reason", "isolation forced (--isolate always)").Set("repo", root)
+		return verdict(true, "isolation forced (--isolate always)", root)
 	}
 	if gitx.IsDirty(root) {
-		return true, o.Set("isolate", true).Set("mode", mode).
-			Set("reason", "working tree is dirty; the user's uncommitted work must not be reachable by a worker").
-			Set("repo", root)
+		return verdict(true, "working tree is dirty; the user's uncommitted work must not be reachable by a worker", root)
 	}
-	return false, o.Set("isolate", false).Set("mode", mode).
-		Set("reason", "working tree is clean; nothing for a worker to destroy").Set("repo", root)
+	return verdict(false, "working tree is clean; nothing for a worker to destroy", root)
 }
 
 // isolateFor resolves isolation for a dispatch into workdir. Failing to
@@ -67,9 +69,9 @@ func isolateFor(cfg *config.Resolved, workdir, mode, task string) isolation {
 	if !want {
 		return isolation{obj: verdict}
 	}
-	why, _ := verdict.Get("reason")
+	why := verdict["reason"]
 	shared := func(reason string) isolation {
-		return isolation{obj: jsonx.NewObject().Set("isolate", false).Set("mode", mode).Set("reason", reason)}
+		return isolation{obj: map[string]any{"isolate": false, "mode": mode, "reason": reason}}
 	}
 	if task == "" {
 		return shared(fmt.Sprintf("isolation wanted (%s) but no --task id was given; "+
@@ -115,10 +117,16 @@ func isolateFor(cfg *config.Resolved, workdir, mode, task string) isolation {
 	if carried == nil {
 		carried = []string{}
 	}
-	obj := jsonx.NewObject().
-		Set("isolate", true).Set("mode", mode).Set("reason", reason).
-		Set("path", wt).Set("workdir", effective).
-		Set("branch", created.Branch).Set("backend", created.Backend).
-		Set("carried", carried).Set("created", created.Status == "created")
+	obj := map[string]any{
+		"isolate": true,
+		"mode":    mode,
+		"reason":  reason,
+		"path":    wt,
+		"workdir": effective,
+		"branch":  created.Branch,
+		"backend": created.Backend,
+		"carried": carried,
+		"created": created.Status == "created",
+	}
 	return isolation{obj: obj, isolated: true, path: wt, wd: effective}
 }

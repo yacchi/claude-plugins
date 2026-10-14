@@ -4,9 +4,7 @@
 // state.json is indent=2 with sorted keys, floats in Python repr form.
 package state
 
-import (
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
-)
+import ()
 
 // Package statuses in display order.
 var Statuses = []string{
@@ -116,7 +114,7 @@ func (s *State) clone() State {
 	for id, p := range s.Packages {
 		c := *p
 		if p.NetworkDenials != nil {
-			c.NetworkDenials = jsonx.CloneValue(p.NetworkDenials).([]any)
+			c.NetworkDenials = cloneValue(p.NetworkDenials).([]any)
 		}
 		c.Extra = cloneMap(p.Extra)
 		out.Packages[id] = &c
@@ -136,7 +134,7 @@ func cloneMap(m map[string]any) map[string]any {
 	}
 	out := make(map[string]any, len(m))
 	for k, v := range m {
-		out[k] = jsonx.CloneValue(v)
+		out[k] = cloneValue(v)
 	}
 	return out
 }

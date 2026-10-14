@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // Store is every read and write of one wave's state.json + events.jsonl.
@@ -85,7 +84,7 @@ func (s *Store) appendEvents(events []map[string]any) error {
 	}
 	defer f.Close()
 	for _, ev := range events {
-		line, err := jsonx.Marshal(eventObject(ev))
+		line, err := fsutil.MarshalJSON(eventObject(ev))
 		if err != nil {
 			return err
 		}
@@ -98,11 +97,11 @@ func (s *Store) appendEvents(events []map[string]any) error {
 
 // eventObject orders a record like Python's dict: at, pkg, from, to, event,
 // detail, then any extra keys sorted.
-func eventObject(ev map[string]any) *jsonx.Object {
-	o := jsonx.NewObject()
+func eventObject(ev map[string]any) map[string]any {
+	o := map[string]any{}
 	base := []string{"at", "pkg", "from", "to", "event", "detail"}
 	for _, k := range base {
-		o.Set(k, ev[k])
+		o[k] = ev[k]
 	}
 	var extra []string
 	for k := range ev {
@@ -112,7 +111,7 @@ func eventObject(ev map[string]any) *jsonx.Object {
 	}
 	sort.Strings(extra)
 	for _, k := range extra {
-		o.Set(k, ev[k])
+		o[k] = ev[k]
 	}
 	return o
 }

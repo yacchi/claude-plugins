@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
@@ -54,17 +54,17 @@ func ReadSession(cfg *config.Resolved, executor, task string) (SessionRecord, bo
 	if err != nil {
 		return SessionRecord{}, false
 	}
-	v, err := jsonx.Decode(raw)
+	v, err := fsutil.DecodeJSON(raw)
 	if err != nil {
 		return SessionRecord{}, false
 	}
-	o, ok := v.(*jsonx.Object)
+	o, ok := v.(map[string]any)
 	if !ok || o == nil {
 		return SessionRecord{}, false
 	}
 	vals := make([]string, len(sessionKeys))
 	for i, k := range sessionKeys {
-		x, _ := o.Get(k)
+		x := o[k]
 		s, isStr := x.(string)
 		if !isStr || s == "" {
 			return SessionRecord{}, false
@@ -89,9 +89,13 @@ func WriteSession(cfg *config.Resolved, executor, task, sessionID, workdir strin
 		Executor: executor, Task: task, SessionID: sessionID, Workdir: abs(workdir),
 		Updated: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 	}
-	payload, err := compactJSON(jsonx.NewObject().
-		Set("executor", rec.Executor).Set("task", rec.Task).Set("session_id", rec.SessionID).
-		Set("workdir", rec.Workdir).Set("updated", rec.Updated))
+	payload, err := compactJSON(map[string]any{
+		"executor":   rec.Executor,
+		"task":       rec.Task,
+		"session_id": rec.SessionID,
+		"workdir":    rec.Workdir,
+		"updated":    rec.Updated,
+	})
 	if err != nil {
 		return SessionRecord{}, err
 	}

@@ -2,9 +2,11 @@ package capture
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,7 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/watchdog"
 )
@@ -167,13 +170,13 @@ func TestRequiredModeWithoutBackendNeverSpawns(t *testing.T) {
 	isolatedHome(t)
 	t.Setenv(sandbox.ForceEnv, "none")
 	cfg := defaultsCfg()
-	cfg.Values.Object("sandbox").Set("mode", "required")
+	config.ObjectAt(cfg.Values, "sandbox")["mode"] = "required"
 	tree := t.TempDir()
 	spec := sandbox.Prepare("pi", tree, cfg, "m", "")
 	if !spec.Refuse {
 		t.Fatalf("spec not refused: %+v", spec)
 	}
-	restore := swapSeams(func(context.Context, Request, sandbox.Spec, string, string) (*jsonx.Object, *denialInput, error) {
+	restore := swapSeams(func(context.Context, Request, sandbox.Spec, string, string) (map[string]any, *denialInput, error) {
 		t.Fatal("spawned")
 		return nil, nil, nil
 	}, prepareSpec)
@@ -183,10 +186,10 @@ func TestRequiredModeWithoutBackendNeverSpawns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	limits, _ := jsonx.Marshal(spec.Limits)
+	limits, _ := fsutil.MarshalJSON(spec.Limits)
 	want := `{"status": "unavailable", "answer": null, "session_id": null, "reason": "sandbox", "exit_code": null, "usage": null, "sandbox": {"backend": "none", "enforced": false, "reason": ` +
 		strconv.Quote(spec.Reason) + `, "limits": ` + string(limits) + `, "writable": []}}`
-	if raw, _ := jsonx.Marshal(got); string(raw) != want {
+	if raw, _ := fsutil.MarshalJSON(got); !sameJSON(raw, []byte(want)) {
 		t.Fatalf("got  %s\nwant %s", raw, want)
 	}
 }
@@ -195,7 +198,7 @@ func TestMissingBinaryIsNotFound(t *testing.T) {
 	isolatedHome(t)
 	t.Setenv("PATH", t.TempDir())
 	cfg := defaultsCfg()
-	cfg.Values.Object("sandbox").Set("mode", "off")
+	config.ObjectAt(cfg.Values, "sandbox")["mode"] = "off"
 	_, _, err := RunWithGrants(context.Background(), Request{Executor: "pi", Prompt: "x",
 		Sandbox: sandbox.Prepare("pi", t.TempDir(), cfg, "m", ""), Cfg: cfg})
 	if !errors.Is(err, ErrExecutorNotFound) {
@@ -223,7 +226,7 @@ func TestPiChildEnvCwdAndStdin(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	cfg := defaultsCfg()
-	cfg.Values.Object("sandbox").Set("mode", "off")
+	config.ObjectAt(cfg.Values, "sandbox")["mode"] = "off"
 	work, _ := filepath.EvalSymlinks(t.TempDir())
 	for _, dir := range []string{work, filepath.Join(work, "missing")} {
 		got, _, err := RunWithGrants(context.Background(), Request{Executor: "pi", Workdir: dir,
@@ -231,7 +234,7 @@ func TestPiChildEnvCwdAndStdin(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		answer, _ := got.Get("answer")
+		answer := got["answer"]
 		parts := strings.Split(answer.(string), "|")
 		cwd, _ := os.Getwd()
 		wantCwd := work
@@ -267,18 +270,27 @@ func TestExecutorEnvIsRegistered(t *testing.T) {
 }
 
 func TestMergeUsage(t *testing.T) {
-	a := jsonx.NewObject().Set("tokens", jsonx.NewObject().Set("input_tokens", int64(1))).
-		Set("cost_micro_usd", int64(2))
-	b := jsonx.NewObject().Set("tokens", jsonx.NewObject().Set("input_tokens", int64(3)).
-		Set("output_tokens", int64(4))).Set("cost_micro_usd", int64(5))
-	got, _ := jsonx.Marshal(mergeUsage(a, b))
-	if string(got) != `{"tokens": {"input_tokens": 4, "output_tokens": 4}, "cost_micro_usd": 7}` {
+	a := map[string]any{
+		"tokens":         map[string]any{"input_tokens": int64(1)},
+		"cost_micro_usd": int64(2),
+	}
+	b := map[string]any{
+		"tokens": map[string]any{
+			"input_tokens":  int64(3),
+			"output_tokens": int64(4),
+		},
+		"cost_micro_usd": int64(5),
+	}
+	got, _ := fsutil.MarshalJSON(mergeUsage(a, b))
+	if string(got) != `{"cost_micro_usd":7,"tokens":{"input_tokens":4,"output_tokens":4}}` {
 		t.Fatalf("merged %s", got)
 	}
-	if mergeUsage(nil, b).(*jsonx.Object) == b {
+	copied := mergeUsage(nil, b).(map[string]any)
+	copied["tokens"].(map[string]any)["input_tokens"] = int64(0)
+	if b["tokens"].(map[string]any)["input_tokens"] != int64(3) {
 		t.Fatal("not copied")
 	}
-	if mergeUsage(a, nil) != any(a) {
+	if kept, ok := mergeUsage(a, nil).(map[string]any); !ok || len(kept) != len(a) {
 		t.Fatal("a not kept")
 	}
 	if mergeUsage(nil, nil) != nil {
@@ -348,4 +360,13 @@ func TestReadPromptFiles(t *testing.T) {
 	if _, err := ReadPromptFiles(bad); err == nil {
 		t.Error("invalid UTF-8 accepted")
 	}
+}
+
+// sameJSON reports whether a and b decode to the same JSON value.
+func sameJSON(a, b []byte) bool {
+	var x, y any
+	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil {
+		return false
+	}
+	return reflect.DeepEqual(x, y)
 }

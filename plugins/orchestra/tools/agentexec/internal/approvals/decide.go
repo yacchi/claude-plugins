@@ -84,7 +84,7 @@ func DecideIn(env Env, statePath, id, decision, reason, by string) (map[string]a
 	}
 	var (
 		subject  any
-		packages []string
+		packages = []string{}
 		resumed  []string
 		failure  *DecisionError
 	)

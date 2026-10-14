@@ -18,7 +18,7 @@ import (
 	"syscall"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 )
 
@@ -86,7 +86,7 @@ func privateDir(dir string) error {
 // compactJSON is Python's json.dumps(v, ensure_ascii=False,
 // separators=(",", ":")).
 func compactJSON(v any) ([]byte, error) {
-	b, err := jsonx.Marshal(v)
+	b, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		return nil, err
 	}
@@ -135,15 +135,16 @@ func Prepare(cfg *config.Resolved, s PrepareSpec) (string, error) {
 	for i, p := range s.PromptFiles {
 		prompts[i] = abs(p)
 	}
-	spec := jsonx.NewObject().
-		Set("class", s.Class).
-		Set("archetype", s.Archetype).
-		Set("workdir", abs(s.Workdir)).
-		Set("run_id", optString(s.RunID)).
-		Set("isolate", s.Isolate).
-		Set("task", optString(s.Task)).
-		Set("prompt_files", prompts).
-		Set("config_root", abs(s.ConfigRoot))
+	spec := map[string]any{
+		"class":        s.Class,
+		"archetype":    s.Archetype,
+		"workdir":      abs(s.Workdir),
+		"run_id":       optString(s.RunID),
+		"isolate":      s.Isolate,
+		"task":         optString(s.Task),
+		"prompt_files": prompts,
+		"config_root":  abs(s.ConfigRoot),
+	}
 	payload, err := compactJSON(spec)
 	if err != nil {
 		return "", err
@@ -193,23 +194,23 @@ func LoadToken(cfg *config.Resolved, token string) (PrepareSpec, error) {
 	if err != nil {
 		return PrepareSpec{}, ErrInvalidToken
 	}
-	v, err := jsonx.Decode(raw)
+	v, err := fsutil.DecodeJSON(raw)
 	if err != nil {
 		return PrepareSpec{}, ErrInvalidToken
 	}
-	o, ok := v.(*jsonx.Object)
+	o, ok := v.(map[string]any)
 	if !ok || o == nil {
 		return PrepareSpec{}, ErrInvalidToken
 	}
 	for _, k := range []string{"class", "archetype", "workdir", "run_id", "isolate", "task", "prompt_files"} {
-		if _, has := o.Get(k); !has {
+		if _, has := o[k]; !has {
 			return PrepareSpec{}, ErrInvalidToken
 		}
 	}
 	var s PrepareSpec
 	var okAll = true
 	str := func(k string) string {
-		v, _ := o.Get(k)
+		v := o[k]
 		x, isStr := v.(string)
 		if !isStr {
 			okAll = false
@@ -217,7 +218,7 @@ func LoadToken(cfg *config.Resolved, token string) (PrepareSpec, error) {
 		return x
 	}
 	optStr := func(k string) *string {
-		v, _ := o.Get(k)
+		v := o[k]
 		if v == nil {
 			return nil
 		}
@@ -233,7 +234,7 @@ func LoadToken(cfg *config.Resolved, token string) (PrepareSpec, error) {
 	if !okAll || !ValidIsolate(s.Isolate) {
 		return PrepareSpec{}, ErrInvalidToken
 	}
-	pv, _ := o.Get("prompt_files")
+	pv := o["prompt_files"]
 	list, isList := pv.([]any)
 	if !isList {
 		return PrepareSpec{}, ErrInvalidToken
@@ -245,7 +246,7 @@ func LoadToken(cfg *config.Resolved, token string) (PrepareSpec, error) {
 		}
 		s.PromptFiles = append(s.PromptFiles, p)
 	}
-	if root, _ := o.Get("config_root"); root != nil {
+	if root, _ := o["config_root"]; root != nil {
 		if r, isStr := root.(string); isStr && filepath.IsAbs(r) {
 			s.ConfigRoot = r
 		}

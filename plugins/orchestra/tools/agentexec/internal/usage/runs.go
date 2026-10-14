@@ -8,7 +8,6 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 )
 
@@ -81,7 +80,7 @@ func ListRuns(o RunsOptions) []Run {
 				it.ordinal = &n
 			}
 			for _, rec := range records {
-				tsV, _ := rec.Get("ts")
+				tsV := rec["ts"]
 				if ts, ok := ParseTimestamp(tsV); ok {
 					it.stamps = append(it.stamps, ts)
 				}
@@ -126,12 +125,12 @@ func walkWorkflows(project string, item func(string) *runItem) {
 				}
 				it.files++
 				ledger.ForEachLine(filepath.Join(dir, name), func(line string) {
-					v, err := jsonx.Decode([]byte(line))
+					v, err := fsutil.DecodeJSON([]byte(line))
 					if err != nil {
 						return
 					}
-					if obj, ok := v.(*jsonx.Object); ok {
-						ts, _ := obj.Get("timestamp")
+					if obj, ok := v.(map[string]any); ok {
+						ts := obj["timestamp"]
 						if t, ok := ParseTimestamp(ts); ok {
 							it.stamps = append(it.stamps, t)
 						}

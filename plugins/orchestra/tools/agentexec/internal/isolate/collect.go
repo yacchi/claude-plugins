@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 var errInvalidSession = errors.New("invalid session id")
@@ -24,24 +24,27 @@ type CollectResult struct {
 }
 
 func (r CollectResult) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().Set("status", r.Status)
+	o := map[string]any{"status": r.Status}
 	switch {
 	case r.IsSession:
 		collected := r.Collected
 		if collected == nil {
 			collected = []CollectResult{}
 		}
-		o.Set("session", r.Session).Set("collected", collected)
+		o["session"] = r.Session
+		o["collected"] = collected
 	case r.Status == "error" && r.Task == "":
-		o.Set("reason", r.Reason)
+		o["reason"] = r.Reason
 	case r.Status == "error":
-		o.Set("task", r.Task).Set("reason", r.Reason)
+		o["task"] = r.Task
+		o["reason"] = r.Reason
 	case r.Status == "absent":
-		o.Set("task", r.Task)
+		o["task"] = r.Task
 	default:
-		o.Set("task", r.Task).Set("digest", r.Digest)
+		o["task"] = r.Task
+		o["digest"] = r.Digest
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 // Collect marks task's worktree collected without printing its patch: the

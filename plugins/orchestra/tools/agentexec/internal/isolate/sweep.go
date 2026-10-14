@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // Sweep is the after-the-fact reclaim over a whole repository (the
@@ -44,20 +44,25 @@ type SweepWorktree struct {
 }
 
 func (w SweepWorktree) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().
-		Set("task", w.Task).Set("branch", nullable(w.Branch)).Set("path", nullable(w.Path)).
-		Set("session", nullable(w.Session)).Set("current", w.Current).Set("age_days", floatOrNil(w.AgeDays))
-	if !w.External {
-		o.Set("session_idle_minutes", floatOrNil(w.SessionIdleMinutes))
+	o := map[string]any{
+		"task":     w.Task,
+		"branch":   nullable(w.Branch),
+		"path":     nullable(w.Path),
+		"session":  nullable(w.Session),
+		"current":  w.Current,
+		"age_days": floatOrNil(w.AgeDays),
 	}
-	o.Set("status", w.Status)
+	if !w.External {
+		o["session_idle_minutes"] = floatOrNil(w.SessionIdleMinutes)
+	}
+	o["status"] = w.Status
 	if w.Reason != "" {
-		o.Set("reason", w.Reason)
+		o["reason"] = w.Reason
 	}
 	if w.HasFiles {
-		o.Set("files", nonNil(w.Files))
+		o["files"] = nonNil(w.Files)
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 // SweepBranch is one orchestra branch without a worktree.
@@ -70,12 +75,16 @@ type SweepBranch struct {
 }
 
 func (b SweepBranch) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().Set("branch", b.Branch).Set("age_days", floatOrNil(b.AgeDays)).
-		Set("session", nullable(b.Session)).Set("status", b.Status)
-	if b.Reason != "" {
-		o.Set("reason", b.Reason)
+	o := map[string]any{
+		"branch":   b.Branch,
+		"age_days": floatOrNil(b.AgeDays),
+		"session":  nullable(b.Session),
+		"status":   b.Status,
 	}
-	return jsonx.Marshal(o)
+	if b.Reason != "" {
+		o["reason"] = b.Reason
+	}
+	return fsutil.MarshalJSON(o)
 }
 
 func floatOrNil(f *float64) any {
@@ -112,10 +121,10 @@ type SweepResult struct {
 }
 
 func (r SweepResult) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().Set("status", r.Status)
 	if r.Status == "error" {
-		return jsonx.Marshal(o.Set("reason", r.Reason))
+		return fsutil.MarshalJSON(map[string]any{"status": r.Status, "reason": r.Reason})
 	}
+	o := map[string]any{"status": r.Status}
 	wts, brs := r.Worktrees, r.Branches
 	if wts == nil {
 		wts = []SweepWorktree{}
@@ -123,9 +132,13 @@ func (r SweepResult) MarshalJSON() ([]byte, error) {
 	if brs == nil {
 		brs = []SweepBranch{}
 	}
-	o.Set("repo", r.Repo).Set("dry_run", r.DryRun).Set("pruned", r.Pruned).
-		Set("worktrees", wts).Set("branches", brs).Set("summary", r.Summary)
-	return jsonx.Marshal(o)
+	o["repo"] = r.Repo
+	o["dry_run"] = r.DryRun
+	o["pruned"] = r.Pruned
+	o["worktrees"] = wts
+	o["branches"] = brs
+	o["summary"] = r.Summary
+	return fsutil.MarshalJSON(o)
 }
 
 // pyRound is Python's round(x, n): the correctly rounded decimal of the

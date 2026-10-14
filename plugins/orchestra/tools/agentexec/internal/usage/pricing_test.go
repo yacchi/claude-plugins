@@ -3,16 +3,16 @@ package usage
 import (
 	"testing"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
-func overrides(t *testing.T, text string) *jsonx.Object {
+func overrides(t *testing.T, text string) map[string]any {
 	t.Helper()
-	v, err := jsonx.Decode([]byte(text))
+	v, err := fsutil.DecodeJSON([]byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}
-	o, _ := v.(*jsonx.Object)
+	o, _ := v.(map[string]any)
 	return o
 }
 

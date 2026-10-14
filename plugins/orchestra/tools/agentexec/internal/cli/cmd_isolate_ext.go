@@ -13,7 +13,8 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/integrate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 func addIsolateExtCommands(parent *cobra.Command) {
@@ -64,7 +65,7 @@ func pyFloatStr(f float64) string {
 	case math.IsInf(f, -1):
 		return "-inf"
 	}
-	return jsonx.FormatFloat(f)
+	return fsutil.FloatRepr(f)
 }
 
 // secondsDuration converts seconds, saturating instead of overflowing.

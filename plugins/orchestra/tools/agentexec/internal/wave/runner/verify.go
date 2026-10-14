@@ -14,8 +14,8 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/approvals"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -79,14 +79,14 @@ func (r *runner) handle(pid, token string, result map[string]any) bool {
 	denials := r.networkDenials(pid, result)
 	switch status {
 	case "_orca_need":
-		need := jsonx.NewObject().Set("orca", result["kind"]).Set("detail", result["detail"])
+		need := map[string]any{"orca": result["kind"], "detail": result["detail"]}
 		tok := result["token"]
 		if !truthy(tok) {
 			tok = nullable(token)
 		}
-		need.Set("token", tok)
+		need["token"] = tok
 		if len(denials) > 0 {
-			need.Set("network_denials", denials)
+			need["network_denials"] = denials
 		}
 		r.need(pid, "delegate", marshal(need))
 		return false
@@ -138,9 +138,13 @@ func (r *runner) handle(pid, token string, result map[string]any) bool {
 		return true
 	case "delegate":
 		_ = r.store.UpdatePackage(pid, func(p *state.Package) { p.Tree, p.Executor = strPtr(tree), executor })
-		r.need(pid, "delegate", marshal(jsonx.NewObject().
-			Set("token", nullable(token)).Set("agent_type", result["agent_type"]).
-			Set("model", result["model"]).Set("effort", result["effort"]).Set("tree", nullable(tree))))
+		r.need(pid, "delegate", marshal(map[string]any{
+			"token":      nullable(token),
+			"agent_type": result["agent_type"],
+			"model":      result["model"],
+			"effort":     result["effort"],
+			"tree":       nullable(tree),
+		}))
 		return false
 	case "needs-permission", "runaway":
 		// Neither is a cooldown/fallback signal: the user grants a path, or
@@ -150,11 +154,14 @@ func (r *runner) handle(pid, token string, result map[string]any) bool {
 			list := []any{}
 			for _, d := range asList(asMap(result["sandbox"])["denials"]) {
 				if m := asMap(d); m != nil {
-					list = append(list, jsonx.NewObject().Set("path", m["path"]).
-						Set("grant_candidate", m["grant_candidate"]).Set("why", m["why"]))
+					list = append(list, map[string]any{
+						"path":            m["path"],
+						"grant_candidate": m["grant_candidate"],
+						"why":             m["why"],
+					})
 				}
 			}
-			r.need(pid, "permission", marshal(jsonx.NewObject().Set("denials", list)))
+			r.need(pid, "permission", marshal(map[string]any{"denials": list}))
 			return false
 		}
 		runaway := asMap(result["runaway"])
@@ -166,24 +173,27 @@ func (r *runner) handle(pid, token string, result map[string]any) bool {
 		if m := asMap(lastTool); m != nil {
 			lastTool = m["name"]
 		}
-		r.need(pid, "runaway", marshal(jsonx.NewObject().Set("reason", reason).Set("last_tool", lastTool)))
+		r.need(pid, "runaway", marshal(map[string]any{"reason": reason, "last_tool": lastTool}))
 		return false
 	}
 	detail := pyStr(result["reason"])
 	if !truthy(result["reason"]) {
-		detail = marshal(jsonx.NewObject().Set("status", result["status"]).
-			Set("exit_code", result["exit_code"]).Set("answer", result["answer"]))
+		detail = marshal(map[string]any{
+			"status":    result["status"],
+			"exit_code": result["exit_code"],
+			"answer":    result["answer"],
+		})
 	}
 	r.need(pid, "dispatch-error", checks.FailureExcerpt(detail))
 	return false
 }
 
 func marshal(v any) string {
-	b, _ := jsonx.Marshal(v)
+	b, _ := fsutil.MarshalJSON(v)
 	return string(b)
 }
 
-func sortedJSON(v any) string { return marshal(sortedValue(v)) }
+func sortedJSON(v any) string { return marshal(v) }
 
 // networkNeed: `ESCALATE: network <host>...` makes the hosts the package's
 // network denials (so they are `net:` approvals) and parks it on a
@@ -195,7 +205,7 @@ func (r *runner) networkNeed(pid, answer string, hosts []map[string]any, tree st
 	list := make([]any, len(hosts))
 	names := make([]any, len(hosts))
 	for i, h := range hosts {
-		list[i] = jsonx.NewObject().Set("host", h["host"]).Set("port", h["port"])
+		list[i] = map[string]any{"host": h["host"], "port": h["port"]}
 		names[i] = h["host"]
 	}
 	r.networkDenials(pid, map[string]any{"network_denials": list})
@@ -207,7 +217,7 @@ func (r *runner) networkNeed(pid, answer string, hosts []map[string]any, tree st
 	if len(text) > 2000 {
 		text = text[:2000]
 	}
-	r.need(pid, "network", marshal(jsonx.NewObject().Set("hosts", names).Set("answer", string(text))))
+	r.need(pid, "network", marshal(map[string]any{"hosts": names, "answer": string(text)}))
 }
 
 func (r *runner) escalateNeed(pid, answer string) {

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 )
 
@@ -93,15 +93,15 @@ func statePID(path string) int {
 	if err != nil {
 		return 0
 	}
-	v, err := jsonx.Decode(raw)
+	v, err := fsutil.DecodeJSON(raw)
 	if err != nil {
 		return 0
 	}
-	o, _ := v.(*jsonx.Object)
+	o, _ := v.(map[string]any)
 	if o == nil {
 		return 0
 	}
-	p, _ := o.Get("pid")
+	p := o["pid"]
 	return pidOf(p)
 }
 

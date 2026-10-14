@@ -5,11 +5,10 @@ import (
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // Item is one `tools status` or `tools install` row, in output key order.
-type Item = *jsonx.Object
+type Item = map[string]any
 
 func nullable(s string) any {
 	if s == "" {
@@ -48,14 +47,15 @@ func Status(cfg *config.Resolved) []Item {
 	items := []Item{}
 	for _, name := range KnownNames(cfg) {
 		r := Resolve(name, cfg)
-		items = append(items, jsonx.NewObject().
-			Set("name", r.Name).
-			Set("path", nullable(r.Path)).
-			Set("source", nullable(r.Source)).
-			Set("version", nullable(r.Version)).
-			Set("wanted", nullable(r.Wanted)).
-			Set("reason", nullable(r.Reason)).
-			Set("hint", nullable(r.Hint)))
+		items = append(items, map[string]any{
+			"name":    r.Name,
+			"path":    nullable(r.Path),
+			"source":  nullable(r.Source),
+			"version": nullable(r.Version),
+			"wanted":  nullable(r.Wanted),
+			"reason":  nullable(r.Reason),
+			"hint":    nullable(r.Hint),
+		})
 	}
 	return items
 }
@@ -84,7 +84,7 @@ func InstallLine(it Item) string {
 // Failed reports whether any install row failed.
 func Failed(items []Item) bool {
 	for _, it := range items {
-		if s, _ := it.Get("status"); s == "failed" {
+		if it["status"] == "failed" {
 			return true
 		}
 	}
@@ -92,7 +92,7 @@ func Failed(items []Item) bool {
 }
 
 func strOr(it Item, key, def string) string {
-	if s, ok := it.Get(key); ok {
+	if s, ok := it[key]; ok {
 		if str, isStr := s.(string); isStr && str != "" {
 			return str
 		}

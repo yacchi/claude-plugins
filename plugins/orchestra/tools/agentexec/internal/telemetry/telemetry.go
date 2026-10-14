@@ -8,16 +8,17 @@ package telemetry
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 const (
@@ -79,20 +80,9 @@ type entry struct {
 	val any
 }
 
-// entries is the key/value pairs of a JSON object value in order (plain Go
-// maps are sorted by key); ok is false when v is not an object.
+// entries is the key/value pairs of a JSON object value, sorted by key; ok is false when v is not an object.
 func entries(v any) ([]entry, bool) {
 	switch x := v.(type) {
-	case *jsonx.Object:
-		if x == nil {
-			return nil, false
-		}
-		out := make([]entry, 0, x.Len())
-		for _, k := range x.Keys() {
-			val, _ := x.Get(k)
-			out = append(out, entry{k, val})
-		}
-		return out, true
 	case map[string]any:
 		keys := make([]string, 0, len(x))
 		for k := range x {
@@ -119,15 +109,15 @@ func contains(list []string, s string) bool {
 
 // countDict keeps the allowed keys holding non-negative integers; ok is
 // false when value is not an object.
-func countDict(value any, allowed []string) (*jsonx.Object, bool) {
+func countDict(value any, allowed []string) (map[string]any, bool) {
 	es, ok := entries(value)
 	if !ok {
 		return nil, false
 	}
-	out := jsonx.NewObject()
+	out := map[string]any{}
 	for _, e := range es {
 		if n, isInt := nonNegInt(e.val); isInt && contains(allowed, e.key) {
-			out.Set(e.key, n)
+			out[e.key] = n
 		}
 	}
 	return out, true
@@ -136,68 +126,68 @@ func countDict(value any, allowed []string) (*jsonx.Object, bool) {
 // Sanitize turns a caller-supplied record into a NEW object holding only
 // allowlisted keys with valid values. An error means the record must be
 // rejected outright (missing or invalid event). Nested objects may be
-// *jsonx.Object (key order kept) or map[string]any; integers must be int64
-// or int, as jsonx.Decode produces.
-func Sanitize(raw map[string]any) (*jsonx.Object, error) {
+// map[string]any; integers must be int64 or int, as fsutil.DecodeJSON
+// produces.
+func Sanitize(raw map[string]any) (map[string]any, error) {
 	event, ok := oneOf(raw["event"], events)
 	if !ok {
 		return nil, ErrRejected
 	}
-	out := jsonx.NewObject()
-	out.Set("event", event)
-	out.Set("schema_version", int64(2))
-	out.Set("ts", fsutil.NowISO())
-	out.Set("os", strings.ToLower(runtime.GOOS))
+	out := map[string]any{}
+	out["event"] = event
+	out["schema_version"] = int64(2)
+	out["ts"] = fsutil.NowISO()
+	out["os"] = strings.ToLower(runtime.GOOS)
 
 	if v, ok := raw["orchestra_version"].(string); ok && versionRE.MatchString(v) {
-		out.Set("orchestra_version", v)
+		out["orchestra_version"] = v
 	}
 	for _, f := range []struct {
 		key     string
 		allowed []string
 	}{{"lane", lanes}, {"executor", executors}, {"cls", classes}, {"status", statuses}, {"reason", reasons}} {
 		if s, ok := oneOf(raw[f.key], f.allowed); ok {
-			out.Set(f.key, s)
+			out[f.key] = s
 		}
 	}
 	if b, ok := raw["resumed"].(bool); ok {
-		out.Set("resumed", b)
+		out["resumed"] = b
 	}
 	for _, key := range countKeys {
 		if n, ok := nonNegInt(raw[key]); ok {
-			out.Set(key, n)
+			out[key] = n
 		}
 	}
 	if v, present := raw["classes"]; present {
 		if d, ok := countDict(v, classes); ok {
-			out.Set("classes", d)
+			out["classes"] = d
 		}
 	}
 	if v, present := raw["executors_used"]; present {
 		if d, ok := countDict(v, executors); ok {
-			out.Set("executors_used", d)
+			out["executors_used"] = d
 		}
 	}
 	if es, ok := entries(raw["rounds"]); ok {
-		d := jsonx.NewObject()
+		d := map[string]any{}
 		for _, e := range es {
 			if n, isInt := nonNegInt(e.val); isInt && roundKeyRE.MatchString(e.key) {
-				d.Set(e.key, n)
+				d[e.key] = n
 			}
 		}
-		out.Set("rounds", d)
+		out["rounds"] = d
 	}
 	if es, ok := entries(raw["external_enabled"]); ok {
-		d := jsonx.NewObject()
+		d := map[string]any{}
 		for _, e := range es {
 			if b, isBool := e.val.(bool); isBool && e.key == "pi" {
-				d.Set(e.key, b)
+				d[e.key] = b
 			}
 		}
-		out.Set("external_enabled", d)
+		out["external_enabled"] = d
 	}
-	if d, ok := countDict(raw["usage"], usageKeys); ok && d.Len() > 0 {
-		out.Set("usage", d)
+	if d, ok := countDict(raw["usage"], usageKeys); ok && len(d) > 0 {
+		out["usage"] = d
 	}
 	return out, nil
 }
@@ -224,13 +214,13 @@ func Enabled(cfg *config.Resolved) bool {
 // Append sanitizes rec and appends it as one line to the records file,
 // subject to a hard line cap. It never fails the caller: a disabled
 // telemetry, a rejected record or any I/O error means nothing is written.
-func Append(rec *jsonx.Object, cfg *config.Resolved) {
+func Append(rec map[string]any, cfg *config.Resolved) {
 	if !Enabled(cfg) || rec == nil {
 		return
 	}
 	raw := map[string]any{}
-	for _, k := range rec.Keys() {
-		raw[k], _ = rec.Get(k)
+	for _, k := range slices.Sorted(maps.Keys(rec)) {
+		raw[k] = rec[k]
 	}
 	clean, err := Sanitize(raw)
 	if err != nil {
@@ -240,7 +230,7 @@ func Append(rec *jsonx.Object, cfg *config.Resolved) {
 	if os.MkdirAll(dir, 0o777) != nil {
 		return
 	}
-	line, err := jsonx.Marshal(clean)
+	line, err := fsutil.MarshalJSON(clean)
 	if err != nil {
 		return
 	}
@@ -274,43 +264,47 @@ func enforceCap(path string) {
 // BuildDispatchRecord builds the (pre-sanitize) record of one dispatch from
 // the executor's result: only status/reason, the sandbox counts and numeric
 // usage are used, never the answer or any other free text.
-func BuildDispatchRecord(executor string, result *jsonx.Object, resumed bool, cls string) *jsonx.Object {
-	status, _ := result.Get("status")
-	reason, _ := result.Get("reason")
-	rec := jsonx.NewObject()
-	rec.Set("event", "dispatch").Set("executor", executor).Set("status", status).
-		Set("reason", reason).Set("resumed", resumed)
-	if sb := result.Object("sandbox"); sb != nil {
-		if d, has := sb.Get("denials"); has {
+func BuildDispatchRecord(executor string, result map[string]any, resumed bool, cls string) map[string]any {
+	status := result["status"]
+	reason := result["reason"]
+	rec := map[string]any{}
+	rec["event"] = "dispatch"
+	rec["executor"] = executor
+	rec["status"] = status
+	rec["reason"] = reason
+	rec["resumed"] = resumed
+	if sb := config.ObjectAt(result, "sandbox"); sb != nil {
+		if d, has := sb["denials"]; has {
 			dl, _ := d.([]any)
-			g, _ := sb.Get("granted")
+			g := sb["granted"]
 			gl, _ := g.([]any)
-			rec.Set("sandbox_denials", int64(len(dl))).Set("sandbox_granted", int64(len(gl)))
+			rec["sandbox_denials"] = int64(len(dl))
+			rec["sandbox_granted"] = int64(len(gl))
 		}
 	}
 	if cls != "" {
-		rec.Set("cls", cls)
+		rec["cls"] = cls
 	}
-	if usage := result.Object("usage"); usage != nil {
-		flat := jsonx.NewObject()
+	if usage := config.ObjectAt(result, "usage"); usage != nil {
+		flat := map[string]any{}
 		for _, key := range []string{"api_duration_ms", "session_duration_ms"} {
-			if v, ok := usage.Get(key); ok {
+			if v, ok := usage[key]; ok {
 				if n, isInt := nonNegInt(v); isInt {
-					flat.Set(key, n)
+					flat[key] = n
 				}
 			}
 		}
-		if tokens := usage.Object("tokens"); tokens != nil {
+		if tokens := config.ObjectAt(usage, "tokens"); tokens != nil {
 			for _, key := range []string{"input_tokens", "output_tokens", "cached_input_tokens"} {
-				if v, ok := tokens.Get(key); ok {
+				if v, ok := tokens[key]; ok {
 					if n, isInt := nonNegInt(v); isInt {
-						flat.Set(key, n)
+						flat[key] = n
 					}
 				}
 			}
 		}
-		if flat.Len() > 0 {
-			rec.Set("usage", flat)
+		if len(flat) > 0 {
+			rec["usage"] = flat
 		}
 	}
 	return rec
@@ -336,7 +330,7 @@ func ReadRecords(path string) []any {
 		if line == "" {
 			continue
 		}
-		v, err := jsonx.Decode([]byte(line))
+		v, err := fsutil.DecodeJSON([]byte(line))
 		if err != nil {
 			continue
 		}
@@ -348,32 +342,32 @@ func ReadRecords(path string) []any {
 // Summary is `telemetry show`'s text: the record total and the counts by
 // event, status and reason.
 func Summary(records []any) string {
-	byEvent, byStatus, byReason := jsonx.NewObject(), jsonx.NewObject(), jsonx.NewObject()
+	byEvent, byStatus, byReason := map[string]any{}, map[string]any{}, map[string]any{}
 	for _, r := range records {
-		obj, ok := r.(*jsonx.Object)
+		obj, ok := r.(map[string]any)
 		if !ok {
 			continue
 		}
 		for _, c := range []struct {
 			key string
-			agg *jsonx.Object
+			agg map[string]any
 		}{{"event", byEvent}, {"status", byStatus}, {"reason", byReason}} {
-			v, _ := obj.Get(c.key)
+			v := obj[c.key]
 			if v == nil {
 				continue
 			}
 			key, ok := v.(string)
 			if !ok {
-				b, _ := jsonx.Marshal(v)
+				b, _ := fsutil.MarshalJSON(v)
 				key = string(b)
 			}
-			n, _ := c.agg.Get(key)
+			n := c.agg[key]
 			count, _ := n.(int64)
-			c.agg.Set(key, count+1)
+			c.agg[key] = count + 1
 		}
 	}
-	dump := func(o *jsonx.Object) string {
-		b, _ := jsonx.Marshal(o)
+	dump := func(o map[string]any) string {
+		b, _ := fsutil.MarshalJSON(o)
 		return string(b)
 	}
 	return fmt.Sprintf("total records: %d\nby event: %s\nby status: %s\nby reason: %s\n",

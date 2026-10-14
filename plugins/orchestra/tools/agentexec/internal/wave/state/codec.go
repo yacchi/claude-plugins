@@ -2,8 +2,10 @@ package state
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 func num(v any) float64 {
@@ -51,57 +53,50 @@ func ptrVal[T any](p *T) any {
 	return *p
 }
 
-// sortable turns jsonx objects into plain maps (sorted on output) so nested
-// values obey sort_keys like Python's json.dump.
-func sortable(v any) any {
+// cloneValue deep-copies the containers of a decoded JSON value, so a
+// rendered map never aliases the state it came from.
+func cloneValue(v any) any {
 	switch x := v.(type) {
-	case *jsonx.Object:
-		out := make(map[string]any, x.Len())
-		for _, k := range x.Keys() {
-			val, _ := x.Get(k)
-			out[k] = sortable(val)
-		}
-		return out
 	case map[string]any:
 		out := make(map[string]any, len(x))
 		for k, val := range x {
-			out[k] = sortable(val)
+			out[k] = cloneValue(val)
 		}
 		return out
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {
-			out[i] = sortable(e)
+			out[i] = cloneValue(e)
 		}
 		return out
 	}
 	return v
 }
 
-func extraOf(o *jsonx.Object, known ...string) map[string]any {
+func extraOf(o map[string]any, known ...string) map[string]any {
 	skip := map[string]bool{}
 	for _, k := range known {
 		skip[k] = true
 	}
 	var extra map[string]any
-	for _, k := range o.Keys() {
+	for _, k := range slices.Sorted(maps.Keys(o)) {
 		if skip[k] {
 			continue
 		}
 		if extra == nil {
 			extra = map[string]any{}
 		}
-		extra[k], _ = o.Get(k)
+		extra[k] = o[k]
 	}
 	return extra
 }
 
 func parsePackage(v any) *Package {
-	o, _ := v.(*jsonx.Object)
+	o, _ := v.(map[string]any)
 	if o == nil {
-		o = jsonx.NewObject()
+		o = map[string]any{}
 	}
-	get := func(k string) any { v, _ := o.Get(k); return v }
+	get := func(k string) any { return o[k] }
 	p := &Package{
 		Status:       str(get("status")),
 		Since:        num(get("since")),
@@ -115,7 +110,7 @@ func parsePackage(v any) *Package {
 		Extra: extraOf(o, "status", "since", "attempts", "tree", "executor", "session",
 			"files_changed", "commit", "detail", "network_denials"),
 	}
-	if _, ok := o.Get("session"); !ok {
+	if _, ok := o["session"]; !ok {
 		p.Session = false
 	}
 	if d, ok := get("network_denials").([]any); ok {
@@ -126,15 +121,15 @@ func parsePackage(v any) *Package {
 
 // Parse reads state.json content.
 func Parse(data []byte) (State, error) {
-	doc, err := jsonx.Decode(data)
+	doc, err := fsutil.DecodeJSON(data)
 	if err != nil {
 		return State{}, err
 	}
-	o, ok := doc.(*jsonx.Object)
+	o, ok := doc.(map[string]any)
 	if !ok {
 		return State{}, fmt.Errorf("state is not a JSON object")
 	}
-	get := func(k string) any { v, _ := o.Get(k); return v }
+	get := func(k string) any { return o[k] }
 	s := State{
 		Version:  int(num(get("version"))),
 		Plan:     str(get("plan")),
@@ -144,28 +139,28 @@ func Parse(data []byte) (State, error) {
 		Extra: extraOf(o, "version", "plan", "integration", "wave", "packages", "needs",
 			"stopped", "updated"),
 	}
-	if in, ok := get("integration").(*jsonx.Object); ok {
-		iv := func(k string) *string { v, _ := in.Get(k); return strPtr(v) }
+	if in, ok := get("integration").(map[string]any); ok {
+		iv := func(k string) *string { v, _ := in[k]; return strPtr(v) }
 		s.Integration = Integration{Task: iv("task"), Path: iv("path"), Base: iv("base")}
 	}
-	if pk, ok := get("packages").(*jsonx.Object); ok {
-		for _, id := range pk.Keys() {
-			v, _ := pk.Get(id)
+	if pk, ok := get("packages").(map[string]any); ok {
+		for _, id := range slices.Sorted(maps.Keys(pk)) {
+			v := pk[id]
 			s.Packages[id] = parsePackage(v)
 		}
 	}
 	if needs, ok := get("needs").([]any); ok {
 		for _, n := range needs {
-			no, ok := n.(*jsonx.Object)
+			no, ok := n.(map[string]any)
 			if !ok {
 				continue
 			}
-			g := func(k string) any { v, _ := no.Get(k); return v }
+			g := func(k string) any { return no[k] }
 			s.Needs = append(s.Needs, Need{ID: strPtr(g("id")), Kind: str(g("kind")), Detail: str(g("detail")), At: num(g("at"))})
 		}
 	}
-	if st, ok := get("stopped").(*jsonx.Object); ok && st.Len() > 0 {
-		g := func(k string) any { v, _ := st.Get(k); return v }
+	if st, ok := get("stopped").(map[string]any); ok && len(st) > 0 {
+		g := func(k string) any { return st[k] }
 		s.Stopped = &Stopped{Reason: str(g("reason")), At: num(g("at"))}
 	}
 	return s, nil
@@ -182,10 +177,10 @@ func (s *State) ToMap() map[string]any {
 			"files_changed": ptrVal(p.FilesChanged), "commit": ptrVal(p.Commit), "detail": p.Detail,
 		}
 		if p.NetworkDenials != nil {
-			m["network_denials"] = sortable(p.NetworkDenials)
+			m["network_denials"] = cloneValue(p.NetworkDenials)
 		}
 		for k, v := range p.Extra {
-			m[k] = sortable(v)
+			m[k] = cloneValue(v)
 		}
 		pkgs[id] = m
 	}
@@ -205,11 +200,11 @@ func (s *State) ToMap() map[string]any {
 		"wave": s.Wave, "packages": pkgs, "needs": needs, "stopped": stopped, "updated": s.Updated,
 	}
 	for k, v := range s.Extra {
-		m[k] = sortable(v)
+		m[k] = cloneValue(v)
 	}
 	return m
 }
 
 // Marshal is the state.json encoding: indent=2, sorted keys, no trailing
 // newline.
-func (s *State) Marshal() ([]byte, error) { return jsonx.MarshalIndent(s.ToMap()) }
+func (s *State) Marshal() ([]byte, error) { return fsutil.MarshalJSONIndent(s.ToMap()) }

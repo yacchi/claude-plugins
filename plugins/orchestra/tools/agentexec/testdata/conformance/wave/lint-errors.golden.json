@@ -59,7 +59,7 @@
       "exit": 3,
       "stdout_shape": "empty",
       "stdout": null,
-      "stderr": "agent-exec: wave lint: package missing required field 'id': {'spec': 'plan/specs/a.md', 'cls': 'light'}\n"
+      "stderr": "agent-exec: wave lint: package missing required field 'id': {'cls': 'light', 'spec': 'plan/specs/a.md'}\n"
     },
     {
       "argv": [
@@ -215,7 +215,7 @@
       "exit": 3,
       "stdout_shape": "empty",
       "stdout": null,
-      "stderr": "agent-exec: wave lint: invalid JSON in plan broken.json: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)\n"
+      "stderr": "agent-exec: wave lint: invalid JSON in plan broken.json: invalid character 'n' looking for beginning of object key string\n"
     },
     {
       "argv": [

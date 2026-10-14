@@ -11,9 +11,9 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/integrate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -35,7 +35,7 @@ type progressWriter struct {
 
 func (w progressWriter) Write(p []byte) (int, error) {
 	for _, line := range splitLines(string(p)) {
-		v, err := jsonx.Decode([]byte(line))
+		v, err := fsutil.DecodeJSON([]byte(line))
 		if err != nil {
 			continue
 		}
@@ -230,7 +230,7 @@ func (r *runner) recordGreen(sha string) {
 	if sha == "" {
 		return
 	}
-	b, err := jsonx.Marshal(jsonx.NewObject().Set("sha", sha).Set("at", r.clock()))
+	b, err := fsutil.MarshalJSON(map[string]any{"sha": sha, "at": r.clock()})
 	if err == nil {
 		_ = writeFileAtomic(r.greenFile(), append(b, '\n'))
 	}
@@ -469,7 +469,7 @@ func (r *runner) postFullRevert(pid, excerpt string) bool {
 		names = "(none parsed)"
 	}
 	for _, ev := range state.ReadEvents(r.statePath, -1) {
-		get := func(k string) any { v, _ := ev.Get(k); return v }
+		get := func(k string) any { return ev[k] }
 		if get("event") == "status" && get("pkg") == pid && get("to") == "pending" && get("detail") == postFullDetail {
 			r.need(pid, "post-integration", fmt.Sprintf("full verification red after "+
 				"integration (reverted twice); failing tests: %s\n%s", names, excerpt))

@@ -3,7 +3,7 @@ package pilogin
 import (
 	"testing"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 const (
@@ -70,14 +70,14 @@ func TestWantsPaste(t *testing.T) {
 }
 
 func TestScreenTextPrefersTheJSONPayload(t *testing.T) {
-	payload, err := jsonx.Decode([]byte(`{"result": {"text": "from payload"}}`))
+	payload, err := fsutil.DecodeJSON([]byte(`{"result": {"text": "from payload"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := ScreenText("raw", payload.(*jsonx.Object)); got != "from payload" {
+	if got := ScreenText("raw", payload.(map[string]any)); got != "from payload" {
 		t.Errorf("ScreenText = %q", got)
 	}
-	if got := ScreenText("raw", jsonx.NewObject()); got != "raw" {
+	if got := ScreenText("raw", map[string]any{}); got != "raw" {
 		t.Errorf("ScreenText = %q", got)
 	}
 }

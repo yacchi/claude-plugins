@@ -4,12 +4,14 @@
 package tools
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
@@ -49,29 +51,29 @@ func ManifestPath() string { return filepath.Join(Root(), "manifest.json") }
 
 // LoadManifest returns the installed-tool records; a missing or corrupt
 // manifest is empty.
-func LoadManifest() map[string]*jsonx.Object {
-	out := map[string]*jsonx.Object{}
+func LoadManifest() map[string]map[string]any {
+	out := map[string]map[string]any{}
 	raw, err := os.ReadFile(ManifestPath())
 	if err != nil {
 		return out
 	}
-	v, err := jsonx.Decode(raw)
+	v, err := fsutil.DecodeJSON(raw)
 	if err != nil {
 		return out
 	}
-	root, _ := v.(*jsonx.Object)
-	tools := root.Object("tools")
-	for _, k := range tools.Keys() {
-		if rec := tools.Object(k); rec != nil {
+	root, _ := v.(map[string]any)
+	tools := config.ObjectAt(root, "tools")
+	for _, k := range slices.Sorted(maps.Keys(tools)) {
+		if rec := config.ObjectAt(tools, k); rec != nil {
 			out[k] = rec
 		}
 	}
 	return out
 }
 
-func section(cfg *config.Resolved) *jsonx.Object {
+func section(cfg *config.Resolved) map[string]any {
 	if cfg == nil {
-		return config.Defaults().Object("tools")
+		return config.ObjectAt(config.Defaults(), "tools")
 	}
 	return cfg.Section("tools")
 }
@@ -80,8 +82,8 @@ func section(cfg *config.Resolved) *jsonx.Object {
 func Names(cfg *config.Resolved) []string {
 	sec := section(cfg)
 	var out []string
-	for _, k := range sec.Keys() {
-		if sec.Object(k) != nil {
+	for _, k := range config.OrderedKeys(sec, config.ToolOrder) {
+		if config.ObjectAt(sec, k) != nil {
 			out = append(out, k)
 		}
 	}
@@ -94,21 +96,21 @@ func ConfigFor(name string, cfg *config.Resolved, defaultBin string) ToolConfig 
 	if defaultBin == "" {
 		defaultBin = name
 	}
-	entry := section(cfg).Object(name)
+	entry := config.ObjectAt(section(cfg), name)
 	if entry == nil {
 		return ToolConfig{Source: "system", Bin: defaultBin}
 	}
 	tc := ToolConfig{Source: "auto", Bin: defaultBin}
-	if s, _ := entry.Get("source"); s == "managed" || s == "system" || s == "auto" {
+	if s, _ := entry["source"]; s == "managed" || s == "system" || s == "auto" {
 		tc.Source = s.(string)
 	}
-	if s, ok := entry.Get("spec"); ok {
+	if s, ok := entry["spec"]; ok {
 		tc.Spec, _ = s.(string)
 	}
-	if v, ok := entry.Get("version"); ok && v != nil && v != "" {
+	if v, ok := entry["version"]; ok && v != nil && v != "" {
 		tc.Version = pyStr(v)
 	}
-	if b, _ := entry.Get("bin"); b != nil {
+	if b, _ := entry["bin"]; b != nil {
 		if s, ok := b.(string); ok && s != "" {
 			tc.Bin = s
 		}
@@ -127,7 +129,7 @@ func pyStr(v any) string {
 		}
 		return "False"
 	}
-	b, err := jsonx.Marshal(v)
+	b, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		return ""
 	}
@@ -142,16 +144,16 @@ func executable(p string) bool {
 	return err == nil && st.Mode().IsRegular() && st.Mode().Perm()&0o111 != 0
 }
 
-func recordState(rec *jsonx.Object, tc ToolConfig) string {
+func recordState(rec map[string]any, tc ToolConfig) string {
 	if rec == nil {
 		return "none"
 	}
-	spec, _ := rec.Get("spec")
-	version, _ := rec.Get("version")
+	spec := rec["spec"]
+	version := rec["version"]
 	if spec != nilIfEmpty(tc.Spec) || version != nilIfEmpty(tc.Version) {
 		return "stale"
 	}
-	if p, _ := rec.Get("path"); !executable(asString(p)) {
+	if p, _ := rec["path"]; !executable(asString(p)) {
 		return "stale"
 	}
 	return "valid"
@@ -233,8 +235,8 @@ func Resolve(name string, cfg *config.Resolved) Resolution {
 	return out
 }
 
-func mustGet(o *jsonx.Object, k string) any {
-	v, _ := o.Get(k)
+func mustGet(o map[string]any, k string) any {
+	v := o[k]
 	return v
 }
 
@@ -245,20 +247,20 @@ func mustGet(o *jsonx.Object, k string) any {
 // resolution sits above config in the package graph.
 func MarkAvailability(cfg *config.Resolved) {
 	ext := cfg.Section("external_executors")
-	for _, name := range ext.Keys() {
-		ecfg := ext.Object(name)
+	for _, name := range slices.Sorted(maps.Keys(ext)) {
+		ecfg := config.ObjectAt(ext, name)
 		if ecfg == nil {
 			continue
 		}
-		enabled, _ := ecfg.Get("enabled")
-		dispatch, _ := ecfg.Get("dispatch")
+		enabled := ecfg["enabled"]
+		dispatch := ecfg["dispatch"]
 		if enabled != true || dispatch != "cli" {
 			continue
 		}
 		if _, known := KnownBinaries[name]; !known {
-			ecfg.Set("available", nil)
+			ecfg["available"] = nil
 			continue
 		}
-		ecfg.Set("available", Resolve(name, cfg).Path != "")
+		ecfg["available"] = Resolve(name, cfg).Path != ""
 	}
 }

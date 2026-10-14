@@ -20,7 +20,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -465,7 +464,7 @@ func allowedFile(path string) (string, bool) {
 	return "", false
 }
 
-func asObject(v any) *jsonx.Object {
-	o, _ := v.(*jsonx.Object)
+func asObject(v any) map[string]any {
+	o, _ := v.(map[string]any)
 	return o
 }

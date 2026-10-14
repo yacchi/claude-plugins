@@ -36,7 +36,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
 )
@@ -237,9 +236,9 @@ func EcosystemDomains(tree string) []string {
 
 // ExecutorDomains are the API hosts of one CLI executor run: its
 // network_domains when set, else (pi) the hosts of the model's provider.
-func ExecutorDomains(executor string, ecfg *jsonx.Object, model string) []string {
+func ExecutorDomains(executor string, ecfg map[string]any, model string) []string {
 	if ecfg != nil {
-		if v, ok := ecfg.Get("network_domains"); ok {
+		if v, ok := ecfg["network_domains"]; ok {
 			if list, isList := v.([]any); isList {
 				return cleanDomains(list)
 			}
@@ -274,14 +273,14 @@ func RunID(task string) string {
 	return hex.EncodeToString(b)
 }
 
-func executorConfig(cfg *config.Resolved, executor string) *jsonx.Object {
-	var ext *jsonx.Object
+func executorConfig(cfg *config.Resolved, executor string) map[string]any {
+	var ext map[string]any
 	if cfg == nil {
-		ext = config.Defaults().Object("external_executors")
+		ext = config.ObjectAt(config.Defaults(), "external_executors")
 	} else {
 		ext = cfg.Section("external_executors")
 	}
-	return ext.Object(executor)
+	return config.ObjectAt(ext, executor)
 }
 
 // planNetwork is the network of one CLI executor run (Python's
@@ -312,17 +311,17 @@ func planNetwork(cfg *config.Resolved, executor, tree, model, task string) *sand
 	return out
 }
 
-func standardModel(ecfg *jsonx.Object) string {
-	policy := ecfg.Object("class_policy").Object("standard")
+func standardModel(ecfg map[string]any) string {
+	policy := config.ObjectAt(config.ObjectAt(ecfg, "class_policy"), "standard")
 	m, _ := mustGet(policy, "model").(string)
 	return m
 }
 
-func mustGet(o *jsonx.Object, k string) any {
+func mustGet(o map[string]any, k string) any {
 	if o == nil {
 		return nil
 	}
-	v, _ := o.Get(k)
+	v := o[k]
 	return v
 }
 
@@ -344,7 +343,7 @@ func CLINetwork(cfg *config.Resolved, cwd string) any {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	executors := jsonx.NewObject()
+	executors := map[string]any{}
 	for _, name := range names {
 		ecfg := executorConfig(cfg, name)
 		model := standardModel(ecfg)
@@ -363,15 +362,17 @@ func CLINetwork(cfg *config.Resolved, cwd string) any {
 		case spec.Backend != "srt":
 			reason = spec.Reason
 		}
-		executors.Set(name, jsonx.NewObject().
-			Set("backend", spec.Backend).
-			Set("restricted", spec.Backend == "srt").
-			Set("reason", reason).
-			Set("domains", ExecutorDomains(name, ecfg, model)))
+		executors[name] = map[string]any{
+			"backend":    spec.Backend,
+			"restricted": spec.Backend == "srt",
+			"reason":     reason,
+			"domains":    ExecutorDomains(name, ecfg, model),
+		}
 	}
-	return jsonx.NewObject().
-		Set("mode", net.Mode).
-		Set("ecosystem", net.Ecosystem).
-		Set("preset_domains", presets).
-		Set("executors", executors)
+	return map[string]any{
+		"mode":           net.Mode,
+		"ecosystem":      net.Ecosystem,
+		"preset_domains": presets,
+		"executors":      executors,
+	}
 }

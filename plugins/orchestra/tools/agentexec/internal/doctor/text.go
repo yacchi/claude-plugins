@@ -2,11 +2,15 @@ package doctor
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 )
 
 // FormatText is the human view of the report (`doctor --text`).
@@ -47,7 +51,7 @@ func FormatText(r Report) string {
 	if len(r.Executors) > 0 {
 		p("executors:")
 		for _, name := range sortedKeys(r.Executors) {
-			info, _ := r.Executors[name].(*jsonx.Object)
+			info, _ := r.Executors[name].(map[string]any)
 			p("  - %s: enabled=%s dispatch=%s binary=%s available=%s", name,
 				pyStr(get(info, "enabled")), pyStr(get(info, "dispatch")),
 				pyStr(get(info, "binary")), pyStr(get(info, "available")))
@@ -92,9 +96,9 @@ func FormatText(r Report) string {
 		}
 	}
 
-	if active := obj(get(r.Cooldowns, "active")); active.Len() > 0 {
+	if active := obj(get(r.Cooldowns, "active")); len(active) > 0 {
 		p("cooldowns:")
-		for _, name := range active.Keys() {
+		for _, name := range slices.Sorted(maps.Keys(active)) {
 			e := obj(get(active, name))
 			reason := get(e, "reason")
 			if reason == nil {
@@ -105,11 +109,11 @@ func FormatText(r Report) string {
 	}
 
 	sb := norm(r.Sandbox)
-	if sb.Len() > 0 {
+	if len(sb) > 0 {
 		p("sandbox: mode=%s backend=%s enforced=%s (%s)", pyStr(get(sb, "mode")),
 			pyStr(get(sb, "backend")), pyStr(get(sb, "enforced")), pyStr(get(sb, "reason")))
 		probes := obj(get(sb, "probes"))
-		for _, name := range probes.Keys() {
+		for _, name := range config.OrderedKeys(probes, sandbox.ProbeOrder) {
 			probe := obj(get(probes, name))
 			state := "unavailable"
 			if truthy(get(probe, "ok")) {
@@ -123,7 +127,7 @@ func FormatText(r Report) string {
 		uc := r.UserConfig
 		p("herdr host: user_config=%s", pyStr(get(uc, "herdr")))
 		p("orca host: user_config=%s", pyStr(get(uc, "orca")))
-		if net := obj(get(host, "network")); net.Len() > 0 {
+		if net := obj(get(host, "network")); len(net) > 0 {
 			srt := obj(get(net, "srt"))
 			path := get(srt, "path")
 			if !truthy(path) {
@@ -149,14 +153,14 @@ func FormatText(r Report) string {
 		if w := get(learned, "warning"); truthy(w) {
 			p("  WARNING: %s", pyStr(w))
 		}
-		if cli := norm(r.CLINetwork); cli.Len() > 0 {
+		if cli := norm(r.CLINetwork); len(cli) > 0 {
 			presets := joinList(get(cli, "preset_domains"))
 			if presets == "" {
 				presets = "-"
 			}
 			p("CLI executors network: mode=%s presets=%s", pyStr(get(cli, "mode")), presets)
 			execs := obj(get(cli, "executors"))
-			for _, name := range sortedStrings(execs.Keys()) {
+			for _, name := range sortedStrings(slices.Sorted(maps.Keys(execs))) {
 				item := obj(get(execs, name))
 				domains := joinList(get(item, "domains"))
 				if domains == "" {
@@ -175,26 +179,26 @@ func FormatText(r Report) string {
 }
 
 // norm round-trips a section through JSON so FormatText only handles the
-// decoded shapes (*jsonx.Object, []any, string, bool, int64, float64, nil).
-func norm(v any) *jsonx.Object {
-	b, err := jsonx.Marshal(v)
+// decoded shapes (map[string]any, []any, string, bool, int64, float64, nil).
+func norm(v any) map[string]any {
+	b, err := fsutil.MarshalJSON(v)
 	if err != nil {
-		return jsonx.NewObject()
+		return map[string]any{}
 	}
-	d, err := jsonx.Decode(b)
+	d, err := fsutil.DecodeJSON(b)
 	if err != nil {
-		return jsonx.NewObject()
+		return map[string]any{}
 	}
 	return obj(d)
 }
 
-func obj(v any) *jsonx.Object {
-	o, _ := v.(*jsonx.Object)
+func obj(v any) map[string]any {
+	o, _ := v.(map[string]any)
 	return o
 }
 
-func get(o *jsonx.Object, k string) any {
-	v, _ := o.Get(k)
+func get(o map[string]any, k string) any {
+	v := o[k]
 	return v
 }
 
@@ -247,8 +251,8 @@ func truthy(v any) bool {
 		return x != 0
 	case []any:
 		return len(x) > 0
-	case *jsonx.Object:
-		return x.Len() > 0
+	case map[string]any:
+		return len(x) > 0
 	}
 	return true
 }
@@ -270,7 +274,7 @@ func pyStr(v any) string {
 	case int:
 		return strconv.Itoa(x)
 	case float64:
-		return jsonx.FormatFloat(x)
+		return fsutil.FloatRepr(x)
 	}
 	return fmt.Sprint(v)
 }

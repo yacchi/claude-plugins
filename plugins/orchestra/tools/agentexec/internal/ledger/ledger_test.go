@@ -2,9 +2,11 @@ package ledger
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -12,16 +14,16 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
-func obj(t *testing.T, text string) *jsonx.Object {
+func obj(t *testing.T, text string) map[string]any {
 	t.Helper()
-	v, err := jsonx.Decode([]byte(text))
+	v, err := fsutil.DecodeJSON([]byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return v.(*jsonx.Object)
+	return v.(map[string]any)
 }
 
 func cfgOf(t *testing.T, text string) *config.Resolved {
@@ -48,11 +50,11 @@ func TestSanitizeAllowlistAndNumericValidation(t *testing.T) {
 		"model": "gpt-5.6-luna", "status": "error", "input_tokens": 1, "output_tokens": 2,
 		"cached_input_tokens": 3, "api_duration_ms": 6, "session_duration_ms": 7, "extra": "drop"}`
 	got := Sanitize(obj(t, raw))
-	if _, ok := got.Get("extra"); ok {
+	if _, ok := got["extra"]; ok {
 		t.Error("extra key survived")
 	}
-	for _, k := range obj(t, raw).Keys() {
-		if _, ok := got.Get(k); !ok && k != "extra" {
+	for _, k := range slices.Sorted(maps.Keys(obj(t, raw))) {
+		if _, ok := got[k]; !ok && k != "extra" {
 			t.Errorf("%s was dropped", k)
 		}
 	}
@@ -60,15 +62,15 @@ func TestSanitizeAllowlistAndNumericValidation(t *testing.T) {
 		"api_duration_ms", "session_duration_ms", "cache_write_input_tokens", "reasoning_output_tokens"} {
 		for _, bad := range []string{"true", "false", "-1", "1.5", `"7"`, "null"} {
 			in := obj(t, raw)
-			v, _ := jsonx.Decode([]byte(bad))
-			in.Set(key, v)
-			if _, ok := Sanitize(in).Get(key); ok {
+			v, _ := fsutil.DecodeJSON([]byte(bad))
+			in[key] = v
+			if _, ok := Sanitize(in)[key]; ok {
 				t.Errorf("%s=%s survived", key, bad)
 			}
 		}
 		in := obj(t, raw)
-		in.Set(key, int64(5))
-		if v, _ := Sanitize(in).Get(key); v != int64(5) {
+		in[key] = int64(5)
+		if v, _ := Sanitize(in)[key]; v != int64(5) {
 			t.Errorf("%s=5 became %v", key, v)
 		}
 	}
@@ -77,29 +79,29 @@ func TestSanitizeAllowlistAndNumericValidation(t *testing.T) {
 func TestSanitizeRejectsOrFiltersEnums(t *testing.T) {
 	for _, name := range []string{"copilot", "opencode"} {
 		got := Sanitize(obj(t, `{"executor": "`+name+`", "status": "ok", "input_tokens": 1}`))
-		if _, ok := got.Get("executor"); ok {
+		if _, ok := got["executor"]; ok {
 			t.Errorf("removed executor %s accepted", name)
 		}
-		if v, _ := got.Get("input_tokens"); v != int64(1) {
+		if v, _ := got["input_tokens"]; v != int64(1) {
 			t.Errorf("%s: input_tokens lost", name)
 		}
 	}
 	for _, status := range []string{"not-a-real-status", "delegated"} {
 		got := Sanitize(obj(t, `{"executor": "pi", "cls": "standard", "status": "`+status+`"}`))
-		if _, ok := got.Get("status"); ok {
+		if _, ok := got["status"]; ok {
 			t.Errorf("status %q accepted", status)
 		}
 	}
 	for _, model := range []string{"has space", "has\\nnewline", strings.Repeat("x", 65)} {
 		got := Sanitize(obj(t, `{"executor": "pi", "status": "ok", "input_tokens": 1, "model": "`+model+`"}`))
-		if _, ok := got.Get("model"); ok {
+		if _, ok := got["model"]; ok {
 			t.Errorf("model %q accepted", model)
 		}
 	}
 	if Sanitize(obj(t, `{"input_tokens": 1}`)) != nil {
 		t.Error("a record without executor/cls/status/model must be dropped")
 	}
-	if Sanitize(obj(t, `{"ts": "a\nb", "executor": "pi"}`)).Len() != 1 {
+	if len(Sanitize(obj(t, `{"ts": "a\nb", "executor": "pi"}`))) != 1 {
 		t.Error("a ts with a newline must be dropped")
 	}
 }
@@ -302,16 +304,16 @@ func TestBuildRecordFlattensResult(t *testing.T) {
 		"usage": {"api_duration_ms": 9, "cost_micro_usd": 12, "tokens": {"input_tokens": 1, "output_tokens": 2,
 		"cached_input_tokens": 3, "cache_write_input_tokens": 4, "reasoning_output_tokens": 5, "junk": 6}}}`)
 	got := BuildRecord("pi", "m", "standard", result)
-	b, _ := jsonx.Marshal(got)
-	want := `{"executor": "pi", "model": "m", "cls": "standard", "status": "ok", "sandbox_denials": 2, ` +
-		`"sandbox_granted": 1, "api_duration_ms": 9, "cost_micro_usd": 12, "input_tokens": 1, ` +
-		`"output_tokens": 2, "cached_input_tokens": 3, "cache_write_input_tokens": 4, "reasoning_output_tokens": 5}`
+	b, _ := fsutil.MarshalJSON(got)
+	want := `{"api_duration_ms":9,"cache_write_input_tokens":4,"cached_input_tokens":3,"cls":"standard",` +
+		`"cost_micro_usd":12,"executor":"pi","input_tokens":1,"model":"m","output_tokens":2,` +
+		`"reasoning_output_tokens":5,"sandbox_denials":2,"sandbox_granted":1,"status":"ok"}`
 	if string(b) != want {
 		t.Errorf("got  %s\nwant %s", b, want)
 	}
 	bare := BuildRecord("pi", "m", "light", obj(t, `{"status": "unavailable"}`))
-	if bare.Len() != 4 {
-		t.Errorf("bare record = %v", bare.Keys())
+	if len(bare) != 4 {
+		t.Errorf("bare record = %v", slices.Sorted(maps.Keys(bare)))
 	}
 }
 

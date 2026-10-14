@@ -98,7 +98,7 @@ func (e *Executor) warmFor(ctx context.Context, pkg, repo, baseRef, model, state
 		if warm == nil {
 			return nil
 		}
-		v, _ := warm.Get(k)
+		v := warm[k]
 		return v
 	}
 	e.warmMu.Lock()
@@ -126,7 +126,7 @@ func (e *Executor) warmUsable(r warmRecord, repo, baseRev string, paths []string
 	ttl := e.cfg.Sub("warm")
 	ttlSeconds := 3000.0
 	if ttl != nil {
-		v, _ := ttl.Get("ttl_seconds")
+		v := ttl["ttl_seconds"]
 		ttlSeconds = host.PyFloat(v, 3000)
 	}
 	if now-host.PyFloat(r["last_used"], 0) >= ttlSeconds {
@@ -250,7 +250,7 @@ func (e *Executor) ensureWarm(ctx context.Context, model, baseRef string, paths 
 	s := &host.Session{Pkg: task, Name: e.Name(), Worktree: created.Path, Extra: map[string]any{
 		"workspace": nil, "pane": nil, "repo": repo, "model": model, "state_dir": stateDir,
 		"created": created.Status == "created", "herdr_session": e.sname,
-		"add_dirs": host.SortedDirs(append(append([]string{}, addDirs...), stateDir)),
+		"add_dirs":          host.SortedDirs(append(append([]string{}, addDirs...), stateDir)),
 		"claude_session_id": sid, "ephemeral": true,
 	}}
 	line := "Read each of these files with the Read tool, using exactly these relative paths, " +

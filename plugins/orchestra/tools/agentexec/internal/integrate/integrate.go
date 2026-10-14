@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
@@ -87,15 +87,16 @@ type Result struct {
 }
 
 func (r Result) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().Set("status", r.Status)
 	if r.Status == "locked" {
 		var holder any
 		if r.Holder != "" {
 			holder = r.Holder
 		}
-		return jsonx.Marshal(o.Set("into", r.Into).Set("holder", holder).
-			Set("lock", r.LockFile).Set("note", r.Note))
+		return fsutil.MarshalJSON(map[string]any{
+			"status": r.Status, "into": r.Into, "holder": holder, "lock": r.LockFile, "note": r.Note,
+		})
 	}
+	o := map[string]any{"status": r.Status}
 	var onto any
 	if r.Onto != "" {
 		onto = r.Onto
@@ -104,11 +105,14 @@ func (r Result) MarshalJSON() ([]byte, error) {
 	if tasks == nil {
 		tasks = []TaskResult{}
 	}
-	o.Set("integration", r.Integration).Set("onto", onto).Set("tasks", tasks).Set("note", r.Note)
+	o["integration"] = r.Integration
+	o["onto"] = onto
+	o["tasks"] = tasks
+	o["note"] = r.Note
 	if r.Verify != nil {
-		o.Set("verify", r.Verify)
+		o["verify"] = r.Verify
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 // ExitCode is the CLI exit status of a result.
@@ -145,7 +149,7 @@ func headSHA(wt string) string {
 }
 
 // emit writes one progress line; observability never fails a merge.
-func emit(w io.Writer, event string, pkg string, detail *jsonx.Object) {
+func emit(w io.Writer, event string, pkg string, detail map[string]any) {
 	if w == nil {
 		return
 	}
@@ -153,8 +157,12 @@ func emit(w io.Writer, event string, pkg string, detail *jsonx.Object) {
 	if pkg != "" {
 		p = pkg
 	}
-	line, err := jsonx.Marshal(jsonx.NewObject().Set("event", event).Set("pkg", p).
-		Set("detail", detail).Set("at", float64(time.Now().UnixNano())/1e9))
+	line, err := fsutil.MarshalJSON(map[string]any{
+		"event":  event,
+		"pkg":    p,
+		"detail": detail,
+		"at":     float64(time.Now().UnixNano()) / 1e9,
+	})
 	if err == nil {
 		_, _ = w.Write(append(line, '\n'))
 	}
@@ -316,7 +324,7 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 		invocationBase = ontoSHA
 	}
 
-	emit(o.Progress, "integrate-start", "", jsonx.NewObject().Set("tasks", append([]string{}, ids...)))
+	emit(o.Progress, "integrate-start", "", map[string]any{"tasks": append([]string{}, ids...)})
 	results := make([]TaskResult, 0, len(changes))
 	var applied []AppliedCommit
 	stop := false
@@ -324,12 +332,12 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 		task := ch.task
 		if stop {
 			results = append(results, TaskResult{Task: task, Status: "skipped", Conflicts: []isolate.Conflict{}})
-			emit(o.Progress, "integrate-task", task, jsonx.NewObject().Set("status", "skipped"))
+			emit(o.Progress, "integrate-task", task, map[string]any{"status": "skipped"})
 			continue
 		}
 		if ch.state != "ready" {
 			results = append(results, TaskResult{Task: task, Status: ch.state, Conflicts: []isolate.Conflict{}})
-			emit(o.Progress, "integrate-task", task, jsonx.NewObject().Set("status", ch.state))
+			emit(o.Progress, "integrate-task", task, map[string]any{"status": ch.state})
 			if ch.state == "empty" {
 				markSourceCollected(resolved, task, ch.files, ch.patch)
 			}
@@ -364,7 +372,7 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 			entry.Status = "conflicted"
 		}
 		results = append(results, entry)
-		emit(o.Progress, "integrate-task", task, jsonx.NewObject().Set("status", entry.Status))
+		emit(o.Progress, "integrate-task", task, map[string]any{"status": entry.Status})
 	}
 
 	conflicted := false
@@ -390,7 +398,7 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 		Note:        note(results, intoTask, wt),
 		Verify:      verify,
 	}
-	emit(o.Progress, "integrate-end", "", jsonx.NewObject().Set("status", status))
+	emit(o.Progress, "integrate-end", "", map[string]any{"status": status})
 	return res, nil
 }
 
@@ -407,9 +415,9 @@ func runVerifyStage(o Options, root, wt, branch, base string, applied []AppliedC
 	case len(applied) == 0:
 		return skippedVerify("nothing applied")
 	}
-	emit(o.Progress, "verify-start", "", jsonx.NewObject().Set("at_commit", headSHA(wt)))
+	emit(o.Progress, "verify-start", "", map[string]any{"at_commit": headSHA(wt)})
 	v := RunVerify(wt, o.Verify, o.VerifyTimeout)
-	emit(o.Progress, "verify-end", "", jsonx.NewObject().Set("status", v.Status).Set("seconds", v.Seconds))
+	emit(o.Progress, "verify-end", "", map[string]any{"status": v.Status, "seconds": v.Seconds})
 	if v.Status != "fail" || !o.Bisect {
 		return &v
 	}

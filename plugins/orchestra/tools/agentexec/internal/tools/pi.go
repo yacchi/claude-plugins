@@ -6,7 +6,6 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
@@ -20,11 +19,11 @@ const (
 	PiAgentPath    = "path"    // an explicit directory
 )
 
-func piSection(cfg *config.Resolved) *jsonx.Object {
+func piSection(cfg *config.Resolved) map[string]any {
 	if cfg == nil {
-		return config.Defaults().Object("external_executors").Object("pi")
+		return config.ObjectAt(config.ObjectAt(config.Defaults(), "external_executors"), "pi")
 	}
-	return cfg.Section("external_executors").Object("pi")
+	return config.ObjectAt(cfg.Section("external_executors"), "pi")
 }
 
 // PiAgentDir is the mode of pi's agent dir and the directory ("" in user
@@ -32,7 +31,7 @@ func piSection(cfg *config.Resolved) *jsonx.Object {
 // pi's default, any other string an explicit path (~ expanded, absolute).
 func PiAgentDir(cfg *config.Resolved) (mode, dir string) {
 	managed := filepath.Join(paths.StateDir(), "pi-agent")
-	v, _ := piSection(cfg).Get("agent_dir")
+	v := piSection(cfg)["agent_dir"]
 	switch s := v.(type) {
 	case nil:
 		return PiAgentManaged, managed
@@ -55,7 +54,7 @@ func PiAgentDir(cfg *config.Resolved) (mode, dir string) {
 // PiContextFiles is whether pi may discover AGENTS.md/CLAUDE.md (false only
 // for an explicit `context_files: false`).
 func PiContextFiles(cfg *config.Resolved) bool {
-	v, _ := piSection(cfg).Get("context_files")
+	v := piSection(cfg)["context_files"]
 	return v != false
 }
 

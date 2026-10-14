@@ -2,39 +2,41 @@ package telemetry
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // decode reads JSON the way the CLI does (ordered objects, int64 numbers).
-func decode(t testing.TB, text string) *jsonx.Object {
+func decode(t testing.TB, text string) map[string]any {
 	t.Helper()
-	v, err := jsonx.Decode([]byte(text))
+	v, err := fsutil.DecodeJSON([]byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return v.(*jsonx.Object)
+	return v.(map[string]any)
 }
 
 func raw(t testing.TB, text string) map[string]any {
 	t.Helper()
 	o := decode(t, text)
 	m := map[string]any{}
-	for _, k := range o.Keys() {
-		m[k], _ = o.Get(k)
+	for _, k := range slices.Sorted(maps.Keys(o)) {
+		m[k] = o[k]
 	}
 	return m
 }
 
-func sanitize(t testing.TB, text string) *jsonx.Object {
+func sanitize(t testing.TB, text string) map[string]any {
 	t.Helper()
 	out, err := Sanitize(raw(t, text))
 	if err != nil {
@@ -43,8 +45,8 @@ func sanitize(t testing.TB, text string) *jsonx.Object {
 	return out
 }
 
-func asJSON(o *jsonx.Object) string {
-	b, _ := jsonx.Marshal(o)
+func asJSON(o map[string]any) string {
+	b, _ := fsutil.MarshalJSON(o)
 	return string(b)
 }
 
@@ -79,7 +81,7 @@ func TestSanitizeDropsDisguisedAndMistypedValues(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if _, ok := sanitize(t, c.in).Get(c.key); ok {
+			if _, ok := sanitize(t, c.in)[c.key]; ok {
 				t.Errorf("%s survived: %s", c.key, c.in)
 			}
 		})
@@ -98,11 +100,11 @@ func TestSanitizeKeepsValidValues(t *testing.T) {
 		"api_duration_ms": 4, "session_duration_ms": 5, "prompt_tokens": 6}}`)
 	got := asJSON(out)
 	for _, want := range []string{
-		`"resumed": false`, `"orchestra_version": "1.2.3"`, `"classes": {"light": 5, "review": 0}`,
-		`"executors_used": {"pi": 1, "claude": 2}`, `"rounds": {"1": 2, "10": 6}`,
-		`"external_enabled": {"pi": true}`, `"task_count": 0`, `"sandbox_granted": 4`,
-		`"usage": {"input_tokens": 1, "output_tokens": 2, "cached_input_tokens": 3, "api_duration_ms": 4, "session_duration_ms": 5}`,
-		`"cls": "independent-review"`, `"status": "needs-permission"`,
+		`"resumed":false`, `"orchestra_version":"1.2.3"`, `"classes":{"light":5,"review":0}`,
+		`"executors_used":{"claude":2,"pi":1}`, `"rounds":{"1":2,"10":6}`,
+		`"external_enabled":{"pi":true}`, `"task_count":0`, `"sandbox_granted":4`,
+		`"usage":{"api_duration_ms":4,"cached_input_tokens":3,"input_tokens":1,"output_tokens":2,"session_duration_ms":5}`,
+		`"cls":"independent-review"`, `"status":"needs-permission"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %s in %s", want, got)
@@ -115,17 +117,17 @@ func TestSanitizeKeepsValidValues(t *testing.T) {
 
 func TestSanitizeStampsCannotBeSpoofed(t *testing.T) {
 	out := sanitize(t, `{"event": "dispatch", "ts": "EVIL", "os": "/etc/x", "schema_version": 999}`)
-	if v, _ := out.Get("schema_version"); v != int64(2) {
+	if v, _ := out["schema_version"]; v != int64(2) {
 		t.Errorf("schema_version = %v", v)
 	}
-	if v, _ := out.Get("os"); v != runtime.GOOS {
+	if v, _ := out["os"]; v != runtime.GOOS {
 		t.Errorf("os = %v", v)
 	}
-	ts, _ := out.Get("ts")
+	ts := out["ts"]
 	if _, err := time.Parse("2006-01-02T15:04:05.999999999-07:00", ts.(string)); err != nil {
 		t.Errorf("ts %v: %v", ts, err)
 	}
-	if got := out.Keys(); !reflect.DeepEqual(got, []string{"event", "schema_version", "ts", "os"}) {
+	if got := slices.Sorted(maps.Keys(out)); !reflect.DeepEqual(got, []string{"event", "os", "schema_version", "ts"}) {
 		t.Errorf("keys = %v", got)
 	}
 }
@@ -164,7 +166,7 @@ func TestSanitizeAcceptsPlainGoMaps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := asJSON(out); !strings.Contains(got, `"classes": {"light": 2}`) || !strings.Contains(got, `"usage": {"input_tokens": 3}`) {
+	if got := asJSON(out); !strings.Contains(got, `"classes":{"light":2}`) || !strings.Contains(got, `"usage":{"input_tokens":3}`) {
 		t.Errorf("got %s", got)
 	}
 }
@@ -188,23 +190,23 @@ func FuzzSanitize(f *testing.F) {
 		"rounds": true, "external_enabled": true, "usage": true,
 	}
 	f.Fuzz(func(t *testing.T, in string) {
-		v, err := jsonx.Decode([]byte(in))
+		v, err := fsutil.DecodeJSON([]byte(in))
 		if err != nil {
 			return
 		}
-		obj, ok := v.(*jsonx.Object)
+		obj, ok := v.(map[string]any)
 		if !ok {
 			return
 		}
 		m := map[string]any{}
-		for _, k := range obj.Keys() {
-			m[k], _ = obj.Get(k)
+		for _, k := range slices.Sorted(maps.Keys(obj)) {
+			m[k] = obj[k]
 		}
 		out, err := Sanitize(m)
 		if err != nil {
 			return
 		}
-		for _, k := range out.Keys() {
+		for _, k := range slices.Sorted(maps.Keys(out)) {
 			if !allowed[k] {
 				t.Fatalf("key %q leaked", k)
 			}
@@ -231,11 +233,11 @@ func TestBuildDispatchRecordNeverCopiesFreeText(t *testing.T) {
 	result := decode(t, `{"status": "ok", "answer": "the secret file is at /Users/x/.ssh/id_rsa",
 		"session_id": "abc123", "reason": null, "exit_code": 0}`)
 	rec := BuildDispatchRecord("pi", result, false, "")
-	if got := rec.Keys(); !reflect.DeepEqual(got, []string{"event", "executor", "status", "reason", "resumed"}) {
+	if got := slices.Sorted(maps.Keys(rec)); !reflect.DeepEqual(got, []string{"event", "executor", "reason", "resumed", "status"}) {
 		t.Errorf("keys = %v", got)
 	}
 	rec = BuildDispatchRecord("pi", decode(t, `{"status": "unavailable", "answer": "/etc/passwd", "reason": "quota"}`), true, "standard")
-	if got := asJSON(rec); got != `{"event": "dispatch", "executor": "pi", "status": "unavailable", "reason": "quota", "resumed": true, "cls": "standard"}` {
+	if got := asJSON(rec); got != `{"cls":"standard","event":"dispatch","executor":"pi","reason":"quota","resumed":true,"status":"unavailable"}` {
 		t.Errorf("got %s", got)
 	}
 }
@@ -245,15 +247,15 @@ func TestBuildDispatchRecordFlattensUsage(t *testing.T) {
 		"usage": {"api_duration_ms": 5, "session_duration_ms": true, "tokens": {"input_tokens": 1,
 		"output_tokens": -2, "cached_input_tokens": 0, "cache_write_input_tokens": 9}}}`)
 	got := asJSON(BuildDispatchRecord("pi", result, false, "light"))
-	want := `{"event": "dispatch", "executor": "pi", "status": "ok", "reason": null, "resumed": false, ` +
-		`"sandbox_denials": 2, "sandbox_granted": 0, "cls": "light", ` +
-		`"usage": {"api_duration_ms": 5, "input_tokens": 1, "cached_input_tokens": 0}}`
+	want := `{"cls":"light","event":"dispatch","executor":"pi","reason":null,"resumed":false,` +
+		`"sandbox_denials":2,"sandbox_granted":0,"status":"ok",` +
+		`"usage":{"api_duration_ms":5,"cached_input_tokens":0,"input_tokens":1}}`
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
 	for _, u := range []string{`{}`, `{"tokens": {}}`, `{"api_duration_ms": -1, "tokens": {"input_tokens": "7"}}`, `5`} {
 		r := BuildDispatchRecord("pi", decode(t, `{"status": "ok", "usage": `+u+`}`), false, "")
-		if _, ok := r.Get("usage"); ok {
+		if _, ok := r["usage"]; ok {
 			t.Errorf("usage %s should be omitted", u)
 		}
 	}
@@ -280,7 +282,7 @@ func TestAppendIsGatedAndSanitized(t *testing.T) {
 		t.Fatalf("records = %d", len(records))
 	}
 	line, _ := os.ReadFile(filepath.Join(dir, "records.jsonl"))
-	if strings.Contains(string(line), "secret") || !strings.Contains(string(line), `"status": "ok"`) {
+	if strings.Contains(string(line), "secret") || !strings.Contains(string(line), `"status":"ok"`) {
 		t.Errorf("line = %s", line)
 	}
 }
@@ -322,9 +324,9 @@ func TestReadRecordsAndSummary(t *testing.T) {
 		t.Fatalf("records = %d", len(records))
 	}
 	want := "total records: 4\n" +
-		`by event: {"dispatch": 2, "run_summary": 1}` + "\n" +
-		`by status: {"ok": 1, "unavailable": 1, "7": 1}` + "\n" +
-		`by reason: {"quota": 1}` + "\n"
+		`by event: {"dispatch":2,"run_summary":1}` + "\n" +
+		`by status: {"7":1,"ok":1,"unavailable":1}` + "\n" +
+		`by reason: {"quota":1}` + "\n"
 	if got := Summary(records); got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}

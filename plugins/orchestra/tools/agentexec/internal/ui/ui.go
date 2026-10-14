@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
@@ -59,11 +58,11 @@ func LogPath() string {
 
 // --- server side ----------------------------------------------------------------
 
-func writeInfo(path string, info *jsonx.Object) error {
+func writeInfo(path string, info map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	data, err := jsonx.Marshal(info)
+	data, err := fsutil.MarshalJSON(info)
 	if err != nil {
 		return err
 	}
@@ -96,8 +95,12 @@ func ServeIdle(port int, idleMinutes float64) error {
 		return err
 	}
 	path := InfoPath()
-	info := jsonx.NewObject().Set("pid", os.Getpid()).Set("port", server.Port()).
-		Set("token", token).Set("started", float64(time.Now().UnixMicro())/1e6)
+	info := map[string]any{
+		"pid":     os.Getpid(),
+		"port":    server.Port(),
+		"token":   token,
+		"started": float64(time.Now().UnixMicro()) / 1e6,
+	}
 	if err := writeInfo(path, info); err != nil {
 		return err
 	}
@@ -131,24 +134,24 @@ func readInfo(path string) *liveInfo {
 	if err != nil {
 		return nil
 	}
-	doc, err := jsonx.Decode(raw)
+	doc, err := fsutil.DecodeJSON(raw)
 	if err != nil {
 		return nil
 	}
-	obj, ok := doc.(*jsonx.Object)
+	obj, ok := doc.(map[string]any)
 	if !ok {
 		return nil
 	}
 	pid, okPID := intValue(get(obj, "pid"))
 	port, okPort := intValue(get(obj, "port"))
 	token, okTok := get(obj, "token").(string)
-	if _, has := obj.Get("pid"); !has {
+	if _, has := obj["pid"]; !has {
 		return nil
 	}
-	if _, has := obj.Get("port"); !has {
+	if _, has := obj["port"]; !has {
 		return nil
 	}
-	if _, has := obj.Get("token"); !has {
+	if _, has := obj["token"]; !has {
 		return nil
 	}
 	if !okPID {

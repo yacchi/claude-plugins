@@ -1,6 +1,9 @@
 package config
 
-import "github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+import (
+	"maps"
+	"slices"
+)
 
 // DefaultQuietDomains is background traffic of Claude Code and herdr that no
 // worker task needs: still blocked and audited, never surfaced as a denial.
@@ -12,11 +15,37 @@ var DefaultQuietDomains = []string{
 // DefaultAllowedDomains is the only host a hosted Claude Code session needs.
 var DefaultAllowedDomains = []string{"api.anthropic.com"}
 
+// ToolOrder and ClassOrder are the built-in tools and worker classes in the
+// order listings present them (see OrderedKeys).
+var (
+	ToolOrder  = []string{"pi", "herdr", "srt"}
+	ClassOrder = []string{"light", "standard", "deep", "independent-review"}
+)
+
+// OrderedKeys lists the keys of m: those named in first, in that order,
+// then every other key sorted.
+func OrderedKeys(m map[string]any, first []string) []string {
+	out := make([]string, 0, len(m))
+	listed := make(map[string]bool, len(first))
+	for _, k := range first {
+		listed[k] = true
+		if _, ok := m[k]; ok {
+			out = append(out, k)
+		}
+	}
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		if !listed[k] {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // obj builds an Object from alternating keys and values.
-func obj(kv ...any) *jsonx.Object {
-	o := jsonx.NewObject()
+func obj(kv ...any) map[string]any {
+	o := map[string]any{}
 	for i := 0; i+1 < len(kv); i += 2 {
-		o.Set(kv[i].(string), kv[i+1])
+		o[kv[i].(string)] = kv[i+1]
 	}
 	return o
 }
@@ -29,15 +58,15 @@ func strs(s ...string) []any {
 	return out
 }
 
-func modelEffort(model, effort string) *jsonx.Object {
+func modelEffort(model, effort string) map[string]any {
 	return obj("model", model, "effort", effort)
 }
 
 // Defaults returns a fresh copy of the built-in configuration (Python's
 // DEFAULTS), the lowest layer every resolution starts from. Integers are
-// int64, as yaml11 produces them.
-func Defaults() *jsonx.Object {
-	claudeModels := func() *jsonx.Object {
+// int64, as the YAML and JSON loaders produce them.
+func Defaults() map[string]any {
+	claudeModels := func() map[string]any {
 		return obj("light", "sonnet", "standard", "opus", "deep", "opus")
 	}
 	return obj(

@@ -4,16 +4,17 @@
 package readiness
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
 )
 
@@ -49,7 +50,7 @@ type Permission struct {
 }
 
 // Report is the readiness part of the doctor report. Executors holds one
-// *jsonx.Object per known or configured executor (doctor appends its own
+// object per known or configured executor (doctor appends its own
 // annotations); Ready only covers enabled `dispatch: cli` known executors.
 type Report struct {
 	Shim       Shim
@@ -172,12 +173,12 @@ func ScanPermission() Permission {
 		if err != nil {
 			continue
 		}
-		v, err := jsonx.Decode(raw)
+		v, err := fsutil.DecodeJSON(raw)
 		if err != nil {
 			continue
 		}
-		data, _ := v.(*jsonx.Object)
-		allow, _ := data.Object("permissions").Get("allow")
+		data, _ := v.(map[string]any)
+		allow := config.ObjectAt(data, "permissions")["allow"]
 		list, _ := allow.([]any)
 		for _, e := range list {
 			if e == permissionRule {
@@ -206,7 +207,7 @@ func Compute(cfg *config.Resolved) Report {
 	}
 	external := cfg.Section("external_executors")
 	nameSet := map[string]bool{}
-	for _, k := range external.Keys() {
+	for _, k := range slices.Sorted(maps.Keys(external)) {
 		nameSet[k] = true
 	}
 	for k := range KnownExecutors {
@@ -219,14 +220,14 @@ func Compute(cfg *config.Resolved) Report {
 	sort.Strings(names)
 
 	for _, name := range names {
-		ecfg := external.Object(name)
+		ecfg := config.ObjectAt(external, name)
 		defDispatch, known := KnownExecutors[name]
 		enabled := false
-		if v, _ := ecfg.Get("enabled"); v == true {
+		if v, _ := ecfg["enabled"]; v == true {
 			enabled = true
 		}
 		var dispatch any
-		if v, ok := ecfg.Get("dispatch"); ok && v != nil {
+		if v, ok := ecfg["dispatch"]; ok && v != nil {
 			dispatch = v
 		} else if known {
 			dispatch = defDispatch
@@ -238,26 +239,27 @@ func Compute(cfg *config.Resolved) Report {
 		tool := tools.Resolve(name, cfg)
 		available := tool.Path != ""
 
-		entry := jsonx.NewObject().
-			Set("enabled", enabled).
-			Set("dispatch", dispatch).
-			Set("binary", binary).
-			Set("available", available).
-			Set("path", nilIfEmpty(tool.Path)).
-			Set("source", nilIfEmpty(tool.Source)).
-			Set("tool_version", nilIfEmpty(tool.Version))
+		entry := map[string]any{
+			"enabled":      enabled,
+			"dispatch":     dispatch,
+			"binary":       binary,
+			"available":    available,
+			"path":         nilIfEmpty(tool.Path),
+			"source":       nilIfEmpty(tool.Source),
+			"tool_version": nilIfEmpty(tool.Version),
+		}
 		if tool.Hint != "" {
-			entry.Set("hint", tool.Hint)
+			entry["hint"] = tool.Hint
 		}
 		if dispatch == "agent" {
-			entry.Set("note", "dispatch: agent — CLI binary presence is informational; "+
-				"actual availability is the subagent's session "+
-				"resolution, which agent-exec cannot determine")
+			entry["note"] = "dispatch: agent — CLI binary presence is informational; " +
+				"actual availability is the subagent's session " +
+				"resolution, which agent-exec cannot determine"
 		}
 		r.Executors[name] = entry
 
 		if !known {
-			entry.Set("note", "unknown executor: ignored by route")
+			entry["note"] = "unknown executor: ignored by route"
 		} else if enabled && dispatch == "cli" {
 			missing := []string{}
 			if !r.Shim.Installed {

@@ -195,11 +195,10 @@ func TestBisectAbortsAConflictingRevert(t *testing.T) {
 	if ref := strings.TrimSpace(git(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); ref != "int" {
 		t.Errorf("left on %q, want the branch", ref)
 	}
-	if !strings.Contains(progress.String(), `"result": "conflicted"`) {
+	if !strings.Contains(progress.String(), `"result":"conflicted"`) {
 		t.Errorf("no revert-conflict event: %s", progress.String())
 	}
 	if _, err := Bisect(BisectInput{Worktree: repo}); err == nil {
 		t.Error("bisect without a branch and base accepted")
 	}
 }
-

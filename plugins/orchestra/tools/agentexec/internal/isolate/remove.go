@@ -3,8 +3,8 @@ package isolate
 import (
 	"fmt"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // RemoveResult is `isolate remove`'s output, for one task or (IsSession,
@@ -22,30 +22,44 @@ type RemoveResult struct {
 }
 
 func (r RemoveResult) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject()
+	o := map[string]any{}
 	switch {
 	case r.IsSession:
 		removed := r.Removed
 		if removed == nil {
 			removed = []RemoveResult{}
 		}
-		o.Set("status", r.Status).Set("session", r.Session).Set("removed", removed)
+		o["status"] = r.Status
+		o["session"] = r.Session
+		o["removed"] = removed
 	case r.Status == "dirty":
-		o.Set("files", nonNil(r.Files)).Set("reason", r.Reason).Set("status", r.Status).
-			Set("task", r.Task).Set("path", r.Path)
+		o["files"] = nonNil(r.Files)
+		o["reason"] = r.Reason
+		o["status"] = r.Status
+		o["task"] = r.Task
+		o["path"] = r.Path
 	case r.Status == "error" && r.Task == "":
-		o.Set("status", r.Status).Set("reason", r.Reason)
+		o["status"] = r.Status
+		o["reason"] = r.Reason
 	case r.Status == "error":
-		o.Set("status", r.Status).Set("task", r.Task).Set("reason", r.Reason)
+		o["status"] = r.Status
+		o["task"] = r.Task
+		o["reason"] = r.Reason
 	case r.Status == "absent":
-		o.Set("status", r.Status).Set("task", r.Task)
+		o["status"] = r.Status
+		o["task"] = r.Task
 	case r.Status == "unadopted":
-		o.Set("status", r.Status).Set("task", r.Task).Set("path", r.Path)
+		o["status"] = r.Status
+		o["task"] = r.Task
+		o["path"] = r.Path
 	default:
-		o.Set("status", r.Status).Set("task", r.Task).Set("path", r.Path).
-			Set("branch", nullable(r.Branch)).Set("session", nullable(r.Session))
+		o["status"] = r.Status
+		o["task"] = r.Task
+		o["path"] = r.Path
+		o["branch"] = nullable(r.Branch)
+		o["session"] = nullable(r.Session)
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 // uncollected says why the tree at path still holds unreviewed work, or

@@ -2,12 +2,12 @@ package runner
 
 import (
 	"encoding/json"
+	"maps"
 	"sort"
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/approvals"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -245,10 +245,10 @@ func (r *runner) report() Report {
 	threshold := r.checksConfig().flakyThreshold
 	flaky := map[string]int{}
 	for _, ev := range state.ReadEvents(r.statePath, -1) {
-		if kind, _ := ev.Get("event"); kind != "flaky" {
+		if kind, _ := ev["event"]; kind != "flaky" {
 			continue
 		}
-		detail, _ := ev.Get("detail")
+		detail := ev["detail"]
 		var d struct {
 			Files []any `json:"files"`
 		}
@@ -283,23 +283,9 @@ func (r *runner) report() Report {
 			if m == nil {
 				continue
 			}
-			o := jsonx.NewObject()
-			if obj, ok := d.(*jsonx.Object); ok {
-				for _, k := range obj.Keys() {
-					v, _ := obj.Get(k)
-					o.Set(k, v)
-				}
-			} else {
-				keys := make([]string, 0, len(m))
-				for k := range m {
-					keys = append(keys, k)
-				}
-				sort.Strings(keys)
-				for _, k := range keys {
-					o.Set(k, m[k])
-				}
-			}
-			rep.NetworkDenials = append(rep.NetworkDenials, o.Set("id", pkg.ID))
+			o := maps.Clone(m)
+			o["id"] = pkg.ID
+			rep.NetworkDenials = append(rep.NetworkDenials, o)
 		}
 	}
 	for _, pid := range withStatus("pending") {

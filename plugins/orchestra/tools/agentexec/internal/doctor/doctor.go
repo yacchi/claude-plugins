@@ -14,7 +14,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/route"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
@@ -28,16 +27,16 @@ var previewClasses = []string{"light", "standard", "deep", "review"}
 // order.
 type Report struct {
 	Shim       readiness.Shim
-	Build      *jsonx.Object
-	Config     *jsonx.Object
+	Build      map[string]any
+	Config     map[string]any
 	Executors  map[string]any
 	Permission readiness.Permission
 	Ready      map[string]readiness.ExecReady
 	Route      []route.Route
-	Cooldowns  *jsonx.Object
+	Cooldowns  map[string]any
 	Sandbox    any
 	HerdrHost  any
-	UserConfig *jsonx.Object
+	UserConfig map[string]any
 	CLINetwork any
 }
 
@@ -68,31 +67,33 @@ func Build(cfg *config.Resolved, cfgErr error) Report {
 	if cooldown.Enabled(dcfg) {
 		active = cooldown.Active(dcfg, time.Now())
 	}
-	activeObj := jsonx.NewObject()
+	activeObj := map[string]any{}
 	names := make([]string, 0, len(active))
 	for k := range active {
 		names = append(names, k)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		activeObj.Set(name, jsonx.NewObject().Set("reason", active[name].Reason).Set("until", active[name].Until))
+		activeObj[name] = map[string]any{"reason": active[name].Reason, "until": active[name].Until}
 	}
 
-	configSection := jsonx.NewObject().
-		Set("layers_found", []any{}).
-		Set("config_root", absPath(config.ProjectBase())).
-		Set("resolved", ok).
-		Set("error", nil).
-		Set("warnings", []any{}).
-		Set("values", nil)
+	configSection := map[string]any{
+		"layers_found": []any{},
+		"config_root":  absPath(config.ProjectBase()),
+		"resolved":     ok,
+		"error":        nil,
+		"warnings":     []any{},
+		"values":       nil,
+	}
 	if ok {
 		layers := []any{}
 		for _, l := range cfg.Layers {
 			layers = append(layers, absPath(l.Path))
 		}
-		configSection.Set("layers_found", layers).Set("values", cfg.Values)
+		configSection["layers_found"] = layers
+		configSection["values"] = cfg.Values
 	} else if cfgErr != nil {
-		configSection.Set("error", "agent-exec: "+cfgErr.Error())
+		configSection["error"] = "agent-exec: " + cfgErr.Error()
 	}
 
 	cwd, _ := os.Getwd()
@@ -103,12 +104,13 @@ func Build(cfg *config.Resolved, cfgErr error) Report {
 		Executors:  ready.Executors,
 		Permission: ready.Permission,
 		Ready:      ready.Ready,
-		Cooldowns:  jsonx.NewObject().Set("path", cooldown.StatePath(dcfg)).Set("active", activeObj),
+		Cooldowns:  map[string]any{"path": cooldown.StatePath(dcfg), "active": activeObj},
 		Sandbox:    sandbox.DoctorSection(dcfg),
 		HerdrHost:  herdr.HostReport(dcfg),
-		UserConfig: jsonx.NewObject().
-			Set("herdr", userConfig(dcfg, "herdr")).
-			Set("orca", userConfig(dcfg, "orca")),
+		UserConfig: map[string]any{
+			"herdr": userConfig(dcfg, "herdr"),
+			"orca":  userConfig(dcfg, "orca"),
+		},
 		CLINetwork: srt.CLINetwork(dcfg, cwd),
 	}
 	if ok {
@@ -120,24 +122,25 @@ func Build(cfg *config.Resolved, cfgErr error) Report {
 }
 
 // Object is the report in `doctor --json` key order.
-func (r Report) Object() *jsonx.Object {
-	routes := jsonx.NewObject()
+func (r Report) Object() map[string]any {
+	routes := map[string]any{}
 	for _, rt := range r.Route {
-		routes.Set(rt.Class, rt.Object())
+		routes[rt.Class] = rt.Object()
 	}
-	return jsonx.NewObject().
-		Set("shim", r.Shim).
-		Set("build", r.Build).
-		Set("config", r.Config).
-		Set("executors", r.Executors).
-		Set("permission", r.Permission).
-		Set("ready", r.Ready).
-		Set("route", routes).
-		Set("cooldowns", r.Cooldowns).
-		Set("sandbox", r.Sandbox).
-		Set("herdr_host", r.HerdrHost).
-		Set("user_config", r.UserConfig).
-		Set("cli_network", r.CLINetwork)
+	return map[string]any{
+		"shim":        r.Shim,
+		"build":       r.Build,
+		"config":      r.Config,
+		"executors":   r.Executors,
+		"permission":  r.Permission,
+		"ready":       r.Ready,
+		"route":       routes,
+		"cooldowns":   r.Cooldowns,
+		"sandbox":     r.Sandbox,
+		"herdr_host":  r.HerdrHost,
+		"user_config": r.UserConfig,
+		"cli_network": r.CLINetwork,
+	}
 }
 
 func userConfig(cfg *config.Resolved, section string) string {
@@ -158,7 +161,7 @@ func absPath(p string) string {
 // buildInfo says which binary is answering: its path, the source hash it was
 // built from (the bootstrap's cache directory name, else the VCS revision
 // stamped into the binary, else null) and the Go toolchain.
-func buildInfo() *jsonx.Object {
+func buildInfo() map[string]any {
 	var exe, hash any
 	if p, err := os.Executable(); err == nil {
 		exe = p
@@ -177,5 +180,5 @@ func buildInfo() *jsonx.Object {
 			}
 		}
 	}
-	return jsonx.NewObject().Set("binary", exe).Set("source_hash", hash).Set("go", runtime.Version())
+	return map[string]any{"binary": exe, "source_hash": hash, "go": runtime.Version()}
 }

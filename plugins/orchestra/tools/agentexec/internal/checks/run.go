@@ -14,7 +14,6 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // DefaultTimeout is a check's timeout in seconds when it declares none.
@@ -92,16 +91,19 @@ type CheckResult struct {
 
 // Object is the result as Python's dict (key order name, status, exit,
 // seconds, timed_out, excerpt, reason, then flaky when a retry passed).
-func (r CheckResult) Object() *jsonx.Object {
-	o := jsonx.NewObject().Set("name", r.Name).Set("status", r.Status)
+func (r CheckResult) Object() map[string]any {
+	o := map[string]any{"name": r.Name, "status": r.Status}
 	if r.Exit == nil {
-		o.Set("exit", nil)
+		o["exit"] = nil
 	} else {
-		o.Set("exit", *r.Exit)
+		o["exit"] = *r.Exit
 	}
-	o.Set("seconds", r.Seconds).Set("timed_out", r.TimedOut).Set("excerpt", r.Excerpt).Set("reason", r.Reason)
+	o["seconds"] = r.Seconds
+	o["timed_out"] = r.TimedOut
+	o["excerpt"] = r.Excerpt
+	o["reason"] = r.Reason
 	if r.Flaky != nil {
-		o.Set("flaky", r.Flaky)
+		o["flaky"] = r.Flaky
 	}
 	return o
 }

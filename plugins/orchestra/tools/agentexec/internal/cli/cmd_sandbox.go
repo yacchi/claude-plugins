@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	// srt registers sandbox's network planner: linked into every binary, so
 	// sandbox.Prepare puts CLI executor runs under srt wherever it applies.
@@ -126,16 +126,16 @@ func newSandboxCmd() *cobra.Command {
 	probe, probeJSON := sub("probe", "which backend a run would use, and why", noArgs)
 	strFlag(probe, "workdir", "directory (default cwd)") // accepted, ignored (as in Python)
 	probe.RunE = func(cmd *cobra.Command, _ []string) error {
-		info := sandbox.DoctorSection(configOrDefaults()).(*jsonx.Object)
+		info := sandbox.DoctorSection(configOrDefaults()).(map[string]any)
 		if probeJSON.On() {
 			return writeJSON(cmd.OutOrStdout(), info)
 		}
 		out := cmd.OutOrStdout()
 		fmt.Fprintf(out, "mode=%s backend=%s enforced=%s (%s)\n", sbStr(sbGet(info, "mode")),
 			sbStr(sbGet(info, "backend")), sbStr(sbGet(info, "enforced")), sbStr(sbGet(info, "reason")))
-		probes, _ := sbGet(info, "probes").(*jsonx.Object)
-		for _, name := range probes.Keys() {
-			p := probes.Object(name)
+		probes, _ := sbGet(info, "probes").(map[string]any)
+		for _, name := range config.OrderedKeys(probes, sandbox.ProbeOrder) {
+			p := config.ObjectAt(probes, name)
 			state := "unavailable"
 			if ok, _ := sbGet(p, "ok").(bool); ok {
 				state = "ok"
@@ -150,7 +150,7 @@ func newSandboxCmd() *cobra.Command {
 // removedResult prints a forget's outcome; exit 1 when nothing was removed.
 func sbRemovedResult(cmd *cobra.Command, asJSON bool, key, value string, removed bool) error {
 	if asJSON {
-		if err := writeJSONLine(cmd.OutOrStdout(), jsonx.NewObject().Set(key, value).Set("removed", removed)); err != nil {
+		if err := writeJSONLine(cmd.OutOrStdout(), map[string]any{key: value, "removed": removed}); err != nil {
 			return err
 		}
 	} else if removed {
@@ -173,11 +173,11 @@ func sbExpandUser(p string) string {
 	return p
 }
 
-func sbGet(o *jsonx.Object, k string) any {
+func sbGet(o map[string]any, k string) any {
 	if o == nil {
 		return nil
 	}
-	v, _ := o.Get(k)
+	v := o[k]
 	return v
 }
 
@@ -194,14 +194,14 @@ func sbStr(v any) string {
 		}
 		return "False"
 	}
-	b, err := jsonx.Marshal(v)
+	b, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		return fmt.Sprint(v)
 	}
 	return string(b)
 }
 
-func sbFormatList(info *jsonx.Object) string {
+func sbFormatList(info map[string]any) string {
 	var b strings.Builder
 	line := func(format string, args ...any) { fmt.Fprintf(&b, format+"\n", args...) }
 	strsOf := func(k string) []string {
@@ -212,11 +212,11 @@ func sbFormatList(info *jsonx.Object) string {
 		}
 		return out
 	}
-	objsOf := func(k string) []*jsonx.Object {
-		var out []*jsonx.Object
+	objsOf := func(k string) []map[string]any {
+		var out []map[string]any
 		list, _ := sbGet(info, k).([]any)
 		for _, v := range list {
-			if o, ok := v.(*jsonx.Object); ok {
+			if o, ok := v.(map[string]any); ok {
 				out = append(out, o)
 			}
 		}

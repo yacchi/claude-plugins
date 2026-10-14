@@ -30,14 +30,13 @@
         "enforcement": {
           "light_class": "off",
           "opus_generalist": "off",
-          "session_cleanup": "off",
+          "session_cleanup": "on",
           "turn_edits": 12,
           "worker_vcs": "off"
         },
         "external_executors": {
           "pi": {
             "agent_dir": "managed",
-            "available": false,
             "class_policy": {
               "deep": {
                 "effort": "high",
@@ -62,9 +61,9 @@
               "deep",
               "independent-review"
             ],
-            "context_files": false,
+            "context_files": "off",
             "dispatch": "cli",
-            "enabled": true
+            "enabled": "yes"
           }
         },
         "herdr": {
@@ -106,7 +105,7 @@
           "add_dirs": [],
           "auto_trust": false,
           "command": "claude --model {model} --permission-mode {permission_mode}",
-          "enabled": false,
+          "enabled": "off",
           "keep_sessions": true,
           "models": {
             "deep": "opus",
@@ -116,7 +115,7 @@
           "permission_mode": null,
           "setup": "skip",
           "startup_timeout": 90,
-          "task_timeout": "1e3",
+          "task_timeout": 1000,
           "user_config": "isolate"
         },
         "priority": {
@@ -179,7 +178,7 @@
         },
         "telemetry": {
           "dir": "~/.claude/orchestra/telemetry",
-          "enabled": true
+          "enabled": "on"
         },
         "tiers": {
           "deep": "opus",
@@ -210,10 +209,10 @@
         },
         "warnings": [],
         "watchdog": {
-          "enabled": false,
+          "enabled": "Off",
           "idle_seconds": 1200,
           "repeat_limit": 8,
-          "tool_idle_seconds": 90,
+          "tool_idle_seconds": "1:30",
           "wall_seconds": {
             "deep": 685230.15,
             "independent-review": 2400,

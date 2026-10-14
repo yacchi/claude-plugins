@@ -3,12 +3,12 @@ package sandbox
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
 	"regexp"
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // Domains the user approved (`sandbox allow-domain`) live in the learned
@@ -79,7 +79,7 @@ func DomainRefusal(domain string) string {
 
 func loadDomains(home string) ([]DomainGrant, string) {
 	raw := rawStore(home)
-	v, ok := raw.Get("domains")
+	v, ok := raw["domains"]
 	if !ok || v == nil {
 		return []DomainGrant{}, ""
 	}
@@ -89,13 +89,13 @@ func loadDomains(home string) ([]DomainGrant, string) {
 	}
 	good := []DomainGrant{}
 	for _, e := range list {
-		o, ok := e.(*jsonx.Object)
+		o, ok := e.(map[string]any)
 		if !ok || o == nil {
 			continue
 		}
 		d, ok := mustGet(o, "domain").(string)
 		if ok && DomainRefusal(d) == "" {
-			good = append(good, domainOf(o.Clone()))
+			good = append(good, domainOf(maps.Clone(o)))
 		}
 	}
 	warning := ""
@@ -148,10 +148,13 @@ func addDomain(domain, source, reason, home string) (DomainGrant, error) {
 			return e, nil
 		}
 	}
-	entry := jsonx.NewObject().Set("domain", text).Set("added", nowISOZ()).
-		Set("source", strings.TrimSpace(source))
+	entry := map[string]any{
+		"domain": text,
+		"added":  nowISOZ(),
+		"source": strings.TrimSpace(source),
+	}
 	if r := strings.TrimSpace(reason); r != "" {
-		entry.Set("reason", r)
+		entry["reason"] = r
 	}
 	list := make([]any, 0, len(domains)+1)
 	for _, e := range domains {

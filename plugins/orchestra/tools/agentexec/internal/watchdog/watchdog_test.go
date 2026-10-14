@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // fixtures is testdata/fixtures.json: the retired Python Watchdog driven by
@@ -36,7 +36,7 @@ type op struct {
 
 func plain(t *testing.T, v any) any {
 	t.Helper()
-	raw, err := jsonx.Marshal(v)
+	raw, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,12 +61,12 @@ func TestWatchdogMatchesPython(t *testing.T) {
 	}
 	for _, c := range fx.Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			sec, err := jsonx.Decode(c.Config)
+			sec, err := fsutil.DecodeJSON(c.Config)
 			if err != nil {
 				t.Fatal(err)
 			}
 			now := 100.0
-			w := newWithClock(ConfigFrom(sec.(*jsonx.Object)), c.Cls, func() float64 { return now })
+			w := newWithClock(ConfigFrom(sec.(map[string]any)), c.Cls, func() float64 { return now })
 			var checks []*float64
 			for _, o := range c.Ops {
 				switch o.Op {
@@ -120,13 +120,16 @@ func deref(p *float64) any {
 }
 
 func TestConfigFromDefaults(t *testing.T) {
-	c := ConfigFrom(jsonx.NewObject())
+	c := ConfigFrom(map[string]any{})
 	if !c.Enabled || c.Idle != DefaultIdle || c.ToolIdle != DefaultToolIdle ||
 		c.RepeatLimit != DefaultRepeatLimit || c.Wall != nil {
 		t.Fatalf("defaults %+v", c)
 	}
-	c = ConfigFrom(jsonx.NewObject().Set("enabled", "yes").Set("repeat_limit", "x").
-		Set("idle_seconds", 0.5))
+	c = ConfigFrom(map[string]any{
+		"enabled":      "yes",
+		"repeat_limit": "x",
+		"idle_seconds": 0.5,
+	})
 	if c.Enabled || c.RepeatLimit != 0 || c.Idle != 500*time.Millisecond {
 		t.Fatalf("odd values %+v", c)
 	}

@@ -286,7 +286,7 @@
             ],
             "context_files": true,
             "dispatch": "cli",
-            "enabled": false
+            "enabled": "off"
           }
         },
         "herdr": {

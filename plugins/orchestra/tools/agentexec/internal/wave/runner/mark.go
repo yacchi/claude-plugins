@@ -6,7 +6,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/approvals"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -102,21 +102,21 @@ func Mark(o MarkOptions) (map[string]any, int) {
 // (the runner applies them when it loads the plan).
 func widen(statePath, pkg string, globs []string) error {
 	path := filepath.Join(filepath.Dir(absPath(statePath)), "plan-overrides.json")
-	overrides := jsonx.NewObject()
+	overrides := map[string]any{}
 	if raw, err := os.ReadFile(path); err == nil {
-		if doc, err := jsonx.Decode(raw); err == nil {
-			if obj, ok := doc.(*jsonx.Object); ok {
+		if doc, err := fsutil.DecodeJSON(raw); err == nil {
+			if obj, ok := doc.(map[string]any); ok {
 				overrides = obj
 			}
 		}
 	}
-	entry, ok := objGet(overrides, pkg).(*jsonx.Object)
+	entry, ok := objGet(overrides, pkg).(map[string]any)
 	if !ok {
-		entry = jsonx.NewObject()
-		overrides.Set(pkg, entry)
+		entry = map[string]any{}
+		overrides[pkg] = entry
 	}
 	owned := asList(objGet(entry, "files_owned_add"))
-	if _, present := entry.Get("files_owned_add"); !present {
+	if _, present := entry["files_owned_add"]; !present {
 		owned = []any{}
 	}
 	for _, g := range globs {
@@ -124,8 +124,8 @@ func widen(statePath, pkg string, globs []string) error {
 			owned = append(owned, g)
 		}
 	}
-	entry.Set("files_owned_add", owned)
-	b, err := jsonx.MarshalIndent(overrides)
+	entry["files_owned_add"] = owned
+	b, err := fsutil.MarshalJSONIndent(overrides)
 	if err != nil {
 		return err
 	}

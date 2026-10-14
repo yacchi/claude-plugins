@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/usage"
 )
@@ -118,7 +117,7 @@ func runUsage(cmd *cobra.Command, since *optString, runFlags, sessionFlags, sour
 			_, err := io.WriteString(w, usage.FormatRunsText(runs))
 			return err
 		}
-		return writeJSON(w, jsonx.NewObject().Set("runs", runs))
+		return writeJSON(w, map[string]any{"runs": runs})
 	}
 	report := usage.BuildReport(usage.ReportOptions{
 		Since: cutoff, Now: now, Sources: sources, AllProjects: allProjects, Cfg: cfg,

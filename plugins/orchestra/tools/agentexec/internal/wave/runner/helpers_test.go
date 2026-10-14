@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -418,7 +418,7 @@ type event struct {
 func (w *waveRepo) events(name string) []event {
 	var out []event
 	for _, ev := range state.ReadEvents(w.statePath, -1) {
-		get := func(k string) string { v, _ := ev.Get(k); s, _ := v.(string); return s }
+		get := func(k string) string { v, _ := ev[k]; s, _ := v.(string); return s }
 		if name == "" || get("event") == name {
 			out = append(out, event{get("event"), get("pkg"), get("to"), get("detail")})
 		}
@@ -450,8 +450,8 @@ func eq[T comparable](t *testing.T, what string, got, want T) {
 
 func eqJSON(t *testing.T, what string, got, want any) {
 	t.Helper()
-	g, _ := jsonx.Marshal(sortedValue(normalizeJSON(got)))
-	wnt, _ := jsonx.Marshal(sortedValue(normalizeJSON(want)))
+	g, _ := fsutil.MarshalJSON(normalizeJSON(got))
+	wnt, _ := fsutil.MarshalJSON(normalizeJSON(want))
 	if string(g) != string(wnt) {
 		t.Errorf("%s = %s, want %s", what, g, wnt)
 	}

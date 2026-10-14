@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -15,8 +17,8 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/dispatch"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/usage"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
@@ -59,7 +61,7 @@ func ResetCaches() {
 // plain turns any result type (ordered objects, tagged structs) into generic
 // JSON values: maps (sorted on output), slices and json.Number scalars.
 func plain(v any) any {
-	b, err := jsonx.Marshal(v)
+	b, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		return map[string]any{"error": err.Error()}
 	}
@@ -114,26 +116,26 @@ func registry() []state.Registration {
 	return out
 }
 
-func loadJSONObject(path string) (*jsonx.Object, error) {
+func loadJSONObject(path string) (map[string]any, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	v, err := jsonx.Decode(raw)
+	v, err := fsutil.DecodeJSON(raw)
 	if err != nil {
 		return nil, err
 	}
-	if o, ok := v.(*jsonx.Object); ok {
+	if o, ok := v.(map[string]any); ok {
 		return o, nil
 	}
-	return jsonx.NewObject(), nil
+	return map[string]any{}, nil
 }
 
-func get(o *jsonx.Object, k string) any {
+func get(o map[string]any, k string) any {
 	if o == nil {
 		return nil
 	}
-	v, _ := o.Get(k)
+	v := o[k]
 	return v
 }
 
@@ -144,19 +146,19 @@ func nilIfEmpty(s string) any {
 	return s
 }
 
-func parseEvent(rec *jsonx.Object) any {
+func parseEvent(rec map[string]any) any {
 	detail, ok := get(rec, "detail").(string)
 	if !ok {
 		return plain(rec)
 	}
-	parsed, err := jsonx.Decode([]byte(detail))
+	parsed, err := fsutil.DecodeJSON([]byte(detail))
 	if err != nil {
 		return plain(rec)
 	}
 	switch parsed.(type) {
-	case *jsonx.Object, []any:
-		out := rec.Clone()
-		out.Set("detail", parsed)
+	case map[string]any, []any:
+		out := maps.Clone(rec)
+		out["detail"] = parsed
 		return plain(out)
 	}
 	return plain(rec)
@@ -203,7 +205,7 @@ func statusString(v any) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
-	b, _ := jsonx.Marshal(v)
+	b, _ := fsutil.MarshalJSON(v)
 	return string(b)
 }
 
@@ -225,10 +227,10 @@ func waveSnapshot(entry state.Registration) map[string]any {
 		}
 		counts := map[string]any{}
 		packages := []any{}
-		rawPackages, _ := get(st, "packages").(*jsonx.Object)
+		rawPackages, _ := get(st, "packages").(map[string]any)
 		var order []string
 		if rawPackages != nil {
-			order = rawPackages.Keys()
+			order = slices.Sorted(maps.Keys(rawPackages))
 		}
 		plan, _ := get(st, "plan").(string)
 		planDir := ""
@@ -238,7 +240,7 @@ func waveSnapshot(entry state.Registration) map[string]any {
 		specs := planSpecs(plan)
 		stateDir := filepath.Dir(statePath)
 		for _, pid := range order {
-			pkg, _ := get(rawPackages, pid).(*jsonx.Object)
+			pkg, _ := get(rawPackages, pid).(map[string]any)
 			status := get(pkg, "status")
 			key := statusString(status)
 			n, _ := counts[key].(int)
@@ -289,7 +291,7 @@ func planSpecs(plan string) map[string]string {
 	}
 	items, _ := get(data, "packages").([]any)
 	for _, item := range items {
-		obj, ok := item.(*jsonx.Object)
+		obj, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -322,8 +324,8 @@ func pyTruthy(v any) bool {
 		return x != 0
 	case []any:
 		return len(x) > 0
-	case *jsonx.Object:
-		return x.Len() > 0
+	case map[string]any:
+		return len(x) > 0
 	}
 	return true
 }
@@ -376,7 +378,7 @@ func keepDispatchKey(key string) bool {
 }
 
 func dispatchSnapshot(cfg *config.Resolved) any {
-	var records []*jsonx.Object
+	var records []map[string]any
 	for _, path := range ledger.Paths(ledger.Dir(cfg)) {
 		records = append(records, ledger.ReadFile(path)...)
 	}
@@ -385,10 +387,10 @@ func dispatchSnapshot(cfg *config.Resolved) any {
 	}
 	out := make([]any, 0, len(records))
 	for i := len(records) - 1; i >= 0; i-- {
-		kept := jsonx.NewObject()
-		for _, k := range records[i].Keys() {
+		kept := map[string]any{}
+		for _, k := range slices.Sorted(maps.Keys(records[i])) {
 			if keepDispatchKey(k) {
-				kept.Set(k, get(records[i], k))
+				kept[k] = get(records[i], k)
 			}
 		}
 		out = append(out, plain(kept))
@@ -450,9 +452,9 @@ func runningSnapshot(cfg *config.Resolved, entries []state.Registration) map[str
 		if err != nil {
 			continue
 		}
-		if pkgs, ok := get(st, "packages").(*jsonx.Object); ok {
-			for _, id := range pkgs.Keys() {
-				pkg, _ := get(pkgs, id).(*jsonx.Object)
+		if pkgs, ok := get(st, "packages").(map[string]any); ok {
+			for _, id := range slices.Sorted(maps.Keys(pkgs)) {
+				pkg, _ := get(pkgs, id).(map[string]any)
 				switch get(pkg, "status") {
 				case "implementing", "verifying", "fixing", "ready":
 					inFlight++
@@ -463,21 +465,21 @@ func runningSnapshot(cfg *config.Resolved, entries []state.Registration) map[str
 		if err != nil {
 			continue
 		}
-		doc, err := jsonx.Decode(raw)
+		doc, err := fsutil.DecodeJSON(raw)
 		if err != nil {
 			continue
 		}
 		var records []any
 		switch x := doc.(type) {
-		case *jsonx.Object:
-			for _, k := range x.Keys() {
+		case map[string]any:
+			for _, k := range slices.Sorted(maps.Keys(x)) {
 				records = append(records, get(x, k))
 			}
 		case []any:
 			records = x
 		}
 		for _, rec := range records {
-			obj, ok := rec.(*jsonx.Object)
+			obj, ok := rec.(map[string]any)
 			if !ok {
 				continue
 			}

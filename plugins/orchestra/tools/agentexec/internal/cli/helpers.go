@@ -4,7 +4,7 @@ import (
 	"io"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
 )
 
@@ -31,7 +31,7 @@ func configOrDefaults() *config.Resolved {
 
 // writeJSON prints v as Python's json.dumps(v, indent=2) plus a newline.
 func writeJSON(w io.Writer, v any) error {
-	b, err := jsonx.MarshalIndent(v)
+	b, err := fsutil.MarshalJSONIndent(v)
 	if err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func writeJSON(w io.Writer, v any) error {
 
 // writeJSONLine prints v as one line (Python's json.dumps(v)) plus a newline.
 func writeJSONLine(w io.Writer, v any) error {
-	b, err := jsonx.Marshal(v)
+	b, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		return err
 	}

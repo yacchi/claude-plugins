@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // DefaultLoginProvider is the provider checked when the config names none.
@@ -25,9 +25,9 @@ const AuthCheckTimeout = 60 * time.Second
 // resolved config, in order (the default provider when there are none).
 func ConfiguredProviders(cfg *config.Resolved) []string {
 	var found []string
-	policy := cfg.Section("external_executors").Object("pi").Object("class_policy")
-	for _, cls := range policy.Keys() {
-		model, _ := policy.Object(cls).Get("model")
+	policy := config.ObjectAt(config.ObjectAt(cfg.Section("external_executors"), "pi"), "class_policy")
+	for _, cls := range config.OrderedKeys(policy, config.ClassOrder) {
+		model := config.ObjectAt(policy, cls)["model"]
 		s, ok := model.(string)
 		if !ok || !strings.Contains(s, "/") {
 			continue
@@ -86,12 +86,12 @@ func PiAuthReady(cfg *config.Resolved, piPath, provider, cwd string) bool {
 	status := ""
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
-		v, derr := jsonx.Decode([]byte(lines[i]))
+		v, derr := fsutil.DecodeJSON([]byte(lines[i]))
 		if derr != nil {
 			continue
 		}
-		if obj, ok := v.(*jsonx.Object); ok {
-			s, _ := obj.Get("status")
+		if obj, ok := v.(map[string]any); ok {
+			s := obj["status"]
 			status, _ = s.(string)
 			break
 		}

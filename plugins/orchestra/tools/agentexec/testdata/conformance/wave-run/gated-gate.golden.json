@@ -46,7 +46,7 @@
           "content": [
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -70,7 +70,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "A",
@@ -78,7 +78,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "A",
@@ -94,7 +94,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -102,7 +102,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"no-checks\"}",
+              "detail": "{\"name\":\"self-verify\",\"seconds\": <N>,\"status\":\"no-checks\"}",
               "event": "check-end",
               "from": null,
               "pkg": "A",
@@ -118,7 +118,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"A\"]}",
+              "detail": "{\"tasks\":[\"A\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -126,7 +126,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "A",
@@ -134,7 +134,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"at_commit\": \"<SHA#1>\"}",
+              "detail": "{\"at_commit\":\"<SHA#1>\"}",
               "event": "verify-start",
               "from": null,
               "pkg": null,
@@ -142,7 +142,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "detail": "{\"seconds\": <N>,\"status\":\"pass\"}",
               "event": "verify-end",
               "from": null,
               "pkg": null,
@@ -150,7 +150,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,
@@ -190,7 +190,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "B",
@@ -198,7 +198,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "B",
@@ -214,7 +214,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B\"}",
               "event": "check-start",
               "from": null,
               "pkg": "B",
@@ -222,7 +222,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"no-checks\"}",
+              "detail": "{\"name\":\"self-verify\",\"seconds\": <N>,\"status\":\"no-checks\"}",
               "event": "check-end",
               "from": null,
               "pkg": "B",
@@ -238,7 +238,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"B\"]}",
+              "detail": "{\"tasks\":[\"B\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -246,7 +246,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "B",
@@ -254,7 +254,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"at_commit\": \"<SHA#2>\"}",
+              "detail": "{\"at_commit\":\"<SHA#2>\"}",
               "event": "verify-start",
               "from": null,
               "pkg": null,
@@ -262,7 +262,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"seconds\": <N>, \"status\": \"fail\"}",
+              "detail": "{\"seconds\": <N>,\"status\":\"fail\"}",
               "event": "verify-end",
               "from": null,
               "pkg": null,
@@ -270,7 +270,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"commit\": \"<SHA#2>\", \"result\": \"fail\"}",
+              "detail": "{\"commit\":\"<SHA#2>\",\"result\":\"fail\"}",
               "event": "bisect-probe",
               "from": null,
               "pkg": "B",
@@ -278,7 +278,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"result\": \"reverted\"}",
+              "detail": "{\"result\":\"reverted\"}",
               "event": "revert",
               "from": null,
               "pkg": "B",
@@ -286,7 +286,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"reverted\"}",
+              "detail": "{\"status\":\"reverted\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,

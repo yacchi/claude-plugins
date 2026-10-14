@@ -15,7 +15,6 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/executor/pi"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
@@ -66,7 +65,7 @@ var runner = runPi
 // PI_SKIP_VERSION_CHECK is set so pi never stalls on an update check. inp
 // is nil when there is nothing to scan for denials (no policy, or a
 // runaway that was cut short).
-func runPi(ctx context.Context, r Request, spec sandbox.Spec, prompt, resume string) (*jsonx.Object, *denialInput, error) {
+func runPi(ctx context.Context, r Request, spec sandbox.Spec, prompt, resume string) (map[string]any, *denialInput, error) {
 	res := tools.Resolve("pi", r.Cfg)
 	if res.Path == "" {
 		return nil, nil, ErrExecutorNotFound
@@ -88,15 +87,16 @@ func runPi(ctx context.Context, r Request, spec sandbox.Spec, prompt, resume str
 	result := pi.ParseJSONL(out.Stdout, out.Stderr, out.ExitCode, resume != "")
 	if spec.Backend == "srt" && out.ExitCode != 0 {
 		if tail := stderrTail(out.Stderr); tail != "" {
-			result.Set("stderr_tail", tail)
+			result["stderr_tail"] = tail
 		}
 	}
 	if len(out.Network) > 0 {
-		result.Set("network_denials", netDenials(out.Network))
+		result["network_denials"] = netDenials(out.Network)
 	}
 	if out.Runaway != nil {
-		result.Set("status", "runaway").Set("reason", out.Runaway.Reason).
-			Set("runaway", out.Runaway.Object())
+		result["status"] = "runaway"
+		result["reason"] = out.Runaway.Reason
+		result["runaway"] = out.Runaway.Object()
 		return result, nil, nil
 	}
 	if spec.Policy == nil {
@@ -111,8 +111,8 @@ func newWatchdog(r Request) *watchdog.Watchdog {
 	if r.Cfg == nil || r.Cfg.Values == nil {
 		return watchdog.New(watchdog.DefaultConfig(), classOr(r.Class))
 	}
-	v, _ := r.Cfg.Values.Get("watchdog")
-	sec, ok := v.(*jsonx.Object)
+	v := r.Cfg.Values["watchdog"]
+	sec, ok := v.(map[string]any)
 	if !ok || sec == nil {
 		return nil
 	}
@@ -145,7 +145,7 @@ func netDenials(list []srt.NetDenial) []any {
 		if d.Port != nil {
 			port = int64(*d.Port)
 		}
-		out = append(out, jsonx.NewObject().Set("host", d.Host).Set("port", port))
+		out = append(out, map[string]any{"host": d.Host, "port": port})
 	}
 	return out
 }

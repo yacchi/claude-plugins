@@ -14,7 +14,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 )
@@ -90,11 +89,11 @@ func HostReport(cfg *config.Resolved) any {
 	return hostReport(cfg, func() srt.StatusInfo { return srt.ResolveStatus(cfg) })
 }
 
-func hostReport(cfg *config.Resolved, status func() srt.StatusInfo) *jsonx.Object {
+func hostReport(cfg *config.Resolved, status func() srt.StatusInfo) map[string]any {
 	cwd, _ := os.Getwd()
 	home, err := ResolveHome("orchestra-00000000", "", "", -1, false)
 	if err != nil {
-		return jsonx.NewObject().Set("home", nil).Set("sandboxed", false).Set("reason", host.AsNeed(err).Detail)
+		return map[string]any{"home": nil, "sandboxed": false, "reason": host.AsNeed(err).Detail}
 	}
 	spec := sandbox.HostPolicy(cfg, sandbox.HostInput{Repo: cwd, WorktreeBase: isolate.Home(cwd), HerdrHome: home}).Spec
 	net := sandbox.ConfigOf(cfg).Network
@@ -108,13 +107,23 @@ func hostReport(cfg *config.Resolved, status func() srt.StatusInfo) *jsonx.Objec
 	if allowed == nil {
 		allowed = []string{}
 	}
-	return jsonx.NewObject().Set("home", home).
-		Set("sandboxed", spec.Enforced && spec.Policy != nil).
-		Set("backend", spec.Backend).Set("reason", spec.Reason).
-		Set("network", jsonx.NewObject().Set("mode", net.Mode).Set("allowed_domains", allowed).
-			Set("srt", jsonx.NewObject().Set("path", nullable(st.Path)).
-				Set("version", nullable(st.Version)).Set("reason", st.Reason)).
-			Set("restricted", path != "").Set("reason", netReason))
+	return map[string]any{
+		"home":      home,
+		"sandboxed": spec.Enforced && spec.Policy != nil,
+		"backend":   spec.Backend,
+		"reason":    spec.Reason,
+		"network": map[string]any{
+			"mode":            net.Mode,
+			"allowed_domains": allowed,
+			"srt": map[string]any{
+				"path":    nullable(st.Path),
+				"version": nullable(st.Version),
+				"reason":  st.Reason,
+			},
+			"restricted": path != "",
+			"reason":     netReason,
+		},
+	}
 }
 
 func (e *Executor) srtStatus() srt.StatusInfo {

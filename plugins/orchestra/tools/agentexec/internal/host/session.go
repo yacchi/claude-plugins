@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // Session is one package's registered session. Its registry record is the
@@ -202,60 +201,19 @@ func LoadRegistryFile(path string) map[string]any {
 	return data
 }
 
-// EncodeRegistry renders data as json.dump(data, ensure_ascii=False,
-// indent=1, sort_keys=True) + "\n".
+// EncodeRegistry renders data as JSON indented by one space (keys sorted)
+// plus a trailing newline.
 func EncodeRegistry(data map[string]any) ([]byte, error) {
-	compact, err := jsonx.Marshal(sortedCompact(data))
+	compact, err := fsutil.MarshalJSON(data)
 	if err != nil {
 		return nil, err
 	}
-	// jsonx.Marshal spaces separators Python-style on one line; re-compact
-	// before laying it out one member per line.
-	var tight, out bytes.Buffer
-	if err := json.Compact(&tight, compact); err != nil {
-		return nil, err
-	}
-	if err := json.Indent(&out, tight.Bytes(), "", " "); err != nil {
+	var out bytes.Buffer
+	if err := json.Indent(&out, compact, "", " "); err != nil {
 		return nil, err
 	}
 	out.WriteByte('\n')
 	return out.Bytes(), nil
-}
-
-// sortedCompact turns every nested *jsonx.Object into a map so keys are
-// sorted, like sort_keys=True.
-func sortedCompact(v any) any {
-	switch x := v.(type) {
-	case *jsonx.Object:
-		if x == nil {
-			return nil
-		}
-		m := make(map[string]any, x.Len())
-		for _, k := range x.Keys() {
-			val, _ := x.Get(k)
-			m[k] = sortedCompact(val)
-		}
-		return m
-	case map[string]any:
-		m := make(map[string]any, len(x))
-		for k, val := range x {
-			m[k] = sortedCompact(val)
-		}
-		return m
-	case []any:
-		out := make([]any, len(x))
-		for i, e := range x {
-			out[i] = sortedCompact(e)
-		}
-		return out
-	case []map[string]any:
-		out := make([]any, len(x))
-		for i, e := range x {
-			out[i] = sortedCompact(e)
-		}
-		return out
-	}
-	return v
 }
 
 // WriteRegistryFile atomically replaces path with data.

@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/approvals"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -445,9 +445,9 @@ func (r *runner) networkDenials(pid string, result map[string]any) []any {
 
 // containsJSON compares decoded JSON values by their encoding.
 func containsJSON(list []any, v any) bool {
-	want, _ := jsonx.Marshal(sortedValue(v))
+	want, _ := fsutil.MarshalJSON(v)
 	for _, e := range list {
-		if got, _ := jsonx.Marshal(sortedValue(e)); string(got) == string(want) {
+		if got, _ := fsutil.MarshalJSON(e); string(got) == string(want) {
 			return true
 		}
 	}

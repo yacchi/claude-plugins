@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -42,9 +42,9 @@ func newFixture(t *testing.T) *fixture {
 	}
 	// The network config of the tests: two allowed patterns, one quiet host.
 	values := config.Defaults()
-	net := values.Object("sandbox").Object("network")
-	net.Set("allowed_domains", []any{"api.anthropic.com", "*.pypi.org"})
-	net.Set("quiet_domains", []any{"statsig.anthropic.com"})
+	net := config.ObjectAt(config.ObjectAt(values, "sandbox"), "network")
+	net["allowed_domains"] = []any{"api.anthropic.com", "*.pypi.org"}
+	net["quiet_domains"] = []any{"statsig.anthropic.com"}
 	f.cfg = &config.Resolved{Values: values}
 	return f
 }
@@ -142,8 +142,8 @@ func TestIDsAreStableAcrossCalls(t *testing.T) {
 	f.permissionNeed("A", "/x/one", "/x/one")
 	first, _ := PendingIn(f.statePath, f.cfg)
 	second, _ := PendingIn(f.statePath, f.cfg)
-	a, _ := jsonx.Marshal(first)
-	b, _ := jsonx.Marshal(second)
+	a, _ := fsutil.MarshalJSON(first)
+	b, _ := fsutil.MarshalJSON(second)
 	if string(a) != string(b) {
 		t.Errorf("listing changed between calls")
 	}

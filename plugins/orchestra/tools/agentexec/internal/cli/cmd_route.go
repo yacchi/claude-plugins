@@ -9,7 +9,6 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/route"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
@@ -37,7 +36,7 @@ func newRouteCmd() *cobra.Command {
 		if err != nil {
 			if asText {
 				fmt.Fprintln(cmd.ErrOrStderr(), "agent-exec: "+err.Error())
-			} else if werr := writeJSONLine(cmd.OutOrStdout(), jsonx.NewObject().Set("error", "agent-exec: "+err.Error())); werr != nil {
+			} else if werr := writeJSONLine(cmd.OutOrStdout(), map[string]any{"error": "agent-exec: " + err.Error()}); werr != nil {
 				return werr
 			}
 			return &ExitError{Code: 1}

@@ -1,11 +1,13 @@
 package plan
 
 import (
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // pyRepr renders a decoded JSON value the way Python's repr() does, for the
@@ -24,18 +26,18 @@ func pyRepr(v any) string {
 	case int64:
 		return strconv.FormatInt(x, 10)
 	case float64:
-		return jsonx.FormatFloat(x)
+		return fsutil.FloatRepr(x)
 	case []any:
 		parts := make([]string, len(x))
 		for i, e := range x {
 			parts[i] = pyRepr(e)
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
-	case *jsonx.Object:
-		keys := x.Keys()
+	case map[string]any:
+		keys := slices.Sorted(maps.Keys(x))
 		parts := make([]string, len(keys))
 		for i, k := range keys {
-			val, _ := x.Get(k)
+			val := x[k]
 			parts[i] = pyStrRepr(k) + ": " + pyRepr(val)
 		}
 		return "{" + strings.Join(parts, ", ") + "}"

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 func newStore(t *testing.T) *Store {
@@ -22,7 +22,7 @@ func newStore(t *testing.T) *Store {
 	return s
 }
 
-func readEvents(t *testing.T, s *Store) []*jsonx.Object { return ReadEvents(s.Path, -1) }
+func readEvents(t *testing.T, s *Store) []map[string]any { return ReadEvents(s.Path, -1) }
 
 func TestInitCreatesSchemaExactFile(t *testing.T) {
 	s := newStore(t)
@@ -120,8 +120,8 @@ func TestSetStatusSinceAndEvents(t *testing.T) {
 	if len(ev) != 3 {
 		t.Fatalf("events: %d", len(ev))
 	}
-	line, _ := jsonx.Marshal(ev[0])
-	if !strings.HasPrefix(string(line), `{"at": 1002.5, "pkg": "a", "from": "pending", "to": "implementing", "event": "status", "detail": "go"}`) {
+	line, _ := fsutil.MarshalJSON(ev[0])
+	if !strings.HasPrefix(string(line), `{"at":1002.5,"detail":"go","event":"status","from":"pending","pkg":"a","to":"implementing"}`) {
 		t.Fatalf("event shape: %s", line)
 	}
 	// A package not in the file is created like Python's setdefault.
@@ -162,7 +162,7 @@ func TestNeeds(t *testing.T) {
 		t.Fatalf("clear targets only its own package and leaves status: %+v", st.Needs)
 	}
 	ev := readEvents(t, s)
-	if got, _ := ev[2].Get("event"); got != "need" {
+	if got, _ := ev[2]["event"]; got != "need" {
 		t.Fatalf("wave-level need event: %v", got)
 	}
 }
@@ -224,7 +224,7 @@ func TestUnknownFieldsSurviveARewrite(t *testing.T) {
         2
       ]`,
 		`"session": "sess-1"`,
-		`"since": 3.0`,
+		`"since": 3`,
 		`"wave": 2`,
 	} {
 		if !strings.Contains(string(raw), want) {
@@ -253,7 +253,7 @@ func TestEventAndTruncatedLastLine(t *testing.T) {
 	if len(last) != 1 {
 		t.Fatalf("limit: %d", len(last))
 	}
-	if ev, _ := last[0].Get("event"); ev != "other" {
+	if ev, _ := last[0]["event"]; ev != "other" {
 		t.Fatalf("limit keeps the newest: %v", ev)
 	}
 	if ReadEvents(filepath.Join(t.TempDir(), "none.json"), 3) != nil {
@@ -362,7 +362,7 @@ func TestRegistry(t *testing.T) {
 	planAbs, _ := filepath.Abs("plan.json")
 	raw, _ := os.ReadFile(os.Getenv("ORCHESTRA_WAVE_REGISTRY"))
 	first := strings.SplitN(string(raw), "\n", 2)[0]
-	if !strings.HasPrefix(first, `{"into": "int", "plan": "`+planAbs+`", "registered_at": 1.0, "repo": "`) {
+	if !strings.HasPrefix(first, `{"into":"int","plan":"`+planAbs+`","registered_at":1,"repo":"`) {
 		t.Fatalf("line must be sort_keys with absolute paths: %s", first)
 	}
 }
@@ -418,14 +418,14 @@ func TestRenderStatus(t *testing.T) {
 	}
 }
 
-func ReadEventsFromLines(lines ...string) []*jsonx.Object {
-	var out []*jsonx.Object
+func ReadEventsFromLines(lines ...string) []map[string]any {
+	var out []map[string]any
 	for _, l := range lines {
-		doc, err := jsonx.Decode([]byte(l))
+		doc, err := fsutil.DecodeJSON([]byte(l))
 		if err != nil {
 			panic(err)
 		}
-		out = append(out, doc.(*jsonx.Object))
+		out = append(out, doc.(map[string]any))
 	}
 	return out
 }
@@ -441,14 +441,14 @@ func TestElapsedFormat(t *testing.T) {
 func TestStatusLine(t *testing.T) {
 	st := fixtureState()
 	got := StatusLine(&st, 130.9, false)
-	want := `{"counts": {"failed": 1, "implementing": 1, "integrated": 1, "needs": 1, "pending": 1, "verifying": 1}, "in_flight": 2, "needs": 2, "stopped": true, "updated_ago": 30, "wave": 2}`
+	want := `{"counts":{"failed":1,"implementing":1,"integrated":1,"needs":1,"pending":1,"verifying":1},"in_flight":2,"needs":2,"stopped":true,"updated_ago":30,"wave":2}`
 	if got != want {
 		t.Fatalf("%s", got)
 	}
 	if strings.Contains(got, "\n") {
 		t.Fatal("must be one line")
 	}
-	if line := StatusLine(&st, 130.9, true); !strings.Contains(line, `"live_changes": {}`) {
+	if line := StatusLine(&st, 130.9, true); !strings.Contains(line, `"live_changes":{}`) {
 		t.Fatalf("live: %s", line)
 	}
 }

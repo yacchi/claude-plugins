@@ -5,12 +5,12 @@
 package watchdog
 
 import (
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"sync"
 	"time"
-
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // DefaultWall is the wall-clock budget per class (watchdog.wall_seconds).
@@ -56,12 +56,12 @@ func DefaultConfig() Config {
 // ConfigFrom reads a `watchdog:` section the way Python's Watchdog read its
 // dict: absent keys take the defaults, `enabled` must be literally true,
 // a non-object wall_seconds leaves only the 2400 s fallback.
-func ConfigFrom(o *jsonx.Object) Config {
+func ConfigFrom(o map[string]any) Config {
 	c := DefaultConfig()
 	if o == nil {
 		return c
 	}
-	if v, ok := o.Get("enabled"); ok {
+	if v, ok := o["enabled"]; ok {
 		c.Enabled = v == true
 	}
 	if d, ok := seconds(o, "idle_seconds"); ok {
@@ -70,7 +70,7 @@ func ConfigFrom(o *jsonx.Object) Config {
 	if d, ok := seconds(o, "tool_idle_seconds"); ok {
 		c.ToolIdle = d
 	}
-	if v, ok := o.Get("repeat_limit"); ok {
+	if v, ok := o["repeat_limit"]; ok {
 		switch n := v.(type) {
 		case int64:
 			c.RepeatLimit = int(n)
@@ -80,10 +80,10 @@ func ConfigFrom(o *jsonx.Object) Config {
 			c.RepeatLimit = 0
 		}
 	}
-	if v, ok := o.Get("wall_seconds"); ok {
+	if v, ok := o["wall_seconds"]; ok {
 		c.Wall = map[string]time.Duration{}
-		if w, isObj := v.(*jsonx.Object); isObj {
-			for _, k := range w.Keys() {
+		if w, isObj := v.(map[string]any); isObj {
+			for _, k := range slices.Sorted(maps.Keys(w)) {
 				if d, ok := seconds(w, k); ok {
 					c.Wall[k] = d
 				}
@@ -93,8 +93,8 @@ func ConfigFrom(o *jsonx.Object) Config {
 	return c
 }
 
-func seconds(o *jsonx.Object, k string) (time.Duration, bool) {
-	v, _ := o.Get(k)
+func seconds(o map[string]any, k string) (time.Duration, bool) {
+	v := o[k]
 	switch n := v.(type) {
 	case int64:
 		return time.Duration(n) * time.Second, true
@@ -122,18 +122,21 @@ type Runaway struct {
 }
 
 // Object is the report in Python's key order.
-func (r *Runaway) Object() *jsonx.Object {
+func (r *Runaway) Object() map[string]any {
 	var last any
 	if r.LastTool != nil {
-		last = jsonx.NewObject().Set("name", r.LastTool.Name).
-			Set("args_preview", r.LastTool.ArgsPreview)
+		last = map[string]any{
+			"name":         r.LastTool.Name,
+			"args_preview": r.LastTool.ArgsPreview,
+		}
 	}
-	return jsonx.NewObject().
-		Set("reason", r.Reason).
-		Set("elapsed_s", r.ElapsedS).
-		Set("runtime_s", r.RuntimeS).
-		Set("last_tool", last).
-		Set("repeat_count", int64(r.RepeatCount))
+	return map[string]any{
+		"reason":       r.Reason,
+		"elapsed_s":    r.ElapsedS,
+		"runtime_s":    r.RuntimeS,
+		"last_tool":    last,
+		"repeat_count": int64(r.RepeatCount),
+	}
 }
 
 // Watchdog observes one child.

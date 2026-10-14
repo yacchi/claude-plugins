@@ -10,7 +10,7 @@ import (
 	"unicode"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // SkipVersionCheckEnv keeps a pi child from stalling on an update check.
@@ -68,22 +68,22 @@ var contentEventPrefixes = []string{"tool", "message", "turn", "agent", "session
 // event is the CLI reporting on itself only when its type contains
 // "error", it carries a truthy top-level `error`, or it is a `result`
 // event that says the run did not succeed.
-func IsErrorBearingEvent(event *jsonx.Object) bool {
-	etype, _ := event.Get("type")
+func IsErrorBearingEvent(event map[string]any) bool {
+	etype := event["type"]
 	if s, ok := etype.(string); ok && strings.Contains(config.PyLower(s), "error") {
 		return true
 	}
-	if v, _ := event.Get("error"); truthy(v) {
+	if v, _ := event["error"]; truthy(v) {
 		return true
 	}
 	if etype == "result" {
-		if v, _ := event.Get("success"); v == false {
+		if v, _ := event["success"]; v == false {
 			return true
 		}
-		if v, _ := event.Get("ok"); v == false {
+		if v, _ := event["ok"]; v == false {
 			return true
 		}
-		if v, _ := event.Get("isError"); truthy(v) {
+		if v, _ := event["isError"]; truthy(v) {
 			return true
 		}
 	}
@@ -105,8 +105,8 @@ func truthy(v any) bool {
 		return x != ""
 	case []any:
 		return len(x) > 0
-	case *jsonx.Object:
-		return x != nil && x.Len() > 0
+	case map[string]any:
+		return x != nil && len(x) > 0
 	}
 	return true
 }
@@ -116,18 +116,18 @@ func nonNegInt(v any) (int64, bool) {
 	return n, ok && n >= 0
 }
 
-func accumulate(tokens *jsonx.Object, key string, v any) {
+func accumulate(tokens map[string]any, key string, v any) {
 	n, ok := nonNegInt(v)
 	if !ok {
 		return
 	}
-	prev, _ := tokens.Get(key)
+	prev := tokens[key]
 	p, _ := prev.(int64)
-	tokens.Set(key, p+n)
+	tokens[key] = p + n
 }
 
 // AccumulateInt adds v to target[key] iff v is a non-negative integer.
-func AccumulateInt(target *jsonx.Object, key string, v any) { accumulate(target, key, v) }
+func AccumulateInt(target map[string]any, key string, v any) { accumulate(target, key, v) }
 
 func textOf(content any) string {
 	switch c := content.(type) {
@@ -136,11 +136,11 @@ func textOf(content any) string {
 	case []any:
 		var parts []string
 		for _, block := range c {
-			b, ok := block.(*jsonx.Object)
+			b, ok := block.(map[string]any)
 			if !ok {
 				continue
 			}
-			if t, _ := b.Get("type"); t != "text" {
+			if t, _ := b["type"]; t != "text" {
 				continue
 			}
 			if text, ok := mustGet(b, "text").(string); ok {
@@ -152,8 +152,8 @@ func textOf(content any) string {
 	return ""
 }
 
-func mustGet(o *jsonx.Object, k string) any {
-	v, _ := o.Get(k)
+func mustGet(o map[string]any, k string) any {
+	v := o[k]
 	return v
 }
 
@@ -174,11 +174,11 @@ func blank(s string) bool { return strings.TrimFunc(s, isSpace) == "" }
 // exit 0. The availability scan is default-deny: only an assistant
 // errorMessage, stderr, unparseable lines and error-bearing events are
 // scanned, never tool output or message content.
-func ParseJSONL(stdout, stderr string, exitCode int, resumed bool) *jsonx.Object {
+func ParseJSONL(stdout, stderr string, exitCode int, resumed bool) map[string]any {
 	var sessionID any
-	tokens := jsonx.NewObject()
+	tokens := map[string]any{}
 	costUSD, sawCost := 0.0, false
-	var lastAssistant *jsonx.Object
+	var lastAssistant map[string]any
 	var scannable []string
 
 	for _, raw := range strings.Split(stdout, "\n") {
@@ -186,16 +186,16 @@ func ParseJSONL(stdout, stderr string, exitCode int, resumed bool) *jsonx.Object
 		if blank(line) {
 			continue
 		}
-		v, err := jsonx.Decode([]byte(line))
+		v, err := fsutil.DecodeJSON([]byte(line))
 		if err != nil {
 			scannable = append(scannable, line)
 			continue
 		}
-		event, ok := v.(*jsonx.Object)
+		event, ok := v.(map[string]any)
 		if !ok {
 			continue
 		}
-		etype, _ := event.Get("type")
+		etype := event["type"]
 		switch etype {
 		case "session":
 			if sid, ok := mustGet(event, "id").(string); ok && sessionID == nil && sid != "" {
@@ -203,18 +203,18 @@ func ParseJSONL(stdout, stderr string, exitCode int, resumed bool) *jsonx.Object
 			}
 			continue
 		case "message_end":
-			message, ok := mustGet(event, "message").(*jsonx.Object)
+			message, ok := mustGet(event, "message").(map[string]any)
 			if !ok || mustGet(message, "role") != "assistant" {
 				continue
 			}
 			lastAssistant = message
-			if usage, ok := mustGet(message, "usage").(*jsonx.Object); ok {
+			if usage, ok := mustGet(message, "usage").(map[string]any); ok {
 				accumulate(tokens, "input_tokens", mustGet(usage, "input"))
 				accumulate(tokens, "output_tokens", mustGet(usage, "output"))
 				accumulate(tokens, "cached_input_tokens", mustGet(usage, "cacheRead"))
 				accumulate(tokens, "cache_write_input_tokens", mustGet(usage, "cacheWrite"))
 				accumulate(tokens, "reasoning_output_tokens", mustGet(usage, "reasoning"))
-				if cost, ok := mustGet(usage, "cost").(*jsonx.Object); ok {
+				if cost, ok := mustGet(usage, "cost").(map[string]any); ok {
 					switch t := mustGet(cost, "total").(type) {
 					case int64:
 						if t >= 0 {
@@ -269,24 +269,25 @@ func ParseJSONL(stdout, stderr string, exitCode int, resumed bool) *jsonx.Object
 	}
 
 	var usage any
-	if tokens.Len() > 0 || sawCost {
-		u := jsonx.NewObject()
-		if tokens.Len() > 0 {
-			u.Set("tokens", tokens)
+	if len(tokens) > 0 || sawCost {
+		u := map[string]any{}
+		if len(tokens) > 0 {
+			u["tokens"] = tokens
 		}
 		if sawCost {
-			u.Set("cost_micro_usd", int64(math.RoundToEven(costUSD*1000000)))
+			u["cost_micro_usd"] = int64(math.RoundToEven(costUSD * 1000000))
 		}
 		usage = u
 	}
-	return jsonx.NewObject().
-		Set("status", status).
-		Set("answer", answer).
-		Set("session_id", sessionID).
-		Set("resumed", resumed).
-		Set("reason", reason).
-		Set("exit_code", int64(exitCode)).
-		Set("usage", usage)
+	return map[string]any{
+		"status":     status,
+		"answer":     answer,
+		"session_id": sessionID,
+		"resumed":    resumed,
+		"reason":     reason,
+		"exit_code":  int64(exitCode),
+		"usage":      usage,
+	}
 }
 
 func hasAnyPrefix(s string, prefixes []string) bool {

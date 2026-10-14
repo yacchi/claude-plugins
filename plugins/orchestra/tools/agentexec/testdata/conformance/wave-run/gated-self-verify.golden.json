@@ -50,7 +50,7 @@
           "content": [
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -74,7 +74,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "A",
@@ -82,7 +82,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "A",
@@ -98,7 +98,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -106,7 +106,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "detail": "{\"name\":\"self-verify\",\"seconds\": <N>,\"status\":\"fail\"}",
               "event": "check-end",
               "from": null,
               "pkg": "A",
@@ -122,7 +122,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 2, \"cls\": \"standard\", \"kind\": \"correction\"}",
+              "detail": "{\"attempt\":2,\"cls\":\"standard\",\"kind\":\"correction\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "A",
@@ -130,7 +130,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "A",
@@ -146,7 +146,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -154,7 +154,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"fail\"}",
+              "detail": "{\"name\":\"self-verify\",\"seconds\": <N>,\"status\":\"fail\"}",
               "event": "check-end",
               "from": null,
               "pkg": "A",
@@ -186,7 +186,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "C",
@@ -194,7 +194,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "C",
@@ -210,7 +210,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"tree\": \"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
               "event": "check-start",
               "from": null,
               "pkg": "C",
@@ -218,7 +218,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\": \"self-verify\", \"seconds\": <N>, \"status\": \"pass\"}",
+              "detail": "{\"name\":\"self-verify\",\"seconds\": <N>,\"status\":\"pass\"}",
               "event": "check-end",
               "from": null,
               "pkg": "C",
@@ -234,7 +234,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\": [\"C\"]}",
+              "detail": "{\"tasks\":[\"C\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -242,7 +242,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"applied\"}",
+              "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
               "pkg": "C",
@@ -250,7 +250,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"at_commit\": \"<SHA#1>\"}",
+              "detail": "{\"at_commit\":\"<SHA#1>\"}",
               "event": "verify-start",
               "from": null,
               "pkg": null,
@@ -258,7 +258,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"seconds\": <N>, \"status\": \"pass\"}",
+              "detail": "{\"seconds\": <N>,\"status\":\"pass\"}",
               "event": "verify-end",
               "from": null,
               "pkg": null,
@@ -266,7 +266,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"status\": \"ok\"}",
+              "detail": "{\"status\":\"ok\"}",
               "event": "integrate-end",
               "from": null,
               "pkg": null,

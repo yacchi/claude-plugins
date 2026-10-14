@@ -14,7 +14,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -307,18 +306,18 @@ func (r *runner) applyOverrides() {
 	}
 }
 
-func (r *runner) waveCfg(cfg *config.Resolved) *jsonx.Object {
+func (r *runner) waveCfg(cfg *config.Resolved) map[string]any {
 	if cfg == nil {
 		return nil
 	}
 	return cfg.Section("wave")
 }
 
-func objGet(o *jsonx.Object, k string) any {
+func objGet(o map[string]any, k string) any {
 	if o == nil {
 		return nil
 	}
-	v, _ := o.Get(k)
+	v := o[k]
 	return v
 }
 

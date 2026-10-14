@@ -26,16 +26,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
 )
@@ -85,7 +87,7 @@ pane_history = false
 type CallError struct {
 	Msg     string
 	Code    string
-	Payload *jsonx.Object
+	Payload map[string]any
 }
 
 func (e *CallError) Error() string { return e.Msg }
@@ -437,12 +439,12 @@ func (e *Executor) CallTimeout(timeout time.Duration, args ...string) (string, e
 }
 
 // CallPayload is Call returning the parsed payload as well (an ordered
-// *jsonx.Object, empty when stdout was not a JSON object).
-func (e *Executor) CallPayload(args ...string) (*jsonx.Object, string, error) {
+// an object, empty when stdout was not a JSON object).
+func (e *Executor) CallPayload(args ...string) (map[string]any, string, error) {
 	return e.call(context.Background(), callTimeout, "", args...)
 }
 
-func (e *Executor) call(ctx context.Context, timeout time.Duration, sname string, args ...string) (*jsonx.Object, string, error) {
+func (e *Executor) call(ctx context.Context, timeout time.Duration, sname string, args ...string) (map[string]any, string, error) {
 	argv, err := e.argv(sname, args...)
 	if err != nil {
 		return nil, "", err
@@ -460,19 +462,19 @@ func (e *Executor) call(ctx context.Context, timeout time.Duration, sname string
 		return nil, "", &CallError{Msg: "could not run herdr: " + err.Error()}
 	}
 	// herdr prints its error object on stderr and leaves stdout empty.
-	var obj *jsonx.Object
+	var obj map[string]any
 	for _, text := range []string{stdout, stderr} {
-		if v, err := jsonx.Decode([]byte(text)); err == nil {
-			obj, _ = v.(*jsonx.Object)
+		if v, err := fsutil.DecodeJSON([]byte(text)); err == nil {
+			obj, _ = v.(map[string]any)
 			break
 		}
 	}
 	var errVal any
 	if obj != nil {
-		errVal, _ = obj.Get("error")
+		errVal = obj["error"]
 	}
 	if code != 0 || host.Truthy(errVal) {
-		errObj, _ := errVal.(*jsonx.Object)
+		errObj, _ := errVal.(map[string]any)
 		codeStr, _ := get(errObj, "code").(string)
 		msg, _ := get(errObj, "message").(string)
 		if msg == "" {
@@ -487,16 +489,16 @@ func (e *Executor) call(ctx context.Context, timeout time.Duration, sname string
 		return nil, stdout, &CallError{Msg: "herdr " + label + " failed: " + host.Excerpt(msg), Code: codeStr, Payload: obj}
 	}
 	if obj == nil {
-		obj = jsonx.NewObject()
+		obj = map[string]any{}
 	}
 	return obj, stdout, nil
 }
 
-func get(o *jsonx.Object, k string) any {
+func get(o map[string]any, k string) any {
 	if o == nil {
 		return nil
 	}
-	v, _ := o.Get(k)
+	v := o[k]
 	return v
 }
 
@@ -504,15 +506,15 @@ func get(o *jsonx.Object, k string) any {
 // (objects in their key order, depth first).
 func Find(payload any, key string) any {
 	switch x := payload.(type) {
-	case *jsonx.Object:
+	case map[string]any:
 		if x == nil {
 			return nil
 		}
-		if v, ok := x.Get(key); ok {
+		if v, ok := x[key]; ok {
 			return v
 		}
-		for _, k := range x.Keys() {
-			v, _ := x.Get(k)
+		for _, k := range slices.Sorted(maps.Keys(x)) {
+			v := x[k]
 			if found := Find(v, key); found != nil {
 				return found
 			}
@@ -532,13 +534,13 @@ func Strings(payload any) []string {
 	switch x := payload.(type) {
 	case string:
 		return []string{x}
-	case *jsonx.Object:
+	case map[string]any:
 		if x == nil {
 			return nil
 		}
 		var out []string
-		for _, k := range x.Keys() {
-			v, _ := x.Get(k)
+		for _, k := range slices.Sorted(maps.Keys(x)) {
+			v := x[k]
 			out = append(out, Strings(v)...)
 		}
 		return out
@@ -557,7 +559,7 @@ var notRunningRE = regexp.MustCompile(`not running|not started|stopped|no server
 // ServerRunning reads `herdr status` output: a "running"/"server_running"
 // boolean anywhere in its JSON, else the words of its text.
 func ServerRunning(out string) bool {
-	payload, err := jsonx.Decode([]byte(out))
+	payload, err := fsutil.DecodeJSON([]byte(out))
 	isJSON := err == nil && payload != nil
 	if isJSON {
 		for _, key := range []string{"running", "server_running"} {

@@ -29,8 +29,8 @@ func newWriteFileCmd() *cobra.Command {
 		}
 		out, code := dispatch.WriteFile(p, expected, cmd.InOrStdin())
 		if code == 2 {
-			reason, _ := out.Get("error")
-			target, _ := out.Get("path")
+			reason := out["error"]
+			target := out["path"]
 			return exitf(2, "write-file: failed to write %s: %s", target, reason)
 		}
 		if err := writeJSONLine(cmd.OutOrStdout(), out); err != nil {

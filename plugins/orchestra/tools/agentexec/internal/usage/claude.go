@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
@@ -47,11 +48,11 @@ func coerceCount(v any) int64 {
 }
 
 func tokensFrom(v any) Tokens {
-	obj, ok := v.(*jsonx.Object)
+	obj, ok := v.(map[string]any)
 	if !ok {
 		return Tokens{}
 	}
-	get := func(k string) any { x, _ := obj.Get(k); return x }
+	get := func(k string) any { return obj[k] }
 	return Tokens{
 		InputTokens:       coerceCount(get("input_tokens")),
 		OutputTokens:      coerceCount(get("output_tokens")),
@@ -116,12 +117,12 @@ func (a *claudeAcc) fold(c contribution, sign int64) {
 // writes are split by TTL from usage.cache_creation; whatever that object does
 // not account for (older transcripts carry only the total) is priced as the
 // 5-minute TTL, the default.
-func usageDetail(usage *jsonx.Object) Detail {
-	get := func(k string) any { x, _ := usage.Get(k); return x }
+func usageDetail(usage map[string]any) Detail {
+	get := func(k string) any { return usage[k] }
 	writeTotal := coerceCount(get("cache_creation_input_tokens"))
 	var write1h int64
-	if creation, ok := get("cache_creation").(*jsonx.Object); ok {
-		v, _ := creation.Get("ephemeral_1h_input_tokens")
+	if creation, ok := get("cache_creation").(map[string]any); ok {
+		v := creation["ephemeral_1h_input_tokens"]
 		write1h = coerceCount(v)
 	}
 	if write1h > writeTotal {
@@ -139,28 +140,28 @@ func usageDetail(usage *jsonx.Object) Detail {
 // addLine folds one raw transcript line into the accumulator when it carries
 // usage at or after cutoff.
 func (a *claudeAcc) addLine(line string, cutoff time.Time) {
-	v, err := jsonx.Decode([]byte(line))
+	v, err := fsutil.DecodeJSON([]byte(line))
 	if err != nil {
 		return
 	}
-	obj, ok := v.(*jsonx.Object)
+	obj, ok := v.(map[string]any)
 	if !ok {
 		return
 	}
-	message := obj.Object("message")
+	message := config.ObjectAt(obj, "message")
 	if message == nil {
 		return
 	}
-	usage := message.Object("usage")
+	usage := config.ObjectAt(message, "usage")
 	if usage == nil {
 		return
 	}
-	tsV, _ := obj.Get("timestamp")
+	tsV := obj["timestamp"]
 	ts, ok := ParseTimestamp(tsV)
 	if !ok || ts.Before(cutoff) {
 		return
 	}
-	get := func(k string) any { x, _ := usage.Get(k); return x }
+	get := func(k string) any { return usage[k] }
 	c := contribution{
 		side: "main",
 		tokens: Tokens{
@@ -170,10 +171,10 @@ func (a *claudeAcc) addLine(line string, cutoff time.Time) {
 		},
 		detail: usageDetail(usage),
 	}
-	if sc, _ := obj.Get("isSidechain"); sc == true {
+	if sc, _ := obj["isSidechain"]; sc == true {
 		c.side = "sidechain"
 	}
-	if m, _ := message.Get("model"); m != nil {
+	if m, _ := message["model"]; m != nil {
 		if model, ok := m.(string); ok {
 			c.model = model
 		}
@@ -184,7 +185,7 @@ func (a *claudeAcc) addLine(line string, cutoff time.Time) {
 	// copies earlier lines again. Count each message id once, and let a later
 	// line replace an earlier one (a streamed response's final line carries
 	// the final output_tokens).
-	if idV, _ := message.Get("id"); idV != nil {
+	if idV, _ := message["id"]; idV != nil {
 		if id, ok := idV.(string); ok && id != "" {
 			if prev, seen := a.messages[id]; seen {
 				if prev == c {

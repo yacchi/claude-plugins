@@ -6,15 +6,16 @@ package cooldown
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 const defaultPath = "~/.claude/orchestra/executor-state.json"
@@ -46,19 +47,19 @@ func StatePath(cfg *config.Resolved) string {
 	return a
 }
 
-func loadState(path string) *jsonx.Object {
+func loadState(path string) map[string]any {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return jsonx.NewObject()
+		return map[string]any{}
 	}
-	v, err := jsonx.Decode(raw)
+	v, err := fsutil.DecodeJSON(raw)
 	if err != nil {
-		return jsonx.NewObject()
+		return map[string]any{}
 	}
-	if o, ok := v.(*jsonx.Object); ok {
+	if o, ok := v.(map[string]any); ok {
 		return o
 	}
-	return jsonx.NewObject()
+	return map[string]any{}
 }
 
 func number(v any) (float64, bool) {
@@ -72,11 +73,11 @@ func number(v any) (float64, bool) {
 }
 
 func untilOf(entry any) (float64, bool) {
-	o, ok := entry.(*jsonx.Object)
+	o, ok := entry.(map[string]any)
 	if !ok {
 		return 0, false
 	}
-	u, _ := o.Get("until")
+	u := o["until"]
 	return number(u)
 }
 
@@ -85,16 +86,16 @@ func Active(cfg *config.Resolved, now time.Time) map[string]Entry {
 	return active(loadState(StatePath(cfg)), seconds(now))
 }
 
-func active(state *jsonx.Object, now float64) map[string]Entry {
+func active(state map[string]any, now float64) map[string]Entry {
 	out := map[string]Entry{}
-	for _, name := range state.Keys() {
-		v, _ := state.Get(name)
+	for _, name := range slices.Sorted(maps.Keys(state)) {
+		v := state[name]
 		until, ok := untilOf(v)
 		if !ok || !(until > now) {
 			continue
 		}
 		reason := "unknown"
-		if r, has := v.(*jsonx.Object).Get("reason"); has {
+		if r, has := v.(map[string]any)["reason"]; has {
 			if s, isStr := r.(string); isStr {
 				reason = s
 			}
@@ -116,15 +117,15 @@ func Seconds(cfg *config.Resolved, reason string) int {
 	return n
 }
 
-func save(path string, state *jsonx.Object, now float64) bool {
-	pruned := jsonx.NewObject()
-	for _, name := range state.Keys() {
-		v, _ := state.Get(name)
+func save(path string, state map[string]any, now float64) bool {
+	pruned := map[string]any{}
+	for _, name := range slices.Sorted(maps.Keys(state)) {
+		v := state[name]
 		if until, ok := untilOf(v); ok && until > now {
-			pruned.Set(name, v)
+			pruned[name] = v
 		}
 	}
-	data, err := jsonx.Marshal(pruned)
+	data, err := fsutil.MarshalJSON(pruned)
 	if err != nil {
 		return false
 	}
@@ -152,12 +153,12 @@ func RecordUnavailable(cfg *config.Resolved, executor, reason string, now time.T
 	state := loadState(path)
 	nowS := seconds(now)
 	until := nowS + float64(secs)
-	if v, ok := state.Get(executor); ok {
+	if v, ok := state[executor]; ok {
 		if existing, has := untilOf(v); has && existing > until {
 			return
 		}
 	}
-	state.Set(executor, jsonx.NewObject().Set("reason", reason).Set("until", until))
+	state[executor] = map[string]any{"reason": reason, "until": until}
 	save(path, state, nowS)
 }
 
@@ -168,20 +169,20 @@ func Clear(cfg *config.Resolved, executor string) ([]string, error) {
 	state := loadState(path)
 	if executor != "" {
 		known := map[string]bool{"claude": true, "pi": true}
-		for _, k := range cfg.Section("external_executors").Keys() {
+		for _, k := range slices.Sorted(maps.Keys(cfg.Section("external_executors"))) {
 			known[k] = true
 		}
 		if !known[executor] {
 			return nil, errors.New("unknown executor: " + executor)
 		}
-		if _, ok := state.Get(executor); !ok {
+		if _, ok := state[executor]; !ok {
 			return []string{}, nil
 		}
-		state.Delete(executor)
+		delete(state, executor)
 		save(path, state, seconds(time.Now()))
 		return []string{executor}, nil
 	}
-	cleared := state.Keys()
+	cleared := slices.Sorted(maps.Keys(state))
 	sort.Strings(cleared)
 	_ = os.Remove(path)
 	return cleared, nil

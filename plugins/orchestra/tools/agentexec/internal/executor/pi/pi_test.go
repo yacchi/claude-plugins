@@ -2,13 +2,14 @@ package pi
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // parseFixtures is testdata/parse_fixtures.json: the retired Python
@@ -28,7 +29,7 @@ type parseFixtures struct {
 
 func plain(t *testing.T, v any) any {
 	t.Helper()
-	raw, err := jsonx.Marshal(v)
+	raw, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,8 +63,8 @@ func TestParseJSONLMatchesPython(t *testing.T) {
 				t.Errorf("got  %v\nwant %v", g, want)
 			}
 			// Key order is Python's.
-			wantObj, _ := jsonx.Decode(c.Want)
-			if k, w := got.Keys(), wantObj.(*jsonx.Object).Keys(); !slices.Equal(k, w) {
+			wantObj, _ := fsutil.DecodeJSON(c.Want)
+			if k, w := slices.Sorted(maps.Keys(got)), slices.Sorted(maps.Keys(wantObj.(map[string]any))); !slices.Equal(k, w) {
 				t.Errorf("keys %v, want %v", k, w)
 			}
 		})
@@ -95,7 +96,7 @@ func TestVeryLongRecordIsParsed(t *testing.T) {
 		`{"type": "tool_execution_end", "result": {"content": [{"type": "text", "text": "` + long + `"}]}}` + "\n" +
 		`{"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "ok"}], "stopReason": "stop"}}` + "\n"
 	got := ParseJSONL(stdout, "", 0, false)
-	if s, _ := got.Get("status"); s != "ok" {
+	if s, _ := got["status"]; s != "ok" {
 		t.Fatalf("status %v", s)
 	}
 }

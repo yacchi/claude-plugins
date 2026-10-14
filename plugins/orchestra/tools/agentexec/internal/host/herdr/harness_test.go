@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 )
 
@@ -128,15 +128,15 @@ func cfgOf(t *testing.T, js string) *config.Resolved {
 	if js == "" {
 		js = "{}"
 	}
-	v, err := jsonx.Decode([]byte(js))
+	v, err := fsutil.DecodeJSON([]byte(js))
 	if err != nil {
 		t.Fatal(err)
 	}
-	over := v.(*jsonx.Object)
-	if over.Object("sandbox") == nil {
-		over.Set("sandbox", jsonx.NewObject().Set("mode", "off"))
+	over := v.(map[string]any)
+	if config.ObjectAt(over, "sandbox") == nil {
+		over["sandbox"] = map[string]any{"mode": "off"}
 	}
-	return &config.Resolved{Values: jsonx.DeepMerge(config.Defaults(), over)}
+	return &config.Resolved{Values: config.DeepMerge(config.Defaults(), over)}
 }
 
 // executor is a herdr host on the fake; cfg is a JSON overlay of the
@@ -297,7 +297,7 @@ func argAfter(argv []string, flag string) string {
 
 // jsonMarshal is compact JSON of a report.
 func jsonMarshal(v any) ([]byte, error) {
-	b, err := jsonx.Marshal(v)
+	b, err := fsutil.MarshalJSON(v)
 	if err != nil {
 		return nil, err
 	}

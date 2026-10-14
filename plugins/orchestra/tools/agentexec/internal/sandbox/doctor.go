@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 func nullable(s string) any {
@@ -30,23 +29,25 @@ func DoctorSection(cfg *config.Resolved) any {
 	cwd, _ := os.Getwd()
 	spec := prepare("pi", cwd, sc, &results, policyOpts{}, nil)
 	grants, warning, _ := loadGrants("", nil)
-	return jsonx.NewObject().
-		Set("mode", sc.Mode).
-		Set("backend", spec.Backend).
-		Set("enforced", spec.Enforced).
-		Set("would_refuse", spec.Refuse).
-		Set("reason", spec.Reason).
-		Set("limits", strs(spec.Limits)).
-		Set("probes", results.Object()).
-		Set("learned", jsonx.NewObject().
-			Set("path", LearnedPath()).
-			Set("count", int64(len(grants))).
-			Set("warning", nullable(warning)))
+	return map[string]any{
+		"mode":         sc.Mode,
+		"backend":      spec.Backend,
+		"enforced":     spec.Enforced,
+		"would_refuse": spec.Refuse,
+		"reason":       spec.Reason,
+		"limits":       strs(spec.Limits),
+		"probes":       results.Object(),
+		"learned": map[string]any{
+			"path":    LearnedPath(),
+			"count":   int64(len(grants)),
+			"warning": nullable(warning),
+		},
+	}
 }
 
 // ListSection is `sandbox list`: the effective writable set of a pi run in
 // workdir, the learned grants and domains, deny_read, the backend.
-func ListSection(cfg *config.Resolved, workdir string) *jsonx.Object {
+func ListSection(cfg *config.Resolved, workdir string) map[string]any {
 	sc := ConfigOf(cfg)
 	spec := prepare("pi", workdir, sc, nil, policyOpts{}, nil)
 	policy := spec.Policy
@@ -63,18 +64,19 @@ func ListSection(cfg *config.Resolved, workdir string) *jsonx.Object {
 	for i, d := range domains {
 		doms[i] = d.raw
 	}
-	return jsonx.NewObject().
-		Set("workdir", realPath(workdir)).
-		Set("backend", spec.Backend).
-		Set("enforced", spec.Enforced).
-		Set("reason", spec.Reason).
-		Set("limits", strs(spec.Limits)).
-		Set("writable", strs(policy.Writable)).
-		Set("deny_read", strs(policy.DenyRead)).
-		Set("deny_write", strs(policy.DenyWrite)).
-		Set("deny_write_regex", strs(policy.DenyWriteRegex)).
-		Set("learned", learned).
-		Set("learned_path", LearnedPath()).
-		Set("domains", doms).
-		Set("warning", nullable(warning))
+	return map[string]any{
+		"workdir":          realPath(workdir),
+		"backend":          spec.Backend,
+		"enforced":         spec.Enforced,
+		"reason":           spec.Reason,
+		"limits":           strs(spec.Limits),
+		"writable":         strs(policy.Writable),
+		"deny_read":        strs(policy.DenyRead),
+		"deny_write":       strs(policy.DenyWrite),
+		"deny_write_regex": strs(policy.DenyWriteRegex),
+		"learned":          learned,
+		"learned_path":     LearnedPath(),
+		"domains":          doms,
+		"warning":          nullable(warning),
+	}
 }

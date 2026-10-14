@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // testConfig is the defaults with the ledger (and so tokens/, sessions/)
@@ -20,7 +19,7 @@ func testConfig(t *testing.T) *config.Resolved {
 	t.Helper()
 	base := t.TempDir()
 	values := config.Defaults()
-	values.Object("ledger").Set("dir", filepath.Join(base, "runs"))
+	config.ObjectAt(values, "ledger")["dir"] = filepath.Join(base, "runs")
 	return &config.Resolved{Values: values, Root: base}
 }
 
@@ -164,7 +163,7 @@ func TestSameWorkdirResolvesSymlinks(t *testing.T) {
 
 func TestSweepRetention(t *testing.T) {
 	cfg := testConfig(t)
-	cfg.Values.Object("ledger").Set("retention_days", int64(2))
+	config.ObjectAt(cfg.Values, "ledger")["retention_days"] = int64(2)
 	tokens, sessions, detach := TokenDir(cfg), SessionDir(cfg), DetachDir(cfg)
 	files := map[string]bool{ // path -> survives
 		filepath.Join(tokens, "dsp-000000000001.json"):  false,
@@ -216,17 +215,17 @@ func TestSummarizeCountsCodePoints(t *testing.T) {
 		{strings.Repeat("あ", 401), true},
 		{"short", false},
 	} {
-		in := jsonx.NewObject().Set("status", "ok").Set("answer", c.answer)
+		in := map[string]any{"status": "ok", "answer": c.answer}
 		out := Summarize(in)
-		got, _ := out.Get("answer")
-		_, flag := out.Get("answer_truncated")
+		got := out["answer"]
+		_, flag := out["answer_truncated"]
 		if flag != c.truncated || len([]rune(got.(string))) > SummaryAnswerChars {
 			t.Errorf("%d code points: truncated=%v len=%d", len([]rune(c.answer)), flag, len([]rune(got.(string))))
 		}
 		if c.truncated && got.(string) != string([]rune(c.answer)[:SummaryAnswerChars]) {
 			t.Error("the cut keeps the first 400 code points")
 		}
-		if orig, _ := in.Get("answer"); orig != c.answer {
+		if orig, _ := in["answer"]; orig != c.answer {
 			t.Error("Summarize must not modify its input")
 		}
 	}

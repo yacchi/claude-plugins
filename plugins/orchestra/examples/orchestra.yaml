@@ -301,8 +301,8 @@ priority:
 
 # Opt-in guardrail against defaulting to a direct Claude Haiku implementer when a
 # ready external executor exists — a NUDGE WITH A GUARANTEED ESCAPE, never a hard
-# wall. NOTE: quote the value ("off"/"block") - YAML 1.1 (what agent-exec's
-# config loader implements) parses a bareword `off` as boolean False, not a string.
+# wall. NOTE: quote the value ("off"/"block") so every YAML parser reads a
+# string (a YAML 1.1 parser reads a bareword `off` as boolean False).
 # When `light_class: "block"`, a PreToolUse hook (`hooks/guards/light-class.ts`)
 # fires only on a GENERIC Claude implementer call (no `subagent_type` at all,
 # or `subagent_type` in general-purpose/claude, at a Haiku-class model) while

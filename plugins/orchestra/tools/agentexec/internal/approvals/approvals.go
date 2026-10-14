@@ -28,7 +28,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
@@ -178,7 +177,7 @@ func (r record) has(key, host string) bool {
 }
 
 func saveApprovals(statePath string, data record) error {
-	b, err := jsonx.MarshalIndent(map[string]any(data))
+	b, err := fsutil.MarshalJSONIndent(map[string]any(data))
 	if err != nil {
 		return err
 	}
@@ -248,7 +247,7 @@ type PkgRef struct {
 }
 
 func (p PkgRef) MarshalJSON() ([]byte, error) {
-	return jsonx.Marshal(jsonx.NewObject().Set("id", p.ID).Set("status", p.Status).Set("spec", p.Spec))
+	return fsutil.MarshalJSON(map[string]any{"id": p.ID, "status": p.Status, "spec": p.Spec})
 }
 
 // Item is one pending approval. Kind net uses Host, Ports, Packages and
@@ -273,20 +272,30 @@ type Item struct {
 }
 
 func (it Item) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().Set("id", it.ID).Set("kind", it.Kind)
+	o := map[string]any{"id": it.ID, "kind": it.Kind}
 	switch it.Kind {
 	case "net":
 		pkgs := it.Packages
 		if pkgs == nil {
 			pkgs = []PkgRef{}
 		}
-		o.Set("host", it.Host).Set("ports", it.Ports).Set("packages", pkgs).Set("first_seen", it.FirstSeen)
+		o["host"] = it.Host
+		o["ports"] = it.Ports
+		o["packages"] = pkgs
+		o["first_seen"] = it.FirstSeen
 	case "path":
-		o.Set("pkg", it.Pkg).Set("path", it.Path).Set("grant_candidate", it.GrantCandidate).Set("why", it.Why)
+		o["pkg"] = it.Pkg
+		o["path"] = it.Path
+		o["grant_candidate"] = it.GrantCandidate
+		o["why"] = it.Why
 	default:
-		o.Set("pkg", it.Pkg).Set("dialog", it.Dialog).Set("terminal", it.Terminal).Set("host", it.HostName)
+		o["pkg"] = it.Pkg
+		o["dialog"] = it.Dialog
+		o["terminal"] = it.Terminal
+		o["host"] = it.HostName
 	}
-	return jsonx.Marshal(o.Set("spec", it.Spec))
+	o["spec"] = it.Spec
+	return fsutil.MarshalJSON(o)
 }
 
 // hostState classifies a host: "quiet", "decided" (in this wave),
@@ -309,10 +318,10 @@ func hostState(net sandbox.NetworkConfig, ap record) func(string) string {
 func firstSeen(statePath string) map[string]any {
 	seen := map[string]any{}
 	for _, ev := range state.ReadEvents(statePath, -1) {
-		if kind, _ := ev.Get("event"); kind != "network-denied" {
+		if kind, _ := ev["event"]; kind != "network-denied" {
 			continue
 		}
-		detail, _ := ev.Get("detail")
+		detail := ev["detail"]
 		text, _ := detail.(string)
 		var d struct {
 			Denials []any `json:"denials"`
@@ -320,7 +329,7 @@ func firstSeen(statePath string) map[string]any {
 		if json.Unmarshal([]byte(text), &d) != nil {
 			continue
 		}
-		at, _ := ev.Get("at")
+		at := ev["at"]
 		for _, e := range d.Denials {
 			m, _ := e.(map[string]any)
 			h, _ := m["host"].(string)

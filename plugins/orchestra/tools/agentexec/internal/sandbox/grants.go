@@ -3,12 +3,12 @@ package sandbox
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // nowISOZ stamps new grants (a seam for the byte-compatibility fixtures).
@@ -160,23 +160,23 @@ func userGrantRefusal(path string, denyRead []string, home string) string {
 // keys and key order survive a rewrite of the store).
 type Grant struct {
 	Path, Source, Added, Example, Reason string
-	raw                                  *jsonx.Object
+	raw                                  map[string]any
 }
 
-func (g Grant) MarshalJSON() ([]byte, error) { return jsonx.Marshal(g.raw) }
+func (g Grant) MarshalJSON() ([]byte, error) { return fsutil.MarshalJSON(g.raw) }
 
 // Object is the entry as stored.
-func (g Grant) Object() *jsonx.Object { return g.raw }
+func (g Grant) Object() map[string]any { return g.raw }
 
 // DomainGrant is one learned network domain grant, kept as stored.
 type DomainGrant struct {
 	Domain, Source, Added, Reason string
-	raw                           *jsonx.Object
+	raw                           map[string]any
 }
 
-func (d DomainGrant) MarshalJSON() ([]byte, error) { return jsonx.Marshal(d.raw) }
+func (d DomainGrant) MarshalJSON() ([]byte, error) { return fsutil.MarshalJSON(d.raw) }
 
-func (d DomainGrant) Object() *jsonx.Object { return d.raw }
+func (d DomainGrant) Object() map[string]any { return d.raw }
 
 // Learned is the machine's learned store. Warning is set when the store is
 // unreadable or corrupt, or entries failing their source's rules were
@@ -200,18 +200,18 @@ func LoadLearned() (Learned, error) {
 	return l, err
 }
 
-func str(o *jsonx.Object, k string) string {
-	v, _ := o.Get(k)
+func str(o map[string]any, k string) string {
+	v := o[k]
 	s, _ := v.(string)
 	return s
 }
 
-func grantOf(o *jsonx.Object) Grant {
+func grantOf(o map[string]any) Grant {
 	return Grant{Path: str(o, "path"), Source: str(o, "source"), Added: str(o, "added"),
 		Example: str(o, "example"), Reason: str(o, "reason"), raw: o}
 }
 
-func domainOf(o *jsonx.Object) DomainGrant {
+func domainOf(o map[string]any) DomainGrant {
 	return DomainGrant{Domain: str(o, "domain"), Source: str(o, "source"),
 		Added: str(o, "added"), Reason: str(o, "reason"), raw: o}
 }
@@ -225,7 +225,7 @@ func defaultDenyRead(home string) []string {
 }
 
 func validGrant(v any, home string, denyRead []string) bool {
-	o, ok := v.(*jsonx.Object)
+	o, ok := v.(map[string]any)
 	if !ok || o == nil {
 		return false
 	}
@@ -243,8 +243,8 @@ func validGrant(v any, home string, denyRead []string) bool {
 	return false
 }
 
-func mustGet(o *jsonx.Object, k string) any {
-	v, _ := o.Get(k)
+func mustGet(o map[string]any, k string) any {
+	v := o[k]
 	return v
 }
 
@@ -268,13 +268,13 @@ func loadGrants(home string, denyRead []string) ([]Grant, string, error) {
 	}
 	var data any
 	if err == nil {
-		data, err = jsonx.Decode(raw)
+		data, err = fsutil.DecodeJSON(raw)
 	}
 	if err != nil {
 		w := fmt.Sprintf("learned sandbox grants unreadable (%s): %v", path, err)
 		return []Grant{}, w, errors.New(w)
 	}
-	root, _ := data.(*jsonx.Object)
+	root, _ := data.(map[string]any)
 	var list []any
 	ok := false
 	if root != nil {
@@ -287,7 +287,7 @@ func loadGrants(home string, denyRead []string) ([]Grant, string, error) {
 	good := []Grant{}
 	for _, e := range list {
 		if validGrant(e, home, denyRead) {
-			good = append(good, grantOf(e.(*jsonx.Object).Clone()))
+			good = append(good, grantOf(maps.Clone(e.(map[string]any))))
 		}
 	}
 	warning := ""
@@ -298,19 +298,19 @@ func loadGrants(home string, denyRead []string) ([]Grant, string, error) {
 }
 
 // rawStore is the store's top-level object, or empty when unusable.
-func rawStore(home string) *jsonx.Object {
+func rawStore(home string) map[string]any {
 	raw, err := os.ReadFile(learnedPath(home))
 	if err != nil {
-		return jsonx.NewObject()
+		return map[string]any{}
 	}
-	data, err := jsonx.Decode(raw)
+	data, err := fsutil.DecodeJSON(raw)
 	if err != nil {
-		return jsonx.NewObject()
+		return map[string]any{}
 	}
-	if o, ok := data.(*jsonx.Object); ok && o != nil {
+	if o, ok := data.(map[string]any); ok && o != nil {
 		return o
 	}
-	return jsonx.NewObject()
+	return map[string]any{}
 }
 
 // storeLockTimeout bounds how long a grant waits for another writer.
@@ -345,11 +345,11 @@ func saveLearned(home string, grants, domains []any) error {
 	if domains == nil {
 		domains, _ = mustGet(raw, "domains").([]any)
 	}
-	data := jsonx.NewObject().Set("version", int64(1)).Set("grants", grants)
+	data := map[string]any{"version": int64(1), "grants": grants}
 	if len(domains) > 0 {
-		data.Set("domains", domains)
+		data["domains"] = domains
 	}
-	payload, err := jsonx.MarshalIndent(data)
+	payload, err := fsutil.MarshalJSONIndent(data)
 	if err != nil {
 		return err
 	}
@@ -399,10 +399,14 @@ func addGrant(path, source, example, reason, home string) (Grant, error) {
 	if example != "" {
 		ex = realPath(example)
 	}
-	entry := jsonx.NewObject().Set("path", real).Set("added", nowISOZ()).
-		Set("source", source).Set("example", ex)
+	entry := map[string]any{
+		"path":    real,
+		"added":   nowISOZ(),
+		"source":  source,
+		"example": ex,
+	}
 	if reason != "" {
-		entry.Set("reason", reason)
+		entry["reason"] = reason
 	}
 	list := make([]any, 0, len(grants)+1)
 	for _, g := range grants {

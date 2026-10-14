@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // AppliedCommit is one task's integrate commit.
@@ -104,7 +103,7 @@ func Bisect(in BisectInput) (BisectResult, error) {
 			}
 			probe := verify()
 			emit(in.Progress, "bisect-probe", in.Applied[mid].Task,
-				jsonx.NewObject().Set("commit", sha).Set("result", probe.Status))
+				map[string]any{"commit": sha, "result": probe.Status})
 			_ = git("reset", "--hard", sha)
 			_ = git("clean", "-fdq")
 			if probe.Status == "fail" {
@@ -127,14 +126,14 @@ func Bisect(in BisectInput) (BisectResult, error) {
 		if git("revert", "--no-commit", culprit.SHA) != nil {
 			_ = git("revert", "--abort")
 			out.RevertConflicted = culprit.Task
-			emit(in.Progress, "revert", culprit.Task, jsonx.NewObject().Set("result", "conflicted"))
+			emit(in.Progress, "revert", culprit.Task, map[string]any{"result": "conflicted"})
 			badProbe.Baseline = "pass"
 			out.Verify = badProbe
 			return out, nil
 		}
 		commitAll(wt, "orchestra revert "+culprit.Task)
 		out.Reverted = append(out.Reverted, RevertedTask{Task: culprit.Task, Excerpt: badProbe.Excerpt})
-		emit(in.Progress, "revert", culprit.Task, jsonx.NewObject().Set("result", "reverted"))
+		emit(in.Progress, "revert", culprit.Task, map[string]any{"result": "reverted"})
 		clearSourceCollected(in.Root, culprit.Task)
 		reverted = append(reverted, culprit.SHA)
 		last = verify()

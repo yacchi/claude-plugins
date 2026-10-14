@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/executor/pi"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/route"
@@ -77,14 +77,14 @@ func (r Request) Args() []string {
 // there is none), the text a dry run prints instead, a diagnostic for
 // stderr (without the "agent-exec: " prefix) and the exit code.
 type Outcome struct {
-	Out  *jsonx.Object
+	Out  map[string]any
 	Text string
 	Diag string
 	Exit int
 }
 
 // Run is Execute's JSON result and exit code.
-func Run(ctx context.Context, cfg *config.Resolved, r Request) (*jsonx.Object, int) {
+func Run(ctx context.Context, cfg *config.Resolved, r Request) (map[string]any, int) {
 	o := Execute(ctx, cfg, r)
 	return o.Out, o.Exit
 }
@@ -127,35 +127,43 @@ func routed(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	rt := route.Resolve(cfg, readiness.Compute(cfg).Ready, r.Class, orDefault(r.Archetype, "default"),
 		r.Exhausted, active)
 	if !rt.Routable() {
-		return Outcome{Out: jsonx.NewObject().Set("status", "unroutable").Set("route", rt.Object())}
+		return Outcome{Out: map[string]any{"status": "unroutable", "route": rt.Object()}}
 	}
 	iso := isolateFor(cfg, r.Workdir, orDefault(r.Isolate, IsolateAuto), r.Task)
 	workdir := iso.workdir(r.Workdir)
 
 	if rt.Dispatch != "cli" {
 		// claude / agent: agent-exec cannot spawn subagents; the caller does.
-		return Outcome{Out: jsonx.NewObject().
-			Set("status", "delegate").
-			Set("executor", rt.Executor).
-			Set("model", rt.Model).
-			Set("effort", rt.Effort).
-			Set("agent_type", rt.AgentType).
-			Set("route", rt.Object()).
-			Set("isolation", iso.obj).
-			Set("sandbox", sandbox.Report(sandbox.Unwrapped(
-				"delegated to an agent; agent-exec spawns no child to sandbox")))}
+		return Outcome{Out: map[string]any{
+			"status":     "delegate",
+			"executor":   rt.Executor,
+			"model":      rt.Model,
+			"effort":     rt.Effort,
+			"agent_type": rt.AgentType,
+			"route":      rt.Object(),
+			"isolation":  iso.obj,
+			"sandbox": sandbox.Report(sandbox.Unwrapped(
+				"delegated to an agent; agent-exec spawns no child to sandbox")),
+		}}
 	}
 
 	executor, model, effort := rt.Executor, asString(rt.Model), asString(rt.Effort)
 	if executor != "pi" {
 		// A configured `dispatch: cli` executor with no invocation profile.
-		out := jsonx.NewObject().
-			Set("status", "unavailable").Set("answer", nil).Set("session_id", nil).
-			Set("reason", nil).Set("exit_code", nil).
-			Set("executor", executor).Set("model", rt.Model).Set("effort", rt.Effort).
-			Set("route", rt.Object()).Set("isolation", iso.obj).
-			Set("sandbox", sandbox.Report(sandbox.Unwrapped(
-				"no invocation profile for this executor; nothing was spawned")))
+		out := map[string]any{
+			"status":     "unavailable",
+			"answer":     nil,
+			"session_id": nil,
+			"reason":     nil,
+			"exit_code":  nil,
+			"executor":   executor,
+			"model":      rt.Model,
+			"effort":     rt.Effort,
+			"route":      rt.Object(),
+			"isolation":  iso.obj,
+			"sandbox": sandbox.Report(sandbox.Unwrapped(
+				"no invocation profile for this executor; nothing was spawned")),
+		}
 		cooldown.RecordUnavailable(cfg, executor, "", time.Now(), nil, "")
 		ledger.Append(ledger.BuildRecord(executor, model, r.Class, out), r.RunID, cfg)
 		return Outcome{Out: out}
@@ -192,26 +200,29 @@ func routed(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	// Only a run that worked (or that the instructor resumes once the cause
 	// is fixed) and named its session updates the store: a failed round
 	// keeps the last good session for the correction round.
-	status, _ := result.Get("status")
+	status := result["status"]
 	sid := asString(get(result, "session_id"))
 	if r.Task != "" && sid != "" && (status == "ok" || status == "needs-permission" || status == "runaway") {
 		_, _ = WriteSession(cfg, executor, r.Task, sid, workdir)
 	}
 
-	out := result.Clone()
-	out.Set("executor", executor).Set("model", rt.Model).Set("effort", rt.Effort).
-		Set("resumed", resumed || get(result, "resumed") == true).
-		Set("route", rt.Object()).Set("isolation", iso.obj)
+	out := maps.Clone(result)
+	out["executor"] = executor
+	out["model"] = rt.Model
+	out["effort"] = rt.Effort
+	out["resumed"] = resumed || get(result, "resumed") == true
+	out["route"] = rt.Object()
+	out["isolation"] = iso.obj
 	if sb := get(result, "sandbox"); sb != nil {
-		out.Set("sandbox", sb)
+		out["sandbox"] = sb
 	} else {
-		out.Set("sandbox", sandbox.Report(spec))
+		out["sandbox"] = sandbox.Report(spec)
 	}
 	return Outcome{Out: out}
 }
 
-func get(o *jsonx.Object, k string) any {
-	v, _ := o.Get(k)
+func get(o map[string]any, k string) any {
+	v := o[k]
 	return v
 }
 
@@ -244,14 +255,14 @@ func direct(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	}
 	record(cfg, r.Executor, r.Model, r.Class, r.RunID, r.Resume, result)
 	if iso.obj != nil {
-		result.Set("isolation", iso.obj)
+		result["isolation"] = iso.obj
 	}
 	return Outcome{Out: result}
 }
 
 // record books one finished run: the cooldown of an unavailable executor,
 // telemetry and the run ledger. Never fails the dispatch.
-func record(cfg *config.Resolved, executor, model, cls, runID, resume string, result *jsonx.Object) {
+func record(cfg *config.Resolved, executor, model, cls, runID, resume string, result map[string]any) {
 	if get(result, "status") == "unavailable" {
 		var exitCode *int
 		if n, ok := get(result, "exit_code").(int64); ok {
@@ -270,7 +281,7 @@ func record(cfg *config.Resolved, executor, model, cls, runID, resume string, re
 func captureFailure(cfg *config.Resolved, err error, executor, model, cls, runID string) Outcome {
 	if errors.Is(err, capture.ErrExecutorNotFound) {
 		ledger.Append(ledger.BuildRecord(executor, model, cls,
-			jsonx.NewObject().Set("status", "unavailable")), runID, cfg)
+			map[string]any{"status": "unavailable"}), runID, cfg)
 		bin := executor
 		if b, ok := tools.KnownBinaries[executor]; ok {
 			bin = b

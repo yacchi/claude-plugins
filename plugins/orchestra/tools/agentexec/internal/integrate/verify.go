@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // VerifyResult grades one run of a verify command. Baseline ("pass" |
@@ -38,10 +38,16 @@ func (v VerifyResult) MarshalJSON() ([]byte, error) {
 	if v.Baseline != "" {
 		baseline = v.Baseline
 	}
-	return jsonx.Marshal(jsonx.NewObject().
-		Set("status", v.Status).Set("exit", exit).Set("seconds", v.Seconds).
-		Set("timed_out", v.TimedOut).Set("excerpt", v.Excerpt).Set("baseline", baseline).
-		Set("reason", v.Reason).Set("dirtied", v.Dirtied))
+	return fsutil.MarshalJSON(map[string]any{
+		"status":    v.Status,
+		"exit":      exit,
+		"seconds":   v.Seconds,
+		"timed_out": v.TimedOut,
+		"excerpt":   v.Excerpt,
+		"baseline":  baseline,
+		"reason":    v.Reason,
+		"dirtied":   v.Dirtied,
+	})
 }
 
 func skippedVerify(reason string) *VerifyResult {

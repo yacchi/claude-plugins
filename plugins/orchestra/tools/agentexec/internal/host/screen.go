@@ -175,7 +175,7 @@ func ResultOutput(hostName string, s *Session, sessionID string, resumed bool, d
 	}
 	out := map[string]any{
 		"status": "ok", "answer": answer, "session_id": nullable(sessionID), "resumed": resumed,
-		"executor": hostName,
+		"executor":  hostName,
 		"isolation": map[string]any{"isolate": true, "path": s.Worktree, "workdir": s.Worktree},
 	}
 	if d, ok := data["network_denials"]; ok && Truthy(d) {

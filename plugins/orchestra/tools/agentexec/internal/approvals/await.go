@@ -5,10 +5,10 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/orca"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -75,23 +75,10 @@ func isDir(p string) bool {
 
 // --- Python value helpers ------------------------------------------------------
 
-// asMap is a decoded JSON object as a map (state files decode objects as
-// *jsonx.Object).
+// asMap is a decoded JSON object as a map (nil when v is not an object).
 func asMap(v any) map[string]any {
-	switch x := v.(type) {
-	case map[string]any:
-		return x
-	case *jsonx.Object:
-		if x == nil {
-			return nil
-		}
-		m := make(map[string]any, x.Len())
-		for _, k := range x.Keys() {
-			m[k], _ = x.Get(k)
-		}
-		return m
-	}
-	return nil
+	m, _ := v.(map[string]any)
+	return m
 }
 
 // pyStr is Python's str() of a decoded JSON value.
@@ -111,11 +98,11 @@ func pyStr(v any) string {
 	case int64:
 		return strconv.FormatInt(x, 10)
 	case float64:
-		return jsonx.FormatFloat(x)
+		return fsutil.FloatRepr(x)
 	case json.Number:
 		return x.String()
 	}
-	b, _ := jsonx.Marshal(v)
+	b, _ := fsutil.MarshalJSON(v)
 	return string(b)
 }
 

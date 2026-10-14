@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // NullString renders as JSON null when empty (a session or branch that does
@@ -17,7 +17,7 @@ func (s NullString) MarshalJSON() ([]byte, error) {
 	if s == "" {
 		return []byte("null"), nil
 	}
-	return jsonx.Marshal(string(s))
+	return fsutil.MarshalJSON(string(s))
 }
 
 // Entry is one orchestra-created worktree as `isolate list` reports it.

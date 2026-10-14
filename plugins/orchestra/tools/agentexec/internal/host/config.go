@@ -2,62 +2,65 @@ package host
 
 import (
 	"encoding/json"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // Config is a host's config section merged over its defaults the way the
 // Python hosts' merged_config did: `models` (and `warm`) merge key by key,
 // a null value keeps the default, `enabled` is normalized.
 type Config struct {
-	values  *jsonx.Object
+	values  map[string]any
 	Enabled Tri
 }
 
 // MergeConfig merges section `name` of cfg (nil: the defaults) over
 // config.Defaults()[name].
 func MergeConfig(cfg *config.Resolved, name string) Config {
-	defaults := config.Defaults().Object(name)
-	out := jsonx.NewObject()
+	defaults := config.ObjectAt(config.Defaults(), name)
+	out := map[string]any{}
 	if defaults != nil {
-		out = defaults.Clone()
+		out = maps.Clone(defaults)
 	}
-	var section *jsonx.Object
+	var section map[string]any
 	if cfg != nil {
 		section = cfg.Section(name)
 	}
 	if section != nil {
-		for _, k := range section.Keys() {
-			v, _ := section.Get(k)
-			sub, isObj := v.(*jsonx.Object)
-			base := out.Object(k)
+		for _, k := range slices.Sorted(maps.Keys(section)) {
+			v := section[k]
+			sub, isObj := v.(map[string]any)
+			base := config.ObjectAt(out, k)
 			switch {
 			case (k == "models" || k == "warm") && isObj:
 				if base == nil {
-					base = jsonx.NewObject()
+					base = map[string]any{}
 				}
-				merged := base.Clone()
-				for _, sk := range sub.Keys() {
-					sv, _ := sub.Get(sk)
-					merged.Set(sk, jsonx.CloneValue(sv))
+				merged := maps.Clone(base)
+				for _, sk := range slices.Sorted(maps.Keys(sub)) {
+					sv := sub[sk]
+					merged[sk] = config.CloneValue(sv)
 				}
-				out.Set(k, merged)
+				out[k] = merged
 			case v != nil:
-				out.Set(k, jsonx.CloneValue(v))
+				out[k] = config.CloneValue(v)
 			}
 		}
 	}
-	if out.Object("models") == nil {
-		out.Set("models", jsonx.NewObject())
+	if config.ObjectAt(out, "models") == nil {
+		out["models"] = map[string]any{}
 	}
-	en, _ := out.Get("enabled")
+	en := out["enabled"]
 	return Config{values: out, Enabled: NormalizeEnabled(en)}
 }
 
@@ -66,7 +69,7 @@ func (c Config) Get(key string) any {
 	if c.values == nil {
 		return nil
 	}
-	v, _ := c.values.Get(key)
+	v := c.values[key]
 	return v
 }
 
@@ -86,11 +89,11 @@ func (c Config) Float(key string, def float64) float64 { return PyFloat(c.Get(ke
 
 // Model is models[cls], "" when unset.
 func (c Config) Model(cls string) string {
-	m := c.values.Object("models")
+	m := config.ObjectAt(c.values, "models")
 	if m == nil {
 		return ""
 	}
-	v, _ := m.Get(cls)
+	v := m[cls]
 	if !Truthy(v) {
 		return ""
 	}
@@ -98,11 +101,11 @@ func (c Config) Model(cls string) string {
 }
 
 // Sub is the merged sub-object key (nil when absent).
-func (c Config) Sub(key string) *jsonx.Object {
+func (c Config) Sub(key string) map[string]any {
 	if c.values == nil {
 		return nil
 	}
-	return c.values.Object(key)
+	return config.ObjectAt(c.values, key)
 }
 
 // Strings is the string elements of the list under key.
@@ -172,8 +175,6 @@ func Truthy(v any) bool {
 		return len(x) > 0
 	case map[string]any:
 		return len(x) > 0
-	case *jsonx.Object:
-		return x != nil && x.Len() > 0
 	}
 	return true
 }
@@ -221,7 +222,7 @@ func pyStr(v any) string {
 	case int64:
 		return strconv.FormatInt(x, 10)
 	case float64:
-		return jsonx.FormatFloat(x)
+		return fsutil.FloatRepr(x)
 	case json.Number:
 		return string(x)
 	}

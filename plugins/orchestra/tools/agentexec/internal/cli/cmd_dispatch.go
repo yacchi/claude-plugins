@@ -13,7 +13,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/capture"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/dispatch"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
@@ -84,7 +83,7 @@ func given(cmd *cobra.Command, names ...string) []string {
 func resolveForDispatch(cmd *cobra.Command) (*config.Resolved, error) {
 	cfg, err := config.Resolve()
 	if err != nil {
-		if werr := writeJSONLine(cmd.OutOrStdout(), jsonx.NewObject().Set("error", "agent-exec: "+err.Error())); werr != nil {
+		if werr := writeJSONLine(cmd.OutOrStdout(), map[string]any{"error": "agent-exec: " + err.Error()}); werr != nil {
 			return nil, werr
 		}
 		return nil, &ExitError{Code: 1}
@@ -317,7 +316,7 @@ func newDispatchPrepareCmd() *cobra.Command {
 		for i, l := range cfg.Layers {
 			layers[i] = absPath(l.Path)
 		}
-		return writeJSONLine(cmd.OutOrStdout(), jsonx.NewObject().Set("token", token).Set("config_layers", layers))
+		return writeJSONLine(cmd.OutOrStdout(), map[string]any{"token": token, "config_layers": layers})
 	}
 	return cmd
 }

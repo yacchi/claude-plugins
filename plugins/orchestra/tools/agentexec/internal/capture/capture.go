@@ -3,13 +3,15 @@ package capture
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/executor/pi"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 )
 
@@ -38,27 +40,29 @@ var prepareSpec = sandbox.Prepare
 
 // Refusal is the result a `sandbox.mode: required` refusal reports in place
 // of a run.
-func Refusal(s sandbox.Spec) *jsonx.Object {
-	return jsonx.NewObject().
-		Set("status", "unavailable").
-		Set("answer", nil).
-		Set("session_id", nil).
-		Set("reason", "sandbox").
-		Set("exit_code", nil).
-		Set("usage", nil).
-		Set("sandbox", ReportObject(s))
+func Refusal(s sandbox.Spec) map[string]any {
+	return map[string]any{
+		"status":     "unavailable",
+		"answer":     nil,
+		"session_id": nil,
+		"reason":     "sandbox",
+		"exit_code":  nil,
+		"usage":      nil,
+		"sandbox":    ReportObject(s),
+	}
 }
 
 // ReportObject is sandbox.Report as an ordered object, so the grant loop
 // can add denials, granted, cycles and grant_note.
-func ReportObject(s sandbox.Spec) *jsonx.Object {
+func ReportObject(s sandbox.Spec) map[string]any {
 	v, _ := sandbox.Report(s).(sandbox.ReportView)
-	return jsonx.NewObject().
-		Set("backend", v.Backend).
-		Set("enforced", v.Enforced).
-		Set("reason", v.Reason).
-		Set("limits", strs(v.Limits)).
-		Set("writable", strs(v.Writable))
+	return map[string]any{
+		"backend":  v.Backend,
+		"enforced": v.Enforced,
+		"reason":   v.Reason,
+		"limits":   strs(v.Limits),
+		"writable": strs(v.Writable),
+	}
 }
 
 func strs(list []string) []any {
@@ -81,7 +85,7 @@ func strs(list []string) []any {
 // denials attached as advisory. err is ErrExecutorNotFound when the binary
 // does not resolve (exit 127, no result), ErrUnknownExecutor, ctx's error,
 // or a spawn failure.
-func RunWithGrants(ctx context.Context, r Request) (*jsonx.Object, sandbox.Spec, error) {
+func RunWithGrants(ctx context.Context, r Request) (map[string]any, sandbox.Spec, error) {
 	spec := r.Sandbox
 	if r.Executor != "pi" {
 		return nil, spec, fmt.Errorf("%w: %s", ErrUnknownExecutor, r.Executor)
@@ -97,47 +101,58 @@ func RunWithGrants(ctx context.Context, r Request) (*jsonx.Object, sandbox.Spec,
 		return nil, spec, err
 	}
 	if spec.Policy == nil || inp == nil {
-		result.Set("sandbox", ReportObject(spec))
+		result["sandbox"] = ReportObject(spec)
 		return result, spec, nil
 	}
 	return grantLoop(ctx, r, spec, result, inp)
 }
 
-func grantLoop(ctx context.Context, r Request, spec sandbox.Spec, result *jsonx.Object, inp *denialInput) (*jsonx.Object, sandbox.Spec, error) {
+func grantLoop(ctx context.Context, r Request, spec sandbox.Spec, result map[string]any, inp *denialInput) (map[string]any, sandbox.Spec, error) {
 	// The writable set as it stood when this run started: a denial on a
 	// path granted DURING the run means the grant did not take.
 	base := spec
 	var granted []string
-	byPath := jsonx.NewObject() // path -> entry, first-seen order
+	byPath := map[string]map[string]any{} // path -> latest entry
+	var pathOrder []string                // paths in first-seen order
+	keep := func(path string, entry map[string]any) {
+		if _, seen := byPath[path]; !seen {
+			pathOrder = append(pathOrder, path)
+		}
+		byPath[path] = entry
+	}
 	cycles := 0
 	grantNote := ""
-	usage, _ := result.Get("usage")
+	usage := result["usage"]
 	for {
-		var entries []*jsonx.Object
+		var entries []map[string]any
 		for _, d := range sandbox.DetectDenials(base, inp.Stdout, inp.Stderr) {
-			entry := jsonx.NewObject().Set("path", d.Path).Set("op", d.Op)
+			entry := map[string]any{"path": d.Path, "op": d.Op}
 			if d.Intentional {
-				entry.Set("intentional", true).Set("auto", false).Set("grant_candidate", nil).
-					Set("why", "denied on purpose (deny_read / tamper protection)")
-				byPath.Set(d.Path, entry)
+				entry["intentional"] = true
+				entry["auto"] = false
+				entry["grant_candidate"] = nil
+				entry["why"] = "denied on purpose (deny_read / tamper protection)"
+				keep(d.Path, entry)
 				continue
 			}
 			candidate := sandbox.GrantFor(d.Path)
 			if candidate != "" {
-				entry.Set("grant_candidate", candidate)
+				entry["grant_candidate"] = candidate
 			} else {
-				entry.Set("grant_candidate", d.Path)
+				entry["grant_candidate"] = d.Path
 			}
 			switch {
 			case underAny(d.Path, granted):
-				entry.Set("auto", false).Set("why", "grant did not resolve the denial")
+				entry["auto"] = false
+				entry["why"] = "grant did not resolve the denial"
 			case candidate == "":
-				entry.Set("auto", false).Set("why", "not under an auto-grantable cache root")
+				entry["auto"] = false
+				entry["why"] = "not under an auto-grantable cache root"
 			default:
 				persistGrant(entry, candidate, d.Path, spec.Backend)
 			}
 			entries = append(entries, entry)
-			byPath.Set(d.Path, entry)
+			keep(d.Path, entry)
 		}
 		if len(entries) == 0 {
 			break
@@ -145,16 +160,16 @@ func grantLoop(ctx context.Context, r Request, spec sandbox.Spec, result *jsonx.
 		var newGrants []string
 		blocked := false
 		for _, e := range entries {
-			c, _ := e.Get("grant_candidate")
+			c := e["grant_candidate"]
 			cand, _ := c.(string)
-			if g, _ := e.Get("granted"); g == true && !contains(granted, cand) && !contains(newGrants, cand) {
+			if g, _ := e["granted"]; g == true && !contains(granted, cand) && !contains(newGrants, cand) {
 				newGrants = append(newGrants, cand)
 			}
-			if a, _ := e.Get("auto"); a != true {
+			if a, _ := e["auto"]; a != true {
 				blocked = true
 			}
 		}
-		sessionID, _ := result.Get("session_id")
+		sessionID := result["session_id"]
 		sid, _ := sessionID.(string)
 		if !blocked && len(newGrants) > 0 && cycles < GrantCycleCap && sid != "" {
 			granted = append(granted, newGrants...)
@@ -174,23 +189,23 @@ func grantLoop(ctx context.Context, r Request, spec sandbox.Spec, result *jsonx.
 				}
 				return nil, spec, err
 			}
-			if s, _ := nxt.Get("session_id"); s == nil || s == "" {
+			if s, _ := nxt["session_id"]; s == nil || s == "" {
 				// A resumed run that died before naming its session is still
 				// the same session: keep it resumable for the next round.
-				nxt.Set("session_id", sid)
+				nxt["session_id"] = sid
 			}
 			if nextInp == nil {
 				nextInp = &denialInput{}
 			}
 			inp = nextInp
-			nu, _ := nxt.Get("usage")
+			nu := nxt["usage"]
 			usage = mergeUsage(usage, nu)
-			nxt.Set("usage", usage)
-			nxt.Set("resumed", true)
-			prev, _ := result.Get("network_denials")
-			cur, _ := nxt.Get("network_denials")
+			nxt["usage"] = usage
+			nxt["resumed"] = true
+			prev := result["network_denials"]
+			cur := nxt["network_denials"]
 			if denied := mergeNetworkDenials(prev, cur); len(denied) > 0 {
-				nxt.Set("network_denials", denied)
+				nxt["network_denials"] = denied
 			}
 			result = nxt
 			continue
@@ -203,23 +218,23 @@ func grantLoop(ctx context.Context, r Request, spec sandbox.Spec, result *jsonx.
 			}
 		}
 		if blocked {
-			if st, _ := result.Get("status"); st != "ok" {
-				result.Set("status", "needs-permission").Set("reason", "sandbox")
+			if st, _ := result["status"]; st != "ok" {
+				result["status"] = "needs-permission"
+				result["reason"] = "sandbox"
 			}
 		}
 		break
 	}
 
 	out := ReportObject(spec)
-	denials := make([]any, 0, byPath.Len())
+	denials := make([]any, 0, len(byPath))
 	var grantedOut []any
 	seen := map[string]bool{}
-	for _, k := range byPath.Keys() {
-		v, _ := byPath.Get(k)
-		e := v.(*jsonx.Object)
+	for _, k := range pathOrder {
+		e := byPath[k]
 		denials = append(denials, e)
-		if g, _ := e.Get("granted"); g == true {
-			c, _ := e.Get("grant_candidate")
+		if g, _ := e["granted"]; g == true {
+			c := e["grant_candidate"]
 			if s, _ := c.(string); !seen[s] {
 				seen[s] = true
 				grantedOut = append(grantedOut, s)
@@ -229,23 +244,27 @@ func grantLoop(ctx context.Context, r Request, spec sandbox.Spec, result *jsonx.
 	if grantedOut == nil {
 		grantedOut = []any{}
 	}
-	out.Set("denials", denials).Set("granted", grantedOut).Set("cycles", int64(cycles))
+	out["denials"] = denials
+	out["granted"] = grantedOut
+	out["cycles"] = int64(cycles)
 	if grantNote != "" {
-		out.Set("grant_note", grantNote)
+		out["grant_note"] = grantNote
 	}
-	result.Set("sandbox", out)
+	result["sandbox"] = out
 	return result, spec, nil
 }
 
 // persistGrant stores the auto grant of candidate for the denied path and
 // records the outcome on entry. bwrap and Landlock can only open what
 // exists, so a granted directory is created for them.
-func persistGrant(entry *jsonx.Object, candidate, denied, backend string) {
+func persistGrant(entry map[string]any, candidate, denied, backend string) {
 	if _, err := sandbox.AddGrantEntry(candidate, "auto", denied, ""); err != nil {
-		entry.Set("auto", false).Set("why", "could not persist the grant: "+err.Error())
+		entry["auto"] = false
+		entry["why"] = "could not persist the grant: " + err.Error()
 		return
 	}
-	entry.Set("auto", true).Set("granted", true)
+	entry["auto"] = true
+	entry["granted"] = true
 	if backend != "bwrap" && backend != "landlock" {
 		return
 	}
@@ -253,7 +272,8 @@ func persistGrant(entry *jsonx.Object, candidate, denied, backend string) {
 		return
 	}
 	if err := os.MkdirAll(candidate, 0o700); err != nil {
-		entry.Set("auto", false).Set("why", "could not persist the grant: "+err.Error())
+		entry["auto"] = false
+		entry["why"] = "could not persist the grant: " + err.Error()
 	}
 }
 
@@ -287,50 +307,50 @@ func underAny(path string, dirs []string) bool {
 // key by key, other non-negative integers (cost_micro_usd) summed, anything
 // else taken from b unless null.
 func mergeUsage(a, b any) any {
-	ao, aok := a.(*jsonx.Object)
-	bo, bok := b.(*jsonx.Object)
+	ao, aok := a.(map[string]any)
+	bo, bok := b.(map[string]any)
 	if !aok || ao == nil {
 		if bok && bo != nil {
-			return bo.Clone()
+			return config.CloneValue(bo)
 		}
 		return b
 	}
 	if !bok || bo == nil {
 		return a
 	}
-	keys := ao.Keys()
-	for _, k := range bo.Keys() {
-		if _, ok := ao.Get(k); !ok {
+	keys := slices.Sorted(maps.Keys(ao))
+	for _, k := range slices.Sorted(maps.Keys(bo)) {
+		if _, ok := ao[k]; !ok {
 			keys = append(keys, k)
 		}
 	}
-	out := jsonx.NewObject()
+	out := map[string]any{}
 	for _, k := range keys {
-		va, _ := ao.Get(k)
-		vb, _ := bo.Get(k)
+		va := ao[k]
+		vb := bo[k]
 		if k == "tokens" {
-			tokens := jsonx.NewObject()
-			if t, ok := va.(*jsonx.Object); ok && t != nil {
-				tokens = t.Clone()
+			tokens := map[string]any{}
+			if t, ok := va.(map[string]any); ok && t != nil {
+				tokens = maps.Clone(t)
 			}
-			if t, ok := vb.(*jsonx.Object); ok && t != nil {
-				for _, tk := range t.Keys() {
-					v, _ := t.Get(tk)
+			if t, ok := vb.(map[string]any); ok && t != nil {
+				for _, tk := range slices.Sorted(maps.Keys(t)) {
+					v := t[tk]
 					pi.AccumulateInt(tokens, tk, v)
 				}
 			}
-			out.Set(k, tokens)
+			out[k] = tokens
 			continue
 		}
 		na, aInt := va.(int64)
 		nb, bInt := vb.(int64)
 		switch {
 		case aInt && bInt && na >= 0 && nb >= 0:
-			out.Set(k, na+nb)
+			out[k] = na + nb
 		case vb != nil:
-			out.Set(k, vb)
+			out[k] = vb
 		default:
-			out.Set(k, va)
+			out[k] = va
 		}
 	}
 	return out
@@ -343,7 +363,7 @@ func mergeNetworkDenials(a, b any) []any {
 		out = append(out, l...)
 	}
 	key := func(v any) string {
-		raw, _ := jsonx.Marshal(v)
+		raw, _ := fsutil.MarshalJSON(v)
 		return string(raw)
 	}
 	have := map[string]bool{}

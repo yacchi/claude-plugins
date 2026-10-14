@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // Marker files kept in a worktree's own git dir (never in the tree, so no
@@ -160,11 +160,12 @@ func writeAdoption(wt, task, session string) error {
 	if c := sessionComponent(orCurrent(session)); c != "" {
 		sess = c
 	}
-	rec := jsonx.NewObject().
-		Set("task", task).
-		Set("session", sess).
-		Set("adopted_at", float64(time.Now().UnixNano())/1e9)
-	b, err := jsonx.Marshal(rec)
+	rec := map[string]any{
+		"task":       task,
+		"session":    sess,
+		"adopted_at": float64(time.Now().UnixNano()) / 1e9,
+	}
+	b, err := fsutil.MarshalJSON(rec)
 	if err != nil {
 		return err
 	}

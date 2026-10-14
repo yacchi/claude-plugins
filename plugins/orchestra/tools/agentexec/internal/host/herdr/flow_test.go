@@ -431,7 +431,7 @@ func TestHostReportWithoutSrt(t *testing.T) {
 	r := HostReport(cfgOf(t, `{"sandbox": {"mode": "auto"}}`))
 	b, _ := jsonMarshal(r)
 	if err := containsAll(string(b), `"sandboxed":false`, `"restricted":false`, `network not restricted: host not sandboxed`,
-		`"srt":{"path":null,"version":null,"reason":"srt forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none"}`); err != nil {
+		`"srt":{"path":null,"reason":"srt forced unavailable by AGENT_EXEC_SANDBOX_BACKEND=none","version":null}`); err != nil {
 		t.Errorf("%v\n%s", err, b)
 	}
 }

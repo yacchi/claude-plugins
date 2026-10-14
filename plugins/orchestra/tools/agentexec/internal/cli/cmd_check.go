@@ -14,7 +14,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 )
 
@@ -134,7 +133,7 @@ func checkOutput(w io.Writer, text bool, status string, tree *string, files int,
 	if tree != nil {
 		treeV = *tree
 	}
-	_ = writeJSONLine(w, jsonx.NewObject().Set("status", status).Set("tree", treeV).Set("files", files).Set("checks", objs))
+	_ = writeJSONLine(w, map[string]any{"status": status, "tree": treeV, "files": files, "checks": objs})
 }
 
 func splitFilesFlag(s string) []string {

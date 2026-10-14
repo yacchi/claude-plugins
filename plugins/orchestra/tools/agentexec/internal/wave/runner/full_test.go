@@ -110,7 +110,7 @@ func TestFlakyFullRescuedByFullRetry(t *testing.T) {
 	eq(t, "reverts", len(w.events("revert")), 0)
 	eq(t, "probes", len(w.events("bisect-probe")), 0)
 	flaky := w.events("flaky")
-	if len(flaky) != 1 || flaky[0].Pkg != "" || flaky[0].Detail != `{"check": "full", "files": ["tests/flaky.test.ts"]}` {
+	if len(flaky) != 1 || flaky[0].Pkg != "" || flaky[0].Detail != `{"check":"full","files":["tests/flaky.test.ts"]}` {
 		t.Errorf("flaky %+v", flaky)
 	}
 	if _, err := os.Stat(marker); err != nil {

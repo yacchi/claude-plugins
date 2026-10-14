@@ -16,7 +16,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 )
 
@@ -114,7 +113,7 @@ func settingsFile(settings map[string]any) ([]byte, error) {
 
 // controlLine is json.dumps(settings, sort_keys=True) + "\n".
 func controlLine(settings map[string]any) ([]byte, error) {
-	b, err := jsonx.Marshal(settings)
+	b, err := fsutil.MarshalJSON(settings)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +352,7 @@ func Audit(record map[string]any) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	line, err := jsonx.Marshal(record)
+	line, err := fsutil.MarshalJSON(record)
 	if err != nil {
 		return err
 	}

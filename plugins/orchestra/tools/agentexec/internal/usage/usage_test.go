@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 var (
@@ -72,11 +72,11 @@ func write(t *testing.T, path string, lines ...string) {
 
 func decodeCfg(t *testing.T, text string) *config.Resolved {
 	t.Helper()
-	v, err := jsonx.Decode([]byte(text))
+	v, err := fsutil.DecodeJSON([]byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &config.Resolved{Values: v.(*jsonx.Object)}
+	return &config.Resolved{Values: v.(map[string]any)}
 }
 
 func TestParseSince(t *testing.T) {
@@ -408,7 +408,7 @@ func TestEveryEmittedNumberIsANonNegativeInt(t *testing.T) {
 		}
 	}
 	for _, r := range []Report{BuildReport(o), func() Report { o.RunIDs = []string{"wf_one"}; return BuildReport(o) }()} {
-		b, err := jsonx.MarshalIndent(r)
+		b, err := fsutil.MarshalJSONIndent(r)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -508,8 +508,8 @@ func TestScopeWithoutMatchesIsNotAttributable(t *testing.T) {
 			t.Errorf("%s: %+v", n, e)
 		}
 	}
-	b, _ := jsonx.Marshal(r.Sources)
-	if !strings.Contains(string(b), `"claude": {"attributable": false, "reason": "no matching transcript data"}`) {
+	b, _ := fsutil.MarshalJSON(r.Sources)
+	if !strings.Contains(string(b), `"claude":{"attributable":false,"reason":"no matching transcript data"}`) {
 		t.Errorf("%s", b)
 	}
 	if text := FormatText(r); !strings.Contains(text, "pi: not attributable (no matching run ledger data)") {
@@ -579,13 +579,13 @@ func TestSnapshot24hShape(t *testing.T) {
 	cutoff = now.Add(-24 * time.Hour)
 	o, _ := fixture(t)
 	t.Setenv("HOME", o.Home)
-	snap, ok := Snapshot24h(o.Cfg).(*jsonx.Object)
+	snap, ok := Snapshot24h(o.Cfg).(map[string]any)
 	if !ok {
 		t.Fatalf("%T", Snapshot24h(o.Cfg))
 	}
-	b, _ := jsonx.Marshal(snap)
+	b, _ := fsutil.MarshalJSON(snap)
 	got := string(b)
-	for _, want := range []string{`"claude/claude-opus-5": {"input_tokens": 1015`, `"claude/claude-mystery-9"`, `"pi/unknown": {"input_tokens": 6`} {
+	for _, want := range []string{`"claude/claude-opus-5":{"cached_input_tokens":0,"input_tokens":1015`, `"claude/claude-mystery-9"`, `"pi/unknown":{"cached_input_tokens":0,"input_tokens":6`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %s in %s", want, got)
 		}

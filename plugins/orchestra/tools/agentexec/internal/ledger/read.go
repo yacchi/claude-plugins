@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
@@ -45,14 +45,14 @@ func ForEachLine(path string, fn func(line string)) {
 
 // ReadFile returns the JSON-object lines of a ledger file; anything else
 // (blank, malformed, non-object) is skipped.
-func ReadFile(path string) []*jsonx.Object {
-	var records []*jsonx.Object
+func ReadFile(path string) []map[string]any {
+	var records []map[string]any
 	ForEachLine(path, func(line string) {
-		v, err := jsonx.Decode([]byte(line))
+		v, err := fsutil.DecodeJSON([]byte(line))
 		if err != nil {
 			return
 		}
-		if obj, ok := v.(*jsonx.Object); ok {
+		if obj, ok := v.(map[string]any); ok {
 			records = append(records, obj)
 		}
 	})

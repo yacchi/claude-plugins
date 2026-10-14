@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 const dirName = "orchestra-shelf"
@@ -45,22 +45,27 @@ type Result struct {
 }
 
 func (r Result) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject().Set("status", r.Status)
+	o := map[string]any{"status": r.Status}
 	switch {
 	case r.Status == "error":
-		o.Set("reason", r.Reason)
+		o["reason"] = r.Reason
 	case r.Status == "empty":
-		o.Set("files", nonNil(r.Files))
+		o["files"] = nonNil(r.Files)
 	case r.Status == "conflicted":
-		o.Set("id", r.ID).Set("files", nonNil(r.Files)).Set("note", r.Note)
+		o["id"] = r.ID
+		o["files"] = nonNil(r.Files)
+		o["note"] = r.Note
 	case r.kind == "drop":
-		o.Set("id", r.ID)
+		o["id"] = r.ID
 	case r.kind == "apply":
-		o.Set("id", r.ID).Set("files", nonNil(r.Files)).Set("dropped", r.Dropped)
+		o["id"] = r.ID
+		o["files"] = nonNil(r.Files)
+		o["dropped"] = r.Dropped
 	default:
-		o.Set("id", r.ID).Set("files", nonNil(r.Files))
+		o["id"] = r.ID
+		o["files"] = nonNil(r.Files)
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 func nonNil(s []string) []string {
@@ -256,7 +261,7 @@ func Push(root string, paths []string, msg string, keepIndex bool) (Result, erro
 	}
 
 	meta := Entry{ID: id, Message: msg, KeepIndex: keepIndex, Files: changed, Created: time.Now().Unix()}
-	b, err := jsonx.Marshal(meta)
+	b, err := fsutil.MarshalJSON(meta)
 	if err != nil {
 		return Result{}, err
 	}

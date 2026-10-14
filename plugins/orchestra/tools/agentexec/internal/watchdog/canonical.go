@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"unicode/utf8"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // previewRunes caps args_preview (code points).
@@ -33,7 +33,7 @@ func decodeObject(line string) (map[string]any, bool) {
 }
 
 // Canonical is Python's json.dumps(v, sort_keys=True, separators=(",", ":"),
-// ensure_ascii=False) of a jsonx value: the identity of a tool call's args.
+// ensure_ascii=False) of a decoded JSON value: the identity of a tool call's args.
 func Canonical(v any) string {
 	var b strings.Builder
 	canonical(&b, v)
@@ -51,7 +51,7 @@ func canonical(b *strings.Builder, v any) {
 	case int:
 		b.WriteString(strconv.Itoa(x))
 	case float64:
-		b.WriteString(jsonx.FormatFloat(x))
+		b.WriteString(fsutil.FloatRepr(x))
 	case json.Number:
 		b.WriteString(number(x))
 	case string:
@@ -81,26 +81,8 @@ func canonical(b *strings.Builder, v any) {
 			canonical(b, x[k])
 		}
 		b.WriteByte('}')
-	case *jsonx.Object:
-		if x == nil {
-			b.WriteString("null")
-			return
-		}
-		keys := x.Keys()
-		sort.Strings(keys) // byte order == code point order for UTF-8
-		b.WriteByte('{')
-		for i, k := range keys {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			writeString(b, k)
-			b.WriteByte(':')
-			e, _ := x.Get(k)
-			canonical(b, e)
-		}
-		b.WriteByte('}')
 	default:
-		raw, err := jsonx.Marshal(x)
+		raw, err := fsutil.MarshalJSON(x)
 		if err != nil {
 			b.WriteString("null")
 			return
@@ -152,7 +134,7 @@ func number(n json.Number) string {
 		return s
 	}
 	f, _ := strconv.ParseFloat(s, 64)
-	return jsonx.FormatFloat(f)
+	return fsutil.FloatRepr(f)
 }
 
 func preview(v any) string {
@@ -178,7 +160,7 @@ func pyStr(v any) string {
 	case int64:
 		return strconv.FormatInt(x, 10)
 	case float64:
-		return jsonx.FormatFloat(x)
+		return fsutil.FloatRepr(x)
 	case json.Number:
 		return number(x)
 	}

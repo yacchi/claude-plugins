@@ -27,12 +27,10 @@ const (
 // test: add it here deliberately, with its place in the graph.
 var deps = map[string][]string{
 	"internal/fsutil":             {},
-	"internal/jsonx":              {},
 	"internal/paths":              {},
-	"internal/yaml11":             {"internal/jsonx"},
 	"internal/watchdog":           {},
 	"internal/wave/plan":          {},
-	"internal/config":             {"internal/yaml11", "internal/jsonx", "internal/paths", "internal/fsutil"},
+	"internal/config":             {"internal/paths", "internal/fsutil"},
 	"internal/tools":              {"internal/config"},
 	"internal/gitx":               {"internal/fsutil"},
 	"internal/isolate":            {"internal/gitx", "internal/config", "internal/paths"},
@@ -69,7 +67,7 @@ var deps = map[string][]string{
 }
 
 // leaves may be imported by any package.
-var leaves = []string{"internal/fsutil", "internal/jsonx", "internal/paths"}
+var leaves = []string{"internal/fsutil", "internal/paths"}
 
 // thirdParty are the only non-standard imports allowed outside tests.
 var thirdParty = []string{"github.com/spf13/cobra", "go.yaml.in/yaml/v3", "golang.org/x/sys/unix"}

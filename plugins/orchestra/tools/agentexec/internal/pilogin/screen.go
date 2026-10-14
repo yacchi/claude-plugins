@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 )
 
 var (
@@ -35,9 +35,9 @@ func splitLines(s string) []string {
 
 // ScreenText is the pane text of a `pane read`: its raw stdout, or the text
 // of a JSON payload when herdr wraps it.
-func ScreenText(out string, payload *jsonx.Object) string {
-	if result := payload.Object("result"); result != nil {
-		if text, ok := result.Get("text"); ok {
+func ScreenText(out string, payload map[string]any) string {
+	if result := config.ObjectAt(payload, "result"); result != nil {
+		if text, ok := result["text"]; ok {
 			if s, isStr := text.(string); isStr {
 				return s
 			}

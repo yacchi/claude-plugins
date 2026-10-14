@@ -12,7 +12,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // ValidCls are the dispatch classes a package may name.
@@ -120,21 +120,21 @@ func Load(file string) (*Plan, error) {
 	if err != nil {
 		return nil, errf("invalid JSON in plan %s: %s", file, readError(file, err))
 	}
-	doc, err := jsonx.Decode(data)
+	doc, err := fsutil.DecodeJSON(data)
 	if err != nil {
 		return nil, errf("invalid JSON in plan %s: %s", file, err)
 	}
-	raw, ok := doc.(*jsonx.Object)
+	raw, ok := doc.(map[string]any)
 	var rawPackages any
 	if ok {
-		rawPackages, ok = raw.Get("packages")
+		rawPackages, ok = raw["packages"]
 	}
 	if !ok {
 		return nil, errf("plan %s: missing required key 'packages'", file)
 	}
 
 	p := &Plan{}
-	rulesV, has := raw.Get("rules")
+	rulesV, has := raw["rules"]
 	if !has {
 		rulesV = []any{}
 	}
@@ -144,13 +144,13 @@ func Load(file string) (*Plan, error) {
 	}
 	for _, r := range rules {
 		bad := errf("plan rules entries must be {'if': <glob>, 'require': [<glob>...]}")
-		obj, isObj := r.(*jsonx.Object)
+		obj, isObj := r.(map[string]any)
 		if !isObj {
 			return nil, bad
 		}
-		ifV, _ := obj.Get("if")
+		ifV := obj["if"]
 		ifS, isStr := ifV.(string)
-		reqV, _ := obj.Get("require")
+		reqV := obj["require"]
 		req, isReq := stringList(reqV)
 		if !isStr || !isReq {
 			return nil, bad
@@ -158,7 +158,7 @@ func Load(file string) (*Plan, error) {
 		p.Rules = append(p.Rules, Rule{If: ifS, Require: req})
 	}
 
-	warmV, has := raw.Get("warm_read")
+	warmV, has := raw["warm_read"]
 	if !has {
 		warmV = []any{}
 	}
@@ -183,7 +183,7 @@ func Load(file string) (*Plan, error) {
 	}
 
 	p.Preamble = []string{}
-	if v, has := raw.Get("preamble"); has {
+	if v, has := raw["preamble"]; has {
 		list, isList := stringList(v)
 		if !isList {
 			return nil, errf("plan preamble must be a list of paths")
@@ -193,7 +193,7 @@ func Load(file string) (*Plan, error) {
 		}
 	}
 	p.ExternalDone = []string{}
-	if v, has := raw.Get("external_done"); has {
+	if v, has := raw["external_done"]; has {
 		list, isList := stringList(v)
 		if !isList {
 			return nil, errf("plan external_done must be a list of package ids")
@@ -212,11 +212,11 @@ func Load(file string) (*Plan, error) {
 	}
 	seen := map[string]bool{}
 	for _, e := range entries {
-		entry, isObj := e.(*jsonx.Object)
+		entry, isObj := e.(map[string]any)
 		if !isObj {
 			return nil, errf("plan packages entries must be objects: %s", pyRepr(e))
 		}
-		idV, _ := entry.Get("id")
+		idV := entry["id"]
 		id, isStr := idV.(string)
 		if !isStr || id == "" {
 			return nil, errf("package missing required field 'id': %s", pyRepr(entry))
@@ -226,12 +226,12 @@ func Load(file string) (*Plan, error) {
 		}
 		seen[id] = true
 
-		specV, _ := entry.Get("spec")
+		specV := entry["spec"]
 		spec, _ := specV.(string)
 		if spec == "" {
 			return nil, errf("%s: missing required field 'spec'", id)
 		}
-		clsV, _ := entry.Get("cls")
+		clsV := entry["cls"]
 		cls, _ := clsV.(string)
 		if falsy(clsV) {
 			return nil, errf("%s: missing required field 'cls'", id)
@@ -244,21 +244,21 @@ func Load(file string) (*Plan, error) {
 			return nil, errf("%s: spec path does not exist: %s", id, specPath)
 		}
 		pkg := Package{ID: id, Spec: specPath, Cls: cls, DependsOn: []string{}, FilesOwned: []string{}}
-		if v, has := entry.Get("depends_on"); has {
+		if v, has := entry["depends_on"]; has {
 			list, isList := stringList(v)
 			if !isList {
 				return nil, errf("%s: depends_on must be a list of package ids", id)
 			}
 			pkg.DependsOn = list
 		}
-		if v, has := entry.Get("files_owned"); has {
+		if v, has := entry["files_owned"]; has {
 			list, isList := stringList(v)
 			if !isList {
 				return nil, errf("%s: files_owned must be a list of paths", id)
 			}
 			pkg.FilesOwned = list
 		}
-		if v, has := entry.Get("prio"); has {
+		if v, has := entry["prio"]; has {
 			switch n := v.(type) {
 			case int64:
 				pkg.Prio = float64(n)
@@ -301,8 +301,8 @@ func falsy(v any) bool {
 		return x == 0
 	case []any:
 		return len(x) == 0
-	case *jsonx.Object:
-		return x.Len() == 0
+	case map[string]any:
+		return len(x) == 0
 	}
 	return false
 }

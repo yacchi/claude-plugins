@@ -8,7 +8,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "total records: 4\nby event: {\"dispatch\": 2, \"run_summary\": 1}\nby status: {\"ok\": 1, \"unavailable\": 1}\nby reason: {\"quota\": 1}\n",
+      "stdout": "total records: 4\nby event: {\"dispatch\":2,\"run_summary\":1}\nby status: {\"ok\":1,\"unavailable\":1}\nby reason: {\"quota\":1}\n",
       "stderr": ""
     },
     {
@@ -63,7 +63,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "total records: 4\nby event: {\"dispatch\": 2, \"run_summary\": 1}\nby status: {\"ok\": 1, \"unavailable\": 1}\nby reason: {\"quota\": 1}\n",
+      "stdout": "total records: 4\nby event: {\"dispatch\":2,\"run_summary\":1}\nby status: {\"ok\":1,\"unavailable\":1}\nby reason: {\"quota\":1}\n",
       "stderr": ""
     },
     {
@@ -113,7 +113,7 @@
       "stderr": "",
       "files": {
         "~/.claude/orchestra/telemetry/records.jsonl": {
-          "content": "{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"executor\": \"pi\", \"status\": \"ok\", \"usage\": {\"input_tokens\": 10, \"output_tokens\": 20}}\nnot json at all\n\n{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"executor\": \"claude\", \"status\": \"unavailable\", \"reason\": \"quota\"}\n[1, 2]\n{\"event\": \"run_summary\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"task_count\": 4}\n{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"darwin\", \"executor\": \"pi\", \"status\": \"ok\"}\n",
+          "content": "{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"executor\": \"pi\", \"status\": \"ok\", \"usage\": {\"input_tokens\": 10, \"output_tokens\": 20}}\nnot json at all\n\n{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"executor\": \"claude\", \"status\": \"unavailable\", \"reason\": \"quota\"}\n[1, 2]\n{\"event\": \"run_summary\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"task_count\": 4}\n{\"event\":\"dispatch\",\"executor\":\"pi\",\"os\":\"darwin\",\"schema_version\":2,\"status\":\"ok\",\"ts\":\"<TS>\"}\n",
           "shape": "text"
         }
       }
@@ -125,7 +125,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "total records: 5\nby event: {\"dispatch\": 3, \"run_summary\": 1}\nby status: {\"ok\": 2, \"unavailable\": 1}\nby reason: {\"quota\": 1}\n",
+      "stdout": "total records: 5\nby event: {\"dispatch\":3,\"run_summary\":1}\nby status: {\"ok\":2,\"unavailable\":1}\nby reason: {\"quota\":1}\n",
       "stderr": ""
     },
     {

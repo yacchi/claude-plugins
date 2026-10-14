@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 func sweep(t *testing.T, repo string, o SweepOptions) SweepResult {
@@ -239,11 +238,11 @@ func TestAliveDirFollowsTheLedger(t *testing.T) {
 	t.Setenv("ORCHESTRA_ALIVE_DIR", "")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	cfg := &config.Resolved{Values: jsonx.NewObject().Set("ledger", jsonx.NewObject().Set("dir", "~/elsewhere/runs"))}
+	cfg := &config.Resolved{Values: map[string]any{"ledger": map[string]any{"dir": "~/elsewhere/runs"}}}
 	if got := AliveDirFor(cfg); got != filepath.Join(home, "elsewhere", "alive") {
 		t.Errorf("relocated ledger: %s", got)
 	}
-	cfg = &config.Resolved{Values: jsonx.NewObject().Set("telemetry", jsonx.NewObject().Set("dir", "/data/telemetry"))}
+	cfg = &config.Resolved{Values: map[string]any{"telemetry": map[string]any{"dir": "/data/telemetry"}}}
 	if got := AliveDirFor(cfg); got != "/data/alive" {
 		t.Errorf("ledger beside telemetry: %s", got)
 	}

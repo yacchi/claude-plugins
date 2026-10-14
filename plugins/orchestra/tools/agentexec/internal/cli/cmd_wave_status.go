@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -134,7 +134,7 @@ func runWaveStatus(out, errw io.Writer, args []string) error {
 			if live {
 				m["live_changes"] = state.LiveChanges(&st)
 			}
-			b, err := jsonx.Marshal(m)
+			b, err := fsutil.MarshalJSON(m)
 			return string(b), err
 		case "line":
 			return state.StatusLine(&st, now, live), nil
@@ -241,7 +241,7 @@ func runWaveLint(out io.Writer, args []string) error {
 			if w.Pkg != nil {
 				pkg = *w.Pkg
 			}
-			list = append(list, jsonx.NewObject().Set("pkg", pkg).Set("message", w.Message))
+			list = append(list, map[string]any{"pkg": pkg, "message": w.Message})
 		}
 		if err := writeJSONLine(out, list); err != nil {
 			return err

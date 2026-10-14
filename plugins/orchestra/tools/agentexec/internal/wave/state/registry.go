@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
@@ -69,7 +69,7 @@ func Register(r Registration) error {
 		"state": abs(r.State), "plan": abs(r.Plan), "repo": abs(r.Repo),
 		"into": r.Into, "registered_at": r.RegisteredAt,
 	}
-	line, err := jsonx.Marshal(rec)
+	line, err := fsutil.MarshalJSON(rec)
 	if err != nil {
 		return err
 	}
@@ -102,9 +102,9 @@ func ListWaves() []Registration {
 		line, rerr := reader.ReadString('\n')
 		line = strings.TrimSpace(line)
 		if line != "" {
-			if doc, err := jsonx.Decode([]byte(line)); err == nil {
-				if o, ok := doc.(*jsonx.Object); ok {
-					g := func(k string) any { v, _ := o.Get(k); return v }
+			if doc, err := fsutil.DecodeJSON([]byte(line)); err == nil {
+				if o, ok := doc.(map[string]any); ok {
+					g := func(k string) any { return o[k] }
 					if st := str(g("state")); st != "" {
 						reg := Registration{
 							State: st, Plan: str(g("plan")), Repo: str(g("repo")),

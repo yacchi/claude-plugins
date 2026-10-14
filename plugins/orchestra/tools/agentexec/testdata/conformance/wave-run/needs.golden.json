@@ -58,7 +58,7 @@
           "content": [
             {
               "at": "<AT>",
-              "detail": "{\"source\": \"option\", \"value\": 1}",
+              "detail": "{\"source\":\"option\",\"value\":1}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -82,7 +82,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "A",
@@ -90,7 +90,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "A",
@@ -122,7 +122,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "C",
@@ -130,7 +130,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "C",
@@ -138,7 +138,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"denials\": [{\"host\": \"files.example.com\", \"port\": 443}]}",
+              "detail": "{\"denials\":[{\"host\":\"files.example.com\",\"port\":443}]}",
               "event": "network-denied",
               "from": null,
               "pkg": "C",
@@ -146,7 +146,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+              "detail": "{\"answer\":\"ESCALATE: network files.example.com\\nthe download is blocked\",\"hosts\":[\"files.example.com\"]}",
               "event": "status",
               "from": "implementing",
               "pkg": "C",
@@ -170,7 +170,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"attempt\": 1, \"cls\": \"standard\", \"kind\": \"implement\"}",
+              "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
               "pkg": "D",
@@ -178,7 +178,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"executor\": \"pi\", \"seconds\": <N>, \"status\": \"ok\"}",
+              "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
               "pkg": "D",
@@ -211,7 +211,7 @@
               },
               {
                 "at": "<AT>",
-                "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+                "detail": "{\"answer\":\"ESCALATE: network files.example.com\\nthe download is blocked\",\"hosts\":[\"files.example.com\"]}",
                 "id": "C",
                 "kind": "network"
               },
@@ -248,7 +248,7 @@
               "C": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+                "detail": "{\"answer\":\"ESCALATE: network files.example.com\\nthe download is blocked\",\"hosts\":[\"files.example.com\"]}",
                 "executor": "pi",
                 "files_changed": null,
                 "network_denials": [
@@ -377,7 +377,7 @@
               },
               {
                 "at": "<AT>",
-                "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+                "detail": "{\"answer\":\"ESCALATE: network files.example.com\\nthe download is blocked\",\"hosts\":[\"files.example.com\"]}",
                 "id": "C",
                 "kind": "network"
               }
@@ -408,7 +408,7 @@
               "C": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"hosts\": [\"files.example.com\"], \"answer\": \"ESCALATE: network files.example.com\\nthe download is blocked\"}",
+                "detail": "{\"answer\":\"ESCALATE: network files.example.com\\nthe download is blocked\",\"hosts\":[\"files.example.com\"]}",
                 "executor": "pi",
                 "files_changed": null,
                 "network_denials": [

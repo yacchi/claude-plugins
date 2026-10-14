@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/integrate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 )
 
@@ -28,7 +28,7 @@ type fixupFile struct {
 
 type fixupPkg struct {
 	pkg plan.Package
-	raw any // *jsonx.Object as stored or built
+	raw any // the decoded object as stored or built
 }
 
 func (r *runner) fixupsPath() string { return filepath.Join(r.stateDir, "fixups.json") }
@@ -39,8 +39,8 @@ func loadFixups(path string) fixupFile {
 	if err != nil {
 		return f
 	}
-	doc, err := jsonx.Decode(data)
-	obj, ok := doc.(*jsonx.Object)
+	doc, err := fsutil.DecodeJSON(data)
+	obj, ok := doc.(map[string]any)
 	if err != nil || !ok {
 		return f
 	}
@@ -51,7 +51,7 @@ func loadFixups(path string) fixupFile {
 		f.next = int(n)
 	}
 	for _, e := range asList(objGet(obj, "packages")) {
-		po, ok := e.(*jsonx.Object)
+		po, ok := e.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -82,8 +82,11 @@ func (r *runner) saveFixups() {
 	for i, p := range r.fixups.packages {
 		pkgs[i] = p.raw
 	}
-	b, err := jsonx.MarshalIndent(jsonx.NewObject().Set("rounds", r.fixups.rounds).
-		Set("next", r.fixups.next).Set("packages", pkgs))
+	b, err := fsutil.MarshalJSONIndent(map[string]any{
+		"rounds":   r.fixups.rounds,
+		"next":     r.fixups.next,
+		"packages": pkgs,
+	})
 	if err == nil {
 		_ = writeFileAtomic(r.fixupsPath(), append(b, '\n'))
 	}
@@ -342,8 +345,14 @@ func (r *runner) makeFixups(failures []failure, round int) []string {
 		}
 		_ = os.WriteFile(spec, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
 		pkg := plan.Package{ID: fid, Spec: spec, Cls: cls, DependsOn: []string{}, FilesOwned: owned}
-		raw := jsonx.NewObject().Set("id", fid).Set("spec", spec).Set("cls", cls).
-			Set("depends_on", []any{}).Set("files_owned", owned).Set("prio", 0)
+		raw := map[string]any{
+			"id":          fid,
+			"spec":        spec,
+			"cls":         cls,
+			"depends_on":  []any{},
+			"files_owned": owned,
+			"prio":        0,
+		}
 		r.plan.Packages = append(r.plan.Packages, pkg)
 		r.fixups.packages = append(r.fixups.packages, fixupPkg{pkg: pkg, raw: raw})
 		created = append(created, fid)

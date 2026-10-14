@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -21,7 +21,7 @@ const notifyTimeout = 30 * time.Second
 // emit appends one mechanical-stage event; its detail is the object as
 // sorted-key JSON. Observability never takes the loop down.
 func (r *runner) emit(name, pkg string, obj map[string]any) {
-	detail, err := jsonx.Marshal(sortedValue(obj))
+	detail, err := fsutil.MarshalJSON(obj)
 	if err != nil {
 		return
 	}
@@ -40,44 +40,14 @@ func nullable(s string) any {
 	return s
 }
 
-// sortedValue turns ordered objects into maps so they encode with sorted
-// keys (Python's sort_keys=True).
-func sortedValue(v any) any {
-	switch x := v.(type) {
-	case *jsonx.Object:
-		if x == nil {
-			return nil
-		}
-		m := make(map[string]any, x.Len())
-		for _, k := range x.Keys() {
-			val, _ := x.Get(k)
-			m[k] = sortedValue(val)
-		}
-		return m
-	case map[string]any:
-		m := make(map[string]any, len(x))
-		for k, val := range x {
-			m[k] = sortedValue(val)
-		}
-		return m
-	case []any:
-		out := make([]any, len(x))
-		for i, e := range x {
-			out[i] = sortedValue(e)
-		}
-		return out
-	}
-	return v
-}
-
 // notify runs --notify-cmd in the background with the payload on stdin and
 // WAVE_EVENT / WAVE_STATE in the environment; Run waits for them all.
-func (r *runner) notify(kind string, payload *jsonx.Object) {
+func (r *runner) notify(kind string, payload map[string]any) {
 	cmd := r.opts.NotifyCmd
 	if cmd == "" {
 		return
 	}
-	data, err := jsonx.Marshal(payload)
+	data, err := fsutil.MarshalJSON(payload)
 	if err != nil {
 		return
 	}
@@ -97,8 +67,13 @@ func (r *runner) notify(kind string, payload *jsonx.Object) {
 // need records a need ("" pid: wave-level) and notifies.
 func (r *runner) need(pid, kind, detail string) {
 	_ = r.store.AddNeed(pid, kind, detail)
-	r.notify("need", jsonx.NewObject().Set("event", "need").Set("pkg", nullable(pid)).
-		Set("kind", kind).Set("detail", detail).Set("at", r.clock()))
+	r.notify("need", map[string]any{
+		"event":  "need",
+		"pkg":    nullable(pid),
+		"kind":   kind,
+		"detail": detail,
+		"at":     r.clock(),
+	})
 }
 
 // stop records the first stop reason (later ones are ignored).
@@ -111,7 +86,7 @@ func (r *runner) stop(reason string) {
 	r.stopReason = &reason
 	r.mu.Unlock()
 	_ = r.store.MarkStopped(reason)
-	r.notify("stopped", jsonx.NewObject().Set("event", "stopped").Set("reason", reason).Set("at", r.clock()))
+	r.notify("stopped", map[string]any{"event": "stopped", "reason": reason, "at": r.clock()})
 }
 
 func (r *runner) stopped() bool {
@@ -237,9 +212,9 @@ func pyStr(v any) string {
 	case int64:
 		return strconv.FormatInt(x, 10)
 	case float64:
-		return jsonx.FormatFloat(x)
+		return fsutil.FloatRepr(x)
 	}
-	b, _ := jsonx.Marshal(v)
+	b, _ := fsutil.MarshalJSON(v)
 	return string(b)
 }
 
@@ -272,20 +247,8 @@ func str(v any) string {
 }
 
 func asMap(v any) map[string]any {
-	switch x := v.(type) {
-	case map[string]any:
-		return x
-	case *jsonx.Object:
-		if x == nil {
-			return nil
-		}
-		m := make(map[string]any, x.Len())
-		for _, k := range x.Keys() {
-			m[k], _ = x.Get(k)
-		}
-		return m
-	}
-	return nil
+	m, _ := v.(map[string]any)
+	return m
 }
 
 func asList(v any) []any {

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 )
 
 // Refresh moves a task worktree's own changes onto a newer base: the
@@ -104,16 +104,22 @@ func (r RefreshResult) MarshalJSON() ([]byte, error) {
 	if conflicts == nil {
 		conflicts = []Conflict{}
 	}
-	o := jsonx.NewObject().
-		Set("status", r.Status).Set("task", r.Task).
-		Set("path", nullable(r.Path)).Set("branch", nullable(r.Branch)).
-		Set("old_baseline", nullable(r.OldBaseline)).Set("baseline", nullable(r.Baseline)).
-		Set("files", nonNil(r.Files)).Set("conflicts", conflicts).
-		Set("patch_file", nullable(r.PatchFile)).Set("note", r.Note)
-	if r.InPlace {
-		o.Set("in_place", true)
+	o := map[string]any{
+		"status":       r.Status,
+		"task":         r.Task,
+		"path":         nullable(r.Path),
+		"branch":       nullable(r.Branch),
+		"old_baseline": nullable(r.OldBaseline),
+		"baseline":     nullable(r.Baseline),
+		"files":        nonNil(r.Files),
+		"conflicts":    conflicts,
+		"patch_file":   nullable(r.PatchFile),
+		"note":         r.Note,
 	}
-	return jsonx.Marshal(o)
+	if r.InPlace {
+		o["in_place"] = true
+	}
+	return fsutil.MarshalJSON(o)
 }
 
 // Refresh moves task's worktree onto onto ("" = HEAD of root). session ""

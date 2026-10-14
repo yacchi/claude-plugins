@@ -10,7 +10,6 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/telemetry"
 )
@@ -65,43 +64,47 @@ func notAttributable(reason string) *Source {
 
 // MarshalJSON writes the entry with the key order of the Python report.
 func (s Source) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject()
+	o := map[string]any{}
 	if s.NotAttributable {
-		o.Set("attributable", false).Set("reason", s.Reason)
-		return jsonx.Marshal(o)
+		o["attributable"] = false
+		o["reason"] = s.Reason
+		return fsutil.MarshalJSON(o)
 	}
-	o.Set("status", s.Status).Set("scope", s.Scope)
+	o["status"] = s.Status
+	o["scope"] = s.Scope
 	if s.Note != "" && !s.NoteLast {
-		o.Set("note", s.Note)
+		o["note"] = s.Note
 	}
-	o.Set("tokens", s.Tokens)
+	o["tokens"] = s.Tokens
 	if s.Breakdown {
-		o.Set("main", s.Main).Set("sidechain", s.Sidechain).Set("by_model", s.ByModel)
+		o["main"] = s.Main
+		o["sidechain"] = s.Sidechain
+		o["by_model"] = s.ByModel
 		if s.HasDetail {
-			o.Set("by_model_detail", s.ByModelDetail)
+			o["by_model_detail"] = s.ByModelDetail
 		}
 	}
 	if s.HasCostMicroUSD {
-		o.Set("cost_micro_usd", s.CostMicroUSD)
+		o["cost_micro_usd"] = s.CostMicroUSD
 	}
 	if s.Breakdown {
-		o.Set("sessions", s.Sessions)
+		o["sessions"] = s.Sessions
 	}
-	o.Set("records", s.Records)
+	o["records"] = s.Records
 	if s.Cost != nil {
-		o.Set("cost", s.Cost)
+		o["cost"] = s.Cost
 	}
 	if len(s.Runs) > 0 {
-		runs := jsonx.NewObject()
+		runs := map[string]any{}
 		for _, r := range s.Runs {
-			runs.Set(r.Run, r.Count)
+			runs[r.Run] = r.Count
 		}
-		o.Set("runs", runs)
+		o["runs"] = runs
 	}
 	if s.Note != "" && s.NoteLast {
-		o.Set("note", s.Note)
+		o["note"] = s.Note
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 // Scope says what the report covers.
@@ -139,11 +142,11 @@ type SourceList struct {
 }
 
 func (s SourceList) MarshalJSON() ([]byte, error) {
-	o := jsonx.NewObject()
+	o := map[string]any{}
 	for _, n := range s.Names {
-		o.Set(n, *s.Entries[n])
+		o[n] = *s.Entries[n]
 	}
-	return jsonx.Marshal(o)
+	return fsutil.MarshalJSON(o)
 }
 
 func getwd() string {
@@ -158,7 +161,7 @@ func getwd() string {
 // entry, even an unavailable one.
 func BuildReport(o ReportOptions) Report {
 	scoped := len(o.RunIDs) > 0 || len(o.SessionIDs) > 0
-	var overrides *jsonx.Object
+	var overrides map[string]any
 	if o.Cfg != nil {
 		overrides = o.Cfg.Section("pricing")
 	}
@@ -223,7 +226,7 @@ func sumTotals(s SourceList) Tokens {
 // costBlock prices the sources and (side effect) stores Claude's own
 // per-model estimate on its entry. Claude is estimated from list prices; pi
 // is the figure the provider itself reported.
-func costBlock(s SourceList, overrides *jsonx.Object) CostBlock {
+func costBlock(s SourceList, overrides map[string]any) CostBlock {
 	cb := CostBlock{
 		Components:      map[string]int64{},
 		PricedSources:   []string{},
@@ -270,22 +273,22 @@ func telemetryUsage(cutoff time.Time, cfg *config.Resolved, executor string) *So
 	}
 	s.Status = "empty"
 	for _, rec := range telemetry.ReadRecords(path) {
-		obj, ok := rec.(*jsonx.Object)
+		obj, ok := rec.(map[string]any)
 		if !ok {
 			continue
 		}
-		if ev, _ := obj.Get("event"); ev != "dispatch" {
+		if ev, _ := obj["event"]; ev != "dispatch" {
 			continue
 		}
-		if ex, _ := obj.Get("executor"); ex != executor {
+		if ex, _ := obj["executor"]; ex != executor {
 			continue
 		}
-		tsV, _ := obj.Get("ts")
+		tsV := obj["ts"]
 		ts, ok := ParseTimestamp(tsV)
 		if !ok || ts.Before(cutoff) {
 			continue
 		}
-		usage := obj.Object("usage")
+		usage := config.ObjectAt(obj, "usage")
 		if usage == nil {
 			continue
 		}
@@ -312,13 +315,13 @@ func scopedLedger(o ReportOptions) *Source {
 	for _, path := range selected {
 		var n int64
 		for _, rec := range ledger.ReadFile(path) {
-			if ex, _ := rec.Get("executor"); ex != "pi" {
+			if ex, _ := rec["executor"]; ex != "pi" {
 				continue
 			}
 			n++
 			s.Records++
 			s.Tokens.add(tokensFrom(rec), 1)
-			cost, _ := rec.Get("cost_micro_usd")
+			cost := rec["cost_micro_usd"]
 			s.CostMicroUSD += coerceCount(cost)
 		}
 		if n == 0 {

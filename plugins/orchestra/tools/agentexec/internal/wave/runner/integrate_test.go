@@ -41,7 +41,7 @@ func TestConflictInOneWaveRollsBackLater(t *testing.T) {
 	eq(t, "exit", code, 1)
 	eqJSON(t, "integrated", rep.Integrated, []string{"A"})
 	eqJSON(t, "needs", w.needKinds(), []kindOf{{"B", "conflict"}})
-	eq(t, "detail", w.state().Needs[0].Detail, `{"files": ["shared.txt"], "stage": "integrate"}`)
+	eq(t, "detail", w.state().Needs[0].Detail, `{"files":["shared.txt"],"stage":"integrate"}`)
 	got, _ := w.intFile("shared.txt")
 	if !strings.Contains(got, "A's line") || strings.Contains(got, "<<<<<<<") {
 		t.Errorf("shared.txt %q", got)
@@ -63,7 +63,7 @@ func TestPostIntegrationFailureRevertsCulprit(t *testing.T) {
 		t.Error("b.txt stayed integrated")
 	}
 	reverts := w.events("revert")
-	if len(reverts) != 1 || reverts[0].Pkg != "B" || reverts[0].Detail != `{"result": "reverted"}` {
+	if len(reverts) != 1 || reverts[0].Pkg != "B" || reverts[0].Detail != `{"result":"reverted"}` {
 		t.Errorf("revert events %+v", reverts)
 	}
 	for _, e := range w.events("") {
@@ -177,12 +177,12 @@ func TestStageEvents(t *testing.T) {
 	slices.Sort(tasks)
 	eqJSON(t, "integrated tasks", tasks, []string{"A", "B"})
 	for _, e := range w.events("") {
-		if e.Event == "dispatch-start" && e.Detail != `{"attempt": 1, "cls": "light", "kind": "implement"}` {
+		if e.Event == "dispatch-start" && e.Detail != `{"attempt":1,"cls":"light","kind":"implement"}` {
 			t.Errorf("detail not sorted-key JSON: %q", e.Detail)
 		}
 	}
 	reg, _ := readFile(os.Getenv("ORCHESTRA_WAVE_REGISTRY"))
-	if !strings.Contains(reg, `"into": "wave-int"`) || !strings.Contains(reg, w.statePath) {
+	if !strings.Contains(reg, `"into":"wave-int"`) || !strings.Contains(reg, w.statePath) {
 		t.Errorf("registry %q", reg)
 	}
 }
@@ -374,7 +374,7 @@ func TestNotifyCmdReceivesNeedAndDone(t *testing.T) {
 	var kinds []string
 	for _, l := range nonBlank(strings.Split(text, "\n")) {
 		kinds = append(kinds, strings.SplitN(l, " ", 2)[0])
-		if strings.HasPrefix(l, "need ") && (!strings.Contains(l, `"pkg": "A"`) || !strings.Contains(l, `"kind": "escalate"`)) {
+		if strings.HasPrefix(l, "need ") && (!strings.Contains(l, `"pkg":"A"`) || !strings.Contains(l, `"kind":"escalate"`)) {
 			t.Errorf("need payload %q", l)
 		}
 	}

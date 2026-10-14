@@ -5,10 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/jsonx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // fixtures is testdata/sbpl/fixtures.json, recorded from the retired Python
@@ -154,7 +155,7 @@ func TestLearnedStoreBytesMatchPython(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := strings.ReplaceAll(f.Learned[i].Content, "<ROOT>", root)
-		if string(got) != want {
+		if !sameJSON(got, []byte(want)) || !strings.HasSuffix(string(got), "}\n") {
 			t.Errorf("after %s:\n got %q\nwant %q", label, got, want)
 		}
 	}
@@ -194,11 +195,11 @@ func replayCase(t *testing.T, f fixtures, c fixtureCase) (Spec, []string, map[st
 	for k, v := range c.Env {
 		env[k] = sub(v)
 	}
-	cfgRaw, err := jsonx.Decode([]byte(sub(string(c.Cfg))))
+	cfgRaw, err := fsutil.DecodeJSON([]byte(sub(string(c.Cfg))))
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfgObj, _ := cfgRaw.(*jsonx.Object)
+	cfgObj, _ := cfgRaw.(map[string]any)
 	sc := normalizeConfig(cfgObj)
 	results := ProbeReport{
 		Seatbelt: Probe{OK: true, Detail: "ok"},
@@ -254,4 +255,13 @@ func replayCase(t *testing.T, f fixtures, c fixtureCase) (Spec, []string, map[st
 	}
 	spec.Reason = unsub(spec.Reason)
 	return spec, argv, settings, path
+}
+
+// sameJSON reports whether a and b decode to the same JSON value.
+func sameJSON(a, b []byte) bool {
+	var x, y any
+	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil {
+		return false
+	}
+	return reflect.DeepEqual(x, y)
 }
