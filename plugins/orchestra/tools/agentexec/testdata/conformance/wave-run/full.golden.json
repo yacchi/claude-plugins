@@ -27,7 +27,7 @@
         "printf '%s %s\\n' {sha} \"$WAVE_GREEN_SHA\" >> \"$HOME/green.out\"; pwd -P >> \"$HOME/green.out\""
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -44,14 +44,13 @@
         "status": "done",
         "waves": 2
       },
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/gated/green.json": {
           "content": {
             "at": "<AT>",
             "sha": "<SHA#1>"
           },
-          "shape": "json-line"
+          "shape": "json"
         },
         "~/gated/state.events.jsonl": {
           "content": [
@@ -408,7 +407,7 @@
             "version": 1,
             "wave": 2
           },
-          "shape": "json-indent"
+          "shape": "json"
         },
         "~/green.out": {
           "content": "<SHA#2> <SHA#2>\n<HOME>/gated/green-tree\n<SHA#1> <SHA#1>\n<HOME>/gated/green-tree\n",
@@ -436,7 +435,7 @@
         "false"
       ],
       "exit": 5,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -454,14 +453,13 @@
         "status": "stopped",
         "waves": 1
       },
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/red/green.json": {
           "content": {
             "at": "<AT>",
             "sha": "<SHA#3>"
           },
-          "shape": "json-line"
+          "shape": "json"
         },
         "~/red/state.json": {
           "content": {
@@ -504,7 +502,7 @@
             "version": 1,
             "wave": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -526,7 +524,7 @@
         "echo boom; exit 1"
       ],
       "exit": 5,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -556,7 +554,6 @@
         "status": "stopped",
         "waves": 4
       },
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/final/fixups.json": {
           "content": {
@@ -585,7 +582,7 @@
             ],
             "rounds": 2
           },
-          "shape": "json-indent"
+          "shape": "json"
         },
         "~/final/fixups/fix-1.md": {
           "content": "# Fix-up fix-1 (convergence round 1)\n\nEvery package is integrated, but these full checks are red on the integration tree. Make them pass; stay inside files_owned; do not commit.\n\n## full\n\nboom\n\nNo package's changes match these failures.\n",
@@ -1062,7 +1059,7 @@
             "version": 1,
             "wave": 4
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     }

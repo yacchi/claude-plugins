@@ -12,7 +12,7 @@
         "a.txt"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [
           "a.txt"
@@ -20,7 +20,6 @@
         "id": 0,
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "a.txt": {
           "content": "a\n",
@@ -39,7 +38,7 @@
         "--allow-main-tree"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [
           "b.txt"
@@ -47,7 +46,6 @@
         "id": 1,
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "a.txt": {
           "content": "a\n",
@@ -65,7 +63,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "entries": [
           {
@@ -88,8 +86,7 @@
           }
         ],
         "status": "ok"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -98,7 +95,7 @@
         "0"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "dropped": false,
         "files": [
@@ -107,7 +104,6 @@
         "id": 0,
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "a.txt": {
           "content": "a2\n",
@@ -125,7 +121,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "entries": [
           {
@@ -148,8 +144,7 @@
           }
         ],
         "status": "ok"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -158,12 +153,11 @@
         "0"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "id": 0,
         "status": "ok"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -172,12 +166,11 @@
         "7"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "no such shelf entry",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -186,12 +179,11 @@
         "7"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "no such shelf entry",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -199,7 +191,7 @@
         "pop"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "dropped": true,
         "files": [
@@ -208,7 +200,6 @@
         "id": 1,
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "a.txt": {
           "content": "a2\n",
@@ -226,12 +217,11 @@
         "drop"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "no such shelf entry",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -239,12 +229,11 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "entries": [],
         "status": "ok"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

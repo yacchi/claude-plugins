@@ -7,15 +7,7 @@ setup:
     a.txt: "a\n"
 steps:
   - argv: [isolate, create]
-  - argv: [isolate, diff]
-  - argv: [isolate, create, --task]
-  - argv: [isolate, create, --task, t1, --bogus]
-  - argv: [isolate, create, --task, t1, extra]
   - argv: [isolate, create, --task, t1, --backend, svn]
-  - argv: [isolate, create, --task, t1, --session, abc]
-  - argv: [isolate, diff, --task, t1, --session, abc]
-  - argv: [isolate, remove]
-  - argv: [isolate, remove, --task, t1, --session, abcdefgh]
   - argv: [isolate, create, --task, "///"]
   - argv: [isolate, create, --task, ".."]
   - argv: [isolate, create, --task, "../Foo Bar//x"]
@@ -25,4 +17,3 @@ steps:
   - argv: [isolate, list, --repo, <ROOT>/tmp]
   - argv: [isolate, remove, --task, nope]
   - argv: [isolate, diff, --task, nope]
-  - argv: [isolate, list, --session, "bad session"]

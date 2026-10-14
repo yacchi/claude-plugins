@@ -1,8 +1,7 @@
 description: >
   the whole device-code login against a scripted herdr: pi's /login screens
-  are parsed into a URL and code (start), and a later invocation (run by
-  Python in both modes, so the state file must be readable across
-  implementations) pastes, sees pi turn ready, and cleans the pane up
+  are parsed into a URL and code (start), and a later invocation reads the
+  login state file, pastes, sees pi turn ready, and cleans the pane up
 normalize_keys: [session]
 setup:
   git: true

@@ -17,14 +17,13 @@
         "run-1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml"
         ],
         "token": "<TOKEN#1>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -34,7 +33,7 @@
         "--capture"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "all done",
         "effort": "medium",
@@ -89,7 +88,6 @@
           }
         }
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-run-1.jsonl": {
           "content": {
@@ -105,7 +103,7 @@
             "status": "ok",
             "ts": "<TS>"
           },
-          "shape": "json-line"
+          "shape": "json"
         },
         "~/.claude/orchestra/sessions/pi-t-1.json": {
           "content": {
@@ -115,7 +113,7 @@
             "updated": "<TS>",
             "workdir": "<WORK>"
           },
-          "shape": "json-line"
+          "shape": "json"
         }
       }
     },
@@ -126,7 +124,7 @@
         "<@TOK>"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "all done",
         "effort": "medium",
@@ -181,7 +179,6 @@
           }
         }
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/sessions/pi-t-1.json": {
           "content": {
@@ -191,7 +188,7 @@
             "updated": "<TS>",
             "workdir": "<WORK>"
           },
-          "shape": "json-line"
+          "shape": "json"
         }
       }
     },
@@ -203,7 +200,7 @@
         "--no-resume"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "all done",
         "effort": "medium",
@@ -257,8 +254,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -269,7 +265,7 @@
         "light"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -309,8 +305,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -321,7 +316,7 @@
         "pi,claude"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "route": {
           "agent_type": null,
@@ -351,8 +346,7 @@
           "source": "priority"
         },
         "status": "unroutable"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

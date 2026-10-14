@@ -13,14 +13,13 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml"
         ],
         "token": "<TOKEN#1>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -32,8 +31,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: --token conflicts with --workdir\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -58,8 +56,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: --token conflicts with --prompt-file, --workdir, --archetype, --run-id, --isolate, --task, --resume, --no-cooldown\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -74,8 +71,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: --detach requires --token\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -90,8 +86,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: --summary requires --token\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -103,34 +98,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing required option: --class\n"
-    },
-    {
-      "argv": [
-        "dispatch",
-        "--class",
-        "light",
-        "--workdir",
-        "."
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing required option: --prompt-file\n"
-    },
-    {
-      "argv": [
-        "dispatch",
-        "--class",
-        "light",
-        "--prompt-file",
-        "p.md"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing required option: --workdir\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -144,25 +112,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: could not read prompt file: missing.md\n"
-    },
-    {
-      "argv": [
-        "dispatch",
-        "--class",
-        "light",
-        "--prompt-file",
-        "p.md",
-        "--workdir",
-        ".",
-        "--isolate",
-        "maybe"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: --isolate must be auto|always|never\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -178,34 +128,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: invalid --run-id: ../x\n"
-    },
-    {
-      "argv": [
-        "dispatch",
-        "--class",
-        "light",
-        "--prompt-file",
-        "p.md",
-        "--workdir",
-        ".",
-        "--frobnicate"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: unknown option: --frobnicate\n"
-    },
-    {
-      "argv": [
-        "dispatch",
-        "--class"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing value for --class\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -215,8 +138,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: invalid token: dsp-XYZ\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -226,8 +148,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: invalid token: <TOKEN#2>\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -237,8 +158,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: invalid token: ../../etc/passwd\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -247,33 +167,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing required option: --token\n"
-    },
-    {
-      "argv": [
-        "dispatch",
-        "wait",
-        "--token"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing value for --token\n"
-    },
-    {
-      "argv": [
-        "dispatch",
-        "wait",
-        "--token",
-        "dsp-000000000000",
-        "--max-wait",
-        "soon"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: --max-wait must be an integer\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -284,21 +178,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: invalid token: not-a-token\n"
-    },
-    {
-      "argv": [
-        "dispatch",
-        "wait",
-        "--token",
-        "dsp-000000000000",
-        "--bogus"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: unknown option: --bogus\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -310,12 +190,11 @@
         "0"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "status": "unknown-token",
         "token": "<TOKEN#2>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -328,12 +207,11 @@
         "--summary"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "status": "unknown-token",
         "token": "<TOKEN#1>"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

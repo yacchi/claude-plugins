@@ -8,8 +8,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: directory does not exist: <HOME>/.claude/orchestra/telemetry\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -18,8 +17,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "total records: 0\nby event: {}\nby status: {}\nby reason: {}\n",
-      "stderr": ""
+      "stdout": "total records: 0\nby event: {}\nby status: {}\nby reason: {}\n"
     },
     {
       "argv": [
@@ -29,8 +27,7 @@
       ],
       "exit": 0,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": ""
+      "stdout": null
     }
   ]
 }

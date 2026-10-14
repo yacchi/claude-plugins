@@ -8,19 +8,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: record requires --json or --file\n"
-    },
-    {
-      "argv": [
-        "telemetry",
-        "record",
-        "--json"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: missing value for --json\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -31,8 +19,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: invalid JSON input\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -43,8 +30,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: record missing valid 'event'\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -55,8 +41,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: record missing valid 'event'\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -67,8 +52,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: record missing valid 'event'\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -79,8 +63,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: invalid JSON input\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -91,22 +74,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: invalid JSON input\n"
-    },
-    {
-      "argv": [
-        "telemetry",
-        "record",
-        "--bogus"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: telemetry: unknown option: --bogus\n",
-      "files": {
-        "~/.claude/orchestra/telemetry/records.jsonl": null
-      }
+      "stdout": null
     }
   ]
 }

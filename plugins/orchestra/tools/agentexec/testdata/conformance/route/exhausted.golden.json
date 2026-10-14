@@ -10,7 +10,7 @@
         "pi"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -33,8 +33,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -45,7 +44,7 @@
         "pi,claude"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -72,8 +71,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -84,7 +82,7 @@
         "claude"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -107,8 +105,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -121,8 +118,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: light (archetype: default)\ncandidates: claude, pi\nresolved: UNROUTABLE\nskipped:\n  - claude: exhausted\n  - pi: exhausted\nsource: priority\n",
-      "stderr": ""
+      "stdout": "agent-exec route\n-----------------\nclass: light (archetype: default)\ncandidates: claude, pi\nresolved: UNROUTABLE\nskipped:\n  - claude: exhausted\n  - pi: exhausted\nsource: priority\n"
     },
     {
       "argv": [
@@ -133,7 +129,7 @@
         ""
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -153,8 +149,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

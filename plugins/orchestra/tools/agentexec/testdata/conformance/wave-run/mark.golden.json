@@ -10,8 +10,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -24,8 +23,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -40,8 +38,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: --status must be ready|pending|failed\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -56,8 +53,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: no state file at wave/nope.json\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -72,8 +68,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: unknown package: Z\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -88,8 +83,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -103,8 +97,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -118,8 +111,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -132,8 +124,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: --await requires an Orca stalled/timeout need\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -146,8 +137,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: no live Orca session for F\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -159,13 +149,12 @@
         "A"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "detail": "await-orca",
         "pkg": "A",
         "status": "implementing"
       },
-      "stderr": "",
       "files": {
         "~/wave/state.json": {
           "content": {
@@ -271,7 +260,7 @@
             "version": 1,
             "wave": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -287,12 +276,11 @@
         "ready"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pkg": "B",
         "status": "verifying"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -308,12 +296,11 @@
         "retry it"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pkg": "C",
         "status": "pending"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -326,8 +313,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: package has no tree: E\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -340,8 +326,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: unknown package: ZZ\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -355,7 +340,7 @@
         "src/*.py,docs/*.md,"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pkg": "D",
         "status": "pending",
@@ -364,7 +349,6 @@
           "docs/*.md"
         ]
       },
-      "stderr": "",
       "files": {
         "~/wave/plan-overrides.json": {
           "content": {
@@ -375,7 +359,7 @@
               ]
             }
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -391,14 +375,13 @@
         "looked again"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pkg": [
           "D"
         ],
         "status": "verifying"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -409,11 +392,10 @@
         "--clear-environment"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "environment_cleared": true
       },
-      "stderr": "",
       "files": {
         "~/wave/state.events.jsonl": {
           "content": [
@@ -549,7 +531,7 @@
             "version": 1,
             "wave": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     }

@@ -12,41 +12,8 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Scenario is one testdata/conformance/<area>/<name>.yaml file.
-//
-//	description: what the scenario pins
-//	platforms: [darwin]          # optional; skipped elsewhere
-//	setup:
-//	  git: true                  # git init <WORK> and commit `files`
-//	  files:                     # written before the commit; "~/x" is under
-//	    .claude/orchestra.yaml: | #   HOME, anything else under WORK
-//	      tiers: {light: sonnet}
-//	  dirty: {src/a.txt: "x\n"}  # written after the commit
-//	  modes: {bin/tool: "0755"}  # chmod after writing
-//	  env: {ORCHESTRA_CONFIG_ROOT: "<WORK>/other"}
-//	  fakes: [pi]                # fake executors on PATH
-//	  keep_sandbox_default: true # skip the harness's `sandbox: {mode: off}` user layer
-//	normalize_keys: [elapsed_s]  # JSON keys whose values are masked
-//	normalize_text:              # regex rewrites of every string (after the
-//	  - pattern: '"seconds": [0-9.e-]+'   #   built-in masks), e.g. durations
-//	    replace: '"seconds": <S>'         #   inside JSON-in-a-string details
-//	steps:
-//	  - argv: [config, --json]
-//	    cwd: sub/dir             # relative to WORK ("~" or "~/x" for HOME)
-//	    stdin: "..."
-//	    env: {K: V}
-//	    stderr: exact            # exact (default) | ignore | prefix
-//	    stderr_prefix: "agent-exec: invalid YAML in <WORK>/"
-//	    snapshot: ["~/.claude/orchestra.yaml"]  # files captured after the step
-//	    save: {TOK: token}       # top-level stdout JSON key later steps use as <@TOK>
-//	    argv_go: [dispatch, ...] # argv actually run (a command renamed since the
-//	                             #   golden was recorded); the golden keeps argv
-//
-// <ROOT>, <HOME> and <WORK> are substituted in file contents, env values and
-// cwd; <@NAME> (a saved value) in argv, argv_go, stdin, env values and
-// snapshot paths. Every step also sees AGENT_EXEC_UNDER_TEST, an executable
-// running the binary under test, for a PATH shim that must reach it
-// (`exec "$AGENT_EXEC_UNDER_TEST" "$@"`: a detached child re-runs the shim).
+// Scenario is one testdata/conformance/<area>/<name>.yaml file; the
+// fields are described in the package comment (conformance_test.go).
 type Scenario struct {
 	Description   string     `yaml:"description"`
 	Platforms     []string   `yaml:"platforms"`
@@ -75,36 +42,13 @@ type Setup struct {
 }
 
 type Step struct {
-	Argv         []string          `yaml:"argv"`
-	Cwd          string            `yaml:"cwd"`
-	Stdin        string            `yaml:"stdin"`
-	Env          map[string]string `yaml:"env"`
-	Stderr       string            `yaml:"stderr"`
-	StderrPrefix string            `yaml:"stderr_prefix"`
-	Snapshot     []string          `yaml:"snapshot"`
-	Save         map[string]string `yaml:"save"`
-	ArgvGo       []string          `yaml:"argv_go"`
-	// GoSwap / GoReplace record intentional Go deviations from goldens
-	// recorded from Python before the cutover (each also has a line in
-	// CHANGES.md). See applyGoDeviations and bakeGoDeviations.
-	GoSwap    *GoSwap     `yaml:"go_swap"`
-	GoReplace []GoReplace `yaml:"go_replace"`
-}
-
-// GoSwap: the golden's top-level key (JSON stdout) or "<key>: " lines (text
-// stdout) named Golden is replaced in Go by Got, whose value is volatile and
-// so only checked for shape: a JSON object with exactly Keys, or, in text, one
-// "<got>: " line carrying every "<key>=".
-type GoSwap struct {
-	Golden string   `yaml:"golden"`
-	Got    string   `yaml:"got"`
-	Keys   []string `yaml:"keys"`
-}
-
-// GoReplace rewrites the golden's text stdout (Old -> New) before comparing.
-type GoReplace struct {
-	Old string `yaml:"old"`
-	New string `yaml:"new"`
+	Argv           []string          `yaml:"argv"`
+	Cwd            string            `yaml:"cwd"`
+	Stdin          string            `yaml:"stdin"`
+	Env            map[string]string `yaml:"env"`
+	StderrContains []string          `yaml:"stderr_contains"`
+	Snapshot       []string          `yaml:"snapshot"`
+	Save           map[string]string `yaml:"save"`
 }
 
 func (s *Scenario) ID() string { return s.area + "/" + s.name }
@@ -150,17 +94,6 @@ func loadScenarios(root string) ([]*Scenario, error) {
 		}
 		if len(sc.Steps) == 0 {
 			return nil, fmt.Errorf("%s: no steps", path)
-		}
-		for i, st := range sc.Steps {
-			switch st.Stderr {
-			case "", "exact", "ignore":
-			case "prefix":
-				if st.StderrPrefix == "" {
-					return nil, fmt.Errorf("%s: step %d: stderr: prefix needs stderr_prefix", path, i)
-				}
-			default:
-				return nil, fmt.Errorf("%s: step %d: unknown stderr mode %q", path, i, st.Stderr)
-			}
 		}
 		sc.path = path
 		sc.area = filepath.Base(filepath.Dir(path))

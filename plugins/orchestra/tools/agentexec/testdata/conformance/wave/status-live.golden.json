@@ -11,8 +11,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "wave 2  pending=1 implementing=1 fixing=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  2*  1\n  e  fixing  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n",
-      "stderr": ""
+      "stdout": "wave 2  pending=1 implementing=1 fixing=1 integrated=1 needs=1 failed=1  running: 2 in flight  stopped: by test\n  a  implementing  0m00s  pi  2*  1\n  e  fixing  0m00s  pi  -  0\n  b  integrated  0m00s  claude  3  2\n  d  needs  0m00s  -  -  0\n  c  failed  0m00s  -  0  0\nneeds:\n  d  scope  needs wider scope\n  (wave)  environment  wave level need\nnetwork denied:\n  e  api.anthropic.com:443\n"
     },
     {
       "argv": [
@@ -24,7 +23,7 @@
         "--live"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "base": "abc123",
@@ -131,8 +130,7 @@
         "updated": 100000000001.5,
         "version": 1,
         "wave": 2
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -144,7 +142,7 @@
         "--live"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "counts": {
           "failed": 1,
@@ -163,8 +161,7 @@
         "stopped": true,
         "updated_ago": "<UPDATED_AGO>",
         "wave": 2
-      },
-      "stderr": ""
+      }
     }
   ]
 }

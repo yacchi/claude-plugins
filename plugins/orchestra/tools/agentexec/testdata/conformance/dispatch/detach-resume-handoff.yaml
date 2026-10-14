@@ -1,8 +1,8 @@
 description: >
   state handed between processes: a minted token is dispatched, re-dispatched
   detached and waited on, and a detached run started by one process is
-  summarized and waited on by later ones — the token, detach and session
-  files are the only link (recorded as a Python/Go mix before the cutover)
+  summarized and waited on by later ones; the token, detach and session files
+  are the only link
 normalize_keys: [started, waited_s]
 setup:
   git: true

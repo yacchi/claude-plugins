@@ -6,8 +6,13 @@
         "doctor"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
+        "build": {
+          "binary": "<BUILD>",
+          "go": "<BUILD>",
+          "source_hash": "<BUILD>"
+        },
         "cli_network": {
           "ecosystem": true,
           "executors": {
@@ -413,12 +418,8 @@
         "user_config": {
           "herdr": "isolate",
           "orca": "isolate"
-        },
-        "uv": {
-          "present": false
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -427,8 +428,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: True)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nuv: NOT found\nconfig: resolved (0 layer(s) found)\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=True dispatch=cli binary=pi available=True\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=haiku effort=None source=priority)\n  - standard: pi (dispatch=cli model=openai-codex/gpt-5.6-luna effort=medium source=priority)\n  - deep: claude (dispatch=claude model=opus effort=None source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=None source=priority)\nsandbox: mode=auto backend=seatbelt enforced=True (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=True (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=False srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=False backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\n",
-      "stderr": ""
+      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: True)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nbuild: <BUILD>\nconfig: resolved (0 layer(s) found)\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=True dispatch=cli binary=pi available=True\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=haiku effort=None source=priority)\n  - standard: pi (dispatch=cli model=openai-codex/gpt-5.6-luna effort=medium source=priority)\n  - deep: claude (dispatch=claude model=opus effort=None source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=None source=priority)\nsandbox: mode=auto backend=seatbelt enforced=True (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=True (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=False srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=False backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\n"
     }
   ]
 }

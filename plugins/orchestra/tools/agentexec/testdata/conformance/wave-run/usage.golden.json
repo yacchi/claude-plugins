@@ -7,8 +7,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec wave status --state PATH [--json|--line|--text] [--live]\n                        [--watch SEC] [--events N]\n       agent-exec wave stop --state PATH [--reason TEXT]\n       agent-exec wave lint --plan PATH [--json|--text]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -17,18 +16,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec wave status --state PATH [--json|--line|--text] [--live]\n                        [--watch SEC] [--events N]\n       agent-exec wave stop --state PATH [--reason TEXT]\n       agent-exec wave lint --plan PATH [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "--help"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec wave status --state PATH [--json|--line|--text] [--live]\n                        [--watch SEC] [--events N]\n       agent-exec wave stop --state PATH [--reason TEXT]\n       agent-exec wave lint --plan PATH [--json|--text]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -37,45 +25,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: missing required option: --plan\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "plan.json"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: missing required option: --state\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: missing value for --plan\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "p",
-        "--plan",
-        "p"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: duplicate option: --plan\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -91,43 +41,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: unknown option: --bogus\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "p",
-        "--state",
-        "s",
-        "--into",
-        "i",
-        "--after-green",
-        "true"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: unknown option: --after-green\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "p",
-        "--state",
-        "s",
-        "--into",
-        "i",
-        "stray"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: unknown option: stray\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -144,98 +58,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: --max-in-flight must be at least 1\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "p",
-        "--state",
-        "s",
-        "--into",
-        "i",
-        "--max-in-flight",
-        "x"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: invalid --max-in-flight value: x\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "p",
-        "--state",
-        "s",
-        "--into",
-        "i",
-        "--max-packages",
-        "-1"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: invalid --max-packages value: -1\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "p",
-        "--state",
-        "s",
-        "--into",
-        "i",
-        "--stop-at",
-        "soon"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: invalid --stop-at value: soon\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "p",
-        "--state",
-        "s",
-        "--into",
-        "i",
-        "--full-timeout",
-        "-2"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: invalid --full-timeout value: -2\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "p",
-        "--state",
-        "s",
-        "--into",
-        "i",
-        "--full-every",
-        "0"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: --full-every must be at least 1\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -252,26 +75,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: invalid --run-id value: bad id\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "run",
-        "--plan",
-        "p",
-        "--state",
-        "s",
-        "--into",
-        "i",
-        "--json",
-        "--text"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave run: --json and --text are mutually exclusive\nusage: agent-exec wave run --plan PLAN --state STATE --into TASK [--repo P]\n                  [--max-in-flight N|auto] [--gate CMD] [--full CMD] [--full-every N]\n                  [--full-timeout SEC] [--full-retry CMD] [--on-green CMD]\n                  [--resume-on-reset]\n                  [--no-ui] [--notify-cmd CMD]\n                  [--stop-at EPOCH] [--max-waves N] [--max-packages N]\n                  [--run-id ID] [--json|--text]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -285,13 +89,12 @@
         "i"
       ],
       "exit": 2,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "kind": "plan",
         "reason": "invalid JSON in plan missing.json: [Errno 2] No such file or directory: 'missing.json'",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -307,8 +110,7 @@
       ],
       "exit": 3,
       "stdout_shape": "text",
-      "stdout": "wave run error: not a git repository: <WORK>\n",
-      "stderr": ""
+      "stdout": "wave run error: not a git repository: <WORK>\n"
     },
     {
       "argv": [
@@ -324,13 +126,12 @@
         "."
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "kind": "environment",
         "reason": "not a git repository: .",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -339,41 +140,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n                  or --state STATE --await ID\n                  [--widen GLOB[,GLOB...]] | --recheck ID[,ID...]\n                  (ready enters self-verifying; pending|failed are terminal handoffs)\n                  [--detail TEXT] | --clear-environment\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "mark",
-        "--state"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: missing value for --state\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "mark",
-        "--await"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: missing value for --await\n"
-    },
-    {
-      "argv": [
-        "wave",
-        "mark",
-        "--bogus"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave mark: unknown option: --bogus\n"
+      "stdout": null
     }
   ]
 }

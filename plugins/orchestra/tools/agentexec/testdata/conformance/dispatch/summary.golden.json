@@ -13,14 +13,13 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml"
         ],
         "token": "<TOKEN#1>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -30,7 +29,7 @@
         "--summary"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
@@ -87,7 +86,6 @@
           }
         }
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/tokens/detach/<@JA>.answer.txt": {
           "content": "あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお",
@@ -107,14 +105,13 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml"
         ],
         "token": "<TOKEN#2>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -125,7 +122,7 @@
         "--capture"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#2>.answer.txt",
@@ -182,7 +179,6 @@
           }
         }
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/tokens/detach/<@EM>.answer.txt": {
           "content": "x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀",
@@ -202,14 +198,13 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml"
         ],
         "token": "<TOKEN#3>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -219,7 +214,7 @@
         "--summary"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#3>.answer.txt",
@@ -274,8 +269,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -289,14 +283,13 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml"
         ],
         "token": "<TOKEN#4>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -306,7 +299,7 @@
         "--summary"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "answer": "short",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#4>.answer.txt",
@@ -361,8 +354,7 @@
             "reasoning_output_tokens": 0
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -373,8 +365,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n",
-      "stderr": ""
+      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n"
     },
     {
       "argv": [
@@ -388,14 +379,13 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml"
         ],
         "token": "<TOKEN#5>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -405,7 +395,7 @@
         "--summary"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "effort": null,
@@ -445,8 +435,7 @@
           "writable": []
         },
         "status": "delegate"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

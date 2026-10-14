@@ -15,8 +15,6 @@ setup:
       {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
     .claude/settings.local.json: |
       {"permissions": {"allow": ["Bash(agent-exec:*)", "Bash(ls)"]}}
+normalize_keys: [build]
 steps:
   - argv: [doctor]
-    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}
-  - argv: [doctor, --text]
-    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}

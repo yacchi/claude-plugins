@@ -8,7 +8,7 @@
         "."
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -51,8 +51,7 @@
         "files": 2,
         "status": "fail",
         "tree": "."
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -62,7 +61,7 @@
         "--all"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -105,8 +104,7 @@
         "files": 2,
         "status": "fail",
         "tree": "."
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -117,8 +115,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "lint pass 0.0s\ntypes pass 0.0s\nunit fail 0.0s\nheavy skipped 0.0s\nAssertionError: nope\nFAIL a.test.ts > case one\n",
-      "stderr": ""
+      "stdout": "lint pass 0.0s\ntypes pass 0.0s\nunit fail 0.0s\nheavy skipped 0.0s\nAssertionError: nope\nFAIL a.test.ts > case one\n"
     },
     {
       "argv": [
@@ -130,8 +127,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "lint pass 0.0s\ntypes pass 0.0s\nunit fail 0.0s\nheavy pass 0.0s\nAssertionError: nope\nFAIL a.test.ts > case one\n",
-      "stderr": ""
+      "stdout": "lint pass 0.0s\ntypes pass 0.0s\nunit fail 0.0s\nheavy pass 0.0s\nAssertionError: nope\nFAIL a.test.ts > case one\n"
     },
     {
       "argv": [
@@ -142,7 +138,7 @@
         "HEAD"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -185,8 +181,7 @@
         "files": 2,
         "status": "fail",
         "tree": "."
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -197,7 +192,7 @@
         "no-such-ref"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -240,8 +235,7 @@
         "files": 1,
         "status": "fail",
         "tree": "."
-      },
-      "stderr": ""
+      }
     }
   ]
 }

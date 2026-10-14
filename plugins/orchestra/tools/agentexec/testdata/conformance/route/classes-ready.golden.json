@@ -8,7 +8,7 @@
         "light"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -28,8 +28,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -39,7 +38,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -59,8 +58,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -69,7 +67,7 @@
         "deep"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -89,8 +87,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -99,7 +96,7 @@
         "review"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -116,8 +113,7 @@
         "remaining": [],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -126,7 +122,7 @@
         "independent-review"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -143,8 +139,7 @@
         "remaining": [],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -155,7 +150,7 @@
         "investigation"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "investigation",
@@ -175,8 +170,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -187,7 +181,7 @@
         "investigation"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "investigation",
@@ -207,8 +201,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

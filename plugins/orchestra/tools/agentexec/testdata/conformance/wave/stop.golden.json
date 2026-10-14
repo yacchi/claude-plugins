@@ -11,11 +11,10 @@
         "halt now"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "stop_requested": true
       },
-      "stderr": "",
       "files": {
         "wave/STOP": {
           "content": "halt now",
@@ -31,11 +30,10 @@
         "wave/state.json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "stop_requested": true
       },
-      "stderr": "",
       "files": {
         "wave/STOP": {
           "content": null,
@@ -53,11 +51,10 @@
         "nächste\nzeile"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "stop_requested": true
       },
-      "stderr": "",
       "files": {
         "fresh/dir/STOP": {
           "content": "nächste\nzeile",
@@ -78,7 +75,7 @@
         "--line"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "counts": {
           "failed": 1,
@@ -93,8 +90,7 @@
         "stopped": true,
         "updated_ago": "<UPDATED_AGO>",
         "wave": 2
-      },
-      "stderr": ""
+      }
     }
   ]
 }

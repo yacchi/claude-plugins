@@ -6,7 +6,7 @@
         "config"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "checks": {
           "ensure": [],
@@ -233,15 +233,14 @@
             "standard": 2400
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
         "config"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "checks": {
           "ensure": [],
@@ -461,15 +460,14 @@
             "standard": 2400
           }
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
         "config"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "checks": {
           "ensure": [],
@@ -684,8 +682,7 @@
             "standard": 2400
           }
         }
-      },
-      "stderr": ""
+      }
     }
   ]
 }

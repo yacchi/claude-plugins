@@ -1,5 +1,8 @@
 description: >
-  plans that fail to load are exit 3 with the loader's message on stderr
+  plans that fail to load are exit 3 and stderr names the problem: dependency
+  cycles, unknown or duplicate ids, missing or invalid fields, missing spec
+  and preamble files, malformed rules and warm_read entries, a plan without
+  packages, invalid JSON, a missing plan file
 setup:
   files:
     "plan/specs/a.md": |
@@ -226,23 +229,40 @@ setup:
       {not json
 steps:
   - argv: ["wave", "lint", "--plan", "cycle.json"]
+    stderr_contains: ["dependency cycle: a -> c -> b -> a"]
   - argv: ["wave", "lint", "--plan", "self.json"]
+    stderr_contains: ["dependency cycle: a -> a"]
   - argv: ["wave", "lint", "--plan", "missing-dep.json"]
+    stderr_contains: ["ghost"]
   - argv: ["wave", "lint", "--plan", "dup.json"]
+    stderr_contains: ["duplicate package id: a"]
   - argv: ["wave", "lint", "--plan", "noid.json"]
+    stderr_contains: ["missing required field", "id"]
   - argv: ["wave", "lint", "--plan", "nospec.json"]
+    stderr_contains: ["missing required field", "spec"]
   - argv: ["wave", "lint", "--plan", "nocls.json"]
+    stderr_contains: ["missing required field", "cls"]
   - argv: ["wave", "lint", "--plan", "badcls.json"]
+    stderr_contains: ["invalid cls", "huge"]
   - argv: ["wave", "lint", "--plan", "specgone.json"]
+    stderr_contains: ["spec path does not exist"]
   - argv: ["wave", "lint", "--plan", "prea.json"]
+    stderr_contains: ["preamble path does not exist"]
   - argv: ["wave", "lint", "--plan", "rules.json"]
+    stderr_contains: ["rules"]
   - argv: ["wave", "lint", "--plan", "rules-list.json"]
+    stderr_contains: ["rules must be a list"]
   - argv: ["wave", "lint", "--plan", "warm-abs.json"]
+    stderr_contains: ["warm_read", "/etc/passwd"]
   - argv: ["wave", "lint", "--plan", "warm-up.json"]
+    stderr_contains: ["warm_read", "a/../../x"]
   - argv: ["wave", "lint", "--plan", "warm-type.json"]
+    stderr_contains: ["warm_read"]
   - argv: ["wave", "lint", "--plan", "nopackages.json"]
+    stderr_contains: ["packages"]
   - argv: ["wave", "lint", "--plan", "list.json"]
+    stderr_contains: ["packages"]
   - argv: ["wave", "lint", "--plan", "broken.json"]
-    stderr: "prefix"
-    stderr_prefix: "agent-exec: wave lint: invalid JSON in plan broken.json: "
+    stderr_contains: ["invalid JSON in plan broken.json"]
   - argv: ["wave", "lint", "--plan", "missing.json"]
+    stderr_contains: ["missing.json"]

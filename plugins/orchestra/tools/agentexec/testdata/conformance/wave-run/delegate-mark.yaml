@@ -34,7 +34,7 @@ setup:
        ]}
 normalize_keys: [since, updated, at, registered_at]
 normalize_text:
-  - pattern: '"(seconds|until)": [0-9.e+-]+'
+  - pattern: '"(seconds|until)": ?[0-9.e+-]+'
     replace: '"$1": <N>'
 steps:
   - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1", --no-ui]

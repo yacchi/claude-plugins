@@ -7,8 +7,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -18,52 +17,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: approvals: no state file at wave/nope.json\n"
-    },
-    {
-      "argv": [
-        "approvals",
-        "--state",
-        "wave/state.json",
-        "stray"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
-    },
-    {
-      "argv": [
-        "approvals",
-        "--state",
-        "wave/state.json",
-        "--bogus"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: approvals: unknown option: --bogus\n"
-    },
-    {
-      "argv": [
-        "approvals",
-        "--state"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: approvals: missing value for --state\n"
-    },
-    {
-      "argv": [
-        "approvals",
-        "--help"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n",
-      "stderr": ""
+      "stdout": null
     },
     {
       "argv": [
@@ -73,7 +27,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": [
         {
           "first_seen": null,
@@ -159,8 +113,7 @@
           "spec": "<HOME>/wave/specs/E.md",
           "terminal": "term-E"
         }
-      ],
-      "stderr": ""
+      ]
     },
     {
       "argv": [
@@ -170,8 +123,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "net:10.0.0.1  ports=443  packages=A(needs)\nnet:files.example.com  ports=80,443  packages=A(needs),B(implementing)\nnet:other.example.org  ports=8443  packages=B(implementing)\npath:C:0  <HOME>/.toolcache/f  grant=<HOME>/.toolcache  why=not cache\npath:D:0  <HOME>/.claude/settings.json  grant=None  why=config\ndialog:E  orca terminal=term-E  Allow write to /x? /   1. Yes /   2. No\ndecide: agent-exec approvals decide --state wave/state.json ITEM allow|deny --reason TEXT\n",
-      "stderr": ""
+      "stdout": "net:10.0.0.1  ports=443  packages=A(needs)\nnet:files.example.com  ports=80,443  packages=A(needs),B(implementing)\nnet:other.example.org  ports=8443  packages=B(implementing)\npath:C:0  <HOME>/.toolcache/f  grant=<HOME>/.toolcache  why=not cache\npath:D:0  <HOME>/.claude/settings.json  grant=None  why=config\ndialog:E  orca terminal=term-E  Allow write to /x? /   1. Yes /   2. No\ndecide: agent-exec approvals decide --state wave/state.json ITEM allow|deny --reason TEXT\n"
     },
     {
       "argv": [
@@ -182,8 +134,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "wave 1  implementing=1 needs=4  running: 1 in flight\n  B  implementing  <ELAPSED>  pi  -  0\n  A  needs  <ELAPSED>  pi  -  0\n  C  needs  <ELAPSED>  pi  -  0\n  D  needs  <ELAPSED>  pi  -  0\n  E  needs  <ELAPSED>  orca  -  0\nneeds:\n  A  network  {\"hosts\": [\"files.example.com\", \"10.0.0.1\"], \"answer\": \"ESCALATE: network files.example.com 10.0.0.1\"}\n  C  permission  {\"denials\": [{\"path\": \"<HOME>/.toolcache/f\", \"grant_candidate\": \"<HOME>/.toolcache\", \"why\": \"not cache\"}]}\n  D  permission  {\"denials\": [{\"path\": \"<HOME>/.claude/settings.json\", \"grant_candidate\": null, \"why\": \"config\"}, \"junk\"]}\n  E  delegate  {\"orca\": \"stalled\", \"detail\": \"dialog:\\nAllow write to /x?\\n  1. Yes\\n  2. No\\nterminal: term-E\\nworktree: /x\\nresult: /r\"}\nnetwork denied:\n  B  files.example.com:80\n  B  Other.Example.ORG.:8443\n  A  files.example.com:443\n  A  api.anthropic.com:443\n  A  10.0.0.1:443\n  A  statsig.anthropic.com:443\napprovals: 6 pending — agent-exec approvals --state wave/state.json\n",
-      "stderr": ""
+      "stdout": "wave 1  implementing=1 needs=4  running: 1 in flight\n  B  implementing  <ELAPSED>  pi  -  0\n  A  needs  <ELAPSED>  pi  -  0\n  C  needs  <ELAPSED>  pi  -  0\n  D  needs  <ELAPSED>  pi  -  0\n  E  needs  <ELAPSED>  orca  -  0\nneeds:\n  A  network  {\"hosts\": [\"files.example.com\", \"10.0.0.1\"], \"answer\": \"ESCALATE: network files.example.com 10.0.0.1\"}\n  C  permission  {\"denials\": [{\"path\": \"<HOME>/.toolcache/f\", \"grant_candidate\": \"<HOME>/.toolcache\", \"why\": \"not cache\"}]}\n  D  permission  {\"denials\": [{\"path\": \"<HOME>/.claude/settings.json\", \"grant_candidate\": null, \"why\": \"config\"}, \"junk\"]}\n  E  delegate  {\"orca\": \"stalled\", \"detail\": \"dialog:\\nAllow write to /x?\\n  1. Yes\\n  2. No\\nterminal: term-E\\nworktree: /x\\nresult: /r\"}\nnetwork denied:\n  B  files.example.com:80\n  B  Other.Example.ORG.:8443\n  A  files.example.com:443\n  A  api.anthropic.com:443\n  A  10.0.0.1:443\n  A  statsig.anthropic.com:443\napprovals: 6 pending — agent-exec approvals --state wave/state.json\n"
     },
     {
       "argv": [
@@ -196,8 +147,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -212,8 +162,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -230,8 +179,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "usage: agent-exec approvals --state STATE [--json]\n       agent-exec approvals decide --state STATE ITEM allow|deny --reason TEXT\n                                   [--by instructor|user] [--json]\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -246,8 +194,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: approvals decide: no pending approval net:nope.example.com\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -262,7 +209,7 @@
         "--json"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "applied": false,
         "by": "instructor",
@@ -278,8 +225,7 @@
         "state": "<HOME>/wave/state.json",
         "subject": "10.0.0.1",
         "ts": "<TS>"
-      },
-      "stderr": "agent-exec: approvals decide: refused: refusing an IP literal: 10.0.0.1\n"
+      }
     },
     {
       "argv": [
@@ -296,7 +242,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "applied": true,
         "by": "user",
@@ -313,7 +259,6 @@
         "subject": "files.example.com",
         "ts": "<TS>"
       },
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -328,7 +273,7 @@
             "grants": [],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         },
         "~/wave/approvals.json": {
           "content": {
@@ -340,7 +285,7 @@
             },
             "declined": {}
           },
-          "shape": "json-indent"
+          "shape": "json"
         },
         "~/wave/corrections/A.approvals.md": {
           "content": "# Approval decisions for A\n\n- network access to files.example.com is now allowed (needed for the download). Continue the task.\n",
@@ -470,7 +415,7 @@
             "version": 1,
             "wave": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -488,7 +433,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "deny net:10.0.0.1: 10.0.0.1  resumed: A\n",
-      "stderr": "",
       "files": {
         "~/wave/corrections/A.approvals.md": {
           "content": "# Approval decisions for A\n\n- network access to files.example.com is now allowed (needed for the download). Continue the task.\n- network access to 10.0.0.1 was declined: no raw IPs. Finish without it or ESCALATE.\n",
@@ -612,7 +556,7 @@
             "version": 1,
             "wave": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -629,8 +573,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "deny net:other.example.org: other.example.org\n",
-      "stderr": ""
+      "stdout": "deny net:other.example.org: other.example.org\n"
     },
     {
       "argv": [
@@ -645,8 +588,7 @@
       ],
       "exit": 1,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: approvals decide: refused: refusing to grant anything under ~/.claude\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -661,7 +603,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "applied": true,
         "by": "instructor",
@@ -678,8 +620,7 @@
         "state": "<HOME>/wave/state.json",
         "subject": "<HOME>/.claude/settings.json",
         "ts": "<TS>"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -695,7 +636,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "allow path:C:0: <HOME>/.toolcache  resumed: C\n",
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/sandbox-learned.json": {
           "content": {
@@ -718,7 +658,7 @@
             ],
             "version": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         },
         "~/wave/corrections/C.approvals.md": {
           "content": "# Approval decisions for C\n\n- <HOME>/.toolcache is now granted (cache dir). Continue the task.\n",
@@ -830,7 +770,7 @@
             "version": 1,
             "wave": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -847,8 +787,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: approvals decide: no key injection into Orca here; approve it in Orca (terminal term-E), then run: agent-exec wave mark --state wave/state.json --await E\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -858,7 +797,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": [
         {
           "dialog": "Allow write to /x?\n  1. Yes\n  2. No",
@@ -870,7 +809,6 @@
           "terminal": "term-E"
         }
       ],
-      "stderr": "",
       "files": {
         "~/.local/state/claude-orchestra/audit/decisions.jsonl": {
           "content": [

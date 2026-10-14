@@ -8,7 +8,7 @@
         "standard"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -31,8 +31,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -41,7 +40,7 @@
         "standard"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": "pi-worker",
         "archetype": "default",
@@ -61,8 +60,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -73,8 +71,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: pi (dispatch=agent model=openai-codex/gpt-5.6-luna effort=medium)\nremaining: claude\nsource: priority\n",
-      "stderr": ""
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: pi (dispatch=agent model=openai-codex/gpt-5.6-luna effort=medium)\nremaining: claude\nsource: priority\n"
     },
     {
       "argv": [
@@ -83,7 +80,7 @@
         "standard"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -106,8 +103,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

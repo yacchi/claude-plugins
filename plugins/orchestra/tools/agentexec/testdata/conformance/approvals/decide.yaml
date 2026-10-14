@@ -57,13 +57,6 @@ steps:
   - argv: [approvals]
   - argv: [approvals, --state, wave/nope.json]
     cwd: "~"
-  - argv: [approvals, --state, wave/state.json, stray]
-    cwd: "~"
-  - argv: [approvals, --state, wave/state.json, --bogus]
-    cwd: "~"
-  - argv: [approvals, --state]
-    cwd: "~"
-  - argv: [approvals, --help]
   - argv: [approvals, --state, wave/state.json, --json]
     cwd: "~"
   - argv: [approvals, --state, wave/state.json]

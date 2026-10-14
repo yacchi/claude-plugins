@@ -44,7 +44,7 @@ setup:
        ]}
 normalize_keys: [since, updated, at, registered_at]
 normalize_text:
-  - pattern: '"(seconds|until)": [0-9.e+-]+'
+  - pattern: '"(seconds|until)": ?[0-9.e+-]+'
     replace: '"$1": <N>'
   - pattern: '\b[0-9]+[hm][0-9]{2}[ms]\b'
     replace: '<ELAPSED>'

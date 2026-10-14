@@ -1,7 +1,7 @@
 description: >
-  a token minted in a subdirectory project keeps its recorded config root
-  when later processes dispatch it, detach it and wait on it, and the stored
-  session is resumed (recorded as a Python/Go mix before the cutover)
+  a token minted in a subdirectory project keeps its recorded config root when
+  later processes dispatch it, detach it and wait on it, and the stored
+  session is resumed
 setup:
   git: true
   fakes: [pi]

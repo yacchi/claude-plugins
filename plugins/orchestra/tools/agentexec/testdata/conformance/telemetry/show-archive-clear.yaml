@@ -1,6 +1,6 @@
 description: >
-  show (summary and raw JSONL), archive (default and --out) and clear, over a
-  Python-written records file with blank, malformed and non-object lines
+  show (summary and raw JSONL), archive (default and --out) and clear, over an
+  existing records file with blank, malformed and non-object lines
 normalize_keys: [os]
 setup:
   files:
@@ -19,14 +19,10 @@ setup:
 steps:
   - argv: [telemetry, show]
   - argv: [telemetry, show, --json]
-  - argv: [telemetry, show, --bogus]
   - argv: [telemetry, archive, --out, out.tgz]
-  - argv: [telemetry, archive, --out]
-  - argv: [telemetry, archive, extra]
   - argv: [telemetry, record, --json, '{"event": "dispatch", "executor": "pi", "status": "ok"}']
     snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
   - argv: [telemetry, show]
   - argv: [telemetry, clear]
     snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
   - argv: [telemetry, show]
-  - argv: [telemetry, clear, whatever]

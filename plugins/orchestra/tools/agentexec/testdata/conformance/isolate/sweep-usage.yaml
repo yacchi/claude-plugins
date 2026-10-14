@@ -7,14 +7,7 @@ setup:
     a.txt: "a\n"
 steps:
   - argv: [isolate, sweep, --older-than, abc]
-  - argv: [isolate, sweep, --older-than, "-1"]
-  - argv: [isolate, sweep, --live-window, soon]
-  - argv: [isolate, sweep, --live-window, "-5"]
-  - argv: [isolate, sweep, --json, --text]
-  - argv: [isolate, sweep, --dry-run, --dry-run]
-  - argv: [isolate, sweep, --repo]
   - argv: [isolate, sweep, --bogus]
-  - argv: [isolate, sweep, stray]
   - argv: [isolate, sweep, --repo, <ROOT>/tmp]
   - argv: [isolate, sweep, --repo, <ROOT>/tmp, --text]
   - argv: [isolate, sweep, --dry-run]

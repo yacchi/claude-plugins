@@ -9,16 +9,16 @@ import (
 	"strings"
 )
 
-// GoldenStep is the normalized, implementation-independent record of one
-// step. Stdout is kept by shape: a JSON document (json-indent / json-line)
-// or JSON lines (jsonl) are stored decoded, so key order and whitespace do
-// not matter but multi-line vs one-line output does; anything else is text.
+// GoldenStep is the normalized record of one step. Stdout is stored by
+// shape: "empty", "json" (one document), "jsonl" (one document per line) or
+// "text". JSON is stored decoded and compared as values, so key order,
+// indentation and number spelling do not matter. stderr is not recorded:
+// a step pins the parts of it that are a contract with stderr_contains.
 type GoldenStep struct {
 	Argv        []string       `json:"argv"`
 	Exit        int            `json:"exit"`
 	StdoutShape string         `json:"stdout_shape"`
 	Stdout      any            `json:"stdout"`
-	Stderr      string         `json:"stderr"`
 	Files       map[string]any `json:"files,omitempty"`
 }
 
@@ -37,7 +37,9 @@ var (
 // normalizer masks what legitimately differs between runs: the sandbox
 // paths (realpath'd /private/var spellings included), dispatch tokens,
 // uuids and SHAs (numbered by first appearance, so equal values stay
-// equal), timestamps, and the values of volatile JSON keys.
+// equal), timestamps, and the values of volatile JSON keys (an object
+// value keeps its keys and has every leaf masked, so its shape is still
+// compared).
 type normalizer struct {
 	paths    [][2]string
 	numbered map[string]map[string]string
@@ -100,8 +102,7 @@ func (n *normalizer) text(s string) string {
 }
 
 // value normalizes a decoded JSON value, visiting object keys in sorted
-// order so the numbering does not depend on either implementation's key
-// order.
+// order so the numbering does not depend on the output's key order.
 func (n *normalizer) value(v any) any {
 	switch x := v.(type) {
 	case string:
@@ -116,7 +117,7 @@ func (n *normalizer) value(v any) any {
 		out := make(map[string]any, len(x))
 		for _, k := range sortedKeys(x) {
 			if n.keys[k] && x[k] != nil {
-				out[n.text(k)] = "<" + strings.ToUpper(k) + ">"
+				out[n.text(k)] = mask(x[k], "<"+strings.ToUpper(k)+">")
 				continue
 			}
 			out[n.text(k)] = n.value(x[k])
@@ -126,6 +127,20 @@ func (n *normalizer) value(v any) any {
 	return v
 }
 
+// mask replaces every leaf of v (null included) with m, keeping the keys
+// of objects.
+func mask(v any, m string) any {
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return m
+	}
+	out := make(map[string]any, len(obj))
+	for k, e := range obj {
+		out[k] = mask(e, m)
+	}
+	return out
+}
+
 // content classifies and normalizes stdout or a snapshot file.
 func (n *normalizer) content(s string) (shape string, v any) {
 	trimmed := strings.TrimSpace(s)
@@ -133,10 +148,7 @@ func (n *normalizer) content(s string) (shape string, v any) {
 		return "empty", nil
 	}
 	if doc, ok := decodeJSON(trimmed); ok {
-		if strings.Contains(trimmed, "\n") {
-			return "json-indent", n.value(doc)
-		}
-		return "json-line", n.value(doc)
+		return "json", n.value(doc)
 	}
 	lines := strings.Split(trimmed, "\n")
 	docs := make([]any, 0, len(lines))
@@ -169,7 +181,6 @@ func (n *normalizer) step(st Step, raw rawStep) GoldenStep {
 		Exit:        raw.exit,
 		StdoutShape: shape,
 		Stdout:      out,
-		Stderr:      n.text(raw.stderr),
 	}
 	if len(raw.files) > 0 {
 		g.Files = map[string]any{}

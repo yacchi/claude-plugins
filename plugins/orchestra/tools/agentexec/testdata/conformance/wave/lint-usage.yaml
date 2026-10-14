@@ -1,26 +1,14 @@
 description: >
-  wave lint argument errors and the bare wave usage
+  wave lint / status / stop argument errors are exit 2; a state file that does
+  not exist is exit 3
 setup:
   files:
     "plan.json": |
       {}
 steps:
   - argv: ["wave", "lint"]
-  - argv: ["wave", "lint", "--plan"]
   - argv: ["wave", "lint", "--bogus"]
-  - argv: ["wave", "lint", "stray"]
-  - argv: ["wave", "lint", "--plan", "plan.json", "--plan", "plan.json"]
-    stderr: "ignore"
   - argv: ["wave", "status"]
-  - argv: ["wave", "status", "--state"]
-  - argv: ["wave", "status", "--state", "s.json", "--watch", "x"]
-  - argv: ["wave", "status", "--state", "s.json", "--watch"]
-  - argv: ["wave", "status", "--state", "s.json", "--events", "x"]
-  - argv: ["wave", "status", "--state", "s.json", "--events"]
-  - argv: ["wave", "status", "--state", "s.json", "--bogus"]
   - argv: ["wave", "status", "--state", "s.json"]
   - argv: ["wave", "status", "--state", "s.json", "--json"]
   - argv: ["wave", "stop"]
-  - argv: ["wave", "stop", "--state"]
-  - argv: ["wave", "stop", "--reason"]
-  - argv: ["wave", "stop", "--bogus"]

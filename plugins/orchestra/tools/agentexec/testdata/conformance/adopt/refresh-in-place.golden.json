@@ -9,7 +9,7 @@
         "boot"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -20,8 +20,7 @@
         "path": "<WORK>-orchestra/00000000-boot",
         "status": "created",
         "task": "boot"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -29,7 +28,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -40,8 +39,7 @@
             "task": "boot"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -55,7 +53,7 @@
         "sh ../../prep.sh"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
@@ -83,8 +81,7 @@
           "status": "pass",
           "timed_out": false
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -96,7 +93,7 @@
         "../ext"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#2>",
         "branch": "ext",
@@ -107,8 +104,7 @@
         "path": "<ROOT>/ext",
         "status": "adopted",
         "task": "x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -122,8 +118,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "adopted task y                worktree <ROOT>/ext2\n  baseline: 20fcf9a12274\nnote: adopted <ROOT>/ext2 as task y\n",
-      "stderr": ""
+      "stdout": "adopted task y                worktree <ROOT>/ext2\n  baseline: 20fcf9a12274\nnote: adopted <ROOT>/ext2 as task y\n"
     },
     {
       "argv": [
@@ -137,7 +132,7 @@
         "sh ../../move.sh"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep2",
@@ -165,8 +160,7 @@
           "status": "pass",
           "timed_out": false
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -176,7 +170,7 @@
         "x"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#3>",
         "branch": "ext",
@@ -192,7 +186,6 @@
         "status": "ok",
         "task": "x"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/ext/a.txt": {
           "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT-MAIN\n9\n",
@@ -214,8 +207,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "refresh unchanged  task x                onto 6e251b74ca30  worktree <ROOT>/ext\nnote: already on onto 6e251b74ca30\n",
-      "stderr": ""
+      "stdout": "refresh unchanged  task x                onto 6e251b74ca30  worktree <ROOT>/ext\nnote: already on onto 6e251b74ca30\n"
     },
     {
       "argv": [
@@ -225,7 +217,7 @@
         "y"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#3>",
         "branch": "ext2",
@@ -246,7 +238,6 @@
         "status": "conflicted",
         "task": "y"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/ext2/a.txt": {
           "content": "1\n2\n3\n4\n5\n6\n7\n<<<<<<< ours\nEIGHT-MAIN\n=======\nEIGHT-EXT2\n>>>>>>> theirs\n9\n",
@@ -263,7 +254,7 @@
         "--names-only"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#3>",
         "branch": "ext2",
@@ -274,8 +265,7 @@
         "session": null,
         "status": "ok",
         "task": "y"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -288,7 +278,7 @@
         "0"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": true,
@@ -367,8 +357,7 @@
             "task": "y"
           }
         ]
-      },
-      "stderr": ""
+      }
     }
   ]
 }

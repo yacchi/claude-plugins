@@ -1,7 +1,7 @@
 description: >
   when every candidate is skipped and a cooldown was active, the walk is
-  repeated ignoring cooldowns (cooldown_bypassed); a custom state path and
-  the compact state format Python writes are honored
+  repeated ignoring cooldowns (cooldown_bypassed); a custom state path and a
+  compact (one-line) state file are honored
 setup:
   fakes: [pi]
   env:

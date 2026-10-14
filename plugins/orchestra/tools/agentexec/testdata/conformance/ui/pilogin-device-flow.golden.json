@@ -8,7 +8,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "code": "ABCD-1234",
         "method": "device",
@@ -17,8 +17,7 @@
         "session": "<SESSION>",
         "status": "waiting",
         "url": "https://auth.openai.com/codex/device"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -30,12 +29,11 @@
         "30"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "provider": "openai-codex",
         "status": "ready"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -46,13 +44,12 @@
         "1"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "no login in progress (run `agent-exec pi login` first)",
         "screen_tail": "",
         "status": "failed"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

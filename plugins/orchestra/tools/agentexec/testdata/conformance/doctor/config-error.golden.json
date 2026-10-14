@@ -6,8 +6,13 @@
         "doctor"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
+        "build": {
+          "binary": "<BUILD>",
+          "go": "<BUILD>",
+          "source_hash": "<BUILD>"
+        },
         "cli_network": {
           "ecosystem": true,
           "executors": {
@@ -102,12 +107,8 @@
         "user_config": {
           "herdr": "isolate",
           "orca": "isolate"
-        },
-        "uv": {
-          "present": false
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -116,8 +117,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec doctor\n-----------------\nshim: NOT installed\nuv: NOT found\nconfig: FAILED to resolve: agent-exec: invalid YAML in <WORK>/.claude/orchestra.yaml: while parsing a flow sequence\n  in \"<WORK>/.claude/orchestra.yaml\", line 1, column 8\nexpected ',' or ']', but got '<stream end>'\n  in \"<WORK>/.claude/orchestra.yaml\", line 2, column 1\npermission rule Bash(agent-exec:*): NOT found\nexecutors: none known\nsandbox: mode=auto backend=seatbelt enforced=True (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=True (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=False srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=False backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\n",
-      "stderr": ""
+      "stdout": "agent-exec doctor\n-----------------\nshim: NOT installed\nbuild: <BUILD>\nconfig: FAILED to resolve: agent-exec: invalid YAML in <WORK>/.claude/orchestra.yaml: yaml: line 1: did not find expected ',' or ']'\npermission rule Bash(agent-exec:*): NOT found\nexecutors: none known\nsandbox: mode=auto backend=seatbelt enforced=True (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=True (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=False srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=False backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\n"
     }
   ]
 }

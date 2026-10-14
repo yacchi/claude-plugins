@@ -15,7 +15,7 @@
         "../work"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [
@@ -36,7 +36,6 @@
         "status": "done",
         "waves": 1
       },
-      "stderr": "max-in-flight: 4 (auto)\n",
       "files": {
         "~/wave/state.json": {
           "content": {
@@ -83,7 +82,7 @@
             "version": 1,
             "wave": 1
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -99,12 +98,11 @@
         "ready"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pkg": "A",
         "status": "verifying"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -120,7 +118,7 @@
         "../work"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -137,7 +135,6 @@
         "status": "done",
         "waves": 2
       },
-      "stderr": "max-in-flight: 4 (auto)\n",
       "files": {
         "~/wave/state.events.jsonl": {
           "content": [
@@ -390,7 +387,7 @@
             "version": 1,
             "wave": 3
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -404,8 +401,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "wave 3  integrated=2  running: 0 in flight\n  A  integrated  <ELAPSED>  claude  0  0\n  B  integrated  <ELAPSED>  pi  1  0\n",
-      "stderr": ""
+      "stdout": "wave 3  integrated=2  running: 0 in flight\n  A  integrated  <ELAPSED>  claude  0  0\n  B  integrated  <ELAPSED>  pi  1  0\n"
     }
   ]
 }

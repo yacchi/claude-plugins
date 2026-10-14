@@ -9,7 +9,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "telemetry enabled -> <HOME>/.claude/orchestra.yaml\n",
-      "stderr": "",
       "files": {
         "~/.claude/orchestra.yaml": {
           "content": "telemetry:\n  enabled: true\n",
@@ -31,7 +30,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "telemetry enabled -> <WORK>/.claude/orchestra.yml\n",
-      "stderr": "",
       "files": {
         ".claude/orchestra.yaml": null,
         ".claude/orchestra.yml": {
@@ -50,7 +48,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "telemetry enabled -> <WORK>/.claude/orchestra.local.yml\n",
-      "stderr": "",
       "files": {
         ".claude/orchestra.local.yaml": null,
         ".claude/orchestra.local.yml": {

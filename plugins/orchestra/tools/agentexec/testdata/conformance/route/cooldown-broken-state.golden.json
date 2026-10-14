@@ -8,7 +8,7 @@
         "standard"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -28,8 +28,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -38,7 +37,7 @@
         "standard"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -58,8 +57,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

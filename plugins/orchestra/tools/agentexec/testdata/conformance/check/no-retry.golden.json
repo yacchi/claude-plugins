@@ -9,7 +9,7 @@
         "--no-retry"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -25,8 +25,7 @@
         "files": 1,
         "status": "fail",
         "tree": "."
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -35,7 +34,7 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -51,8 +50,7 @@
         "files": 1,
         "status": "pass",
         "tree": "."
-      },
-      "stderr": ""
+      }
     }
   ]
 }

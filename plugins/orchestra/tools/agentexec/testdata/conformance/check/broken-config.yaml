@@ -6,5 +6,4 @@ setup:
     .claude/orchestra.yaml: "checks: [unclosed\n"
 steps:
   - argv: [check, --path, .]
-    stderr: prefix
-    stderr_prefix: "agent-exec: invalid YAML in <WORK>/"
+    stderr_contains: ["agent-exec: invalid YAML in <WORK>/"]

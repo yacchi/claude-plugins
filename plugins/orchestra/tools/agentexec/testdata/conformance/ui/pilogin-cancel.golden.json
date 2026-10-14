@@ -9,7 +9,7 @@
         "anthropic"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "method": "browser",
         "paste_prompt": true,
@@ -17,8 +17,7 @@
         "session": "<SESSION>",
         "status": "waiting",
         "url": "https://auth.example.com/oauth/authorize?client_id=abc&state=xyz"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -27,11 +26,10 @@
         "--cancel"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "status": "cancelled"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -42,13 +40,12 @@
         "1"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "no login in progress (run `agent-exec pi login` first)",
         "screen_tail": "",
         "status": "failed"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

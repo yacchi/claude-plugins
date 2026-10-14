@@ -24,6 +24,9 @@ setup:
         pi:
           class_policy:
             light: {model: "anthropic/claude-haiku", effort: low}
+normalize_keys: [build]
+normalize_text:
+  - pattern: '(?m)^build: .*$'
+    replace: 'build: <BUILD>'
 steps:
   - argv: [doctor]
-    go_swap: {golden: uv, got: build, keys: [binary, source_hash, go]}

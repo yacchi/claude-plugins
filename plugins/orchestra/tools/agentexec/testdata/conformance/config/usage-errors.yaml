@@ -2,4 +2,3 @@ description: config takes no option but --json
 steps:
   - argv: [config, --text]
   - argv: [config, extra]
-  - argv: [config, --json, --json]

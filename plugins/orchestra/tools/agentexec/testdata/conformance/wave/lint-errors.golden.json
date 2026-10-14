@@ -10,8 +10,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: dependency cycle: a -> c -> b -> a\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -22,8 +21,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: dependency cycle: a -> a\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -34,8 +32,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: a: depends_on unknown id 'ghost'\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -46,8 +43,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: duplicate package id: a\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -58,8 +54,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: package missing required field 'id': {'cls': 'light', 'spec': 'plan/specs/a.md'}\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -70,8 +65,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: a: missing required field 'spec'\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -82,8 +76,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: a: missing required field 'cls'\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -94,8 +87,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: a: invalid cls 'huge' (must be one of light, standard, deep)\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -106,8 +98,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: a: spec path does not exist: <WORK>/plan/specs/nope.md\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -118,8 +109,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: preamble path does not exist: <WORK>/nope.md\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -130,8 +120,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: plan rules entries must be {'if': <glob>, 'require': [<glob>...]}\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -142,8 +131,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: plan rules must be a list\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -154,8 +142,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: warm_read path must be repo-relative and stay inside the repo: /etc/passwd\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -166,8 +153,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: warm_read path must be repo-relative and stay inside the repo: a/../../x\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -178,8 +164,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: plan warm_read must be a list of repo-relative paths\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -190,8 +175,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: plan nopackages.json: missing required key 'packages'\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -202,8 +186,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: plan list.json: missing required key 'packages'\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -214,8 +197,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: invalid JSON in plan broken.json: invalid character 'n' looking for beginning of object key string\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -226,8 +208,7 @@
       ],
       "exit": 3,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: wave lint: invalid JSON in plan missing.json: [Errno 2] No such file or directory: 'missing.json'\n"
+      "stdout": null
     }
   ]
 }

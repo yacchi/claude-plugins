@@ -8,7 +8,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "seatbelt",
         "enforced": true,
@@ -36,8 +36,7 @@
         },
         "reason": "macOS Seatbelt (sandbox-exec)",
         "would_refuse": false
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -46,8 +45,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "mode=auto backend=seatbelt enforced=True (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\n",
-      "stderr": ""
+      "stdout": "mode=auto backend=seatbelt enforced=True (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\n"
     }
   ]
 }

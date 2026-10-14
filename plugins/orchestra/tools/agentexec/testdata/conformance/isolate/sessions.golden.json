@@ -9,7 +9,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -20,8 +20,7 @@
         "path": "<WORK>-orchestra/aaaaaaaa-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -31,7 +30,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -42,8 +41,7 @@
         "path": "<WORK>-orchestra/bbbbbbbb-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -53,7 +51,7 @@
         "solo"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#2>",
@@ -64,8 +62,7 @@
         "path": "<WORK>-orchestra/bbbbbbbb-solo",
         "status": "created",
         "task": "solo"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -75,7 +72,7 @@
         "legacy"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#3>",
@@ -86,8 +83,7 @@
         "path": "<WORK>-orchestra/legacy",
         "status": "created",
         "task": "legacy"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -98,8 +94,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate: ambiguous worktrees for task t1: orchestra/aaaaaaaa/t1, orchestra/bbbbbbbb/t1\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -110,8 +105,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate: ambiguous worktrees for task t1: orchestra/aaaaaaaa/t1, orchestra/bbbbbbbb/t1\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -122,7 +116,7 @@
         "--names-only"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#2>",
         "branch": "orchestra/bbbbbbbb/solo",
@@ -131,8 +125,7 @@
         "session": "bbbbbbbb",
         "status": "ok",
         "task": "solo"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -140,7 +133,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -172,8 +165,7 @@
             "task": "legacy"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -183,7 +175,7 @@
         "aaaaaaaa"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -194,8 +186,7 @@
             "task": "t1"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -206,7 +197,7 @@
         "--names-only"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#1>",
         "branch": "orchestra/aaaaaaaa/t1",
@@ -215,8 +206,7 @@
         "session": "aaaaaaaa",
         "status": "ok",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -226,7 +216,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -237,8 +227,7 @@
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -249,7 +238,7 @@
         "--names-only"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#1>",
         "branch": "orchestra/00000000/t1",
@@ -258,8 +247,7 @@
         "session": "00000000",
         "status": "ok",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -269,15 +257,14 @@
         "legacy"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/legacy",
         "path": "<WORK>-orchestra/legacy",
         "session": null,
         "status": "removed",
         "task": "legacy"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

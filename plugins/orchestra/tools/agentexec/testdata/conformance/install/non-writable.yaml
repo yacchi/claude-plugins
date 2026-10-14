@@ -1,5 +1,5 @@
 description: >
-  an existing read-only shim cannot be replaced: exit 1 (the message differs, stderr is not compared)
+  an existing read-only shim cannot be replaced: exit 1
 setup:
   env:
     PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
@@ -13,5 +13,4 @@ setup:
 steps:
   - argv: [install]
     stdin: "\ny\n"
-    stderr: ignore
     snapshot: ["~/.local/bin/agent-exec"]

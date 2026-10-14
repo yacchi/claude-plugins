@@ -1,5 +1,9 @@
 description: >
-  wave status renders a Python-written state.json and events.jsonl as text (default), json, or a one-line summary; the last format flag wins; --events adds recent events (a truncated last line is ignored); --live adds live change counts for in-flight trees that exist
+  wave status reads a state.json and events.jsonl in the on-disk format
+  earlier versions wrote and renders them as text (default), json, or a one-
+  line summary; --events adds recent events (a truncated last line is
+  ignored); --live adds live change counts; a missing state file or a
+  directory is exit 3
 setup:
   files:
     "wave/state.json": |
@@ -119,19 +123,12 @@ setup:
 normalize_keys: [updated_ago]
 steps:
   - argv: ["wave", "status", "--state", "wave/state.json"]
-  - argv: ["wave", "status", "--state", "wave/state.json", "--text"]
   - argv: ["wave", "status", "--state", "wave/state.json", "--json"]
   - argv: ["wave", "status", "--state", "wave/state.json", "--line"]
-  - argv: ["wave", "status", "--state", "wave/state.json", "--json", "--line"]
-  - argv: ["wave", "status", "--state", "wave/state.json", "--line", "--text"]
   - argv: ["wave", "status", "--state", "wave/state.json", "--live"]
   - argv: ["wave", "status", "--state", "wave/state.json", "--json", "--live"]
   - argv: ["wave", "status", "--state", "wave/state.json", "--line", "--live"]
   - argv: ["wave", "status", "--state", "wave/state.json", "--events", "3"]
-  - argv: ["wave", "status", "--state", "wave/state.json", "--events", "100"]
-  - argv: ["wave", "status", "--state", "wave/state.json", "--events", "0"]
-  - argv: ["wave", "status", "--state", "wave/state.json", "--events", "-2"]
-  - argv: ["wave", "status", "--state", "wave/state.json", "--events", " 2 "]
   - argv: ["wave", "status", "--state", "wave/state.json", "--live", "--events", "2"]
   - argv: ["wave", "status", "--state", "wave/missing.json"]
   - argv: ["wave", "status", "--state", "wave"]

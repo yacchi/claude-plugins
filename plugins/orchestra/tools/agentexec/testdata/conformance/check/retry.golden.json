@@ -9,7 +9,7 @@
         "--all"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -49,8 +49,7 @@
         "files": 2,
         "status": "pass",
         "tree": "."
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -60,7 +59,7 @@
         "--all"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "checks": [
           {
@@ -94,8 +93,7 @@
         "files": 2,
         "status": "pass",
         "tree": "."
-      },
-      "stderr": ""
+      }
     }
   ]
 }

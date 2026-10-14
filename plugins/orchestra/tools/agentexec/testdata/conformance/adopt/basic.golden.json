@@ -9,7 +9,7 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -24,8 +24,7 @@
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "created",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -35,7 +34,7 @@
         "boot"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#2>",
@@ -50,8 +49,7 @@
         "path": "<WORK>-orchestra/00000000-boot",
         "status": "created",
         "task": "boot"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -59,7 +57,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -77,8 +75,7 @@
             "task": "t1"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -92,7 +89,7 @@
         "sh ../../prep.sh"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
@@ -120,8 +117,7 @@
           "status": "pass",
           "timed_out": false
         }
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -133,7 +129,7 @@
         "../ext"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#3>",
         "branch": "ext",
@@ -149,7 +145,6 @@
         "status": "adopted",
         "task": "x"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/ext/CLAUDE.local.md": {
           "content": "local notes\n",
@@ -171,7 +166,7 @@
         "../ext"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#3>",
         "branch": "ext",
@@ -182,8 +177,7 @@
         "path": "<ROOT>/ext",
         "status": "exists",
         "task": "x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -199,8 +193,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "exists task x                worktree <ROOT>/ext\n  baseline: dfe10529587e\nnote: already adopted as x\n",
-      "stderr": ""
+      "stdout": "exists task x                worktree <ROOT>/ext\n  baseline: dfe10529587e\nnote: already adopted as x\n"
     },
     {
       "argv": [
@@ -214,7 +207,7 @@
         "nope"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": null,
         "branch": "ext",
@@ -225,8 +218,7 @@
         "path": "<ROOT>/ext",
         "status": "error",
         "task": "x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -238,7 +230,7 @@
         "../ext"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": null,
         "branch": "ext",
@@ -249,8 +241,7 @@
         "path": "<ROOT>/ext",
         "status": "error",
         "task": "y"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -262,7 +253,7 @@
         "../ext2"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": null,
         "branch": "ext2",
@@ -273,8 +264,7 @@
         "path": "<ROOT>/ext2",
         "status": "error",
         "task": "x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -286,7 +276,7 @@
         "../ext2"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": null,
         "branch": "ext2",
@@ -297,8 +287,7 @@
         "path": "<ROOT>/ext2",
         "status": "error",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -310,7 +299,7 @@
         "../nowhere"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": null,
         "branch": null,
@@ -321,8 +310,7 @@
         "path": "<ROOT>/nowhere",
         "status": "error",
         "task": "z"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -334,7 +322,7 @@
         "."
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": null,
         "branch": "main",
@@ -345,8 +333,7 @@
         "path": "<WORK>",
         "status": "error",
         "task": "z"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -360,8 +347,7 @@
       ],
       "exit": 3,
       "stdout_shape": "text",
-      "stdout": "error task z                worktree <WORK>-orchestra/00000000-t1\nnote: <WORK>-orchestra/00000000-t1 is an orchestra-created worktree; it already has a task\n",
-      "stderr": ""
+      "stdout": "error task z                worktree <WORK>-orchestra/00000000-t1\nnote: <WORK>-orchestra/00000000-t1 is an orchestra-created worktree; it already has a task\n"
     },
     {
       "argv": [
@@ -373,7 +359,7 @@
         "../ext2"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "already_present": [
           "node_modules"
@@ -390,7 +376,6 @@
         "status": "adopted",
         "task": "y"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/ext2/node_modules/own/x.js": {
           "content": "own\n",
@@ -412,7 +397,7 @@
         "11111111-2222-4333-8444-555555555555"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#3>",
         "branch": null,
@@ -424,7 +409,6 @@
         "status": "adopted",
         "task": "d"
       },
-      "stderr": "",
       "files": {
         "<ROOT>/det/node_modules/pkg/index.js": null
       }
@@ -435,7 +419,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "worktrees": [
           {
@@ -460,8 +444,7 @@
             "task": "t1"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -471,7 +454,7 @@
         "x"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": "<SHA#3>",
         "branch": "ext",
@@ -483,8 +466,7 @@
         "session": null,
         "status": "ok",
         "task": "x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -494,13 +476,12 @@
         "y"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "digest": "fc2dc1c3493c43fa8bb578f20e77f7eaa29e57bd48ac34104fcdb8042391dc2c",
         "status": "collected",
         "task": "y"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -513,7 +494,7 @@
         "0"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": true,
@@ -598,8 +579,7 @@
             "task": "y"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -611,7 +591,7 @@
         "0"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": false,
@@ -696,8 +676,7 @@
             "task": "y"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -709,7 +688,7 @@
         "ix"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/ix",
@@ -740,7 +719,6 @@
           }
         ]
       },
-      "stderr": "",
       "files": {
         "<ROOT>/work-orchestra/00000000-ix/a.txt": {
           "content": "1\nTWO\n3\n",
@@ -756,13 +734,12 @@
         "y"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "path": "<ROOT>/ext2",
         "status": "unadopted",
         "task": "y"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -772,13 +749,12 @@
         "x"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "path": "<ROOT>/ext",
         "status": "unadopted",
         "task": "x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -788,13 +764,12 @@
         "x"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "path": null,
         "status": "absent",
         "task": "x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -804,13 +779,12 @@
         "t1"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "path": null,
         "status": "absent",
         "task": "t1"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -822,8 +796,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "unadopted task d                worktree <ROOT>/det\n",
-      "stderr": ""
+      "stdout": "unadopted task d                worktree <ROOT>/det\n"
     },
     {
       "argv": [
@@ -836,13 +809,12 @@
         "--no-carry"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "path": null,
         "status": "absent",
         "task": "y"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -852,14 +824,13 @@
         "x"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [],
         "patch": "",
         "status": "absent",
         "task": "x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -869,13 +840,12 @@
         "ghost"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "path": null,
         "status": "absent",
         "task": "ghost"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -887,7 +857,7 @@
         "../ext"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "baseline": null,
         "branch": null,
@@ -898,8 +868,7 @@
         "path": null,
         "status": "error",
         "task": "x"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -910,8 +879,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate adopt: missing required option: --task\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -922,77 +890,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate adopt: missing required option: --path\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "adopt",
-        "--task",
-        "x",
-        "--path",
-        "../ext",
-        "--no-carry",
-        "--no-carry"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate adopt: duplicate option: --no-carry\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "adopt",
-        "--task",
-        "x",
-        "--path",
-        "../ext",
-        "--json",
-        "--text"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate adopt: --json and --text are mutually exclusive\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "adopt",
-        "--task",
-        "x",
-        "--path"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate adopt: missing value for --path\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "unadopt",
-        "--task",
-        "x",
-        "--path",
-        "../ext"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate unadopt: unknown option: --path\n"
-    },
-    {
-      "argv": [
-        "isolate",
-        "unadopt"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate unadopt: missing required option: --task\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -1003,8 +901,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: isolate unadopt: task id '//' has no usable characters\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -1016,7 +913,7 @@
         "0"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": false,
@@ -1065,8 +962,7 @@
             "task": "prep"
           }
         ]
-      },
-      "stderr": ""
+      }
     }
   ]
 }

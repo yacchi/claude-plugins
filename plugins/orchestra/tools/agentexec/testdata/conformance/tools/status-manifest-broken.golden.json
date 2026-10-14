@@ -8,7 +8,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": [
         {
           "hint": "run: agent-exec tools install pi",
@@ -37,8 +37,7 @@
           "version": null,
           "wanted": "0.0.79"
         }
-      ],
-      "stderr": ""
+      ]
     }
   ]
 }

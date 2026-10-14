@@ -1,5 +1,5 @@
 description: >
-  the chosen directory cannot be created (a file is in the way): exit 1 (stderr is not compared)
+  the chosen directory cannot be created (a file is in the way): exit 1
 setup:
   files:
     ~/.claude/plugins/marketplaces/mp1/plugins/orchestra/tools/agent-exec: |
@@ -9,4 +9,3 @@ setup:
 steps:
   - argv: [install]
     stdin: "5\nblocker/sub\n"
-    stderr: ignore

@@ -8,7 +8,7 @@
         "standard"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -37,8 +37,7 @@
           }
         ],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -48,7 +47,7 @@
         "--no-cooldown"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -68,8 +67,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -80,8 +78,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: claude (dispatch=claude model=sonnet effort=None)\nskipped:\n  - pi: cooldown:quota\ncooldown: pi (quota) until 4102444800.5\nsource: priority\n",
-      "stderr": ""
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: claude (dispatch=claude model=sonnet effort=None)\nskipped:\n  - pi: cooldown:quota\ncooldown: pi (quota) until 4102444800.5\nsource: priority\n"
     },
     {
       "argv": [
@@ -90,7 +87,7 @@
         "light"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -110,8 +107,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -120,7 +116,7 @@
         "standard"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "agent_type": null,
         "archetype": "default",
@@ -140,8 +136,7 @@
         ],
         "skipped": [],
         "source": "priority"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

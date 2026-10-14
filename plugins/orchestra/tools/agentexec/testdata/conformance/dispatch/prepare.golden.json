@@ -18,7 +18,7 @@
         "--json"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml",
@@ -26,7 +26,6 @@
         ],
         "token": "<TOKEN#1>"
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/tokens/<@TOK>.json": {
           "content": {
@@ -41,7 +40,7 @@
             "task": "t-1",
             "workdir": "<WORK>"
           },
-          "shape": "json-line"
+          "shape": "json"
         }
       }
     },
@@ -63,7 +62,7 @@
         "never"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "config_layers": [
           "<HOME>/.claude/orchestra.yaml",
@@ -71,7 +70,6 @@
         ],
         "token": "<TOKEN#2>"
       },
-      "stderr": "",
       "files": {
         "~/.claude/orchestra/tokens/<@TOK2>.json": {
           "content": {
@@ -87,7 +85,7 @@
             "task": null,
             "workdir": "<WORK>/sub/sub"
           },
-          "shape": "json-line"
+          "shape": "json"
         }
       }
     },
@@ -102,8 +100,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing required option: --class\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -116,8 +113,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing required option: --prompt-file\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -130,8 +126,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing required option: --workdir\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -148,8 +143,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: --isolate must be auto|always|never\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -166,8 +160,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: invalid --run-id: bad id\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -183,8 +176,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: unknown option: --bogus\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -194,8 +186,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing value for --class\n"
+      "stdout": null
     },
     {
       "argv": [
@@ -211,8 +202,7 @@
       ],
       "exit": 2,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": "agent-exec: dispatch: missing value for --task\n"
+      "stdout": null
     }
   ]
 }

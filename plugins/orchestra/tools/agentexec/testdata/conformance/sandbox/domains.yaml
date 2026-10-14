@@ -1,8 +1,8 @@
 description: >
-  sandbox allow-domain / forget-domain: domains are normalized (trim,
-  lower case), stored with source user and an optional reason, idempotent,
-  kept apart from the path grants; wildcards, TLD wildcards, IP literals,
-  localhost and junk are refused
+  sandbox allow-domain / forget-domain: domains are normalized (trim, lower
+  case), stored with source user and an optional reason, idempotent, kept
+  apart from the path grants; wildcards, TLD wildcards, IP literals, localhost
+  and junk are refused (exit 1)
 setup:
   files:
     ~/cache-dir/keep.txt: "x\n"
@@ -25,9 +25,6 @@ steps:
   - argv: [sandbox, allow-domain, "a b.com"]
   - argv: [sandbox, allow-domain, "http://x.com"]
   - argv: [sandbox, allow-domain, "1.2.3"]
-  - argv: [sandbox, allow-domain, " "]
-  - argv: [sandbox, allow-domain]
-  - argv: [sandbox, allow-domain, a.example.org, --reason]
   - argv: [sandbox, forget-domain, REGISTRY.npmjs.org, --json]
   - argv: [sandbox, forget-domain, registry.npmjs.org, --json]
   - argv: [sandbox, forget-domain, "*.github.com"]

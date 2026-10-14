@@ -19,7 +19,7 @@
         "1"
       ],
       "exit": 5,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -38,8 +38,7 @@
         "state": "<HOME>/wave/state.json",
         "status": "stopped",
         "waves": 1
-      },
-      "stderr": "max-in-flight: 1 (option)\n"
+      }
     },
     {
       "argv": [
@@ -59,7 +58,7 @@
         "1"
       ],
       "exit": 5,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -78,8 +77,7 @@
         "state": "<HOME>/wave/state.json",
         "status": "stopped",
         "waves": 0
-      },
-      "stderr": "max-in-flight: 1 (option)\n"
+      }
     },
     {
       "argv": [
@@ -101,7 +99,7 @@
         "run-1"
       ],
       "exit": 5,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -120,8 +118,7 @@
         "state": "<HOME>/wave/state.json",
         "status": "stopped",
         "waves": 1
-      },
-      "stderr": "max-in-flight: 1 (option)\n"
+      }
     },
     {
       "argv": [
@@ -142,7 +139,6 @@
       "exit": 5,
       "stdout_shape": "text",
       "stdout": "wave run stopped  waves=1  reason: stop requested\n  integrated: A, B, C\n  pending: D\n",
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/wave/STOP": {
           "content": "enough",
@@ -544,7 +540,7 @@
             "version": 1,
             "wave": 3
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -557,8 +553,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "wave 3  pending=1 integrated=3  running: 0 in flight  stopped: stop requested\n  A  integrated  <ELAPSED>  pi  1  0\n  B  integrated  <ELAPSED>  pi  1  0\n  C  integrated  <ELAPSED>  pi  1  0\n",
-      "stderr": ""
+      "stdout": "wave 3  pending=1 integrated=3  running: 0 in flight  stopped: stop requested\n  A  integrated  <ELAPSED>  pi  1  0\n  B  integrated  <ELAPSED>  pi  1  0\n  C  integrated  <ELAPSED>  pi  1  0\n"
     }
   ]
 }

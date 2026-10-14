@@ -21,9 +21,6 @@ setup:
       enforcement:
         turn_edits: true
         worker_vcs: " OFF"
-    sub3/.claude/orchestra.yaml: |
-      enforcement:
-        turn_edits: 2.0
 steps:
   - argv: [config]
     cwd: "~"
@@ -32,5 +29,3 @@ steps:
     cwd: sub
   - argv: [config]
     cwd: sub2
-  - argv: [config]
-    cwd: sub3

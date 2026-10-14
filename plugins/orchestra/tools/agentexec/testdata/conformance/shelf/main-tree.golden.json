@@ -7,12 +7,11 @@
         "push"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "refusing to shelve in the main working tree, which other tasks and the user share; work in your own worktree, or pass --allow-main-tree if you are alone in it",
         "status": "error"
       },
-      "stderr": "",
       "files": {
         "src/a.txt": {
           "content": "fix\n",
@@ -29,7 +28,7 @@
         "without the fix"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [
           "src/a.txt",
@@ -38,7 +37,6 @@
         "id": 0,
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "src/a.txt": {
           "content": "old\n",
@@ -57,7 +55,7 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "entries": [
           {
@@ -72,8 +70,7 @@
           }
         ],
         "status": "ok"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -82,12 +79,11 @@
         "--allow-main-tree"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "files": [],
         "status": "empty"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -95,7 +91,7 @@
         "pop"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "dropped": true,
         "files": [
@@ -105,7 +101,6 @@
         "id": 0,
         "status": "ok"
       },
-      "stderr": "",
       "files": {
         "src/a.txt": {
           "content": "fix\n",
@@ -127,12 +122,11 @@
         "list"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "entries": [],
         "status": "ok"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -140,12 +134,11 @@
         "pop"
       ],
       "exit": 3,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "no such shelf entry",
         "status": "error"
-      },
-      "stderr": ""
+      }
     }
   ]
 }

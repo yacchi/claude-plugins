@@ -1,8 +1,7 @@
 description: >
-  a wave run leaves A as a delegate need and B pending, `wave mark` hands A
+  a wave run leaves A as a delegate need and B pending, wave mark hands A
   back, and a second run resumes from the same state.json / events.jsonl,
-  integrating A and dispatching B (recorded as a Python/Go mix before the
-  cutover)
+  integrating A and dispatching B
 setup:
   git: true
   fakes: [pi]
@@ -33,7 +32,7 @@ setup:
        ]}
 normalize_keys: [since, updated, at, registered_at]
 normalize_text:
-  - pattern: '"(seconds|until)": [0-9.e+-]+'
+  - pattern: '"(seconds|until)": ?[0-9.e+-]+'
     replace: '"$1": <N>'
   - pattern: '\b[0-9]+[hm][0-9]{2}[ms]\b'
     replace: '<ELAPSED>'

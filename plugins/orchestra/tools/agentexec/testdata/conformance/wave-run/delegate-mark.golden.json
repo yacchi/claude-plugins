@@ -18,7 +18,7 @@
         "--no-ui"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [
@@ -43,7 +43,6 @@
         "status": "done",
         "waves": 2
       },
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/wave/state.events.jsonl": {
           "content": [
@@ -200,7 +199,7 @@
             "version": 1,
             "wave": 2
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -216,12 +215,11 @@
         "ready"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pkg": "A",
         "status": "verifying"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -237,12 +235,11 @@
         "given up"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "pkg": "C",
         "status": "failed"
       },
-      "stderr": "",
       "files": {
         "~/wave/state.json": {
           "content": {
@@ -293,7 +290,7 @@
             "version": 1,
             "wave": 2
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -313,7 +310,7 @@
         "1"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
         "blocked": [],
@@ -334,7 +331,6 @@
         "status": "done",
         "waves": 2
       },
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/wave/state.json": {
           "content": {
@@ -392,7 +388,7 @@
             "version": 1,
             "wave": 4
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     }

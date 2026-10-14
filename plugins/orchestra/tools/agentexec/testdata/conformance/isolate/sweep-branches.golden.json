@@ -9,12 +9,11 @@
         "blocked"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "reason": "could not create a worktree for orchestra/00000000/blocked",
         "status": "error"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -24,7 +23,7 @@
         "live"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "backend": "git",
         "baseline": "<SHA#1>",
@@ -35,8 +34,7 @@
         "path": "<WORK>-orchestra/00000000-live",
         "status": "created",
         "task": "live"
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -44,7 +42,7 @@
         "sweep"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [
           {
@@ -84,8 +82,7 @@
             "task": "live"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -95,7 +92,7 @@
         "--dry-run"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [
           {
@@ -134,8 +131,7 @@
             "task": "live"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -146,7 +142,7 @@
         "100000"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [
           {
@@ -186,8 +182,7 @@
             "task": "live"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -196,7 +191,7 @@
         "--branches"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [
           {
@@ -235,8 +230,7 @@
             "task": "live"
           }
         ]
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -245,7 +239,7 @@
         "--branches"
       ],
       "exit": 0,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "branches": [],
         "dry_run": false,
@@ -277,8 +271,7 @@
             "task": "live"
           }
         ]
-      },
-      "stderr": ""
+      }
     }
   ]
 }

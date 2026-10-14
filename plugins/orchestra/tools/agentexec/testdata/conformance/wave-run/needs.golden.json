@@ -17,7 +17,7 @@
         "1"
       ],
       "exit": 1,
-      "stdout_shape": "json-line",
+      "stdout_shape": "json",
       "stdout": {
         "approvals": 1,
         "blocked": [
@@ -52,7 +52,6 @@
         "status": "done",
         "waves": 3
       },
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/wave/state.events.jsonl": {
           "content": [
@@ -280,7 +279,7 @@
             "version": 1,
             "wave": 3
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     },
@@ -292,8 +291,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "net:files.example.com  ports=443  packages=C(needs)\ndecide: agent-exec approvals decide --state wave/state.json ITEM allow|deny --reason TEXT\n",
-      "stderr": ""
+      "stdout": "net:files.example.com  ports=443  packages=C(needs)\ndecide: agent-exec approvals decide --state wave/state.json ITEM allow|deny --reason TEXT\n"
     },
     {
       "argv": [
@@ -309,7 +307,6 @@
       "exit": 0,
       "stdout_shape": "text",
       "stdout": "deny net:files.example.com: files.example.com  resumed: C\n",
-      "stderr": "",
       "files": {
         "~/wave/approvals.json": {
           "content": {
@@ -321,7 +318,7 @@
               }
             }
           },
-          "shape": "json-indent"
+          "shape": "json"
         },
         "~/wave/corrections/C.approvals.md": {
           "content": "# Approval decisions for C\n\n- network access to files.example.com was declined: not needed for the spec. Finish without it or ESCALATE.\n",
@@ -348,7 +345,6 @@
       "exit": 1,
       "stdout_shape": "text",
       "stdout": "wave run done  waves=1\n  blocked: B\n  needs: A(escalate), D(scope), C(network)\n  network denied: C(files.example.com:443)\n",
-      "stderr": "max-in-flight: 1 (option)\n",
       "files": {
         "~/wave/corrections/C.approvals.md": null,
         "~/wave/corrections/C.approvals.sent.md": {
@@ -440,7 +436,7 @@
             "version": 1,
             "wave": 4
           },
-          "shape": "json-indent"
+          "shape": "json"
         }
       }
     }

@@ -7,11 +7,10 @@
         "--list-runs"
       ],
       "exit": 0,
-      "stdout_shape": "json-indent",
+      "stdout_shape": "json",
       "stdout": {
         "runs": []
-      },
-      "stderr": ""
+      }
     },
     {
       "argv": [
@@ -21,8 +20,7 @@
       ],
       "exit": 0,
       "stdout_shape": "empty",
-      "stdout": null,
-      "stderr": ""
+      "stdout": null
     }
   ]
 }
