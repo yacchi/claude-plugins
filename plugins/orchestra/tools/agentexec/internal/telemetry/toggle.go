@@ -34,6 +34,23 @@ func block(enabled bool) string {
 	return strings.Replace(blockTemplate, "%s", boolText(enabled), 1)
 }
 
+// dominantEOL is CRLF when at least half of s's lines end in CRLF, else LF.
+func dominantEOL(s string) string {
+	crlf := strings.Count(s, "\r\n")
+	if crlf > 0 && crlf*2 >= strings.Count(s, "\n") {
+		return "\r\n"
+	}
+	return "\n"
+}
+
+// withEOL rewrites the line endings of an LF text to eol.
+func withEOL(s, eol string) string {
+	if eol == "\n" {
+		return s
+	}
+	return strings.ReplaceAll(s, "\n", eol)
+}
+
 // splitLinesKeepEnds splits s after every "\n", so "\r\n" endings stay on
 // their line and joining the pieces restores s exactly.
 func splitLinesKeepEnds(s string) []string {
@@ -66,10 +83,11 @@ func SetEnabledInText(text *string, enabled bool) string {
 	}
 	if telemetryIdx < 0 {
 		out := *text
+		eol := dominantEOL(out)
 		if out != "" && !strings.HasSuffix(out, "\n") {
-			out += "\n"
+			out += eol
 		}
-		return out + "\n" + block(enabled)
+		return out + eol + withEOL(block(enabled), eol)
 	}
 
 	// The block runs from just after the telemetry: line until the next
@@ -114,11 +132,12 @@ func SetEnabledInText(text *string, enabled bool) string {
 		}
 		break
 	}
-	insert := childIndent + "enabled: " + b + "\n"
+	eol := dominantEOL(*text)
+	insert := childIndent + "enabled: " + b + eol
 	// An anchor that is the last line and has no terminator would get the
 	// child glued onto it ; end the anchor line first.
 	if anchor := lines[telemetryIdx]; telemetryIdx == len(lines)-1 && !strings.HasSuffix(anchor, "\n") {
-		insert = "\n" + insert
+		insert = eol + insert
 	}
 	lines = append(lines[:telemetryIdx+1], append([]string{insert}, lines[telemetryIdx+1:]...)...)
 	return strings.Join(lines, "")

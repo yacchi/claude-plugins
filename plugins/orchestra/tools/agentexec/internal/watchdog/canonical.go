@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,7 +53,7 @@ func canonical(b *strings.Builder, v any) {
 	case int:
 		b.WriteString(strconv.Itoa(x))
 	case float64:
-		b.WriteString(strconv.FormatFloat(x, 'g', -1, 64))
+		b.WriteString(floatText(x))
 	case json.Number:
 		b.WriteString(number(x))
 	case string:
@@ -135,6 +136,19 @@ func number(n json.Number) string {
 		return s
 	}
 	f, _ := strconv.ParseFloat(s, 64)
+	return floatText(f)
+}
+
+// floatText renders a float so that an integral value reads exactly like the
+// integer literal (never an exponent, -0 as 0); other values use the
+// shortest round-trip form.
+func floatText(f float64) string {
+	if f == 0 {
+		return "0"
+	}
+	if !math.IsInf(f, 0) && f == math.Trunc(f) {
+		return strconv.FormatFloat(f, 'f', -1, 64)
+	}
 	return strconv.FormatFloat(f, 'g', -1, 64)
 }
 

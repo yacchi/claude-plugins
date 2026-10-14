@@ -195,6 +195,7 @@ func forgetDomain(domain, home string) error {
 func DomainMatches(host string, patterns []string) bool {
 	host = strings.TrimRight(normDomain(host), ".")
 	for _, p := range patterns {
+		p = config.FoldHost(p)
 		if strings.HasPrefix(p, "*.") {
 			if strings.HasSuffix(host, p[1:]) {
 				return true

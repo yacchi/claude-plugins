@@ -36,6 +36,8 @@ func TestSetEnabledInTextBytes(t *testing.T) {
 		{"odd indent", "telemetry:\n   enabled: false\n", true, "telemetry:\n   enabled: true\n"},
 		{"no trailing newline", "telemetry:\n  enabled: false", true, "telemetry:\n  enabled: true"},
 		{"CRLF preserved", "a: 1\r\ntelemetry:\r\n  enabled: false\r\nb: 2\r\n", true, "a: 1\r\ntelemetry:\r\n  enabled: true\r\nb: 2\r\n"},
+		{"CRLF insert stays CRLF", "telemetry:\r\n  dir: x\r\n", true, "telemetry:\r\n  enabled: true\r\n  dir: x\r\n"},
+		{"CRLF append stays CRLF", "a: 1\r\n", true, "a: 1\r\n\r\n" + strings.ReplaceAll(strings.Replace(tmpl, "%s", "true", 1), "\n", "\r\n")},
 		{"anchor with comment", "telemetry: # c\n  enabled: false\n", true, "telemetry: # c\n  enabled: true\n"},
 		{"anchor with trailing spaces", "telemetry:   \n  enabled: false\n", true, "telemetry:   \n  enabled: true\n"},
 		{"insert uses the block indent", "telemetry:\n    dir: x\n", true, "telemetry:\n    enabled: true\n    dir: x\n"},
