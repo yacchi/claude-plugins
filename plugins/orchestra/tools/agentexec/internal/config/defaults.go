@@ -86,7 +86,7 @@ func Defaults() map[string]any {
 			"wall_seconds", obj("light", int64(1200), "standard", int64(2400),
 				"deep", int64(5400), "independent-review", int64(2400)),
 		),
-		"tiers", obj("light", "haiku", "standard", "sonnet", "deep", "opus", "review", "sonnet"),
+		"tiers", obj("light", "haiku", "standard", "haiku", "deep", "opus", "review", "sonnet"),
 		"external_executors", obj(
 			"pi", obj(
 				"enabled", true,
@@ -104,7 +104,7 @@ func Defaults() map[string]any {
 		),
 		"priority", obj(
 			"light", obj("investigation", strs("claude", "pi"), "default", strs("claude", "pi")),
-			"standard", obj("default", strs("pi", "claude")),
+			"standard", obj("default", strs("claude", "pi")),
 			"deep", obj("default", strs("claude", "pi")),
 			"review", obj("default", strs("claude")),
 			"independent-review", obj("default", strs("pi")),
@@ -121,6 +121,11 @@ func Defaults() map[string]any {
 			"path", "~/.claude/orchestra/executor-state.json",
 			"seconds", obj("rate-limit", int64(900), "quota", int64(3600), "credits", int64(3600),
 				"auth", int64(0), "nonzero-exit", int64(0), "sandbox", int64(0)),
+		),
+		"usage_routing", obj(
+			"enabled", true,
+			"thresholds", obj("five_hour", int64(80), "seven_day", int64(90)),
+			"cache_seconds", int64(120),
 		),
 		"sandbox", obj(
 			"mode", "auto",

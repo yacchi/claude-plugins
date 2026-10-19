@@ -162,8 +162,9 @@ priority:
     investigation: [claude, pi]
     default: [claude, pi]
   standard:
-    # pi Luna clears sonnet-class work, so it leads the standard band.
-    default: [pi, claude]
+    # Claude Haiku 5.5 leads the standard band (round7 judgment benchmark 3/3 vs
+    # Luna 1/3); pi Luna/medium is the fallback.
+    default: [claude, pi]
   deep:
     default: [claude, pi]
   review:
@@ -172,7 +173,7 @@ priority:
     default: [pi]
 ```
 
-**プロアクティブな残量照会は同梱しない。** `cli`ディスパッチと同じ安全原則により、piの従量プロバイダの残クレジットやClaudeの使用ウィンドウ残量を事前に問い合わせるコマンドはこのプラグインには存在せず、今後も追加しない。フォールバックの判定材料は、実際にディスパッチした時点で観測される「unavailableシグナル」だけである。
+**残量照会はサブスクリプションの使用ウィンドウだけに限る(`usage_routing`)。** piの従量プロバイダの残クレジットを事前に問い合わせるコマンドは存在しない。例外はサブスクリプションのレートリミット窓(5時間・7日)で、`agent-exec route`/`dispatch`は候補の背後にあるプラン(`claude`ならClaudeのサブスクリプション、class modelが`openai-codex/...`の`pi`ならChatGPTのサブスクリプション)の使用率を読み、`usage_routing.thresholds`(既定 five_hour 80% / seven_day 90%)以上の候補を`usage:<group>:<window>=<pct>%`で降格する。降格はcooldownと同じくソフトで、全候補が降格・cooldown中ならそれらを無視してウォークをやり直し`usage_bypassed: true`を付ける。認証情報は読むだけで更新・書き込み・ログ出力はせず、照会結果は`<state dir>/usage-limits.json`に`cache_seconds`(既定120秒)だけキャッシュし(失敗も含む)、エンドポイントは非公開APIなのでどの失敗もfail-open(データなし=降格なし)である。他のプロバイダ(`github-copilot/...`など)はデータがなく降格しない。`--no-usage`(route/dispatch)と`ORCHESTRA_USAGE_ROUTING=0`がescape hatchで、現在値は`agent-exec doctor`の`usage_limits`で確認できる。それ以外のフォールバックの判定材料は、実際にディスパッチした時点で観測される「unavailableシグナル」だけである。
 
 **認可(authorization)の事前チェックは残量照会とは別物で、こちらは推奨する。** 上の「残量照会を同梱しない」は、リモートで変動する*残量*(クレジット/使用ウィンドウ)を事前問い合わせしない、という意味であって*認可*には当てはまらない。`dispatch: cli`のエグゼキュータ(pi)は、セッションに該当するBash許可ルール(`agent-exec`利用時は`Bash(agent-exec:*)`、手動セットアップ時は`Bash(pi:*)`)が欠けていれば**この実行では絶対に成功しない**(これ以外に必要な環境変数はない)。許可ルールが欠けている場合、残量と違って一過性ではなく、リレーを起動してもパーミッションに即拒否される。
 
@@ -194,7 +195,7 @@ priority:
 
 **sticky exhaustion(枯渇の記憶)。** 1回のオーケストレーション実行の中でunavailableと判定されたエグゼキュータは、`Set`などに記録して以降のすべてのタスクでスキップする。タスクごとに毎回同じエグゼキュータを再プローブしない — 一度枯渇したエグゼキュータが同じランの途中で復活していないか確認する意味はない。
 
-**クロスランcooldown(枯渇の時間減衰)。** 同じunavailableの再発を次のランで毎回発見し直さないため、`agent-exec dispatch`(直接実行を含む)は、パースした結果が`status=unavailable`になった瞬間に、LLMを介さず`~/.claude/orchestra/executor-state.json`(`{executor: {reason, until}}`)へ自動保存する。理由ごとのcooldown秒数は設定(`rate-limit: 900`、`quota: 3600`、`credits: 3600`、`auth: 0`、`nonzero-exit: 0`)から取り、`agent-exec route`/`dispatch`はファイルを読み、期限内のエントリを既存の`--exhausted`と同じ候補ゲートへ渡す(スキップ理由は`cooldown:<reason>`)。これは2026-07-28 09:23〜09:32(UTC)に、外部エグゼキュータ側の本物の枯渇(`session.error` / `errorType: quota` / HTTP 402)を9分間で12回連続して発見し直したための最適化である。ただしcooldownはクラスをunroutableにしない: 全候補がcooldown中ならcooldownを無視してウォークをやり直し、結果に`cooldown_bypassed: true`を付ける。認証とnonzero-exitはリソース枯渇ではなく一過性なので`0`(cooldownなし)であり、missing/corruptな状態ファイル、書き込み不能なパス、保存失敗もすべてfail-openで従来どおりルーティングする。`--no-cooldown`(route/dispatch)、`cooldown.enabled: false`、`agent-exec ui`ダッシュボードからのクリアがescape hatchであり、期限内のエントリは`agent-exec doctor`の`cooldowns`で確認できる。これはラン内の`Set`によるsticky exhaustionを置き換えず、その下に加わるクロスラン層である。なお、これは既存の**プロアクティブな残量照会を同梱しない**方針を変更しない — cooldownはディスパッチ時に実際に観測したシグナルだけを反応的に記憶し、リモートの残量APIを問い合わせない。
+**クロスランcooldown(枯渇の時間減衰)。** 同じunavailableの再発を次のランで毎回発見し直さないため、`agent-exec dispatch`(直接実行を含む)は、パースした結果が`status=unavailable`になった瞬間に、LLMを介さず`~/.claude/orchestra/executor-state.json`(`{executor: {reason, until}}`)へ自動保存する。理由ごとのcooldown秒数は設定(`rate-limit: 900`、`quota: 3600`、`credits: 3600`、`auth: 0`、`nonzero-exit: 0`)から取り、`agent-exec route`/`dispatch`はファイルを読み、期限内のエントリを既存の`--exhausted`と同じ候補ゲートへ渡す(スキップ理由は`cooldown:<reason>`)。これは2026-07-28 09:23〜09:32(UTC)に、外部エグゼキュータ側の本物の枯渇(`session.error` / `errorType: quota` / HTTP 402)を9分間で12回連続して発見し直したための最適化である。ただしcooldownはクラスをunroutableにしない: 全候補がcooldown中ならcooldownを無視してウォークをやり直し、結果に`cooldown_bypassed: true`を付ける。認証とnonzero-exitはリソース枯渇ではなく一過性なので`0`(cooldownなし)であり、missing/corruptな状態ファイル、書き込み不能なパス、保存失敗もすべてfail-openで従来どおりルーティングする。`--no-cooldown`(route/dispatch)、`cooldown.enabled: false`、`agent-exec ui`ダッシュボードからのクリアがescape hatchであり、期限内のエントリは`agent-exec doctor`の`cooldowns`で確認できる。これはラン内の`Set`によるsticky exhaustionを置き換えず、その下に加わるクロスラン層である。cooldownはディスパッチ時に実際に観測したシグナルだけを反応的に記憶し、リモートの残量APIは問い合わせない — 事前の照会はサブスクリプションの使用ウィンドウを読む`usage_routing`の役割であり、両者は同じウォークの中でソフトな降格として並ぶ。
 
 **`priority`は`classes`より優先してオーダリングを決める。** `priority.<class>`が存在する場合、そのクラス/ロールの候補集合と順序についてはこちらが正となる。`external_executors.<key>.classes`は後方互換のために残されており、`priority`がそのクラス/ロールに存在しない場合にのみ、従来の「各エグゼキュータの`classes`リストから逆引きして織り込む」方式が適用される。いずれの方式でも、実際のモデル/effort/dispatch設定は`class_policy`から取り、`enabled: false`はどちらの方式でもそのエグゼキュータを無条件に除外する。
 

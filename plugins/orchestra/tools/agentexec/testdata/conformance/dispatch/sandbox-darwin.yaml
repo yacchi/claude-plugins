@@ -14,6 +14,10 @@ setup:
   modes:
     ~/.local/bin/agent-exec: "0755"
   files:
+    ~/.claude/orchestra.yaml: |
+      priority:
+        standard:
+          default: [pi, claude]
     ~/.local/bin/agent-exec: |
       #!/bin/sh
       exec "$AGENT_EXEC_UNDER_TEST" "$@"

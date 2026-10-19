@@ -175,8 +175,8 @@
               },
               "standard": {
                 "default": [
-                  "pi",
-                  "claude"
+                  "claude",
+                  "pi"
                 ]
               }
             },
@@ -211,7 +211,7 @@
               "deep": "opus",
               "light": "haiku",
               "review": "sonnet",
-              "standard": "sonnet"
+              "standard": "haiku"
             },
             "tools": {
               "herdr": {
@@ -232,6 +232,14 @@
                 "source": "auto",
                 "spec": "npm:@anthropic-ai/sandbox-runtime",
                 "version": "0.0.79"
+              }
+            },
+            "usage_routing": {
+              "cache_seconds": 120,
+              "enabled": true,
+              "thresholds": {
+                "five_hour": 80,
+                "seven_day": 90
               }
             },
             "watchdog": {
@@ -320,7 +328,9 @@
               "pi"
             ],
             "skipped": [],
-            "source": "priority"
+            "source": "priority",
+            "usage_applied": [],
+            "usage_bypassed": false
           },
           "light": {
             "agent_type": null,
@@ -340,7 +350,9 @@
               "pi"
             ],
             "skipped": [],
-            "source": "priority"
+            "source": "priority",
+            "usage_applied": [],
+            "usage_bypassed": false
           },
           "review": {
             "agent_type": null,
@@ -357,27 +369,31 @@
             "model": "sonnet",
             "remaining": [],
             "skipped": [],
-            "source": "priority"
+            "source": "priority",
+            "usage_applied": [],
+            "usage_bypassed": false
           },
           "standard": {
             "agent_type": null,
             "archetype": "default",
             "candidates": [
-              "pi",
-              "claude"
+              "claude",
+              "pi"
             ],
             "class": "standard",
             "cooldown_bypassed": false,
             "cooldowns_applied": [],
-            "dispatch": "cli",
-            "effort": "medium",
-            "executor": "pi",
-            "model": "openai-codex/gpt-5.6-luna",
+            "dispatch": "claude",
+            "effort": null,
+            "executor": "claude",
+            "model": "haiku",
             "remaining": [
-              "claude"
+              "pi"
             ],
             "skipped": [],
-            "source": "priority"
+            "source": "priority",
+            "usage_applied": [],
+            "usage_bypassed": false
           }
         },
         "sandbox": {
@@ -415,6 +431,9 @@
           "path": "<HOME>/.local/bin/agent-exec",
           "target": "/m/plugins/marketplaces/orchestra/tools/agent-exec"
         },
+        "usage_limits": {
+          "enabled": false
+        },
         "user_config": {
           "herdr": "isolate",
           "orca": "isolate"
@@ -428,7 +447,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: true)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nbuild: <BUILD>\nconfig: resolved (0 layer(s) found)\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=true dispatch=cli binary=pi available=true\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=haiku effort=- source=priority)\n  - standard: pi (dispatch=cli model=openai-codex/gpt-5.6-luna effort=medium source=priority)\n  - deep: claude (dispatch=claude model=opus effort=- source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=- source=priority)\nsandbox: mode=auto backend=seatbelt enforced=true (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=true (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=false srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=false backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\n"
+      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: true)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nbuild: <BUILD>\nconfig: resolved (0 layer(s) found)\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=true dispatch=cli binary=pi available=true\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=haiku effort=- source=priority)\n  - standard: claude (dispatch=claude model=haiku effort=- source=priority)\n  - deep: claude (dispatch=claude model=opus effort=- source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=- source=priority)\nusage limits: disabled\nsandbox: mode=auto backend=seatbelt enforced=true (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=true (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=false srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=false backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\n"
     }
   ]
 }

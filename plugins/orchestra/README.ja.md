@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-**コスト階層型のマルチエージェント実行**のための Claude Code プラグインです。高価な指示役モデル(Fable/Opus など)が作業を分解してオーケストレーション用のスクリプトを書き、`agent-exec route` がタスクごとに使える最も安い実装役を選び(light は Claude Haiku、standard や独立レビューは pi などの外部実行系)、Sonnet のレビュー役が結果を壊しにかかって検証し、指示役には構造化された合否の判定だけが返ります。
+**コスト階層型のマルチエージェント実行**のための Claude Code プラグインです。高価な指示役モデル(Fable/Opus など)が作業を分解してオーケストレーション用のスクリプトを書き、`agent-exec route` がタスクごとに使える最も安い実装役を選び(light と standard は Claude Haiku、予備と独立レビューは pi などの外部実行系)、Sonnet のレビュー役が結果を壊しにかかって検証し、指示役には構造化された合否の判定だけが返ります。
 
 ## なぜ必要か
 
@@ -90,6 +90,7 @@ claude plugin validate .
 - **`interactive_host`** — `wave run` で Claude 系のパッケージを動かすホストを選びます: `herdr`、`orca`、`none`(既定は `auto`)。
 - **`wave.verify_mode`** — `final`(既定): 途中のテストでパッケージを止めません。パッケージごとには `fast` 指定の検査だけを記録として流し、テスト一式は最後に一度回して、失敗は緑になるまで修正パッケージとして並列に投入します。`gated` は従来どおり赤で止めます。`wave.max_in_flight: auto` は herdr ホストで同時実行数を広げます。
 - **`priority`** — クラス/役割ごとの実行系の優先順。順に候補をたどる処理は `agent-exec route` / `agent-exec dispatch` が行い、指示役が手作業でたどることはありません。
+- **`usage_routing`** — サブスクリプションの残量を見たルーティング。候補の背後にあるプラン(`claude` は Claude、`openai-codex/...` のモデルで動く `pi` は ChatGPT)が 5 時間枠の 80% 以上か 7 日枠の 90% 以上を使っていれば、余裕のある次の候補に回します。降格はソフト(全候補が上限近くなら無視)で、照会はキャッシュされ、失敗しても通常どおりルーティングします。`--no-usage` か `ORCHESTRA_USAGE_ROUTING=0` で無効にでき、現在値は `agent-exec doctor` の `usage_limits` で確認できます。
 - **`enforcement.*`** — フックによる防護(`worker_vcs`、`worker_tree`、`worktree_lease`、`session_cleanup`、`turn_edits`、`opus_generalist`、オプトインの `light_class`)。どれにも回避用のマーカーと、環境変数による無効化スイッチがあります。
 
 コメント付きの全項目は [`examples/orchestra.yaml`](examples/orchestra.yaml) を、マージの手順と各オプションは [`skills/run/references/config.md`](skills/run/references/config.md) を参照してください。`/setup` を使えばファイルを代わりに編集してくれます。

@@ -57,7 +57,8 @@ Agent({
 | `round3-parsejson/` | `parseJson(text)` の実装(RFC 8259準拠パーサー) | `node test3.js <candidate-dir>` |
 | `round4-ratelimiter/` | `buggy/`のバグ(refill計算の秒未満切り捨て)を修正させる | `buggy/`の中身を候補ディレクトリにコピーしてから修正させ、`node test4.js <candidate-dir>` |
 | `round5-cache/` | `buggy/`のバグ(過剰なクエリ剥ぎ取り)を、誤った診断(TTL問題だと主張)込みの`TASK5.md`から見つけさせる | `buggy/`をコピーしてから、`node test5.js <candidate-dir>` |
-| `round6-webapp/` | Go/Python/TypeScriptの3言語フルスタックアプリを`INSTRUCTIONS.md`から実装させる | 下記参照 |
+| `round6-webapp/` | Go/Python/TypeScriptの3言語フルスタックアプリを`INSTRUCTIONS.md`から実装させる(`sort=priority&order=asc`の順序は asc = low, medium, high と明記済み。旧版の曖昧さは修正済み) | 下記参照 |
+| `round7-ledger/` | 約1,170行の台帳パッケージに層の異なる4つのバグ(丸め・暦・CSV の符号・税率キャッシュのキー)を仕込み、根本原因から直させる | `round7-ledger/verify.sh <candidate-dir>`(詳細は同ディレクトリの`README.md`) |
 
 ### Round 4・5(バグ修正ラウンド)の使い方
 

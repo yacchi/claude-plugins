@@ -71,7 +71,7 @@ A package's worktree is created when its dispatch runs, from the integration wor
 
 ### Template
 
-Paste the skill's §5 helpers from `workflow-template.md` (`VERDICT_SCHEMA` through `runTask`, minus the final `pipeline`/cleanup/`return`) above this block. Each package in `args.packages` is a `runTask` task (its `dispatchToken` minted as above) plus `deps`, `files_owned`, and optional `prio`.
+Paste the skill's §5 helpers from `workflow-template.md` (`VERDICT_SCHEMA` through `runTask`, minus the final `pipeline`/cleanup/`return`) above this block. Each package in `args.packages` is a `runTask` task (its `dispatchToken` minted as above) plus `deps`, `files_owned`, `probeDir`, and optional `prio`. Give every package a `probeDir` — a per-package directory under your scratch dir, outside every worktree — rather than `noProbes`: packages are reviewed by the same Sonnet gates, and their probes overlap the package's long implementation for free. The size gate (`sizeGate()`) is not called here — packages are session-sized by design and budgeted by `maxPackages`/`maxInFlight` instead — but the ownership pre-check is: a package that changes a path outside its `files_owned` (trailing `/**` globs count as directory prefixes) fails its gate without a review, which is one more reason the reality check above must correct `files_owned` before scheduling.
 
 ```javascript
 export const meta = {

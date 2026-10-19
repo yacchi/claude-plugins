@@ -1,0 +1,212 @@
+{
+  "scenario": "route/usage-snapshot",
+  "steps": [
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "claude",
+          "pi"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "cli",
+        "effort": "medium",
+        "executor": "pi",
+        "model": "openai-codex/gpt-5.6-luna",
+        "remaining": [],
+        "skipped": [
+          {
+            "executor": "claude",
+            "reason": "usage:claude:five_hour=85%"
+          }
+        ],
+        "source": "priority",
+        "usage_applied": [
+          {
+            "executor": "claude",
+            "group": "claude",
+            "resets_at": 1791558187,
+            "threshold": 80,
+            "used_percent": 85,
+            "window": "five_hour"
+          }
+        ],
+        "usage_bypassed": false
+      }
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: claude, pi\nresolved: pi (dispatch=cli model=openai-codex/gpt-5.6-luna effort=medium)\nskipped:\n  - claude: usage:claude:five_hour=85%\nusage: claude (claude five_hour=85% >= 80%) resets <TS>\nsource: priority\n"
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard",
+        "--no-usage"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "claude",
+          "pi"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "haiku",
+        "remaining": [
+          "pi"
+        ],
+        "skipped": [],
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
+      }
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "claude",
+          "pi"
+        ],
+        "class": "light",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "haiku",
+        "remaining": [
+          "pi"
+        ],
+        "skipped": [],
+        "source": "priority",
+        "usage_applied": [
+          {
+            "executor": "claude",
+            "group": "claude",
+            "resets_at": null,
+            "threshold": 80,
+            "used_percent": 85,
+            "window": "five_hour"
+          },
+          {
+            "executor": "pi",
+            "group": "openai-codex",
+            "resets_at": null,
+            "threshold": 90,
+            "used_percent": 93.25,
+            "window": "seven_day"
+          }
+        ],
+        "usage_bypassed": true
+      }
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "light",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec route\n-----------------\nclass: light (archetype: default)\ncandidates: claude, pi\nresolved: claude (dispatch=claude model=haiku effort=-)\nusage: claude (claude five_hour=85% >= 80%) resets -\nusage: pi (openai-codex seven_day=93.3% >= 90%) resets -\nusage: BYPASSED (every candidate was demoted or cooled down)\nremaining: pi\nsource: priority\n"
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "deep"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "pi",
+          "claude"
+        ],
+        "class": "deep",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "cli",
+        "effort": "high",
+        "executor": "pi",
+        "model": "github-copilot/gpt-5",
+        "remaining": [
+          "claude"
+        ],
+        "skipped": [],
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
+      }
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "claude",
+          "pi"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "haiku",
+        "remaining": [
+          "pi"
+        ],
+        "skipped": [],
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
+      }
+    }
+  ]
+}

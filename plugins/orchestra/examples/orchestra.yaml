@@ -34,7 +34,7 @@
 tiers:
   # implementation capability classes (cheapest/fastest -> hardest)
   light: haiku       # fast, mechanical, fully-specified work
-  standard: sonnet   # normal implementation with modest design latitude
+  standard: haiku    # normal implementation with modest design latitude
   deep: opus         # design-sensitive / hard problems needing real judgment
   # verification role
   review: sonnet     # mandatory same-run adversarial review of the work
@@ -157,6 +157,21 @@ cooldown:
     auth: 0
     nonzero-exit: 0
     sandbox: 0
+
+# Usage-aware routing: before walking the priority list, route/dispatch read
+# how much of the subscription behind each candidate's 5-hour and 7-day
+# rate-limit windows is used (Claude plan for claude, ChatGPT plan for pi on
+# openai-codex/... models; other providers have no data). A candidate at or
+# above a threshold (percent) is demoted like a cooldown: soft, ignored when
+# every candidate is over. Lookups are cached for cache_seconds in the state
+# dir; every failure is fail-open. --no-usage skips it for one call;
+# ORCHESTRA_USAGE_ROUTING=0 turns it off.
+usage_routing:
+  enabled: true
+  thresholds:
+    five_hour: 80
+    seven_day: 90
+  cache_seconds: 120
 
 # OS sandbox for CLI executor children. `auto` uses the best backend available;
 # `required` refuses to run without one; `off` never wraps. These two lists are
@@ -290,8 +305,9 @@ priority:
     investigation: [claude, pi]
     default: [claude, pi]
   standard:
-    # pi Luna clears sonnet-class work, so it leads the standard band.
-    default: [pi, claude]
+    # Claude Haiku 5.5 leads the standard band (round7 judgment benchmark 3/3 vs
+    # Luna 1/3); pi Luna/medium is the fallback.
+    default: [claude, pi]
   deep:
     default: [claude, pi]
   review:

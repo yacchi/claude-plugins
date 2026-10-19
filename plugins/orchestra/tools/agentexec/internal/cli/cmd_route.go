@@ -9,6 +9,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/quota"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/route"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
@@ -24,6 +25,7 @@ func newRouteCmd() *cobra.Command {
 	archetype := cmd.Flags().String("archetype", "default", "task archetype (default|investigation)")
 	exhausted := cmd.Flags().String("exhausted", "", "comma-separated executors already tried")
 	noCooldown := cmd.Flags().Bool("no-cooldown", false, "ignore executor cooldowns")
+	noUsage := cmd.Flags().Bool("no-usage", false, "ignore subscription usage limits")
 	format := formatFlags(cmd, "json", "text")
 	_ = cmd.MarkFlagRequired("class")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -50,7 +52,11 @@ func newRouteCmd() *cobra.Command {
 		if !*noCooldown && cooldown.Enabled(cfg) {
 			active = cooldown.Active(cfg, time.Now())
 		}
-		r := route.Resolve(cfg, readiness.Compute(cfg).Ready, *class, *archetype, exhaustedList, active)
+		var usage map[string]quota.Entry
+		if !*noUsage && quota.Enabled(cfg) {
+			usage = quota.Snapshot(cfg, route.UsageGroups(cfg, *class, *archetype), time.Now())
+		}
+		r := route.Resolve(cfg, readiness.Compute(cfg).Ready, *class, *archetype, exhaustedList, active, usage)
 		if asText {
 			_, err := fmt.Fprint(cmd.OutOrStdout(), route.FormatText(r))
 			return err

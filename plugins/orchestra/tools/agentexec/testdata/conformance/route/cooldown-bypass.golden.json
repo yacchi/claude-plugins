@@ -24,7 +24,9 @@
         "model": "openai-codex/gpt-6.1-sol",
         "remaining": [],
         "skipped": [],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -62,7 +64,9 @@
         "model": "openai-codex/gpt-6.1-sol",
         "remaining": [],
         "skipped": [],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -95,7 +99,9 @@
             "reason": "exhausted"
           }
         ],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     }
   ]

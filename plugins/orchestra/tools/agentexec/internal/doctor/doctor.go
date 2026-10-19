@@ -1,6 +1,7 @@
 // Package doctor builds the readiness report behind `agent-exec doctor`: shim,
 // permission rule, build, resolved config, per-executor readiness, a routing
-// preview, cooldowns, the sandbox, and the hosts' network view.
+// preview, cooldowns, subscription usage limits, the sandbox, and the hosts'
+// network view.
 package doctor
 
 import (
@@ -14,6 +15,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/quota"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/route"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
@@ -34,6 +36,7 @@ type Report struct {
 	Ready      map[string]readiness.ExecReady
 	Route      []route.Route
 	Cooldowns  map[string]any
+	Usage      map[string]any
 	Sandbox    any
 	HerdrHost  any
 	UserConfig map[string]any
@@ -77,6 +80,25 @@ func Build(cfg *config.Resolved, cfgErr error) Report {
 		activeObj[name] = map[string]any{"reason": active[name].Reason, "until": active[name].Until}
 	}
 
+	var usage map[string]quota.Entry
+	usageObj := map[string]any{"enabled": false}
+	if quota.Enabled(dcfg) {
+		usage = quota.Snapshot(dcfg, quota.Groups, time.Now())
+		groups := map[string]any{}
+		for _, g := range quota.Groups {
+			if e, ok := usage[g]; ok {
+				groups[g] = e.Object()
+			} else {
+				groups[g] = nil
+			}
+		}
+		thresholds := map[string]any{}
+		for w, n := range quota.Thresholds(dcfg) {
+			thresholds[w] = n
+		}
+		usageObj = map[string]any{"enabled": true, "thresholds": thresholds, "groups": groups}
+	}
+
 	configSection := map[string]any{
 		"layers_found": []any{},
 		"config_root":  absPath(config.ProjectBase()),
@@ -105,6 +127,7 @@ func Build(cfg *config.Resolved, cfgErr error) Report {
 		Permission: ready.Permission,
 		Ready:      ready.Ready,
 		Cooldowns:  map[string]any{"path": cooldown.StatePath(dcfg), "active": activeObj},
+		Usage:      usageObj,
 		Sandbox:    sandbox.DoctorSection(dcfg),
 		HerdrHost:  herdr.HostReport(dcfg),
 		UserConfig: map[string]any{
@@ -115,7 +138,7 @@ func Build(cfg *config.Resolved, cfgErr error) Report {
 	}
 	if ok {
 		for _, cls := range previewClasses {
-			r.Route = append(r.Route, route.Resolve(cfg, ready.Ready, cls, "default", nil, active))
+			r.Route = append(r.Route, route.Resolve(cfg, ready.Ready, cls, "default", nil, active, usage))
 		}
 	}
 	return r
@@ -128,18 +151,19 @@ func (r Report) Object() map[string]any {
 		routes[rt.Class] = rt.Object()
 	}
 	return map[string]any{
-		"shim":        r.Shim,
-		"build":       r.Build,
-		"config":      r.Config,
-		"executors":   r.Executors,
-		"permission":  r.Permission,
-		"ready":       r.Ready,
-		"route":       routes,
-		"cooldowns":   r.Cooldowns,
-		"sandbox":     r.Sandbox,
-		"herdr_host":  r.HerdrHost,
-		"user_config": r.UserConfig,
-		"cli_network": r.CLINetwork,
+		"shim":         r.Shim,
+		"build":        r.Build,
+		"config":       r.Config,
+		"executors":    r.Executors,
+		"permission":   r.Permission,
+		"ready":        r.Ready,
+		"route":        routes,
+		"cooldowns":    r.Cooldowns,
+		"usage_limits": r.Usage,
+		"sandbox":      r.Sandbox,
+		"herdr_host":   r.HerdrHost,
+		"user_config":  r.UserConfig,
+		"cli_network":  r.CLINetwork,
 	}
 }
 

@@ -1,0 +1,173 @@
+{
+  "scenario": "isolate/diff-no-collect",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "status": "created",
+        "task": "t1"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t1",
+            "session": "00000000",
+            "task": "t1"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "t1",
+        "--names-only",
+        "--no-collect"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "files": [
+          "scratch/00000000"
+        ],
+        "path": "<WORK>-orchestra/00000000-t1",
+        "session": "00000000",
+        "status": "ok",
+        "task": "t1"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--dry-run",
+        "--include-current",
+        "--live-window",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "branches": [],
+        "dry_run": true,
+        "pruned": false,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 1,
+          "errors": 0,
+          "external": 0,
+          "removed": 0,
+          "skipped": 0,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": 0,
+            "branch": "orchestra/00000000/t1",
+            "current": true,
+            "files": [
+              "scratch/00000000"
+            ],
+            "path": "<WORK>-orchestra/00000000-t1",
+            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "session": "00000000",
+            "session_idle_minutes": 0,
+            "status": "dirty",
+            "task": "t1"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "files": [
+          "scratch/00000000"
+        ],
+        "path": "<WORK>-orchestra/00000000-t1",
+        "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+        "status": "dirty",
+        "task": "t1"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "diff",
+        "--task",
+        "t1",
+        "--names-only"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/t1",
+        "files": [
+          "scratch/00000000"
+        ],
+        "path": "<WORK>-orchestra/00000000-t1",
+        "session": "00000000",
+        "status": "ok",
+        "task": "t1"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "t1"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "branch": "orchestra/00000000/t1",
+        "path": "<WORK>-orchestra/00000000-t1",
+        "session": "00000000",
+        "status": "removed",
+        "task": "t1"
+      }
+    }
+  ]
+}

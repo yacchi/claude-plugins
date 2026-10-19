@@ -63,7 +63,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "seatbelt",

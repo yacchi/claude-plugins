@@ -75,7 +75,7 @@ func newIsolateSimpleCmd(name, short string) *cobra.Command {
 	repo := repoFlag(cmd)
 	fl.Bool("json", false, "JSON output (the default and only format)")
 	var task, session, backend string
-	var noCarry, force, namesOnly bool
+	var noCarry, force, namesOnly, noCollect bool
 	if name != "list" {
 		fl.StringVar(&task, "task", "", "task id")
 	}
@@ -89,6 +89,8 @@ func newIsolateSimpleCmd(name, short string) *cobra.Command {
 		_ = cmd.MarkFlagRequired("task")
 	case "diff":
 		fl.BoolVar(&namesOnly, "names-only", false, "omit the patch text")
+		fl.BoolVar(&noCollect, "no-collect", false,
+			"report the diff without marking it collected (a mid-run peek; remove and sweep still keep the tree)")
 		_ = cmd.MarkFlagRequired("task")
 	case "remove":
 		fl.BoolVar(&force, "force", false, "remove even with uncollected changes")
@@ -121,7 +123,12 @@ func newIsolateSimpleCmd(name, short string) *cobra.Command {
 			result = map[string]any{"worktrees": entries}
 		case "diff":
 			var r isolate.DiffResult
-			r, err = isolate.DiffAndCollect(*repo, task)
+			if noCollect {
+				// The patch is only computed when it is printed.
+				r, err = isolate.Diff(*repo, task, "", !namesOnly)
+			} else {
+				r, err = isolate.DiffAndCollect(*repo, task)
+			}
 			r.OmitPatch = namesOnly
 			result, status = r, r.Status
 		case "remove":

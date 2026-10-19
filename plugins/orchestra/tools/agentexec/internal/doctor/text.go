@@ -10,6 +10,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/quota"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 )
 
@@ -106,6 +107,16 @@ func FormatText(r Report) string {
 			}
 			p("  - %s: %s (until %s)", name, show(reason), show(get(e, "until")))
 		}
+	}
+
+	if get(r.Usage, "enabled") == true {
+		p("usage limits:")
+		groups := obj(get(r.Usage, "groups"))
+		for _, g := range quota.Groups {
+			p("  - %s: %s", g, usageLine(obj(get(groups, g))))
+		}
+	} else if r.Usage != nil {
+		p("usage limits: disabled")
 	}
 
 	sb := norm(r.Sandbox)
@@ -269,4 +280,25 @@ func show(v any) string {
 		return strconv.FormatFloat(x, 'f', -1, 64)
 	}
 	return fmt.Sprint(v)
+}
+
+// usageLine is one group's usage: each known window's percent and the
+// source, or why there is no data.
+func usageLine(e map[string]any) string {
+	if e == nil {
+		return "no data"
+	}
+	if label, _ := get(e, "error").(string); label != "" {
+		return "unavailable (" + label + ")"
+	}
+	parts := []string{}
+	for _, w := range quota.WindowOrder {
+		if pct, ok := quota.Number(get(obj(get(e, w)), "used_percent")); ok {
+			parts = append(parts, w+"="+quota.FormatPercent(pct)+"%")
+		}
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "no windows")
+	}
+	return strings.Join(parts, " ") + " (" + show(get(e, "source")) + ")"
 }

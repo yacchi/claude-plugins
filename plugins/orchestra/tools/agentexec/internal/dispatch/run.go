@@ -14,6 +14,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/executor/pi"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/quota"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/route"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
@@ -26,7 +27,8 @@ import (
 const DryRunEnv = "AGENT_EXEC_DRYRUN"
 
 // Request is one dispatch. Without Executor it is routed: Class (with
-// Archetype, Exhausted and the cooldowns unless NoCooldown) picks the
+// Archetype, Exhausted, the cooldowns unless NoCooldown and the
+// subscription usage unless NoUsage) picks the
 // executor. With Executor it is a direct run of that executor with Model
 // and Effort (no route, no session store; Class only picks the watchdog
 // budget and the ledger class). Empty strings are "not given": Archetype
@@ -35,7 +37,7 @@ const DryRunEnv = "AGENT_EXEC_DRYRUN"
 type Request struct {
 	Class, Archetype, Workdir, Isolate, Task, RunID, Resume, Executor, Model, Effort string
 	PromptFiles, Exhausted                                                           []string
-	NoCooldown, NoResume                                                             bool
+	NoCooldown, NoUsage, NoResume                                                    bool
 }
 
 // Args is r as `dispatch` flags (what a detached child is started with).
@@ -66,6 +68,9 @@ func (r Request) Args() []string {
 	}
 	if r.NoCooldown {
 		args = append(args, "--no-cooldown")
+	}
+	if r.NoUsage {
+		args = append(args, "--no-usage")
 	}
 	if len(r.Exhausted) > 0 {
 		args = append(args, "--exhausted", strings.Join(r.Exhausted, ","))
@@ -124,8 +129,12 @@ func routed(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	if !r.NoCooldown && cooldown.Enabled(cfg) {
 		active = cooldown.Active(cfg, time.Now())
 	}
-	rt := route.Resolve(cfg, readiness.Compute(cfg).Ready, r.Class, orDefault(r.Archetype, "default"),
-		r.Exhausted, active)
+	archetype := orDefault(r.Archetype, "default")
+	var usage map[string]quota.Entry
+	if !r.NoUsage && quota.Enabled(cfg) {
+		usage = quota.Snapshot(cfg, route.UsageGroups(cfg, r.Class, archetype), time.Now())
+	}
+	rt := route.Resolve(cfg, readiness.Compute(cfg).Ready, r.Class, archetype, r.Exhausted, active, usage)
 	if !rt.Routable() {
 		return Outcome{Out: map[string]any{"status": "unroutable", "route": rt.Object()}}
 	}

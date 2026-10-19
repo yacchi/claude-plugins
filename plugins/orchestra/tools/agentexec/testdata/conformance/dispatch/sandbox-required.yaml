@@ -12,6 +12,9 @@ setup:
     ~/.local/bin/agent-exec: "0755"
   files:
     ~/.claude/orchestra.yaml: |
+      priority:
+        standard:
+          default: [pi, claude]
       sandbox:
         mode: required
     ~/.local/bin/agent-exec: |

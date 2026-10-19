@@ -14,6 +14,8 @@ The rule cuts both ways. A supervisor inference about casing, normalization, inh
 
 **A FAIL with no findings is not a FAIL, it is a dropped round.** Reviewers routinely narrate a real, well-analysed defect into `summary` and leave `feedback` empty — the schema declares the field but cannot force a model to use it. The correction packet then interpolates `undefined`, and the next worker's only correct move is `ESCALATE`, which costs a full round and returns nothing. So guard on `feedback.length` before building any packet, and tell reviewers explicitly to put findings in the array field rather than in the prose. When the guard fires, the summary usually still holds the whole finding: re-derive it yourself and re-dispatch, rather than paying for another blind pass.
 
+**The script's own FAIL obeys the same rule.** The ownership pre-check (`SKILL.md` §7) fails a round without a reviewer when the worker changed a path outside `files_owned`; each finding cites `files_owned` and names the stray path, so it is as citable as any reviewer's. It consumes the gate, because the round really did violate the contract — and because no review ran, the next review is the full one, not a re-gate.
+
 **Reviewer-side corollary:** a reviewer must never repair what it found. `orchestra-review` may write its own new test files and nothing else. A reviewer that patches the implementation — or quietly adds the missing assertion to the worker's test — destroys the only independent signal the pipeline has, and the next gate is then reviewing its own work.
 
 ## 2. Why findings carry a defect family
@@ -33,6 +35,8 @@ The interesting case is when the re-gate finds a defect family that predates the
 **When a third round *is* right:** the finding is a genuinely new, single, cited defect that the corrections introduced, the family is already swept, and the fix is mechanical. That is a judgment call, which is exactly why the loop hands it to you instead of spending it automatically.
 
 ## 4. Escalation: on signal, and ahead of risk
+
+The size gate (`SKILL.md` §7) sits before all of this: it keeps any single packet to 120-300 s and at most 3 owned paths, so a task that would need a class bump for sheer size is split before it is dispatched rather than escalated after it stalls.
 
 Workers report `ESCALATE` rather than guessing when the packet doesn't settle a needed decision, the required change crosses their assigned file ownership, or a failing test can't be explained by code they own. That bumps `light` → `standard` → `deep` **without consuming a gate**, because a mis-sized packet is not a defect — you gave a mechanical worker a design problem, and it correctly declined. A defect family that fails twice bumps the class for the same reason.
 
@@ -54,7 +58,7 @@ Resume the same instance (`SendMessage`) only when the reasoning history is genu
 
 ## 6. Invocation budgets
 
-Cap a worker at ~12 shell invocations, a first-pass review at ~12, a re-gate at 6, and require batched reads rather than one-at-a-time.
+Cap a worker at ~12 shell invocations, a first-pass review at 12, a re-gate at 6, and require batched reads rather than one-at-a-time. The gate-1 cap is stated as a hard line in the reviewer's prompt (`firstGatePrompt()`), because that review now *runs* probes authored concurrently with round 1 (`SKILL.md` §7) instead of writing them mid-gate, so 12 invocations is enough; a re-gate keeps its 6 and never re-authors probes.
 
 The budget is a diagnostic, not a punishment. A worker re-reading broad swaths of the repository in circles has an under-specified packet — it is not being careless, it is searching for information you didn't give it. The right response is to interrupt it, preserve its tree, and re-scope the packet smaller, not to let it keep going. Likewise a review that exhausts its budget returns FAIL with `inspection budget exceeded`; an interrupted or out-of-budget review is never a PASS.
 

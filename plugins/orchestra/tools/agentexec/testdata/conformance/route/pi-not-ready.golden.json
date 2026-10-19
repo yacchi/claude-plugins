@@ -13,8 +13,8 @@
         "agent_type": null,
         "archetype": "default",
         "candidates": [
-          "pi",
-          "claude"
+          "claude",
+          "pi"
         ],
         "class": "standard",
         "cooldown_bypassed": false,
@@ -22,15 +22,14 @@
         "dispatch": "claude",
         "effort": null,
         "executor": "claude",
-        "model": "sonnet",
-        "remaining": [],
-        "skipped": [
-          {
-            "executor": "pi",
-            "reason": "not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable"
-          }
+        "model": "haiku",
+        "remaining": [
+          "pi"
         ],
-        "source": "priority"
+        "skipped": [],
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -59,7 +58,9 @@
           "pi"
         ],
         "skipped": [],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -90,7 +91,9 @@
             "reason": "not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable"
           }
         ],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -102,7 +105,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: claude (dispatch=claude model=sonnet effort=-)\nskipped:\n  - pi: not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable\nsource: priority\n"
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: claude, pi\nresolved: claude (dispatch=claude model=haiku effort=-)\nremaining: pi\nsource: priority\n"
     },
     {
       "argv": [

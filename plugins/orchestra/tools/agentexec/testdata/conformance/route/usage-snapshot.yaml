@@ -1,0 +1,51 @@
+description: >
+  a candidate whose subscription window is at or above its usage_routing
+  threshold is demoted (usage_applied, skip reason usage:<group>:<window>);
+  the demotion is soft (usage_bypassed when every candidate is over),
+  --no-usage and ORCHESTRA_USAGE_ROUTING=0 ignore it, and a pi class on
+  another provider is never demoted for the openai-codex group; the
+  snapshot comes from the ORCHESTRA_USAGE_SNAPSHOT fixture (no network,
+  keychain or cache)
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+    ORCHESTRA_USAGE_ROUTING: "1"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    .claude/orchestra.yaml: |
+      priority:
+        standard: {default: [claude, pi]}
+        light: {default: [claude, pi]}
+        deep: {default: [pi, claude]}
+      external_executors:
+        pi:
+          class_policy:
+            deep: {model: github-copilot/gpt-5, effort: high}
+    snap/claude-over.json: |
+      {"claude": {"five_hour": {"used_percent": 85, "resets_at": 1791558187}, "seven_day": {"used_percent": 30, "resets_at": null}},
+       "openai-codex": {"five_hour": {"used_percent": 5, "resets_at": null}, "seven_day": null}}
+    snap/both-over.json: |
+      {"claude": {"five_hour": {"used_percent": 85, "resets_at": null}},
+       "openai-codex": {"five_hour": null, "seven_day": {"used_percent": 93.25, "resets_at": null}}}
+steps:
+  - argv: [route, --class, standard]
+    env: {ORCHESTRA_USAGE_SNAPSHOT: "<WORK>/snap/claude-over.json"}
+  - argv: [route, --class, standard, --text]
+    env: {ORCHESTRA_USAGE_SNAPSHOT: "<WORK>/snap/claude-over.json"}
+  - argv: [route, --class, standard, --no-usage]
+    env: {ORCHESTRA_USAGE_SNAPSHOT: "<WORK>/snap/claude-over.json"}
+  - argv: [route, --class, light]
+    env: {ORCHESTRA_USAGE_SNAPSHOT: "<WORK>/snap/both-over.json"}
+  - argv: [route, --class, light, --text]
+    env: {ORCHESTRA_USAGE_SNAPSHOT: "<WORK>/snap/both-over.json"}
+  - argv: [route, --class, deep]
+    env: {ORCHESTRA_USAGE_SNAPSHOT: "<WORK>/snap/both-over.json"}
+  - argv: [route, --class, standard]
+    env: {ORCHESTRA_USAGE_SNAPSHOT: "<WORK>/snap/claude-over.json", ORCHESTRA_USAGE_ROUTING: "0"}

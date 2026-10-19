@@ -47,7 +47,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -128,7 +130,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -198,7 +202,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -269,7 +275,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -338,7 +346,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -419,7 +429,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -488,7 +500,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
