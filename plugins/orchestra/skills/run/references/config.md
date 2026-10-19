@@ -9,7 +9,7 @@ Load this file only when a configuration question actually arises: what a key me
 
 At the start of every orchestration, the instructor resolves configuration from up to four layers, merged in this order (later layers win):
 
-1. **Defaults**: `tiers` — light: haiku, standard: sonnet, deep: opus, review: sonnet (unchanged — these remain the Claude-side fallback models `agent-exec route` resolves to). `external_executors.pi` now ships **`enabled: true`** out of the box, with its `class_policy` (pi: `openai-codex/gpt-5.6-luna`/medium for `light`+`standard`, `openai-codex/gpt-6.1-sol`/high `deep`, `openai-codex/gpt-6.1-sol`/medium `independent-review`) and a built-in `priority` (`light: [claude, pi]` (investigation the same), `standard: [pi, claude]`, `deep: [claude, pi]`, `review: [claude]`, `independent-review: [pi]`), plus `enforcement.light_class: off` and `ledger.enabled: true`, `ledger.dir: "~/.claude/orchestra/runs"`, `ledger.retention_days: 30`. Shipping external executors enabled by default is safe because `agent-exec route` gates every candidate on actual availability (below) — on a machine without pi installed, every call still resolves to `claude`.
+1. **Defaults**: `tiers` — light: haiku, standard: haiku, deep: opus, review: sonnet (these remain the Claude-side fallback models `agent-exec route` resolves to). `external_executors.pi` now ships **`enabled: true`** out of the box, with its `class_policy` (pi: `openai-codex/gpt-5.6-luna`/medium for `light`+`standard`, `openai-codex/gpt-6.1-sol`/high `deep`, `openai-codex/gpt-6.1-sol`/medium `independent-review`) and a built-in `priority` (`light: [claude, pi]` (investigation the same), `standard: [claude, pi]`, `deep: [claude, pi]`, `review: [claude]`, `independent-review: [pi]`), plus `enforcement.light_class: off` and `ledger.enabled: true`, `ledger.dir: "~/.claude/orchestra/runs"`, `ledger.retention_days: 30`. Shipping external executors enabled by default is safe because `agent-exec route` gates every candidate on actual availability (below) — on a machine without pi installed, every call still resolves to `claude`.
 2. **User**: `~/.claude/orchestra.yaml` (or `.yml`), if present.
 3. **Project**: `.claude/orchestra.yaml` (or `.yml`), if present — checked into git, shared with the team.
 4. **Project-local**: `.claude/orchestra.local.yaml` (or `.yml`), if present — this developer's personal override for this one project. Mirrors Claude Code's own `settings.json` / `settings.local.json` split; never commit this file (see `setup` SKILL.md §1).
@@ -39,7 +39,7 @@ tiers:
   # no external executor is enabled/ready for the class - see `priority`
   # below for what actually gets tried first.
   light: haiku       # fast, mechanical, fully-specified work
-  standard: sonnet   # normal implementation with modest design latitude
+  standard: haiku    # normal implementation with modest design latitude
   deep: opus         # design-sensitive / hard problems needing real judgment
   # verification role
   review: sonnet     # mandatory same-run adversarial review of the work
@@ -92,6 +92,21 @@ cooldown:
     nonzero-exit: 0
     sandbox: 0
 
+# Usage-aware routing: before walking the priority list, route/dispatch read
+# how much of the subscription behind each candidate's 5-hour and 7-day
+# rate-limit windows is used (Claude plan for claude, ChatGPT plan for pi on
+# openai-codex/... models; other providers have no data). A candidate at or
+# above a threshold (percent) is demoted like a cooldown: soft, ignored when
+# every candidate is over. Lookups are cached for cache_seconds in the state
+# dir; every failure is fail-open. --no-usage skips it for one call;
+# ORCHESTRA_USAGE_ROUTING=0 turns it off.
+usage_routing:
+  enabled: true
+  thresholds:
+    five_hour: 80
+    seven_day: 90
+  cache_seconds: 120
+
 # OS sandbox around CLI executor children. Lists are UNIONED across all config
 # layers (unlike ordinary arrays), so a project cannot silently remove a user
 # layer's protection or writable exception.
@@ -134,7 +149,7 @@ priority:
     investigation: [claude, pi]
     default: [claude, pi]
   standard:
-    default: [pi, claude]
+    default: [claude, pi]
   deep:
     default: [claude, pi]
   review:
@@ -202,7 +217,7 @@ To set this up interactively (detect whether pi is actually available in this en
 
 **`classes`** controls where the executor is used:
 - `"light"`: as a light-class implementer (in place of, or alongside, the Claude `light` tier).
-- `"standard"`: as a standard-class implementer (in place of, or alongside, the Claude `standard` tier / `model: 'sonnet'`).
+- `"standard"`: as a standard-class implementer (in place of, or alongside, the Claude `standard` tier / `model: 'haiku'`).
 - `"deep"`: as a design-latitude implementation class (in place of, or alongside, `orchestra-deep`/Opus) — only meaningful for an executor whose `class_policy` names a model strong enough for that class (pi's `deep` policy is `openai-codex/gpt-6.1-sol`/high — see the pi section of the reference doc).
 - `"review"`: as the same-run adversarial review pass (in place of, or alongside, the Claude `review` tier / `orchestra-review`).
 - `"independent-review"`: as a third-party review pass in addition to the Claude review — useful to avoid single-provider model bias. An independent review supplements `orchestra-review`; it does not replace the structured-verdict contract, so wrap its output into the same verdict shape. Because an external, CLI-backed reviewer may ignore the Workflow `schema:` option, force JSON in the prompt and normalize the reply with a tolerant parser — see `references/external-executors.md` §4 (`parseExternalVerdict`).
@@ -212,6 +227,8 @@ To set this up interactively (detect whether pi is actually available in this en
 **`priority`** declares, per class/role (and, for `light`, per task archetype — `investigation` vs `default`), an ordered candidate list to try — this list is still the single source of truth for preference order. What changed is *who walks it*: **`agent-exec route`/`dispatch` execute the walk**, not the instructor. `route` tries candidates left-to-right and drops one only on a **reactive fallback signal** — the executor is *unavailable*: `enabled: false`, its binary/agent doesn't resolve, `doctor`'s `ready.<x>.ok` is false, it has no `class_policy` entry for the class, or the caller passed it in `--exhausted`. This is the crucial **unavailable-vs-failed** distinction: a task that runs but returns a wrong result is NOT a fallback signal — it stays on the same executor and goes through the normal review/retry loop; only a genuinely unavailable executor (rate-limit/usage-window cap, credit exhaustion, auth failure) makes `route` drop to the next candidate. Once `dispatch` reports an executor `unavailable` for a task, the instructor's one remaining manual job is to **carry that executor forward in `--exhausted` for every subsequent `route`/`dispatch` call in the same run** (§5's `dispatchClass()` does this automatically via its module-level `exhausted` Set) — this is sticky exhaustion, and it is the instructor's only bookkeeping in the whole selection process. `priority` **supersedes `classes` for ordering** when present for a class/role; `classes` remains the legacy fallback when `priority` is absent (`route`/`dispatch` apply this same fallback internally). Operational detail — per-executor unavailable signals and the priority-walk logic `route` implements — lives in `references/external-executors.md`; read it before second-guessing a fallback decision.
 
 **`cooldown`** enables the persisted, time-decaying cross-run layer beneath the in-run `--exhausted`/sticky exhaustion `Set`. `seconds` is a mapping, so deep-merge combines it per key; unlike the `priority` lists, it is not replaced wholesale. Active entries are visible in `agent-exec doctor` (`cooldowns`) and the `agent-exec ui` dashboard, which can also clear them; `--no-cooldown` on `route`/`dispatch` bypasses them for one call.
+
+**`usage_routing`** demotes a route candidate whose subscription is close to its rate limit. Before the walk, `agent-exec route` / `dispatch` (and so `wave run`) read the 5-hour and 7-day windows of the plans behind the candidates: the Claude subscription for `claude` (the Claude Code OAuth login: the macOS keychain item, else `.credentials.json` under `CLAUDE_CONFIG_DIR` or `~/.claude`) and the ChatGPT subscription for `pi` when its class model is `openai-codex/...` (pi's `openai-codex` login, else the Codex CLI's `auth.json`). Other providers (e.g. `github-copilot/...`) have no data and are never demoted. A candidate whose window is at or above `thresholds.five_hour` / `thresholds.seven_day` (percent) is skipped with `usage:<group>:<window>=<pct>%`, evaluated after the hard skips, alongside cooldowns; like cooldowns the demotion is soft: when no candidate survives, the walk is repeated ignoring both and the route carries `usage_bypassed: true`. The route JSON lists the demotions in `usage_applied` (`executor`, `group`, `window`, `used_percent`, `threshold`, `resets_at`). Lookups are cached for `cache_seconds` in `<state dir>/usage-limits.json` (failures too, so a dead endpoint costs one 5 s timeout per TTL); credentials are only read, never refreshed, and never logged or cached. Every failure (`no-token`, `expired`, `http-<code>`, `network`, `parse`) is fail-open: no data, no demotion. `agent-exec doctor` shows the current numbers under `usage_limits`; `--no-usage` on `route`/`dispatch` skips the lookup for one call, `ORCHESTRA_USAGE_ROUTING=0` disables it, and `ORCHESTRA_USAGE_SNAPSHOT=<file>` replaces the lookup with a fixture (tests).
 
 **`enforcement.light_class`** (`"off"` default | `"block"` — quote the value; YAML 1.1 parses a bareword `off` as boolean `False`, not the string) is a **nudge with a guaranteed escape, not a hard wall**. When set to `"block"`, a `PreToolUse` hook (`hooks/guards/light-class.ts`) fires only when `agent-exec route --class light` reports a non-`claude` executor ready — i.e. only when there's genuinely something better to redirect to — and the call would spawn a **generic** Claude implementer: no `subagent_type` at all, or `subagent_type` in `general-purpose`/`claude`, at a Haiku-class model. **Naming any other specific `subagent_type` is itself the carve-out**: the Agent tool has no per-call tool-restriction parameters — its schema is only `description`/`isolation`/`model`/`prompt`/`run_in_background`/`subagent_type` — so a named agent is how tool access and a specialized system prompt actually get pinned, and an external executor can substitute for neither; `orchestra:orchestra-light` itself stays a deny target, since redirecting it to `agent-exec dispatch` is the whole point. Escape hatches:
 
@@ -258,7 +275,7 @@ Full detail lives in `references/external-executors.md` (Japanese) — pi's mode
 
 In brief, as of this plugin's own validation (full reasoning and every round-by-round result: `references/poc-findings.md`):
 
-- **pi `light`/`standard`** → `openai-codex/gpt-5.6-luna` at `effort: medium` (ChatGPT subscription; leads `standard`, second in `light` behind Claude Haiku 5.5, which the 2026-10-08 re-bench measured fastest). **`deep`** → `openai-codex/gpt-6.1-sol`/high; **`independent-review`** → `openai-codex/gpt-6.1-sol`/medium. The standalone Codex CLI executor was removed in v0.52.0 (pi drives the same models); a leftover `external_executors.codex` or `codex` priority entry is ignored with a `codex_removed` warning from `doctor`/`config` — delete it or re-run `orchestra:setup`. Unknown executor names in a user config are skipped as `unknown-executor:<name>` with a warning. Removed `copilot`/`opencode` entries are configuration errors with a migration guide — delete them or re-run `orchestra:setup`. See the reference doc and `references/poc-findings.md`.
+- **pi `light`/`standard`** → `openai-codex/gpt-5.6-luna` at `effort: medium` (ChatGPT subscription; the fallback for `light` and `standard`, behind Claude Haiku 5.5, which leads both. Rationale: Haiku 5.5 solved the round7 judgment benchmark 3/3 vs Luna 1/3 (Luna is 2-4x faster but twice blamed the tests instead of tracing the failure); Claude subagents run outside the OS sandbox, pi inside it). **`deep`** → `openai-codex/gpt-6.1-sol`/high; **`independent-review`** → `openai-codex/gpt-6.1-sol`/medium. The standalone Codex CLI executor was removed in v0.52.0 (pi drives the same models); a leftover `external_executors.codex` or `codex` priority entry is ignored with a `codex_removed` warning from `doctor`/`config` — delete it or re-run `orchestra:setup`. Unknown executor names in a user config are skipped as `unknown-executor:<name>` with a warning. Removed `copilot`/`opencode` entries are configuration errors with a migration guide — delete them or re-run `orchestra:setup`. See the reference doc and `references/poc-findings.md`.
 - **Long-context caveat:** Luna has measurably weak long-context recall. Escalate a nominally `light`/`standard`-class task to `deep` if it requires deep traversal of a large repository.
 - Across 6 rounds of escalating task difficulty, no accuracy differentiation was observed until task size crossed into genuine multi-file, multi-language feature territory — at which point every cheap tier tested eventually showed at least one real, narrow defect. Treat the adversarial review stage as mandatory beyond a trivially small change, regardless of which model/provider/effort level is implementing the work — this holds for external executors exactly as much as for Claude's own tiers.
 

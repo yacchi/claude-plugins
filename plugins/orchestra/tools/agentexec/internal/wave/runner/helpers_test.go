@@ -304,6 +304,7 @@ func newWaveRepo(t *testing.T) *waveRepo {
 		"ORCHESTRA_WAVE_REGISTRY": filepath.Join(tmp, "registry", "waves.jsonl"),
 		"ORCHESTRA_UI_STATE":      filepath.Join(tmp, "ui.json"),
 		"CLAUDE_CODE_SESSION_ID":  "", "ORCHESTRA_WAVE_NO_UI": "", "ORCHESTRA_CONFIG_ROOT": "",
+		"ORCHESTRA_USAGE_ROUTING": "0", "ORCHESTRA_USAGE_SNAPSHOT": "",
 	} {
 		t.Setenv(k, v)
 	}

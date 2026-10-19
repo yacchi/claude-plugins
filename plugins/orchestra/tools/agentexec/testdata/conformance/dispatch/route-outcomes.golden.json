@@ -42,7 +42,9 @@
             "pi"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -97,7 +99,9 @@
             "pi"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -131,13 +135,13 @@
           "reason": "working tree is clean; nothing for a worker to destroy",
           "repo": "<WORK>"
         },
-        "model": "sonnet",
+        "model": "haiku",
         "route": {
           "agent_type": null,
           "archetype": "default",
           "candidates": [
-            "pi",
-            "claude"
+            "claude",
+            "pi"
           ],
           "class": "standard",
           "cooldown_bypassed": false,
@@ -145,15 +149,14 @@
           "dispatch": "claude",
           "effort": null,
           "executor": "claude",
-          "model": "sonnet",
-          "remaining": [],
-          "skipped": [
-            {
-              "executor": "pi",
-              "reason": "not-ready:shim-not-installed,agent-exec-not-on-path,permission-rule-absent,executor-binary-unavailable"
-            }
+          "model": "haiku",
+          "remaining": [
+            "pi"
           ],
-          "source": "priority"
+          "skipped": [],
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -200,7 +203,9 @@
               "reason": "exhausted"
             }
           ],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "status": "unroutable"
       }
@@ -224,8 +229,8 @@
           "agent_type": null,
           "archetype": "default",
           "candidates": [
-            "pi",
-            "claude"
+            "claude",
+            "pi"
           ],
           "class": "standard",
           "cooldown_bypassed": false,
@@ -237,15 +242,17 @@
           "remaining": [],
           "skipped": [
             {
-              "executor": "pi",
+              "executor": "claude",
               "reason": "exhausted"
             },
             {
-              "executor": "claude",
+              "executor": "pi",
               "reason": "exhausted"
             }
           ],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "status": "unroutable"
       }
@@ -292,7 +299,9 @@
             "pi"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -348,7 +357,9 @@
             "pi"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -403,7 +414,9 @@
             "pi"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",

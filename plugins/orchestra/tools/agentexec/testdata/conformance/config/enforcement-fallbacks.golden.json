@@ -148,8 +148,8 @@
           },
           "standard": {
             "default": [
-              "pi",
-              "claude"
+              "claude",
+              "pi"
             ]
           }
         },
@@ -185,7 +185,7 @@
           "deep": "opus",
           "light": "haiku",
           "review": "sonnet",
-          "standard": "sonnet"
+          "standard": "haiku"
         },
         "tools": {
           "herdr": {
@@ -206,6 +206,14 @@
             "source": "auto",
             "spec": "npm:@anthropic-ai/sandbox-runtime",
             "version": "0.0.79"
+          }
+        },
+        "usage_routing": {
+          "cache_seconds": 120,
+          "enabled": true,
+          "thresholds": {
+            "five_hour": 80,
+            "seven_day": 90
           }
         },
         "warnings": [],
@@ -370,8 +378,8 @@
           },
           "standard": {
             "default": [
-              "pi",
-              "claude"
+              "claude",
+              "pi"
             ]
           }
         },
@@ -407,7 +415,7 @@
           "deep": "opus",
           "light": "haiku",
           "review": "sonnet",
-          "standard": "sonnet"
+          "standard": "haiku"
         },
         "tools": {
           "herdr": {
@@ -428,6 +436,14 @@
             "source": "auto",
             "spec": "npm:@anthropic-ai/sandbox-runtime",
             "version": "0.0.79"
+          }
+        },
+        "usage_routing": {
+          "cache_seconds": 120,
+          "enabled": true,
+          "thresholds": {
+            "five_hour": 80,
+            "seven_day": 90
           }
         },
         "warnings": [],
@@ -592,8 +608,8 @@
           },
           "standard": {
             "default": [
-              "pi",
-              "claude"
+              "claude",
+              "pi"
             ]
           }
         },
@@ -629,7 +645,7 @@
           "deep": "opus",
           "light": "haiku",
           "review": "sonnet",
-          "standard": "sonnet"
+          "standard": "haiku"
         },
         "tools": {
           "herdr": {
@@ -650,6 +666,14 @@
             "source": "auto",
             "spec": "npm:@anthropic-ai/sandbox-runtime",
             "version": "0.0.79"
+          }
+        },
+        "usage_routing": {
+          "cache_seconds": 120,
+          "enabled": true,
+          "thresholds": {
+            "five_hour": 80,
+            "seven_day": 90
           }
         },
         "warnings": [],
@@ -814,8 +838,8 @@
           },
           "standard": {
             "default": [
-              "pi",
-              "claude"
+              "claude",
+              "pi"
             ]
           }
         },
@@ -851,7 +875,7 @@
           "deep": "opus",
           "light": "haiku",
           "review": "sonnet",
-          "standard": "sonnet"
+          "standard": "haiku"
         },
         "tools": {
           "herdr": {
@@ -872,6 +896,14 @@
             "source": "auto",
             "spec": "npm:@anthropic-ai/sandbox-runtime",
             "version": "0.0.79"
+          }
+        },
+        "usage_routing": {
+          "cache_seconds": 120,
+          "enabled": true,
+          "thresholds": {
+            "five_hour": 80,
+            "seven_day": 90
           }
         },
         "warnings": [],

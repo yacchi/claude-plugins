@@ -15,8 +15,8 @@
         "agent_type": null,
         "archetype": "default",
         "candidates": [
-          "pi",
-          "claude"
+          "claude",
+          "pi"
         ],
         "class": "standard",
         "cooldown_bypassed": false,
@@ -24,15 +24,14 @@
         "dispatch": "claude",
         "effort": null,
         "executor": "claude",
-        "model": "sonnet",
-        "remaining": [],
-        "skipped": [
-          {
-            "executor": "pi",
-            "reason": "exhausted"
-          }
+        "model": "haiku",
+        "remaining": [
+          "pi"
         ],
-        "source": "priority"
+        "skipped": [],
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -49,8 +48,8 @@
         "agent_type": null,
         "archetype": "default",
         "candidates": [
-          "pi",
-          "claude"
+          "claude",
+          "pi"
         ],
         "class": "standard",
         "cooldown_bypassed": false,
@@ -62,15 +61,17 @@
         "remaining": [],
         "skipped": [
           {
-            "executor": "pi",
+            "executor": "claude",
             "reason": "exhausted"
           },
           {
-            "executor": "claude",
+            "executor": "pi",
             "reason": "exhausted"
           }
         ],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -104,7 +105,9 @@
             "reason": "exhausted"
           }
         ],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -134,21 +137,23 @@
         "agent_type": null,
         "archetype": "default",
         "candidates": [
-          "pi",
-          "claude"
+          "claude",
+          "pi"
         ],
         "class": "standard",
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
-        "dispatch": "cli",
-        "effort": "medium",
-        "executor": "pi",
-        "model": "openai-codex/gpt-5.6-luna",
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "haiku",
         "remaining": [
-          "claude"
+          "pi"
         ],
         "skipped": [],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     }
   ]

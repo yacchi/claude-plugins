@@ -47,7 +47,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -120,7 +122,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -208,7 +212,7 @@
           "reason": "working tree is clean; nothing for a worker to destroy",
           "repo": "<WORK>"
         },
-        "model": "sonnet",
+        "model": "haiku",
         "route": {
           "agent_type": null,
           "archetype": "default",
@@ -228,7 +232,7 @@
           "dispatch": "claude",
           "effort": null,
           "executor": "claude",
-          "model": "sonnet",
+          "model": "haiku",
           "remaining": [],
           "skipped": [
             {
@@ -236,7 +240,9 @@
               "reason": "cooldown:quota"
             }
           ],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",
@@ -293,7 +299,9 @@
             "claude"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",

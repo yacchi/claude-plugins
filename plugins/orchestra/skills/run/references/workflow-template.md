@@ -6,6 +6,8 @@ The cost-tiered pipeline script that `SKILL.md` §5 summarizes. Read this file i
 
 Adapt per task set. Constraints: `export const meta` must be a pure literal (no variables/calls/interpolation), no TypeScript syntax, no `Date.now()`/`Math.random()`. Plain JavaScript. String literals, `status` values, and result field names are a contract with `agent-exec dispatch` — adapt the task set, not the protocol.
 
+Every task needs `files_owned`, `est_seconds` and `probeDir`: `sizeGate()` returns `{sizeGate: 'failed', violations}` and dispatches nothing when a task lacks them, is over 300 s, or owns more than 3 paths (escape hatch: `allowLarge: '<reason>'`), `authorProbes()` writes probes from the contract while round 1 runs, and `strayPaths()` fails a round that changed anything outside `files_owned` before a reviewer is spent (`SKILL.md` §7). After editing the script, run `node template-harness/harness.mjs` (no dependencies) — it executes this block against stubbed Workflow globals.
+
 Contents: §1 The script · §2 Run id · §3 The relay protocol.
 
 ## 1. The script
@@ -160,7 +162,8 @@ async function relayHop(cmd, timeoutMs, label) {
     {
       label,
       agentType: 'orchestra:orchestra-relay',
-      // Fallback when the plugin-scoped relay type does not resolve:
+      // The agents/orchestra-relay.md file pins model: haiku. Fallback only when the
+      // plugin-scoped relay type does not resolve:
       // model: 'haiku', effort: 'low',
     },
   )
@@ -328,7 +331,15 @@ async function dispatchClass(cls, promptText, opts = {}) {
 // its own tree; without them the delegate path lands in the user's), workerPromptFile (path to the
 // literal spec + edge cases + verify command), workerPrompt (same contract text
 // for the fallback correction packet), verifierPrompt (what to re-check + which
-// implementation mistakes to probe for - probes are throwaway, see §6 rule 8). Optional: workdir, baseline (a snapshot ref - see
+// implementation mistakes to probe for - probes are throwaway, see §6 rule 8),
+// files_owned (non-empty array of repo-relative paths the worker may change,
+// its test files included; a trailing '/' is a directory prefix), est_seconds
+// (your estimate of worker time, integer) and probeDir (where the probe
+// author writes - outside every worktree, e.g. your scratch dir) - all three
+// checked by sizeGate() below before anything is dispatched. Escape hatches,
+// each a non-empty reason string: allowLarge (skips the size limits, logged
+// and echoed in the task's result), noProbes (skips the probe author).
+// Optional: workdir, baseline (a snapshot ref - see
 // references/isolation.md - so a bad attempt can be rolled back instead of
 // patched, and the re-gate can diff against something real).
 //
@@ -354,6 +365,46 @@ async function dispatchClass(cls, promptText, opts = {}) {
 //     record from this run, so it takes correctionTokenFull (or the Sonnet
 //     fallback) - the same as a round 1 that reported no session.
 const tasks = (typeof args !== 'undefined' && args && args.tasks) ? args.tasks : []
+
+// --- Size gate (§7): runs before ANY dispatch ---
+// The run's wall clock is its longest task chain, not the sum of its tasks:
+// in measured runs the single longest task was 89-100% of the wall clock while
+// 1-4 of 16 slots were busy. A task over ~300 s of worker time is a long pole
+// to split by file ownership (120-300 s each; ~45-65 s of fixed overhead per
+// chain does not add across parallel tasks). One fast failed script costs
+// seconds; one long-pole task costs the whole run.
+const MAX_TASK_SECONDS = 300
+const MAX_OWNED_FILES = 3   // the same threshold `agent-exec wave lint` uses
+
+function hasReason(v) { return typeof v === 'string' && v.trim() !== '' }
+
+function sizeGate(list) {
+  const violations = []
+  for (const t of list) {
+    let problems = []
+    const owned = t.files_owned
+    if (!Array.isArray(owned) || owned.length === 0) problems.push('files_owned missing or empty')
+    else if (owned.length > MAX_OWNED_FILES) {
+      problems.push('files_owned has ' + owned.length + ' entries (max ' + MAX_OWNED_FILES + ')')
+    }
+    if (!Number.isInteger(t.est_seconds)) problems.push('est_seconds missing (integer seconds of worker time)')
+    else if (t.est_seconds > MAX_TASK_SECONDS) {
+      problems.push('est_seconds ' + t.est_seconds + ' > ' + MAX_TASK_SECONDS)
+    }
+    if (hasReason(t.allowLarge)) {
+      log(t.id + ': size gate waived (allowLarge): ' + t.allowLarge)
+      problems = []
+    }
+    // Not a size problem, so allowLarge does not waive it.
+    if (!t.probeDir && !hasReason(t.noProbes)) problems.push('probeDir missing (or set noProbes to a reason)')
+    if (problems.length) {
+      violations.push({ id: t.id, problems,
+        hint: 'split by file ownership into tasks of 120-300 s worker time and at most ' +
+          MAX_OWNED_FILES + ' files_owned each, or set allowLarge to the reason it cannot be split' })
+    }
+  }
+  return violations
+}
 
 const NEXT_CLASS = { light: 'standard', standard: 'deep', deep: 'deep' }
 
@@ -451,6 +502,112 @@ function regatePrompt(task, verdict) {
     'Cap yourself at 6 read-only shell invocations.'
 }
 
+// --- Probes authored concurrently with round 1 (§7) ---
+// Review was 28% of the critical path in measured runs, and its dominant cost
+// is authoring probes - which derive from the contract, not the
+// implementation. So a Sonnet author writes them from the contract WHILE the
+// worker implements, and gate 1 only runs them. Documented as an option, this
+// was used in 0 of 9 runs; it is the default now. It never sees the
+// implementation (none exists yet), and a failed author never fails the task:
+// the review simply runs without probes.
+const PROBE_SCHEMA = {
+  type: 'object',
+  required: ['files', 'mistakes'],
+  properties: {
+    files: { type: 'array', items: { type: 'string' } },     // absolute paths under probeDir
+    mistakes: { type: 'array', items: { type: 'string' } },  // the mistake each file probes, same order
+  },
+}
+
+async function authorProbes(task) {
+  if (hasReason(task.noProbes)) { log(task.id + ': probes skipped (noProbes): ' + task.noProbes); return null }
+  if (!task.probeDir) { log(task.id + ': probes skipped: no probeDir'); return null }
+  let r = null
+  try {
+    r = await agent(
+      'Write throwaway probe tests from a CONTRACT. No implementation exists yet and you must not look ' +
+        'for one: read ONLY the contract file ' + task.workerPromptFile + ' - no other file, no worktree, no search.\n' +
+        'Write files ONLY under ' + task.probeDir + ', each at <probeDir>/<the repo-relative path it would ' +
+        'have in the tree>, one probe per likely implementation mistake (at least 3). Do not run them.\n' +
+        'Probe for the implementation mistakes named in this reviewer brief (use only its list of mistakes):\n' +
+        task.verifierPrompt + '\n\n' +
+        'Return files (absolute paths written) and mistakes (the mistake each detects, same order).',
+      { label: task.id + '-probes', model: 'sonnet', schema: PROBE_SCHEMA },
+    )
+  } catch (e) {
+    r = null
+  }
+  if (!r || !Array.isArray(r.files) || !r.files.length) {
+    log(task.id + ': probe author returned nothing - gate 1 reviews without probes')
+    return null
+  }
+  return r
+}
+
+// Gate 1: the full review, plus the pre-authored probes when there are any and
+// a hard invocation budget (§11). Re-gates use regatePrompt() and never get
+// probes again.
+function firstGatePrompt(task, probes) {
+  return task.verifierPrompt + '\n\n' +
+    (probes
+      ? '--- PRE-AUTHORED PROBES ---\n' +
+        'Written from the contract before the implementation existed: ' + JSON.stringify(probes.files) + '\n' +
+        'Mistakes they target: ' + JSON.stringify(probes.mistakes) + '\n' +
+        'Copy them into the tree (the path below ' + task.probeDir + ' is the repo-relative path), run them ' +
+        'first, delete them before finishing; keep a probe as a permanent test only if it found a defect.\n'
+      : '') +
+    'BUDGET: at most 12 shell invocations; an interrupted or over-budget review is a FAIL.'
+}
+
+// --- Ownership pre-check (§7): deterministic, before spending a review ---
+// A prompt that names the files a worker owns does not constrain the worker
+// (§5), and a reviewer is a Sonnet call to discover that. One relay hop lists
+// what actually changed; anything outside files_owned is a FAIL the script
+// can state itself. `--no-collect` matters: a plain `isolate diff` marks the
+// content collected, and the run-end sweep would then delete a passing tree
+// (and its branch) whose files never changed after this peek.
+// Paths agent-exec's own bookkeeping could leave in a tree; never the worker's.
+const BOOKKEEPING_PREFIXES = ['.orchestra/']
+
+function normPath(p) { return String(p).replace(/^\.\//, '') }
+
+// Exact match, or a directory prefix when the owned entry ends in '/':
+// 'src/' owns 'src/x' but not 'src2/x'. A trailing glob ('src/audio/**',
+// programme.md's package form) is read as that directory prefix.
+function isOwned(path, owned) {
+  const p = normPath(path)
+  return owned.some(o => {
+    const e = normPath(o).replace(/\/\*\*?$/, '/')
+    return e.endsWith('/') ? p.startsWith(e) : p === e
+  })
+}
+
+// Changed paths outside files_owned, or null when the check could not run
+// (no files_owned, a failed relay hop, a tree that is absent) - the caller
+// then falls through to the normal review: this check never blocks.
+async function strayPaths(task, gate) {
+  const owned = task.files_owned
+  if (!Array.isArray(owned) || !owned.length) return null
+  const r = await relayHop('agent-exec isolate diff --task ' + shellQuote(task.id) + ' --names-only --no-collect',
+    60000, task.id + '-ownership-' + gate)
+  if (r.status !== 'ok' || !Array.isArray(r.files)) {
+    log(task.id + ': ownership pre-check unavailable (' + r.status + ') - reviewing anyway')
+    return null
+  }
+  return r.files.filter(f => !BOOKKEEPING_PREFIXES.some(b => normPath(f).startsWith(b)) && !isOwned(f, owned))
+}
+
+function ownershipVerdict(task, stray) {
+  return {
+    pass: false,
+    summary: 'changed ' + stray.length + ' path(s) outside files_owned (pre-check, no review spent)',
+    feedback: stray.map((path, i) => ({
+      id: task.id + '-ownership-' + (i + 1), family: 'ownership', case: 'changed outside files_owned',
+      expected: 'only files_owned change', actual: path, cited_contract: 'files_owned',
+    })),
+  }
+}
+
 async function runTask(task) {
   let cls = task.cls || 'light'   // per the task's design latitude (§3)
   let sessionClass = cls          // class in effect when `out` below was last populated
@@ -458,7 +615,13 @@ async function runTask(task) {
   const iso = {}                  // dispatchClass fills iso.path with the task's tree
   const out = { sessionId: null, resumed: false, sandbox: null } // dispatchClass fills this from the last dispatch (§11 B1)
   let runawaySeen = false
+  let fullReviewDone = false      // the first REAL review is the full one, even at gate 2
   if (task.preimplementedPath) iso.path = task.preimplementedPath
+  // Started together with the round-1 dispatch below, NOT awaited here: it
+  // runs while the worker implements and is awaited only right before the
+  // first full review. authorProbes() never rejects. A task that returns
+  // before any review leaves it running: an accepted cost (authoring.md §5.1).
+  const probesPending = authorProbes(task)
 
   for (let gate = 1; gate <= MAX_GATES; gate++) {
     let work
@@ -548,14 +711,25 @@ async function runTask(task) {
     // The reviewer audits the tree the work landed in, not the session cwd: an
     // isolated worker's diff is invisible from there, and a review that passes
     // against untouched files is worse than no review at all.
-    const verdict = await agent(
-      treeLine(iso.path) + (prior ? regatePrompt(task, prior) : task.verifierPrompt),
-      {
-        label: task.id + '-verify-' + gate,
-        model: 'sonnet',
-        schema: VERDICT_SCHEMA,
-      },
-    )
+    // A runaway or ownership FAIL spends a gate without any review, so the
+    // first review that actually runs is the full one, with the probes.
+    const stray = work === 'preimplemented' ? null : await strayPaths(task, gate)
+    let verdict
+    if (stray && stray.length) {
+      verdict = ownershipVerdict(task, stray)
+    } else {
+      const full = !fullReviewDone
+      const probes = full ? await probesPending : null
+      verdict = await agent(
+        treeLine(iso.path) + (full ? firstGatePrompt(task, probes) : regatePrompt(task, prior)),
+        {
+          label: task.id + '-verify-' + gate,
+          model: 'sonnet',
+          schema: VERDICT_SCHEMA,
+        },
+      )
+      fullReviewDone = true
+    }
 
     // agent() returns null when skipped or on a terminal error - guard, or the
     // whole task silently drops.
@@ -611,7 +785,16 @@ async function runTask(task) {
 // pipeline() runs every task through work->verify->retry independently and in
 // parallel - task A can be on retry 2 while task B is still on its first
 // verify. No barrier between stages, unlike parallel().
-const results = await pipeline(tasks, runTask)
+// The size gate comes first: if any task fails it, nothing is dispatched.
+const sizeViolations = sizeGate(tasks)
+if (sizeViolations.length) {
+  log('size gate failed for ' + sizeViolations.map(v => v.id).join(', ') + ' - nothing dispatched')
+  return { sizeGate: 'failed', violations: sizeViolations }
+}
+const results = await pipeline(tasks, async (task) => {
+  const r = await runTask(task)
+  return r && hasReason(task.allowLarge) ? { ...r, allowLarge: task.allowLarge } : r
+})
 
 // Reclaim this run's worktrees HERE, while the run is definitively over. Do
 // not leave it to the SessionEnd hook: that hook does not run at all when the

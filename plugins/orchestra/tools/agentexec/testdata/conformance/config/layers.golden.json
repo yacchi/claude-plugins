@@ -196,7 +196,7 @@
           "deep": "sonnet",
           "light": "sonnet",
           "review": "haiku",
-          "standard": "sonnet"
+          "standard": "haiku"
         },
         "tools": {
           "herdr": {
@@ -217,6 +217,14 @@
             "source": "auto",
             "spec": "npm:@anthropic-ai/sandbox-runtime",
             "version": "0.0.79"
+          }
+        },
+        "usage_routing": {
+          "cache_seconds": 120,
+          "enabled": true,
+          "thresholds": {
+            "five_hour": 80,
+            "seven_day": 90
           }
         },
         "warnings": [],

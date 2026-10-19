@@ -177,8 +177,8 @@
               },
               "standard": {
                 "default": [
-                  "pi",
-                  "claude"
+                  "claude",
+                  "pi"
                 ]
               }
             },
@@ -213,7 +213,7 @@
               "deep": "opus",
               "light": "haiku",
               "review": "sonnet",
-              "standard": "sonnet"
+              "standard": "haiku"
             },
             "tools": {
               "herdr": {
@@ -234,6 +234,14 @@
                 "source": "auto",
                 "spec": "npm:@anthropic-ai/sandbox-runtime",
                 "version": "0.0.79"
+              }
+            },
+            "usage_routing": {
+              "cache_seconds": 120,
+              "enabled": true,
+              "thresholds": {
+                "five_hour": 80,
+                "seven_day": 90
               }
             },
             "watchdog": {
@@ -315,7 +323,9 @@
               "pi"
             ],
             "skipped": [],
-            "source": "priority"
+            "source": "priority",
+            "usage_applied": [],
+            "usage_bypassed": false
           },
           "light": {
             "agent_type": null,
@@ -335,7 +345,9 @@
               "pi"
             ],
             "skipped": [],
-            "source": "priority"
+            "source": "priority",
+            "usage_applied": [],
+            "usage_bypassed": false
           },
           "review": {
             "agent_type": null,
@@ -352,27 +364,31 @@
             "model": "sonnet",
             "remaining": [],
             "skipped": [],
-            "source": "priority"
+            "source": "priority",
+            "usage_applied": [],
+            "usage_bypassed": false
           },
           "standard": {
             "agent_type": null,
             "archetype": "default",
             "candidates": [
-              "pi",
-              "claude"
+              "claude",
+              "pi"
             ],
             "class": "standard",
             "cooldown_bypassed": false,
             "cooldowns_applied": [],
-            "dispatch": "agent",
-            "effort": "medium",
-            "executor": "pi",
-            "model": "openai-codex/gpt-5.6-luna",
+            "dispatch": "claude",
+            "effort": null,
+            "executor": "claude",
+            "model": "haiku",
             "remaining": [
-              "claude"
+              "pi"
             ],
             "skipped": [],
-            "source": "priority"
+            "source": "priority",
+            "usage_applied": [],
+            "usage_bypassed": false
           }
         },
         "sandbox": {
@@ -409,6 +425,9 @@
           "on_path": true,
           "path": "<HOME>/.local/bin/agent-exec",
           "target": "/m/plugins/marketplaces/orchestra/tools/agent-exec"
+        },
+        "usage_limits": {
+          "enabled": false
         },
         "user_config": {
           "herdr": "isolate",

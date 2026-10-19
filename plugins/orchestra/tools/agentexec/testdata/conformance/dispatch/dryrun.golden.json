@@ -12,8 +12,49 @@
         "."
       ],
       "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n"
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude",
+            "pi"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [
+            "pi"
+          ],
+          "skipped": [],
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      }
     },
     {
       "argv": [
@@ -28,8 +69,49 @@
         "t-s"
       ],
       "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium --session <UUID#1>\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n"
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude",
+            "pi"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [
+            "pi"
+          ],
+          "skipped": [],
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      }
     },
     {
       "argv": [
@@ -45,8 +127,49 @@
         "--no-resume"
       ],
       "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "PROFILE: pi\nMODE: headless\nENV: (none)\nSANDBOX: none (sandbox.mode is off)\nEXEC: pi -p --mode json --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --model openai-codex/gpt-5.6-luna --thinking medium\nCAPTURE: yes (would subprocess-run pi and emit normalized JSON + route)\n"
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": null,
+        "effort": null,
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "auto",
+          "reason": "working tree is clean; nothing for a worker to destroy",
+          "repo": "<WORK>"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "claude",
+            "pi"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": null,
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [
+            "pi"
+          ],
+          "skipped": [],
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      }
     },
     {
       "argv": [
@@ -89,7 +212,9 @@
             "pi"
           ],
           "skipped": [],
-          "source": "priority"
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
         },
         "sandbox": {
           "backend": "none",

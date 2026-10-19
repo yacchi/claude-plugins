@@ -18,6 +18,9 @@ setup:
     ~/.claude/settings.json: |
       {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
     ~/.claude/orchestra.yaml: |
+      priority:
+        standard:
+          default: [pi, claude]
       sandbox:
         mode: off
       interactive_host: none

@@ -22,7 +22,7 @@ type dispatchFlags struct {
 	class, archetype, exhausted, workdir, isolate, task, runID, resume, token string
 	executor, model, effort                                                   string
 	promptFiles                                                               []string
-	noResume, noCooldown, capture, detach, summary                            bool
+	noResume, noCooldown, noUsage, capture, detach, summary                   bool
 }
 
 func newDispatchCmd() *cobra.Command {
@@ -44,6 +44,7 @@ func newDispatchCmd() *cobra.Command {
 	fl.StringVar(&f.resume, "resume", "", "session id to resume")
 	fl.BoolVar(&f.noResume, "no-resume", false, "start cold even when the task has a session")
 	fl.BoolVar(&f.noCooldown, "no-cooldown", false, "ignore executor cooldowns")
+	fl.BoolVar(&f.noUsage, "no-usage", false, "ignore subscription usage limits")
 	fl.StringVar(&f.token, "token", "", "dispatch token from `dispatch prepare`")
 	fl.BoolVar(&f.capture, "capture", false, "accepted for compatibility; dispatch always captures")
 	fl.BoolVar(&f.detach, "detach", false, "run as a detached background child")
@@ -155,7 +156,7 @@ func runDispatch(cmd *cobra.Command, f *dispatchFlags) error {
 		Class: f.class, Archetype: f.archetype, Workdir: f.workdir,
 		Isolate: isolateOr(cmd, f.isolate, dispatch.IsolateAuto), Task: f.task, RunID: f.runID,
 		Resume: f.resume, PromptFiles: f.promptFiles, Exhausted: exhausted,
-		NoCooldown: f.noCooldown, NoResume: f.noResume,
+		NoCooldown: f.noCooldown, NoUsage: f.noUsage, NoResume: f.noResume,
 	}))
 }
 
@@ -164,7 +165,7 @@ func runDispatch(cmd *cobra.Command, f *dispatchFlags) error {
 // may accompany it.
 func runTokenDispatch(cmd *cobra.Command, f *dispatchFlags, exhausted []string) error {
 	if conflicts := given(cmd, "prompt-file", "workdir", "archetype", "run-id", "isolate", "task",
-		"resume", "no-cooldown", "executor", "model", "effort"); len(conflicts) > 0 {
+		"resume", "no-cooldown", "no-usage", "executor", "model", "effort"); len(conflicts) > 0 {
 		return exitf(2, "dispatch: --token conflicts with %s", strings.Join(conflicts, ", "))
 	}
 	cfg, err := resolveForDispatch(cmd)
@@ -222,7 +223,7 @@ func runDirectDispatch(cmd *cobra.Command, f *dispatchFlags) error {
 	if readiness.KnownExecutors[f.executor] != "cli" {
 		return exitf(2, "dispatch: unknown executor: %s", f.executor)
 	}
-	if conflicts := given(cmd, "archetype", "exhausted", "no-cooldown", "no-resume"); len(conflicts) > 0 {
+	if conflicts := given(cmd, "archetype", "exhausted", "no-cooldown", "no-usage", "no-resume"); len(conflicts) > 0 {
 		return exitf(2, "dispatch: --executor conflicts with %s", strings.Join(conflicts, ", "))
 	}
 	if err := requireFlags(cmd, "model", "effort", "workdir", "prompt-file"); err != nil {

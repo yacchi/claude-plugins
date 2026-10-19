@@ -1,16 +1,20 @@
 // Package route maps a capability class (and task archetype) to the concrete
 // executor that should run it: the first candidate of the configured
-// priority list that is not exhausted, cooled down, misconfigured or not
-// ready. claude is the terminal fallback.
+// priority list that is not exhausted, cooled down, misconfigured, not
+// ready or near its subscription's usage limit (cooldowns and usage are
+// soft: they are ignored when nothing else is left). claude is the terminal
+// fallback.
 package route
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/quota"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 )
 
@@ -27,6 +31,17 @@ type CooldownApplied struct {
 	Until    float64
 }
 
+// UsageApplied is a candidate demoted because its subscription window is at
+// or above the threshold.
+type UsageApplied struct {
+	Executor    string
+	Group       string
+	Window      string
+	UsedPercent float64
+	Threshold   float64
+	ResetsAt    *float64
+}
+
 // Route is the `route --json` document. Model and Effort are whatever the
 // config holds (nil when unset); Executor and Dispatch are empty when
 // nothing resolves.
@@ -38,6 +53,8 @@ type Route struct {
 	Source           string
 	CooldownsApplied []CooldownApplied
 	CooldownBypassed bool
+	UsageApplied     []UsageApplied
+	UsageBypassed    bool
 	Executor         string
 	Dispatch         any
 	Model            any
@@ -67,6 +84,15 @@ func (r Route) Object() map[string]any {
 	for i, c := range r.CooldownsApplied {
 		applied[i] = map[string]any{"executor": c.Executor, "reason": c.Reason, "until": c.Until}
 	}
+	usage := make([]any, len(r.UsageApplied))
+	for i, u := range r.UsageApplied {
+		var resets any
+		if u.ResetsAt != nil {
+			resets = *u.ResetsAt
+		}
+		usage[i] = map[string]any{"executor": u.Executor, "group": u.Group, "window": u.Window,
+			"used_percent": u.UsedPercent, "threshold": u.Threshold, "resets_at": resets}
+	}
 	o := map[string]any{
 		"class":             r.Class,
 		"archetype":         r.Archetype,
@@ -75,6 +101,8 @@ func (r Route) Object() map[string]any {
 		"source":            r.Source,
 		"cooldowns_applied": applied,
 		"cooldown_bypassed": r.CooldownBypassed,
+		"usage_applied":     usage,
+		"usage_bypassed":    r.UsageBypassed,
 	}
 	if !r.Routable() {
 		for _, k := range []string{"executor", "dispatch", "model", "effort", "agent_type"} {
@@ -156,41 +184,94 @@ func skipReason(name, cls string, exhausted map[string]bool, external map[string
 	return fmt.Sprintf("unknown-dispatch:%s", show(dispatch))
 }
 
+// Candidates is the priority list for cls/archetype (claude alone when
+// none is configured).
+func Candidates(cfg *config.Resolved, cls, archetype string) []string {
+	cands, _ := candidates(cfg, cls, archetype)
+	return cands
+}
+
+// UsageGroups are the quota groups the candidates for cls/archetype draw on
+// (what a caller loads a usage snapshot for).
+func UsageGroups(cfg *config.Resolved, cls, archetype string) []string {
+	out := []string{}
+	for _, name := range Candidates(cfg, cls, archetype) {
+		if g := quota.Group(cfg, name, cls); g != "" {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// demotion is the first window of name's quota group at or above its
+// threshold (nil when there is none, the group has no data or its lookup
+// failed).
+func demotion(cfg *config.Resolved, name, cls string, usage map[string]quota.Entry,
+	thresholds map[string]float64) *UsageApplied {
+	group := quota.Group(cfg, name, cls)
+	entry, ok := usage[group]
+	if group == "" || !ok || entry.Error != "" {
+		return nil
+	}
+	for _, w := range quota.WindowOrder {
+		win := entry.Window(w)
+		if win != nil && win.UsedPercent >= thresholds[w] {
+			return &UsageApplied{Executor: name, Group: group, Window: w,
+				UsedPercent: win.UsedPercent, Threshold: thresholds[w], ResetsAt: win.ResetsAt}
+		}
+	}
+	return nil
+}
+
 // Resolve walks the candidates for cls/archetype and returns the first
-// survivor. When every candidate is skipped and some cooldown was active,
-// the walk is repeated ignoring cooldowns (cooldown_bypassed).
+// survivor. Cooldowns and usage (a candidate whose subscription window is at
+// or above its usage_routing threshold, judged from the usage snapshot; nil
+// is no data) are soft: when every candidate is skipped and a cooldown was
+// active or a candidate was demoted for usage, the walk is repeated ignoring
+// both (cooldown_bypassed / usage_bypassed).
 func Resolve(cfg *config.Resolved, ready map[string]readiness.ExecReady, cls, archetype string,
-	exhausted []string, cd map[string]cooldown.Entry) Route {
+	exhausted []string, cd map[string]cooldown.Entry, usage map[string]quota.Entry) Route {
 	exSet := map[string]bool{}
 	for _, e := range exhausted {
 		exSet[e] = true
 	}
 	cands, source := candidates(cfg, cls, archetype)
 	external := cfg.Section("external_executors")
+	thresholds := quota.Thresholds(cfg)
 
-	walk := func(cdm map[string]cooldown.Entry) (string, int, []Skipped) {
+	walk := func(cdm map[string]cooldown.Entry, um map[string]quota.Entry) (string, int, []Skipped, []UsageApplied) {
 		skipped := []Skipped{}
+		demoted := []UsageApplied{}
 		for i, name := range cands {
 			reason := skipReason(name, cls, exSet, external, ready, cdm)
 			if reason == "" {
-				return name, i, skipped
+				if d := demotion(cfg, name, cls, um, thresholds); d != nil {
+					demoted = append(demoted, *d)
+					reason = fmt.Sprintf("usage:%s:%s=%s%%", d.Group, d.Window, quota.FormatPercent(d.UsedPercent))
+				}
+			}
+			if reason == "" {
+				return name, i, skipped, demoted
 			}
 			skipped = append(skipped, Skipped{Executor: name, Reason: reason})
 		}
-		return "", -1, skipped
+		return "", -1, skipped, demoted
 	}
 
-	winner, idx, skipped := walk(cd)
-	bypassed := false
-	if winner == "" && len(cd) > 0 {
-		winner, idx, skipped = walk(nil)
-		bypassed = true
+	winner, idx, skipped, demoted := walk(cd, usage)
+	cooldownBypassed, usageBypassed := false, false
+	if winner == "" && (len(cd) > 0 || len(demoted) > 0) {
+		winner, idx, skipped, _ = walk(nil, nil)
+		cooldownBypassed = len(cd) > 0
+		usageBypassed = len(demoted) > 0
 	}
 
 	r := Route{
 		Class: cls, Archetype: archetype, Candidates: cands, Skipped: skipped,
-		Source: source, CooldownBypassed: bypassed,
+		Source: source, CooldownBypassed: cooldownBypassed,
 		CooldownsApplied: []CooldownApplied{},
+		UsageApplied:     demoted,
+		UsageBypassed:    usageBypassed,
 	}
 	for _, s := range skipped {
 		if entry, ok := cd[s.Executor]; ok && strings.HasPrefix(s.Reason, "cooldown:") {
@@ -252,6 +333,17 @@ func FormatText(r Route) string {
 	}
 	if r.CooldownBypassed {
 		b.WriteString("cooldown: BYPASSED (all candidates were cooled down)\n")
+	}
+	for _, u := range r.UsageApplied {
+		resets := "-"
+		if u.ResetsAt != nil {
+			resets = time.Unix(int64(*u.ResetsAt), 0).UTC().Format(time.RFC3339)
+		}
+		fmt.Fprintf(&b, "usage: %s (%s %s=%s%% >= %s%%) resets %s\n", u.Executor, u.Group, u.Window,
+			quota.FormatPercent(u.UsedPercent), quota.FormatPercent(u.Threshold), resets)
+	}
+	if r.UsageBypassed {
+		b.WriteString("usage: BYPASSED (every candidate was demoted or cooled down)\n")
 	}
 	if len(r.Remaining) > 0 {
 		fmt.Fprintf(&b, "remaining: %s\n", strings.Join(r.Remaining, ", "))

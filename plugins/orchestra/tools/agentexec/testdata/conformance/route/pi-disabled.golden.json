@@ -13,8 +13,8 @@
         "agent_type": null,
         "archetype": "default",
         "candidates": [
-          "pi",
-          "claude"
+          "claude",
+          "pi"
         ],
         "class": "standard",
         "cooldown_bypassed": false,
@@ -22,56 +22,15 @@
         "dispatch": "claude",
         "effort": null,
         "executor": "claude",
-        "model": "sonnet",
-        "remaining": [],
-        "skipped": [
-          {
-            "executor": "pi",
-            "reason": "disabled"
-          }
-        ],
-        "source": "priority"
-      }
-    },
-    {
-      "argv": [
-        "route",
-        "--class",
-        "standard"
-      ],
-      "exit": 0,
-      "stdout_shape": "json",
-      "stdout": {
-        "agent_type": "pi-worker",
-        "archetype": "default",
-        "candidates": [
-          "pi",
-          "claude"
-        ],
-        "class": "standard",
-        "cooldown_bypassed": false,
-        "cooldowns_applied": [],
-        "dispatch": "agent",
-        "effort": "medium",
-        "executor": "pi",
-        "model": "openai-codex/gpt-5.6-luna",
+        "model": "haiku",
         "remaining": [
-          "claude"
+          "pi"
         ],
         "skipped": [],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
-    },
-    {
-      "argv": [
-        "route",
-        "--class",
-        "standard",
-        "--text"
-      ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: pi, claude\nresolved: pi (dispatch=agent model=openai-codex/gpt-5.6-luna effort=medium)\nremaining: claude\nsource: priority\n"
     },
     {
       "argv": [
@@ -85,8 +44,8 @@
         "agent_type": null,
         "archetype": "default",
         "candidates": [
-          "pi",
-          "claude"
+          "claude",
+          "pi"
         ],
         "class": "standard",
         "cooldown_bypassed": false,
@@ -94,15 +53,56 @@
         "dispatch": "claude",
         "effort": null,
         "executor": "claude",
-        "model": "sonnet",
-        "remaining": [],
-        "skipped": [
-          {
-            "executor": "pi",
-            "reason": "unknown-dispatch:telepathy"
-          }
+        "model": "haiku",
+        "remaining": [
+          "pi"
         ],
-        "source": "priority"
+        "skipped": [],
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
+      }
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard",
+        "--text"
+      ],
+      "exit": 0,
+      "stdout_shape": "text",
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: claude, pi\nresolved: claude (dispatch=claude model=haiku effort=-)\nremaining: pi\nsource: priority\n"
+    },
+    {
+      "argv": [
+        "route",
+        "--class",
+        "standard"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": null,
+        "archetype": "default",
+        "candidates": [
+          "claude",
+          "pi"
+        ],
+        "class": "standard",
+        "cooldown_bypassed": false,
+        "cooldowns_applied": [],
+        "dispatch": "claude",
+        "effort": null,
+        "executor": "claude",
+        "model": "haiku",
+        "remaining": [
+          "pi"
+        ],
+        "skipped": [],
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     }
   ]

@@ -35,6 +35,7 @@ Every dispatch result carries an `isolation` object saying which tree was used a
 
 ```bash
 agent-exec isolate diff    --task <id>            # patch + file list, worker's changes only
+agent-exec isolate diff    --task <id> --names-only --no-collect  # mid-run peek: files only, NOT marked collected
 agent-exec isolate list                           # orchestra-created worktrees
 agent-exec isolate collect --task <id>            # mark collected without printing the patch
 agent-exec isolate remove  --task <id>            # refuses while changes are uncollected
@@ -88,6 +89,9 @@ never a guess. `isolate list` includes `session` and `current` fields, and
 
 `isolate diff` and `isolate integrate` mark a task collected implicitly, as a
 side effect of the route that already produced the content elsewhere.
+`isolate diff --no-collect` is the exception: a mid-run look (the template's
+ownership pre-check) that leaves the tree uncollected, so the run-end sweep
+keeps it.
 `isolate collect` is the explicit verb for content taken out by any other
 route — integration worktrees especially, since nothing else ever collects
 those. Either way, collection is content-based, not a one-way flag: a

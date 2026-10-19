@@ -38,7 +38,9 @@
             "reason": "unknown-executor:ghost"
           }
         ],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -65,7 +67,7 @@
         "dispatch": "claude",
         "effort": null,
         "executor": "claude",
-        "model": "sonnet",
+        "model": "haiku",
         "remaining": [],
         "skipped": [
           {
@@ -85,7 +87,9 @@
             "reason": "unknown-executor:weird"
           }
         ],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -114,7 +118,7 @@
         "dispatch": "claude",
         "effort": null,
         "executor": "claude",
-        "model": "sonnet",
+        "model": "haiku",
         "remaining": [],
         "skipped": [
           {
@@ -134,7 +138,9 @@
             "reason": "unknown-executor:weird"
           }
         ],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -167,7 +173,9 @@
             "reason": "exhausted"
           }
         ],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -199,7 +207,9 @@
             "reason": "no-class-policy"
           }
         ],
-        "source": "priority"
+        "source": "priority",
+        "usage_applied": [],
+        "usage_bypassed": false
       }
     },
     {
@@ -211,7 +221,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: offexec, nopolicy, agentexec, weird, claude\nresolved: claude (dispatch=claude model=sonnet effort=-)\nskipped:\n  - offexec: unknown-executor:offexec\n  - nopolicy: unknown-executor:nopolicy\n  - agentexec: unknown-executor:agentexec\n  - weird: unknown-executor:weird\nsource: priority\n"
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: offexec, nopolicy, agentexec, weird, claude\nresolved: claude (dispatch=claude model=haiku effort=-)\nskipped:\n  - offexec: unknown-executor:offexec\n  - nopolicy: unknown-executor:nopolicy\n  - agentexec: unknown-executor:agentexec\n  - weird: unknown-executor:weird\nsource: priority\n"
     }
   ]
 }
