@@ -371,10 +371,10 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "branch": "orchestra/00000000/int",
+        "files": [],
         "path": "<WORK>-orchestra/00000000-int",
-        "session": "00000000",
-        "status": "removed",
+        "reason": "integration branch orchestra/00000000/int holds commits not merged into any other local branch; merge it first, or pass --force",
+        "status": "dirty",
         "task": "int"
       }
     }

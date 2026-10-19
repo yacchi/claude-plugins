@@ -1,11 +1,13 @@
 package isolate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSanitizeTaskID(t *testing.T) {
@@ -344,13 +346,96 @@ func TestMissingCreateMarker(t *testing.T) {
 	}
 }
 
-func TestIntegrationRoleExemptsIgnoredDrift(t *testing.T) {
+// createIntegration plants an integration tree for task (exactly HEAD, as
+// integrate creates it) carrying one integrated commit; returns path and
+// branch.
+func createIntegration(t *testing.T, repo, task string) (string, string) {
+	t.Helper()
+	head := strings.TrimSpace(git(t, repo, "rev-parse", "HEAD"))
+	res, err := Create(repo, task, CreateOptions{Backend: BackendGit, Onto: head})
+	if err != nil || res.Status != "created" {
+		t.Fatalf("create %s: %+v, %v", task, res, err)
+	}
+	_ = WriteRole(res.Path, RoleIntegration)
+	writeFile(t, filepath.Join(res.Path, task+".txt"), "integrated\n")
+	git(t, res.Path, "add", "-A")
+	git(t, res.Path, "commit", "-q", "-m", "integrate "+task)
+	return res.Path, res.Branch
+}
+
+func TestIntegrationTreeKeptUntilItsBranchIsMerged(t *testing.T) {
+	repo := newRepo(t)
+	path, branch := createIntegration(t, repo, "int")
+	if c, _ := Collect(repo, "int", ""); c.Status != "collected" {
+		t.Fatalf("collect %+v", c)
+	}
+	writeFile(t, filepath.Join(path, ".venv", "built"), "x")
+	// Collected, but its commits live only on its own branch.
+	if r := remove(t, repo, "int", false, ""); r.Status != "dirty" || !strings.Contains(r.Reason, branch) || !exists(path) {
+		t.Fatalf("unmerged integration tree: %+v", r)
+	}
+	sw := sweep(t, repo, SweepOptions{IncludeCurrent: true, IncludeLive: true})
+	if w := byTask(sw)["int"]; w.Status != "dirty" || !exists(path) {
+		t.Fatalf("sweep took an unmerged integration tree: %+v", w)
+	}
+	// Merged elsewhere: the ordinary rules apply, ignored drift exempt.
+	git(t, repo, "merge", "-q", "--ff-only", branch)
+	if r := remove(t, repo, "int", false, ""); r.Status != "removed" || exists(path) {
+		t.Fatalf("merged integration tree: %+v", r)
+	}
+
+	other, _ := createIntegration(t, repo, "int2")
+	if r := remove(t, repo, "int2", true, ""); r.Status != "removed" || exists(other) {
+		t.Fatalf("--force: %+v", r)
+	}
+}
+
+func TestMissingBaselineIsNotReadAsClean(t *testing.T) {
 	repo := newRepo(t)
 	path := create(t, repo, "t1", "")
-	_ = WriteRole(path, RoleIntegration)
-	writeFile(t, filepath.Join(path, ".venv", "built"), "x")
-	if r := remove(t, repo, "t1", false, ""); r.Status != "removed" {
-		t.Fatalf("integration tree: %+v", r)
+	writeFile(t, filepath.Join(path, "w.txt"), "w\n")
+	git(t, path, "add", "-A")
+	git(t, path, "commit", "-q", "-m", "worker committed")
+	_ = removeMarkers(path, baselineFile)
+	if r := remove(t, repo, "t1", false, ""); r.Status != "dirty" || !exists(path) {
+		t.Fatalf("no baseline: %+v", r)
+	}
+}
+
+func TestLeasedTreeIsBusyUntilTheLeaseGoesStale(t *testing.T) {
+	repo := newRepo(t)
+	t.Setenv("ORCHESTRA_LEASE_WINDOW", "")
+	path := create(t, repo, "t1", "")
+	lease := func(age time.Duration) {
+		seen := float64(time.Now().Add(-age).UnixNano()) / 1e9
+		_ = writeMarker(path, leaseFile, fmt.Sprintf(`{"agent_id":"a1","agent_type":"engineer","last_seen":%f,"since":%f}`, seen, seen))
+	}
+	lease(5 * time.Second)
+	if r := remove(t, repo, "t1", true, ""); r.Status != "busy" || !strings.Contains(r.Reason, "engineer") || !exists(path) {
+		t.Fatalf("fresh lease: %+v", r)
+	}
+	lease(time.Hour)
+	if r := remove(t, repo, "t1", false, ""); r.Status != "removed" || exists(path) {
+		t.Fatalf("stale lease: %+v", r)
+	}
+}
+
+func TestFailedPruneRestoresTheTree(t *testing.T) {
+	repo := newRepo(t)
+	path := create(t, repo, "t1", "")
+	writeFile(t, filepath.Join(path, "keep.txt"), "keep\n")
+	admin := strings.TrimSpace(git(t, path, "rev-parse", "--absolute-git-dir"))
+	// A locked worktree survives prune, so the removal must roll back.
+	git(t, repo, "worktree", "lock", path)
+	r := remove(t, repo, "t1", true, "")
+	if r.Status != "error" || !strings.Contains(r.Reason, "restored at "+path) {
+		t.Fatalf("locked tree: %+v", r)
+	}
+	if readFile(t, filepath.Join(path, "keep.txt")) != "keep\n" || !exists(admin) {
+		t.Fatal("tree or metadata not intact")
+	}
+	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".*"+trashMarker+"*")); len(left) != 0 {
+		t.Fatalf("trash left behind: %v", left)
 	}
 }
 

@@ -30,7 +30,8 @@ Read the statuses:
 | status | meaning | what to do |
 |---|---|---|
 | `would-remove` | clean, or already collected — safe to reclaim | sweep it |
-| `dirty` | holds changes nobody collected | **keep**; surface it to the user (see §3) |
+| `dirty` | holds changes nobody collected, an integration branch not merged into any other local branch, or a state the gate cannot verify (no baseline, failing diff) | **keep**; surface it to the user (see §3) |
+| `busy` | in use right now: a fresh worktree lease or a running `isolate integrate` | leave it; re-run the sweep once that work ends |
 | `skipped` | the running session's own tree, another session still active, or newer than `--older-than` | leave it |
 | `orphan` (branches) | an `orchestra/*` branch whose worktree is gone | report; delete only if the user says so |
 

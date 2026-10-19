@@ -2,7 +2,9 @@ description: >
   a second integrate into an existing integration tree applies on top of the
   earlier round (onto is that tree's own baseline, not the first task's);
   re-integrating an already applied task; the integration tree is refused
-  by refresh and its ignored-drift is not uncollected work for remove
+  by refresh, and even collected, `isolate remove` refuses it (dirty) while
+  its branch is merged into no other local branch (the ignored-drift
+  exemption for a merged integration tree is covered by the Go tests)
 setup:
   git: true
   files:

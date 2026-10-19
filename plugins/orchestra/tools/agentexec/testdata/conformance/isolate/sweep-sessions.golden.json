@@ -90,6 +90,7 @@
           "external": 0,
           "removed": 0,
           "skipped": 0,
+          "trash_removed": 0,
           "would_remove": 3
         },
         "worktrees": [
@@ -149,6 +150,7 @@
           "external": 0,
           "removed": 1,
           "skipped": 2,
+          "trash_removed": 0,
           "would_remove": 0
         },
         "worktrees": [
@@ -239,6 +241,7 @@
           "external": 0,
           "removed": 1,
           "skipped": 1,
+          "trash_removed": 0,
           "would_remove": 0
         },
         "worktrees": [
@@ -290,6 +293,7 @@
           "external": 0,
           "removed": 1,
           "skipped": 0,
+          "trash_removed": 0,
           "would_remove": 0
         },
         "worktrees": [
