@@ -295,6 +295,7 @@
           "external": 2,
           "removed": 0,
           "skipped": 0,
+          "trash_removed": 0,
           "would_remove": 1
         },
         "worktrees": [

@@ -511,6 +511,7 @@
           "external": 3,
           "removed": 0,
           "skipped": 0,
+          "trash_removed": 0,
           "would_remove": 2
         },
         "worktrees": [
@@ -528,11 +529,9 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/prep",
             "current": true,
-            "files": [
-              "hb/00000000"
-            ],
+            "files": [],
             "path": "<WORK>-orchestra/00000000-prep",
-            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "reason": "integration branch orchestra/00000000/prep holds commits not merged into any other local branch; merge it first, or pass --force",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "dirty",
@@ -608,6 +607,7 @@
           "external": 3,
           "removed": 2,
           "skipped": 0,
+          "trash_removed": 0,
           "would_remove": 0
         },
         "worktrees": [
@@ -625,11 +625,8 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/prep",
             "current": true,
-            "files": [
-              "hb/00000000"
-            ],
             "path": "<WORK>-orchestra/00000000-prep",
-            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "reason": "integration branch orchestra/00000000/prep holds commits not merged into any other local branch; merge it first, or pass --force",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "dirty",
@@ -930,6 +927,7 @@
           "external": 0,
           "removed": 0,
           "skipped": 0,
+          "trash_removed": 0,
           "would_remove": 0
         },
         "worktrees": [
@@ -937,11 +935,8 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/ix",
             "current": true,
-            "files": [
-              "a.txt"
-            ],
             "path": "<WORK>-orchestra/00000000-ix",
-            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "reason": "integration branch orchestra/00000000/ix holds commits not merged into any other local branch; merge it first, or pass --force",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "dirty",
@@ -951,11 +946,8 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/prep",
             "current": true,
-            "files": [
-              "hb/00000000"
-            ],
             "path": "<WORK>-orchestra/00000000-prep",
-            "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
+            "reason": "integration branch orchestra/00000000/prep holds commits not merged into any other local branch; merge it first, or pass --force",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "dirty",

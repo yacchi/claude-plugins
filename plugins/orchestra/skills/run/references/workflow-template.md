@@ -622,7 +622,8 @@ const results = await pipeline(tasks, runTask)
 // primary cleanup and SessionEnd is only insurance. Nothing here can discard
 // an unread verdict: the sweep applies the same review gate as `isolate
 // remove`, so any tree still holding uncollected work survives and is
-// reported. Fold the telemetry emission (§10) into this same relay call when
+// reported, and so does an integration tree whose branch is not merged yet.
+// Await every agent working in a surviving tree before this call. Fold the telemetry emission (§10) into this same relay call when
 // telemetry is enabled, rather than spending a second agent on it.
 await agent(
   'Run `agent-exec isolate sweep --include-current --text` as ONE foreground Bash call ' +

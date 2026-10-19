@@ -57,6 +57,18 @@ as `isolate remove` (so uncollected work is reported, never destroyed), skips th
 running session's own trees unless `--include-current`, and deletes `orchestra/*`
 branches that outlived their worktree only with `--branches`.
 
+The gate reads anything it cannot verify as uncollected: a diff that errors, or a
+missing baseline marker, keeps the tree (`--force` discards). An integration
+worktree stays until its branch tip is reachable from another local branch, so a
+programme can keep verifying and deploying from it after the run. A tree in use is
+`busy`, not removed: a fresh `worktree_lease` (a subagent wrote there within the
+lease window, `ORCHESTRA_LEASE_WINDOW`, default 120 s) or an `isolate integrate`
+holding its lock. A test run or build only reads, takes no lease, and is invisible
+to the sweep — finish such work before sweeping. Removal renames the tree aside,
+prunes its record, then deletes the renamed copy, so a failure leaves either the
+intact tree at its path or a `.<name>.orchestra-removing-*` leftover that the next
+sweep deletes — never a half-deleted tree that git no longer knows.
+
 Other sessions running in the same repo are protected by a heartbeat rather than
 by luck: every `agent-exec isolate`/`dispatch`/`route`/`run` command touches
 `alive/<session8>` next to the run ledger, and a sweep skips any session seen

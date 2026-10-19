@@ -3,6 +3,8 @@ package isolate
 import (
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -106,6 +108,7 @@ type SweepSummary struct {
 	BranchesOrphan      int `json:"branches_orphan"`
 	BranchesDeleted     int `json:"branches_deleted"`
 	BranchesWouldDelete int `json:"branches_would_delete"`
+	TrashRemoved        int `json:"trash_removed"`
 }
 
 // SweepResult is `isolate sweep`'s output.
@@ -243,8 +246,10 @@ func Sweep(root string, o SweepOptions) (SweepResult, error) {
 			rec.Reason = newerReason()
 		case o.DryRun:
 			rec.Status = "would-remove"
-			if !o.Force {
-				files, reason, dirty, err := uncollected(resolved, e.Path, e.Task, session)
+			if reason := inUse(resolved, e.Task, e.Path); reason != "" {
+				rec.Status, rec.Reason = "busy", reason
+			} else if !o.Force {
+				files, reason, dirty, err := uncollected(resolved, e.Path, e.Task, e.Branch, session)
 				if err != nil {
 					return SweepResult{}, err
 				}
@@ -297,7 +302,39 @@ func Sweep(root string, o SweepOptions) (SweepResult, error) {
 		res.Branches = append(res.Branches, rec)
 	}
 	res.Summary = summarize(res.Worktrees, res.Branches)
+	if !o.DryRun {
+		res.Summary.TrashRemoved = removeStaleTrash(entries)
+	}
 	return res, nil
+}
+
+// removeStaleTrash deletes trees a removal renamed aside and never finished
+// deleting (.<name>.orchestra-removing-<pid>-<nanos>, next to the listed
+// worktrees) once the process that renamed them is gone. Git already
+// forgot them; only disk space is reclaimed. Returns how many went.
+func removeStaleTrash(entries []Entry) int {
+	parents := map[string]bool{}
+	for _, e := range entries {
+		if e.Path != "" {
+			parents[filepath.Dir(e.Path)] = true
+		}
+	}
+	n := 0
+	for parent := range parents {
+		matches, _ := filepath.Glob(filepath.Join(parent, ".*"+trashMarker+"*"))
+		for _, m := range matches {
+			_, tail, _ := strings.Cut(filepath.Base(m), trashMarker)
+			pidText, _, _ := strings.Cut(tail, "-")
+			pid, err := strconv.Atoi(pidText)
+			if err != nil || pid == os.Getpid() || fsutil.PIDAlive(pid) {
+				continue
+			}
+			if os.RemoveAll(m) == nil {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 func summarize(wts []SweepWorktree, brs []SweepBranch) SweepSummary {
@@ -310,7 +347,7 @@ func summarize(wts []SweepWorktree, brs []SweepBranch) SweepSummary {
 			s.WouldRemove++
 		case "dirty":
 			s.Dirty++
-		case "skipped":
+		case "skipped", "busy":
 			s.Skipped++
 		case "external":
 			s.External++
@@ -369,6 +406,9 @@ func FormatSweepText(r SweepResult) string {
 	lines = append(lines, fmt.Sprintf(
 		"summary: removed %d, would-remove %d, dirty %d, skipped %d, external %d, errors %d, branches %d orphan / %d deleted",
 		s.Removed, s.WouldRemove, s.Dirty, s.Skipped, s.External, s.Errors, s.BranchesOrphan, s.BranchesDeleted))
+	if s.TrashRemoved > 0 {
+		lines = append(lines, fmt.Sprintf("  trash removed %d (trees an interrupted remove left aside)", s.TrashRemoved))
+	}
 	if s.Dirty > 0 {
 		lines = append(lines, "  inspect: agent-exec isolate diff --task <id>   |   "+
 			"discard: agent-exec isolate sweep --force")

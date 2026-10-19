@@ -1,6 +1,7 @@
 package isolate
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
@@ -74,24 +75,32 @@ func Diff(root, task, session string, withPatch bool) (DiffResult, error) {
 	// -N makes new files visible to `git diff` without staging their
 	// content; ignored dirs (the carried node_modules) stay invisible.
 	_, _ = gitx.Run(wt.Path, "add", "-A", "-N")
+	// A diff git could not compute is an error, never "nothing changed":
+	// remove's review gate would read empty files as clean.
+	names, err := gitx.Run(wt.Path, "diff", "--name-only", baseline)
+	if err != nil {
+		return DiffResult{Status: "error", Reason: diffFailed(task, baseline, err)}, nil
+	}
 	files := []string{}
-	if names, err := gitx.Run(wt.Path, "diff", "--name-only", baseline); err == nil {
-		for _, f := range strings.Split(names, "\n") {
-			if strings.TrimSpace(f) != "" {
-				files = append(files, f)
-			}
+	for _, f := range strings.Split(names, "\n") {
+		if strings.TrimSpace(f) != "" {
+			files = append(files, f)
 		}
 	}
 	patch := ""
 	if withPatch {
-		if out, err := gitx.Run(wt.Path, "diff", "--binary", baseline); err == nil {
-			patch = out
+		if patch, err = gitx.Run(wt.Path, "diff", "--binary", baseline); err != nil {
+			return DiffResult{Status: "error", Reason: diffFailed(task, baseline, err)}, nil
 		}
 	}
 	return DiffResult{
 		Status: "ok", Task: task, Path: wt.Path, Baseline: baseline,
 		Files: files, Patch: patch, Branch: wt.Branch, Session: branchSession(wt.Branch),
 	}, nil
+}
+
+func diffFailed(task, baseline string, err error) string {
+	return fmt.Sprintf("git diff against baseline %s failed for %s: %v", baseline, task, err)
 }
 
 // DiffAndCollect is `isolate diff`: the diff, after which the content it

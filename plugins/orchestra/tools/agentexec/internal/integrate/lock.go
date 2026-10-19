@@ -6,13 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 )
 
 // Lock modes of Options.Lock.
@@ -23,28 +22,16 @@ const (
 
 const lockPoll = 100 * time.Millisecond
 
-var reLockUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]`)
-
-// LockPath is the lock file of one integration target, shared by every
-// worktree of the repository at repo; "" outside a repository (the
-// integrate itself then reports that).
+// LockPath is the lock file of one integration target, keyed by the task id
+// its tree is created under (isolate owns the layout: remove probes the same
+// lock to leave a running integrate alone). "" when into has no usable task
+// id, so integrate itself reports that.
 func LockPath(repo, into string) string {
-	out, err := gitx.Run(repo, "rev-parse", "--git-common-dir")
-	common := strings.TrimSpace(out)
-	if err != nil || common == "" {
+	task, err := isolate.SanitizeTaskID(into)
+	if err != nil {
 		return ""
 	}
-	if !filepath.IsAbs(common) {
-		common = filepath.Join(repo, common)
-	}
-	if abs, err := filepath.Abs(common); err == nil {
-		common = abs
-	}
-	safe := reLockUnsafe.ReplaceAllString(into, "_")
-	if safe == "" {
-		safe = "_"
-	}
-	return filepath.Join(common, "orchestra", "integrate-"+safe+".lock")
+	return isolate.IntegrateLockPath(repo, task)
 }
 
 // heldLock is an acquired integrate lock; release closes it.
