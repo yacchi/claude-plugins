@@ -366,11 +366,8 @@ func createIntegration(t *testing.T, repo, task string) (string, string) {
 func TestIntegrationTreeKeptUntilItsBranchIsMerged(t *testing.T) {
 	repo := newRepo(t)
 	path, branch := createIntegration(t, repo, "int")
-	if c, _ := Collect(repo, "int", ""); c.Status != "collected" {
-		t.Fatalf("collect %+v", c)
-	}
 	writeFile(t, filepath.Join(path, ".venv", "built"), "x")
-	// Collected, but its commits live only on its own branch.
+	// Its commits live only on its own branch.
 	if r := remove(t, repo, "int", false, ""); r.Status != "dirty" || !strings.Contains(r.Reason, branch) || !exists(path) {
 		t.Fatalf("unmerged integration tree: %+v", r)
 	}
@@ -378,8 +375,13 @@ func TestIntegrationTreeKeptUntilItsBranchIsMerged(t *testing.T) {
 	if w := byTask(sw)["int"]; w.Status != "dirty" || !exists(path) {
 		t.Fatalf("sweep took an unmerged integration tree: %+v", w)
 	}
-	// Merged elsewhere: the ordinary rules apply, ignored drift exempt.
+	// Merged elsewhere: only uncommitted work counts, ignored drift exempt.
 	git(t, repo, "merge", "-q", "--ff-only", branch)
+	writeFile(t, filepath.Join(path, "int.txt"), "edited after landing\n")
+	if r := remove(t, repo, "int", false, ""); r.Status != "dirty" || !slices.Equal(r.Files, []string{"int.txt"}) || !exists(path) {
+		t.Fatalf("landed integration tree with an uncommitted edit: %+v", r)
+	}
+	writeFile(t, filepath.Join(path, "int.txt"), "integrated\n")
 	if r := remove(t, repo, "int", false, ""); r.Status != "removed" || exists(path) {
 		t.Fatalf("merged integration tree: %+v", r)
 	}
@@ -404,7 +406,7 @@ func TestMissingBaselineIsNotReadAsClean(t *testing.T) {
 
 func TestLeasedTreeIsBusyUntilTheLeaseGoesStale(t *testing.T) {
 	repo := newRepo(t)
-	t.Setenv("ORCHESTRA_LEASE_WINDOW", "")
+	t.Setenv("ORCHESTRA_LEASE_WINDOW", "120")
 	path := create(t, repo, "t1", "")
 	lease := func(age time.Duration) {
 		seen := float64(time.Now().Add(-age).UnixNano()) / 1e9
@@ -417,6 +419,39 @@ func TestLeasedTreeIsBusyUntilTheLeaseGoesStale(t *testing.T) {
 	lease(time.Hour)
 	if r := remove(t, repo, "t1", false, ""); r.Status != "removed" || exists(path) {
 		t.Fatalf("stale lease: %+v", r)
+	}
+}
+
+func TestBashActivityKeepsTheTreeBusy(t *testing.T) {
+	repo := newRepo(t)
+	t.Setenv("ORCHESTRA_ACTIVITY_WINDOW", "")
+	path := create(t, repo, "t1", "")
+	activity := func(age time.Duration) {
+		seen := float64(time.Now().Add(-age).UnixNano()) / 1e9
+		_ = writeMarker(path, activityFile, fmt.Sprintf(`{"agent_id":"a1","agent_type":"tester","last_seen":%f,"command":"pnpm test"}`, seen))
+	}
+	activity(5 * time.Minute)
+	if r := remove(t, repo, "t1", true, ""); r.Status != "busy" || !strings.Contains(r.Reason, `"pnpm test"`) || !exists(path) {
+		t.Fatalf("fresh activity: %+v", r)
+	}
+	activity(time.Hour)
+	if r := remove(t, repo, "t1", false, ""); r.Status != "removed" || exists(path) {
+		t.Fatalf("stale activity: %+v", r)
+	}
+}
+
+func TestSquashLandedIntegrationTreeIsRemovable(t *testing.T) {
+	repo := newRepo(t)
+	path, _ := createIntegration(t, repo, "int")
+	writeFile(t, filepath.Join(repo, "other.txt"), "unrelated\n")
+	git(t, repo, "add", "-A")
+	git(t, repo, "commit", "-q", "-m", "unrelated")
+	// The squash: the same content, a different commit, on top of main.
+	writeFile(t, filepath.Join(repo, "int.txt"), "integrated\n")
+	git(t, repo, "add", "-A")
+	git(t, repo, "commit", "-q", "-m", "squash int")
+	if r := remove(t, repo, "int", false, ""); r.Status != "removed" || exists(path) {
+		t.Fatalf("squash-landed integration tree: %+v", r)
 	}
 }
 

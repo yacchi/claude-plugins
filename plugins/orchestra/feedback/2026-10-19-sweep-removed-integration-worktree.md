@@ -88,7 +88,8 @@ ignoredOK := (created != "" && created == ignoredDigest(ignored)) || matches ||
 
 - 原因 1 の補足: 再現試験では、統合ワークツリーは base 以降のコミットが差分に出るため `dirty` になり、削除されなかった。削除対象と判定された経路は特定できていない。ただし、判定を「clean」に倒す穴を 2 つ確認した。1 つは baseline マーカーが欠けたときの `ReadBaseline` の HEAD フォールバック。もう 1 つは、`git diff` の失敗を握りつぶした結果、空の差分になることだ。さらに、削除が成功していれば、`Remove` は `git branch -D` で統合ブランチまで消していた。
 - 対策 1: 審査ゲート `uncollected()` で、統合ツリーを「ブランチ tip が他のローカルブランチから到達できない間は dirty」と判定する。remove・sweep・SessionEnd のすべてに効き、collect 済みでも消えない。`--include-integration` は作らず、上書きは `--force` に一本化した。あわせて、diff の失敗と baseline マーカーの欠落も dirty とした。
-- 対策 2: 既存の `worktree_lease` (書き手の lease) が新しい間と、`isolate integrate` のロックが握られている間は `busy` として残す。読むだけのプロセス (テスト実行) は検出しない。そのため SKILL.md に「並行して sweep しない」と書いた。
+- 対策 2: 既存の `worktree_lease` (書き手の lease) と新設の activity スタンプ (`orchestra-activity.json`) が新しい間、および `isolate integrate` のロックが握られている間は `busy` として残す。activity スタンプは、linked worktree 内で実行されたすべての Bash 呼び出し (読むだけのテスト実行を含む) で hook が更新する。サブエージェントの分は SubagentStop で外れ、それ以外は 600 秒で切れる。hook の外で動くバックグラウンドのプロセスと CLI executor は検出しない。
+- 対策 1 の補足: 「取り込み済み」は、orchestra/* 以外のローカルブランチに merge されたか、squash で変更ファイルの内容が一致する状態を指す。取り込み済みの統合ツリーは、未コミットの変更だけを数え、collect なしで消せる。
 - 対策 3: 削除の順序を「退避名へ rename → `git worktree prune` → `branch -D` → 退避先を削除」に変えた。失敗時は rename を戻し、残った状態と復旧手順を報告する。退避先が残った場合は、次の sweep が消す。
 - 対策 4: SKILL.md §5、programme.md、isolation.md、workflow-template.md、cleanup スキルを更新した。
 - 対策 5: 削除の遅い部分は、git の状態が整った後に動くようになった。relay が時間切れで打ち切っても、残るのは退避先だけになる。`--detach` は入れていない。

@@ -1,6 +1,6 @@
 import type { Io } from '../lib/io.ts'
 import { field, isSupervisor, type WorkerCall } from '../lib/agents.ts'
-import { enforcementOf, loadEnforcement } from '../lib/config.ts'
+import { enforcementOf, isOff, loadEnforcement } from '../lib/config.ts'
 import { dirname, join, normalize, realpath } from '../lib/paths.ts'
 import { gitCall, hasEscape, redirections, segments, stripData } from '../lib/shell.ts'
 
@@ -37,11 +37,18 @@ const DEFAULT_WINDOW = 120
 
 type Lease = { agent_id?: unknown, agent_type?: unknown, last_seen?: unknown, since?: unknown }
 
-// The lease files each agent took, dropped at its SubagentStop. Kept in
-// memory: a reload that loses it leaves the window to expire the lease.
+// The lease and activity files each agent wrote, dropped at its SubagentStop.
+// Kept in memory: a reload that loses it leaves the window to expire them.
 const held = new Map<string, Set<string>>()
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+
+// The target of a plain `cd <dir>` segment (no variables or globs).
+const cdTarget = (seg: string): string | undefined => {
+    const cd = /^cd\s+(\S+)$/.exec(seg)
+
+    return cd?.[1] && !/[$`*?]/.test(cd[1]) ? cd[1] : undefined
+}
 
 const bashTargets = (command: string, base: string, resolve: (base: string, p: string) => string): string[] => {
     const out: string[] = []
@@ -52,9 +59,9 @@ const bashTargets = (command: string, base: string, resolve: (base: string, p: s
             continue
         }
         // `cd <tree> && git commit` writes there, not in the starting cwd.
-        const cd = /^cd\s+(\S+)$/.exec(seg)
-        if (cd?.[1] && !/[$`*?]/.test(cd[1])) {
-            here = resolve(here, cd[1])
+        const cd = cdTarget(seg)
+        if (cd) {
+            here = resolve(here, cd)
             continue
         }
         for (const tok of redirections(seg)) {
@@ -209,7 +216,64 @@ export const checkWorktreeLease = async (io: Io, call: WorkerCall): Promise<stri
     return undefined
 }
 
-// SubagentStop: drop every lease this agent still holds.
+// Activity: the lease only sees writers, but a tree is just as much in use
+// while someone runs its tests (a sweep removed an integration tree under a
+// running `pnpm test`). Every Bash call -- any agent, the main thread and
+// supervisors included -- whose directory (cwd, moved by plain `cd`s) is in
+// a LINKED worktree stamps `<git dir>/orchestra-activity.json`; `agent-exec
+// isolate remove/sweep` reports such a tree busy for a while after. Never
+// denies; one `git rev-parse` per call; the lease's kill switches apply.
+
+const ACTIVITY_COMMAND_MAX = 80
+
+export type ActivityCall = { agentId: string, agentType: string, cwd: string, sessionId: string, command: string }
+
+export const recordActivity = async (io: Io, call: ActivityCall): Promise<void> => {
+    if (await io.env('ORCHESTRA_LEASE_GUARD') === 'off') {
+        return
+    }
+    const home = call.command.includes('~') ? await io.env('HOME') ?? '' : ''
+    const resolve = (base: string, p: string): string =>
+        normalize(join(base, home && (p === '~' || p.startsWith('~/')) ? home + p.slice(1) : p))
+    let here = call.cwd
+    for (const raw of segments(stripData(call.command))) {
+        const cd = cdTarget(raw.trim())
+        if (cd) {
+            here = resolve(here, cd)
+        }
+    }
+    const found = here ? await leaseFile(io, here) : undefined
+    if (!found) {
+        return
+    }
+    // Kept per session: one agent-exec call per session, never per call.
+    if (isOff(enforcementOf(await loadEnforcement(io, call.sessionId)).worktree_lease)) {
+        return
+    }
+    try {
+        // Written in place: a reader that catches it torn only misses one
+        // stamp, and a temp file + rename would cost a second process.
+        const file = `${dirname(found.file)}/orchestra-activity.json`
+        await io.write(file, JSON.stringify({
+            agent_id: call.agentId,
+            agent_type: call.agentType,
+            last_seen: await io.now() / 1000,
+            command: call.command.slice(0, ACTIVITY_COMMAND_MAX),
+        }))
+        // A subagent's stamp goes at its SubagentStop, like its leases; the
+        // main thread's only expires.
+        if (call.agentId) {
+            const files = held.get(call.agentId) ?? new Set<string>()
+            files.add(file)
+            held.set(call.agentId, files)
+        }
+    } catch {
+        // a stamp we could not write is no reason to disturb the call
+    }
+}
+
+// SubagentStop: drop every lease and activity stamp this agent still holds
+// (one another agent overwrote since is theirs and stays).
 export const releaseLeases = async (io: Io, agentId: string): Promise<void> => {
     const files = held.get(agentId)
     held.delete(agentId)

@@ -59,12 +59,16 @@ branches that outlived their worktree only with `--branches`.
 
 The gate reads anything it cannot verify as uncollected: a diff that errors, or a
 missing baseline marker, keeps the tree (`--force` discards). An integration
-worktree stays until its branch tip is reachable from another local branch, so a
-programme can keep verifying and deploying from it after the run. A tree in use is
-`busy`, not removed: a fresh `worktree_lease` (a subagent wrote there within the
-lease window, `ORCHESTRA_LEASE_WINDOW`, default 120 s) or an `isolate integrate`
-holding its lock. A test run or build only reads, takes no lease, and is invisible
-to the sweep — finish such work before sweeping. Removal renames the tree aside,
+worktree stays until its branch has landed on a non-orchestra local branch — its
+tip is reachable from one, or every file it changed since its baseline has the same
+content there (a squash) — so a programme can keep verifying and deploying from it
+after the run; once landed, only uncommitted edits keep it. A tree in use is
+`busy`, not removed: a fresh writer lease (`worktree_lease_window`, default 120 s),
+a fresh activity stamp (`orchestra-activity.json`, written by the hook on every Bash
+call made inside a linked worktree, readers included; released at the agent's
+SubagentStop, else `ORCHESTRA_ACTIVITY_WINDOW`, default 600 s), or an `isolate
+integrate` holding its lock. Background processes and CLI executors outside the
+hooks leave no stamp — finish such work before sweeping. Removal renames the tree aside,
 prunes its record, then deletes the renamed copy, so a failure leaves either the
 intact tree at its path or a `.<name>.orchestra-removing-*` leftover that the next
 sweep deletes — never a half-deleted tree that git no longer knows.
