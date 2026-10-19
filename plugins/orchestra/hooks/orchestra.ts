@@ -3,7 +3,7 @@ import { checkLightClass } from './guards/light-class.ts'
 import { checkOpusGeneralist } from './guards/opus-generalist.ts'
 import { checkWorkerTree } from './guards/worker-tree.ts'
 import { checkWorkerVcs } from './guards/worker-vcs.ts'
-import { checkWorktreeLease, releaseLeases } from './guards/worktree-lease.ts'
+import { checkWorktreeLease, recordActivity, releaseLeases } from './guards/worktree-lease.ts'
 import { register as registerHud } from './hud.ts'
 import { cleanupWorktrees } from './lifecycle/cleanup-worktrees.ts'
 import { forgetAgent, noteAgent, workerCall } from './lib/agents.ts'
@@ -63,7 +63,7 @@ export const register: Register = (on, options) => {
         const tool = String(e.tool)
         const io = ioOf($)
         if (WRITE_TOOLS.has(tool)) {
-            // Only subagent calls are in scope; the main thread costs nothing.
+            // Only subagent calls are guarded; the main thread is never denied.
             const call = await workerCall(io, e)
             if (call) {
                 const deny = await checkWorkerVcs(io, call)
@@ -72,6 +72,18 @@ export const register: Register = (on, options) => {
                 if (deny) {
                     return { deny }
                 }
+            }
+            if (tool === 'Bash') {
+                // Every Bash call, the main thread's included, marks the
+                // linked worktree it runs in as in use.
+                const by = call ?? {
+                    agentId: '',
+                    agentType: 'main thread',
+                    cwd: await io.sessionCwd().catch(() => ''),
+                    sessionId: await io.sessionId().catch(() => ''),
+                }
+                const command = String((e as unknown as Readonly<Record<string, unknown>>).command ?? '')
+                await recordActivity(io, { ...by, command }).catch(() => undefined)
             }
         } else if (AGENT_TOOLS.has(tool)) {
             const input = e as unknown as Readonly<Record<string, unknown>>

@@ -373,7 +373,7 @@
       "stdout": {
         "files": [],
         "path": "<WORK>-orchestra/00000000-int",
-        "reason": "integration branch orchestra/00000000/int holds commits not merged into any other local branch; merge it first, or pass --force",
+        "reason": "integration branch orchestra/00000000/int holds commits not landed on any non-orchestra local branch; merge or squash it there first, or pass --force",
         "status": "dirty",
         "task": "int"
       }

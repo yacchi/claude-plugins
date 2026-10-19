@@ -74,29 +74,119 @@ func (r RemoveResult) MarshalJSON() ([]byte, error) {
 	return fsutil.MarshalJSON(o)
 }
 
-// unmergedIntegration says why an integration tree's commits would be lost
-// with it: its tip (HEAD, so a detached tree works too) is reachable from no
-// local branch other than its own. "" when another branch holds it.
-func unmergedIntegration(path, branch string) string {
-	out, err := gitx.Run(path, "for-each-ref", "--format=%(refname)", "--contains", "HEAD", "refs/heads/")
+// landingRefs are the local branches an integration tree can land on (full
+// ref names), filtered by the extra for-each-ref args: never own, never an
+// orchestra/* branch -- another task or integration branch holding the same
+// commits is not a landing, and is itself removable.
+func landingRefs(path, own string, args ...string) ([]string, error) {
+	out, err := gitx.Run(path, append(append([]string{"for-each-ref", "--format=%(refname)"}, args...), "refs/heads/")...)
 	if err != nil {
-		return "cannot tell whether the integration tree's commits are merged (git for-each-ref failed); pass --force"
+		return nil, err
 	}
+	var refs []string
+	for _, ref := range strings.Split(out, "\n") {
+		ref = strings.TrimSpace(ref)
+		if ref != "" && ref != own && !strings.HasPrefix(ref, "refs/heads/"+BranchPrefix) {
+			refs = append(refs, ref)
+		}
+	}
+	return refs, nil
+}
+
+// unmergedIntegration says why an integration tree's commits would be lost
+// with it; "" once they landed on a non-orchestra local branch: its tip
+// (HEAD, so a detached tree works too) is reachable from one, or, for the
+// usual squash landing, one holds exactly the tip's content in every file
+// the tree changed since its baseline.
+func unmergedIntegration(path, branch string) string {
 	own := ""
 	if branch != "" {
 		own = "refs/heads/" + branch
 	}
-	for _, ref := range strings.Split(out, "\n") {
-		if ref = strings.TrimSpace(ref); ref != "" && ref != own {
-			return ""
-		}
+	reaching, err := landingRefs(path, own, "--contains", "HEAD")
+	if err != nil {
+		return "cannot tell whether the integration tree's commits are merged (git for-each-ref failed); pass --force"
+	}
+	if len(reaching) > 0 || squashLanded(path, own) {
+		return ""
 	}
 	name := branch
 	if name == "" {
 		name = "(detached HEAD)"
 	}
-	return fmt.Sprintf("integration branch %s holds commits not merged into any other local branch; "+
-		"merge it first, or pass --force", name)
+	return fmt.Sprintf("integration branch %s holds commits not landed on any non-orchestra local branch; "+
+		"merge or squash it there first, or pass --force", name)
+}
+
+// pathspecChunk bounds the files per `git diff` call, keeping the argument
+// list well under the OS limit however many files a round integrated.
+const pathspecChunk = 500
+
+// squashLanded reports whether the integrated changes of the tree at path
+// (baseline..HEAD, by file) have identical content on some local branch
+// other than own and the orchestra/* ones. A deletion must be a deletion
+// there too. Anything git cannot answer is "not landed".
+func squashLanded(path, own string) bool {
+	baseline := readMarker(path, baselineFile)
+	if baseline == "" {
+		return false
+	}
+	// --no-renames: a rename must show its old path too, whose deletion has
+	// to be on the other branch as well.
+	out, err := gitx.Run(path, "diff", "--name-only", "--no-renames", "-z", baseline, "HEAD")
+	if err != nil {
+		return false
+	}
+	var files []string
+	for _, f := range strings.Split(out, "\x00") {
+		if f != "" {
+			files = append(files, f)
+		}
+	}
+	if len(files) == 0 {
+		return true
+	}
+	refs, err := landingRefs(path, own)
+	if err != nil {
+		return false
+	}
+	for _, ref := range refs {
+		if sameContent(path, ref, files) {
+			return true
+		}
+	}
+	return false
+}
+
+// sameContent reports whether files read the same at HEAD and at ref. The
+// pathspecs are literal, so odd names never act as globs.
+func sameContent(path, ref string, files []string) bool {
+	for start := 0; start < len(files); start += pathspecChunk {
+		chunk := files[start:min(start+pathspecChunk, len(files))]
+		args := append([]string{"--literal-pathspecs", "diff", "--quiet", "--no-renames", "HEAD", ref, "--"}, chunk...)
+		if _, err := gitx.Run(path, args...); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// uncommitted is what the tree at path holds beyond HEAD: index and working
+// tree changes, untracked non-ignored files included (made visible to `git
+// diff` as intent-to-add, as Diff does).
+func uncommitted(path string) ([]string, error) {
+	_, _ = gitx.Run(path, "add", "-A", "-N")
+	out, err := gitx.Run(path, "diff", "--name-only", "--no-renames", "-z", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	files := []string{}
+	for _, f := range strings.Split(out, "\x00") {
+		if f != "" {
+			files = append(files, f)
+		}
+	}
+	return files, nil
 }
 
 // uncollected says why the tree at path still holds unreviewed work, or
@@ -115,6 +205,19 @@ func uncollected(root, path, task, branch, session string) (files []string, reas
 	// ReadBaseline would fall back to HEAD, hiding every commit on the branch.
 	if readMarker(path, baselineFile) == "" {
 		return nil, "no baseline recorded; cannot tell what is uncollected; pass --force", true, nil
+	}
+	if role == RoleIntegration {
+		// Landed: its commits are safe elsewhere, so only what was never
+		// committed can be lost. Its ignored surface changes routinely.
+		files, err := uncommitted(path)
+		if err != nil {
+			return nil, fmt.Sprintf("cannot list the integration tree's uncommitted changes (%v); pass --force", err), true, nil
+		}
+		if len(files) > 0 {
+			return files, fmt.Sprintf("integration tree holds %d uncommitted change(s) on top of its landed commits; "+
+				"commit and land them, or pass --force", len(files)), true, nil
+		}
+		return nil, "", false, nil
 	}
 	// The patch is only needed to recompute a collected digest, which can
 	// only match when a marker exists: the never-collected common case costs
@@ -137,10 +240,9 @@ func uncollected(root, path, task, branch, session string) (files []string, reas
 	trackedOK := len(files) == 0 || matches
 	// Nearly every tree carries some ignored surface by design (the carried
 	// node_modules); only a surface that differs from what create left
-	// counts. An integration tree's surface changes routinely.
+	// counts.
 	created := readCreatedIgnored(path)
-	ignoredOK := (created != "" && created == ignoredDigest(ignored)) || matches ||
-		role == RoleIntegration
+	ignoredOK := (created != "" && created == ignoredDigest(ignored)) || matches
 	switch {
 	case !trackedOK:
 		return files, fmt.Sprintf("worktree holds %d changed file(s) not yet collected; "+

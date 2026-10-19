@@ -12,6 +12,7 @@ const REPO = '/w/repo'
 const WT1 = '/w/wt1'
 const WT2 = '/w/wt2'
 const LEASE = `${REPO}/.git/worktrees/wt1/orchestra-lease.json`
+const ACTIVITY = `${REPO}/.git/worktrees/wt1/orchestra-activity.json`
 
 const host = (on: On, extra: Partial<HostOptions> = {}) => fakeHost(on, {
     sessionId: freshSession(),
@@ -85,6 +86,31 @@ describe('worktree-lease', () => {
         expect((await as($, 'ag_G', light, WT1, editIn(`${WT1}/a.ts`))).deny, 'another worker').toBeDefined()
         expect((await as($, 'ag_G', light, WT1, run('git commit -qm x', 'take over [orchestra:allow-lease: holder confirmed dead]'))).deny).toBeUndefined()
         expect((await as($, 'ag_H', light, '/w/scratch', editIn('/w/scratch/notrepo/x.ts'))).deny, 'outside a repository').toBeUndefined()
+    })
+
+    test('activity: any Bash call in a linked worktree stamps it, never denied', async ($, on) => {
+        const h = host(on, { cwd: REPO })
+        await as($, 'ag_A', light, WT1, editIn(`${WT1}/a.ts`))
+        const test = await as($, 'ag_R', 'orchestra:orchestra-review', REPO, run(`cd ${WT1} && pnpm test`))
+        expect(test.deny, 'a reader next to the lease holder').toBeUndefined()
+        const stamp = JSON.parse(h.files.get(ACTIVITY) ?? '{}')
+        expect(stamp.agent_id).toBe('ag_R')
+        expect(stamp.command).toBe(`cd ${WT1} && pnpm test`)
+        expect(typeof stamp.last_seen).toBe('number')
+        h.files.delete(ACTIVITY)
+        expect((await callTool($, undefined, run('agent-exec isolate sweep --text'))).deny, 'main thread').toBeUndefined()
+        expect([...h.files.keys()].some(f => f.endsWith('orchestra-activity.json')), 'the main worktree is never stamped').toBe(false)
+    })
+
+    test('activity: SubagentStop drops the agent\'s own stamp, never another\'s', async ($, on) => {
+        const h = host(on)
+        await as($, 'ag_A', light, WT1, run('pnpm test'))
+        await stop($, 'ag_A')
+        expect(h.files.has(ACTIVITY), 'its own stamp').toBe(false)
+        await as($, 'ag_A', light, WT1, run('pnpm test'))
+        await as($, 'ag_B', light, WT1, run('pnpm build'))
+        await stop($, 'ag_A')
+        expect(JSON.parse(h.files.get(ACTIVITY) ?? '{}').agent_id, 'overwritten by another agent').toBe('ag_B')
     })
 
     test('kill switch: ORCHESTRA_LEASE_GUARD=off', async ($, on) => {

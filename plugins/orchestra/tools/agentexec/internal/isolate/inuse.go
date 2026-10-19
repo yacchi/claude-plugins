@@ -13,58 +13,123 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 )
 
 // A tree somebody is still working in is never removed, not even with
-// --force (which discards content, not a live writer's tree). Two signals:
-// the writer lease the worktree-lease hook keeps in the worktree's git dir,
-// and the flock an `isolate integrate` into the tree holds while it runs.
+// --force (which discards content, not a live tree). Three signals: the
+// writer lease and the activity stamp the worktree-lease hook keeps in the
+// worktree's git dir, and the flock an `isolate integrate` into the tree
+// holds while it runs.
 
-// leaseFile is the hook's on-disk contract (hooks/guards/worktree-lease.ts):
-// {agent_id, agent_type, last_seen, since}, last_seen in epoch seconds.
-const leaseFile = "orchestra-lease.json"
+// The hook's on-disk contract (hooks/guards/worktree-lease.ts), last_seen in
+// epoch seconds. leaseFile: {agent_id, agent_type, last_seen, since}, taken
+// by a writer. activityFile: {agent_id, agent_type, last_seen, command},
+// stamped by any Bash call run inside the tree (tests, builds, reads).
+const (
+	leaseFile    = "orchestra-lease.json"
+	activityFile = "orchestra-activity.json"
+)
 
-const defaultLeaseWindow = 120 * time.Second
+const (
+	defaultLeaseWindow = 120 * time.Second
+	// A foreground Bash call can run for up to 10 minutes, and its stamp
+	// is taken when it starts.
+	defaultActivityWindow = 600 * time.Second
+)
+
+// envSeconds is the env var as seconds when it parses as a finite number
+// (as the hook reads it).
+func envSeconds(name string) (time.Duration, bool) {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil || math.IsInf(n, 0) || math.IsNaN(n) {
+		return 0, false
+	}
+	return time.Duration(n * float64(time.Second)), true
+}
 
 // leaseWindow is how recently a lease must have been refreshed to count as
-// held: ORCHESTRA_LEASE_WINDOW seconds when it parses as a finite number
-// (as the hook reads it), else 120s.
+// held, in the hook's order: ORCHESTRA_LEASE_WINDOW, then a finite non-zero
+// enforcement.worktree_lease_window, then 120s. Only asked when a lease
+// file exists, so the common path never resolves the config.
 func leaseWindow() time.Duration {
-	if v := strings.TrimSpace(os.Getenv("ORCHESTRA_LEASE_WINDOW")); v != "" {
-		if n, err := strconv.ParseFloat(v, 64); err == nil && !math.IsInf(n, 0) && !math.IsNaN(n) {
+	if d, ok := envSeconds("ORCHESTRA_LEASE_WINDOW"); ok {
+		return d
+	}
+	if cfg, err := config.Resolve(); err == nil {
+		v, _ := cfg.Lookup("enforcement", "worktree_lease_window")
+		var n float64
+		switch x := v.(type) {
+		case int64:
+			n = float64(x)
+		case int:
+			n = float64(x)
+		case float64:
+			n = x
+		case string:
+			n, _ = strconv.ParseFloat(strings.TrimSpace(x), 64)
+		}
+		if n != 0 && !math.IsInf(n, 0) && !math.IsNaN(n) {
 			return time.Duration(n * float64(time.Second))
 		}
 	}
 	return defaultLeaseWindow
 }
 
+func activityWindow() time.Duration {
+	if d, ok := envSeconds("ORCHESTRA_ACTIVITY_WINDOW"); ok {
+		return d
+	}
+	return defaultActivityWindow
+}
+
+// readStamp is a lease or activity file of the tree at path and its age in
+// seconds; ok=false when absent or unreadable. A missing or non-numeric
+// last_seen is ancient, as in the hook.
+func readStamp(path, name string, now time.Time) (stamp map[string]any, age float64, ok bool) {
+	p, err := markerPath(path, name)
+	if err != nil {
+		return nil, 0, false
+	}
+	b, err := os.ReadFile(p)
+	if err != nil || json.Unmarshal(b, &stamp) != nil || stamp == nil {
+		return nil, 0, false
+	}
+	seen, _ := stamp["last_seen"].(float64)
+	return stamp, float64(now.UnixNano())/1e9 - seen, true
+}
+
+func holderOf(stamp map[string]any) string {
+	if holder, _ := stamp["agent_type"].(string); holder != "" {
+		return holder
+	}
+	return "another agent"
+}
+
 // freshLease describes the lease on the tree at path when it was refreshed
 // within the window; "" when there is none, it is stale, or unreadable.
 func freshLease(path string, now time.Time) string {
-	p, err := markerPath(path, leaseFile)
-	if err != nil {
+	lease, age, ok := readStamp(path, leaseFile, now)
+	if !ok || age >= leaseWindow().Seconds() {
 		return ""
 	}
-	b, err := os.ReadFile(p)
-	if err != nil {
+	return fmt.Sprintf("in use: lease held by %s %ds ago", holderOf(lease), int(math.Max(0, age)))
+}
+
+// freshActivity describes the last Bash call run inside the tree at path
+// when it started within the activity window; "" otherwise.
+func freshActivity(path string, now time.Time) string {
+	act, age, ok := readStamp(path, activityFile, now)
+	if !ok || age >= activityWindow().Seconds() {
 		return ""
 	}
-	var lease map[string]any
-	if json.Unmarshal(b, &lease) != nil {
-		return ""
-	}
-	// Like the hook: a missing or non-numeric last_seen is ancient.
-	seen, _ := lease["last_seen"].(float64)
-	age := float64(now.UnixNano())/1e9 - seen
-	if age >= leaseWindow().Seconds() {
-		return ""
-	}
-	holder, _ := lease["agent_type"].(string)
-	if holder == "" {
-		holder = "another agent"
-	}
-	return fmt.Sprintf("in use: lease held by %s %ds ago", holder, int(math.Max(0, age)))
+	command, _ := act["command"].(string)
+	return fmt.Sprintf("in use: %s ran %q %ds ago", holderOf(act), command, int(math.Max(0, age)))
 }
 
 var reLockUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]`)
@@ -115,7 +180,11 @@ func integrateRunning(repo, task string) bool {
 // inUse says why task's tree at path must not be removed now, "" when
 // nobody is working in it.
 func inUse(repo, task, path string) string {
-	if reason := freshLease(path, time.Now()); reason != "" {
+	now := time.Now()
+	if reason := freshLease(path, now); reason != "" {
+		return reason
+	}
+	if reason := freshActivity(path, now); reason != "" {
 		return reason
 	}
 	if integrateRunning(repo, task) {
