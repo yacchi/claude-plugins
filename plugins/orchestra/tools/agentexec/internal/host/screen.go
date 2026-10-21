@@ -27,7 +27,14 @@ var (
 	// lines ("  No issues found") count only after a block has started.
 	selectedOptionRE = regexp.MustCompile(`^\s*❯\s*(?:\d+\.\s*)?(?:Yes|No|Allow|Deny|Cancel|Approve|Reject)\b`)
 	permissionRE     = regexp.MustCompile(`Do you want to `)
+	// Every auth failure ends in a /login hint ("Not logged in · Please run
+	// /login", "Invalid API key · Run /login") and the agent goes idle.
+	loginRE = regexp.MustCompile(`·\s*(?:Please run|Run) /login\b`)
 )
+
+// IsLoginText reports Claude Code's "no usable login" reply in a screen's
+// text: the agent is idle and will never write a result.
+func IsLoginText(text string) bool { return loginRE.MatchString(text) }
 
 // IsTrustText reports the folder-trust dialog in a screen's text (herdr).
 func IsTrustText(text string) bool {

@@ -336,6 +336,18 @@ func TestIdleAndDoneAreNotCompletion(t *testing.T) {
 	}
 }
 
+func TestAnIdleAgentWithoutALoginFailsAtOnce(t *testing.T) {
+	e := newEnv(t)
+	screen := "❯ implement A0\n  ⎿  Not logged in · Please run /login\n✻ Worked for 0s"
+	e.scenario(map[string]any{"running": true, "statuses": []any{"working", "idle"}, "screen": screen}, true)
+	_, err := e.executor("").WaitResult(context.Background(), e.manualSession(), e.result, 3600e9)
+	n := needOf(t, err)
+	if err := containsAll(n.Detail, "no usable login", "Not logged in"); n.Kind != host.KindError || err != nil ||
+		e.count("agent get") > 2 {
+		t.Errorf("%v %v gets %d", n, err, e.count("agent get"))
+	}
+}
+
 func TestBlockedIsAStallWithTheDialog(t *testing.T) {
 	e := newEnv(t)
 	e.scenario(map[string]any{"running": true, "statuses": []any{"working", "blocked"}, "screen": permissionScreen}, true)

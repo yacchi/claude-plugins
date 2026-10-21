@@ -49,12 +49,14 @@ func (p *Policy) clone() *Policy {
 
 // policyOpts are the knobs tests (and the host policy) override; zero
 // values mean the process's own: $HOME, os.Environ, runtime.GOOS and the
-// learned store.
+// learned store. userCache stands in for DARWIN_USER_CACHE_DIR whenever
+// platform is set.
 type policyOpts struct {
-	home     string
-	env      map[string]string
-	platform string
-	learned  *[]Grant
+	home      string
+	env       map[string]string
+	platform  string
+	learned   *[]Grant
+	userCache string
 }
 
 func (o policyOpts) getenv(k string) string {
@@ -69,6 +71,24 @@ func (o policyOpts) goos() string {
 		return o.platform
 	}
 	return runtime.GOOS
+}
+
+// darwinUserCache is DARWIN_USER_CACHE_DIR (/var/folders/../C), "" off
+// macOS. It does not follow TMPDIR, so it is asked of getconf, not derived.
+func (o policyOpts) darwinUserCache() string {
+	if o.platform != "" {
+		return o.userCache
+	}
+	if runtime.GOOS != "darwin" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "/usr/bin/getconf", "DARWIN_USER_CACHE_DIR").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func envMap(env []string) map[string]string {

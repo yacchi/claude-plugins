@@ -203,6 +203,10 @@ func TestScreenClassifiers(t *testing.T) {
 		!IsTrustText("  2. Yes, I TRUST this folder") || IsTrustText("login required") {
 		t.Error("trust text")
 	}
+	if !IsLoginText("  ⎿  Not logged in · Please run /login") || !IsLoginText("Invalid API key · Run /login") ||
+		IsLoginText("fix the /login route") || IsLoginText("Not logged in") {
+		t.Error("login text")
+	}
 	if !HasPromptBox([]string{"", "❯ "}) || IsDialog([]string{"", "❯ "}) {
 		t.Error("prompt box")
 	}
