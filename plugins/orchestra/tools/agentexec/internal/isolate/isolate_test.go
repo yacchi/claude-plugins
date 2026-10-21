@@ -86,6 +86,16 @@ func TestCopyTreeFast(t *testing.T) {
 	if readFile(t, filepath.Join(dst, "sub", "f.txt")) != "content" {
 		t.Fatal("content not copied")
 	}
+	if link, err := os.Readlink(filepath.Join(dst, "link")); err != nil || link != "sub/f.txt" {
+		t.Fatalf("symlink not kept as a link: %q %v", link, err)
+	}
+	// A failed clone onto an existing directory must not wipe it.
+	existing := filepath.Join(t.TempDir(), "existing")
+	writeFile(t, filepath.Join(existing, "keep.txt"), "mine")
+	_ = CopyTreeFast(src, existing)
+	if readFile(t, filepath.Join(existing, "keep.txt")) != "mine" {
+		t.Fatal("an existing destination was clobbered")
+	}
 	if err := CopyTreeFast(filepath.Join(src, "missing"), filepath.Join(t.TempDir(), "x")); err == nil {
 		t.Fatal("a missing source was reported as copied")
 	}

@@ -16,8 +16,8 @@ import (
 
 // carryDirNames are directories holding installed dependencies or build
 // caches: expensive to recreate, invisible to `git worktree add` (being
-// ignored), and ~2s to copy. A worktree without them makes every worker
-// re-run an install.
+// ignored), and cheap to clone on a copy-on-write filesystem. A worktree
+// without them makes every worker re-run an install.
 var carryDirNames = []string{
 	"node_modules", ".venv", "venv", ".tox", "vendor", "target",
 	".next", ".nuxt", ".svelte-kit", ".gradle", "Pods", ".bundle", ".dart_tool",
@@ -108,7 +108,7 @@ func isSymlink(p string) bool {
 }
 
 // CopyTreeFast copies directory src to dst, preferring a copy-on-write clone
-// (APFS `cp -c`, reflink on Linux) and degrading to a plain copy.
+// (APFS clonefile, reflink on Linux) and degrading to a plain copy.
 func CopyTreeFast(src, dst string) error {
 	if copyTreeMethod(src, dst) == carryFailed {
 		return errors.New("could not copy " + src)
@@ -123,6 +123,14 @@ func copyTreeMethod(src, dst string) string {
 	}
 	if err := os.MkdirAll(filepath.Dir(absPath(dst)), 0o755); err != nil {
 		return carryFailed
+	}
+	if !lexists(dst) {
+		if cloneDir(src, dst) == nil {
+			return carryClone
+		}
+		if lexists(dst) {
+			_ = os.RemoveAll(dst) // a failed directory clone can leave a partial tree
+		}
 	}
 	attempts := [][]string{{"cp", "-R", "--reflink=auto", src, dst}}
 	if runtime.GOOS == "darwin" {
