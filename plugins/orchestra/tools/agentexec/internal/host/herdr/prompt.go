@@ -162,7 +162,14 @@ func (e *Executor) waitResult(ctx context.Context, s *host.Session, resultPath s
 		if status == "blocked" {
 			return nil, e.blocked(ctx, s, name, resultPath)
 		}
-		// idle/done: the TUI settled, but only the result file ends the task.
+		// idle/done: the TUI settled, but only the result file ends the task
+		// (or a login failure, which no amount of waiting fixes).
+		if status == "idle" || status == "done" {
+			if scr, err := e.screen(ctx, name); err == nil && host.IsLoginText(scr) {
+				return nil, host.Need(host.KindError, "Claude Code in "+name+" has no usable login "+
+					"(run `claude auth status` with the herdr server's CLAUDE_CONFIG_DIR):\n"+host.TailText(scr))
+			}
+		}
 		if !e.now().Before(deadline) {
 			tail := ""
 			if scr, err := e.screen(ctx, name); err == nil {

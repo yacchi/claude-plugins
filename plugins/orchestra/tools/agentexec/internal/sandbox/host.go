@@ -151,6 +151,11 @@ func hostPolicy(in HostInput, sc Config, o policyOpts) *Policy {
 		}
 	}
 	writable = append(writable, filepath.Join(home, ".local", "state", "claude"))
+	// The Security framework locks and rebuilds its MDS cache there on every
+	// Keychain lookup; denied, Claude Code finds no login ("Not logged in").
+	if cache := o.darwinUserCache(); platform == "darwin" && cache != "" {
+		writable = append(writable, realPath(filepath.Join(cache, "mds")))
+	}
 	for _, p := range seeds(platform) {
 		writable = append(writable, expand(p, home))
 	}

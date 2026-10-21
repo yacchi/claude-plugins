@@ -277,10 +277,12 @@ func TestHostPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	none := []Grant{}
-	o := policyOpts{home: home, env: map[string]string{"TMPDIR": "/nonexistent-tmp"}, platform: "darwin", learned: &none}
+	userCache := filepath.Join(base, "var-folders", "C")
+	o := policyOpts{home: home, env: map[string]string{"TMPDIR": "/nonexistent-tmp"}, platform: "darwin", learned: &none,
+		userCache: userCache}
 	p := hostPolicy(HostInput{Repo: repo, WorktreeBase: wtBase, HerdrHome: filepath.Join(home, "hx")}, Config{}, o)
 	for _, w := range []string{claude, filepath.Join(shared, "projects"), filepath.Join(shared, "history.jsonl"),
-		wtBase, filepath.Join(home, ".npm"), filepath.Join(home, "Library", "Caches")} {
+		wtBase, filepath.Join(home, ".npm"), filepath.Join(home, "Library", "Caches"), filepath.Join(userCache, "mds")} {
 		if !contains(p.Writable, w) {
 			t.Errorf("%s not writable", w)
 		}

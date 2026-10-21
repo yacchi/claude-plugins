@@ -143,3 +143,28 @@ func TestSeatbeltWritesManagedPiSessionsButNotState(t *testing.T) {
 		}
 	}
 }
+
+// A Keychain lookup needs the Security framework's MDS cache writable: Claude
+// Code in a herdr pane otherwise starts "Not logged in".
+func TestSeatbeltKeychainLookupNeedsTheMDSCache(t *testing.T) {
+	needSeatbelt(t)
+	cache := policyOpts{}.darwinUserCache()
+	if cache == "" {
+		t.Skip("no DARWIN_USER_CACHE_DIR")
+	}
+	base := tempReal(t)
+	lookup := func(writable ...string) string {
+		p := &Policy{Writable: append([]string{base, "/dev"}, writable...)}
+		argv := WrapArgv([]string{"/usr/bin/security", "find-generic-password", "-s", "orchestra-sandbox-probe-absent"},
+			base, Spec{Backend: "seatbelt", Policy: p})
+		out, _ := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+		return string(out)
+	}
+	const mdsError = "Module Directory Service"
+	if !strings.Contains(lookup(), mdsError) {
+		t.Skip("the Keychain lookup works without the MDS cache on this machine")
+	}
+	if out := lookup(realPath(filepath.Join(cache, "mds"))); strings.Contains(out, mdsError) {
+		t.Errorf("lookup with the MDS cache writable: %s", out)
+	}
+}
