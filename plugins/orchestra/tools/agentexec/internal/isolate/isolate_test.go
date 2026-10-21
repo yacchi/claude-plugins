@@ -474,6 +474,26 @@ func TestFailedPruneRestoresTheTree(t *testing.T) {
 	}
 }
 
+func TestRemovedTreeIsDeletedInTheBackground(t *testing.T) {
+	repo := newRepo(t)
+	path := create(t, repo, "t1", "")
+	writeFile(t, filepath.Join(path, "deep", "er", "f.txt"), "x\n")
+	if r := remove(t, repo, "t1", true, ""); r.Status != "removed" || r.Reason != "" || exists(path) {
+		t.Fatalf("remove: %+v", r)
+	}
+	trash := filepath.Join(filepath.Dir(path), ".*"+trashMarker+"*")
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		left, _ := filepath.Glob(trash)
+		if len(left) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the detached delete never finished: %v", left)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestRemoveSession(t *testing.T) {
 	repo := newRepo(t)
 	create(t, repo, "t1", sessA)

@@ -3,8 +3,10 @@ package isolate
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
@@ -263,11 +265,27 @@ func trashPath(path string) string {
 		filepath.Base(path), trashMarker, os.Getpid(), time.Now().UnixNano()))
 }
 
+// deleteDetached hands a renamed-aside tree to an `rm -rf` in its own
+// session and returns at once: git already forgot the tree, and a carried
+// node_modules is hundreds of thousands of files nobody should wait on. The
+// rm outlives Ctrl-C and the caller; whatever it never finishes, sweep
+// reclaims.
+func deleteDetached(path string) error {
+	cmd := exec.Command("/bin/rm", "-rf", "--", path)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _ = cmd.Wait() }() // reaped while the caller lives
+	return nil
+}
+
 // discard removes the worktree at path and its branch in two phases, so a
 // failure never leaves a half-deleted tree where the worktree was: the tree
 // is renamed aside (atomic, same directory), git forgets it by pruning, and
-// only then is the branch dropped and the renamed tree deleted. reason is
-// "" on a clean removal, or names a leftover trash dir (ok stays true).
+// only then is the branch dropped and the renamed tree handed to a detached
+// delete. reason is "" on a clean removal, or names a leftover trash dir
+// (ok stays true).
 func discard(repo, path, branch string) (ok bool, reason string) {
 	admin, err := gitx.GitDir(path)
 	if err != nil {
@@ -295,8 +313,11 @@ func discard(repo, path, branch string) (ok bool, reason string) {
 	if branch != "" {
 		_, _ = gitx.Run(repo, "branch", "-D", branch)
 	}
-	if err := os.RemoveAll(trash); err != nil {
-		return true, fmt.Sprintf("git state removed, but the old tree is left at %s (%v); delete it by hand", trash, err)
+	if err := deleteDetached(trash); err != nil {
+		// Nothing to hand it to: delete it here rather than leave it.
+		if err := os.RemoveAll(trash); err != nil {
+			return true, fmt.Sprintf("git state removed, but the old tree is left at %s (%v); delete it by hand", trash, err)
+		}
 	}
 	return true, ""
 }
