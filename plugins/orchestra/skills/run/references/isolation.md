@@ -70,9 +70,10 @@ call made inside a linked worktree, readers included; released at the agent's
 SubagentStop, else `ORCHESTRA_ACTIVITY_WINDOW`, default 600 s), or an `isolate
 integrate` holding its lock. Background processes and CLI executors outside the
 hooks leave no stamp — finish such work before sweeping. Removal renames the tree aside,
-prunes its record, then deletes the renamed copy, so a failure leaves either the
-intact tree at its path or a `.<name>.orchestra-removing-*` leftover that the next
-sweep deletes — never a half-deleted tree that git no longer knows.
+prunes its record, then hands the renamed copy to a detached `rm -rf` and returns
+without waiting for it, so a failure leaves either the intact tree at its path or a
+`.<name>.orchestra-removing-*` leftover that the next sweep deletes — never a
+half-deleted tree that git no longer knows.
 
 Other sessions running in the same repo are protected by a heartbeat rather than
 by luck: every `agent-exec isolate`/`dispatch`/`route`/`run` command touches
