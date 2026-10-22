@@ -348,15 +348,3 @@ func TestUnmatchedFailureGoesToCatchAllAndRoundsEndInNeed(t *testing.T) {
 		t.Error("the catch-all ran alongside another fix-up")
 	}
 }
-
-// --- max_in_flight -----------------------------------------------------------------------
-
-func TestAutoWidthFormula(t *testing.T) {
-	for _, c := range []struct {
-		cpus      int
-		gib, want int
-	}{{10, 64, 8}, {64, 128, 16}, {12, 8, 4}, {3, 2, 2}, {0, 8, 4}} {
-		eq(t, fmt.Sprintf("autoWidth(%d, %dGiB)", c.cpus, c.gib), autoWidth(c.cpus, uint64(c.gib)<<30), c.want)
-	}
-	eq(t, "unreadable memory", autoWidth(8, 0), defaultMaxInFlight)
-}

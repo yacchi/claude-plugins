@@ -66,6 +66,8 @@ var moduleDir string
 
 func TestMain(m *testing.M) {
 	moduleDir, _ = filepath.Abs("../../..")
+	// The machine's real memory pressure must not hold a test's starts.
+	memoryPressure = func() (bool, string) { return false, "" }
 	// Built before any test points HOME (and so the module cache) elsewhere.
 	agentExecBin.once.Do(buildAgentExec)
 	code := m.Run()

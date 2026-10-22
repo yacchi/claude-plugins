@@ -54,6 +54,8 @@ type Package struct {
 	DependsOn  []string
 	FilesOwned []string
 	Prio       float64
+	// EstSeconds is the plan's `est_seconds` (0 = not given).
+	EstSeconds float64
 }
 
 // Plan is a normalized plan: packages in file order, relative preamble/spec
@@ -64,6 +66,11 @@ type Plan struct {
 	ExternalDone []string
 	Rules        []Rule
 	Packages     []Package
+
+	// chain caches the dependent chains for the first chainN packages (the
+	// runner only ever appends to Packages).
+	chain  *chains
+	chainN int
 }
 
 // Package returns the package with the given id.
@@ -266,6 +273,12 @@ func Load(file string) (*Plan, error) {
 			case float64:
 				pkg.Prio = n
 			}
+		}
+		switch n := entry["est_seconds"].(type) {
+		case int64:
+			pkg.EstSeconds = max(float64(n), 0)
+		case float64:
+			pkg.EstSeconds = max(n, 0)
 		}
 		p.Packages = append(p.Packages, pkg)
 	}

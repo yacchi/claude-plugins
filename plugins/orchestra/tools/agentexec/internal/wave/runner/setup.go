@@ -21,10 +21,9 @@ import (
 const (
 	defaultVerifyMode     = "final"
 	defaultConvergeRounds = 2
-	// defaultMaxInFlight is `max_in_flight: auto` without a herdr or orca
-	// host, and the fallback when the machine size cannot be read.
-	defaultMaxInFlight = 4
-	autoMaxInFlightCap = 16
+	// unboundedWidth is the Select limit of `max_in_flight: auto`: every
+	// package that may start does.
+	unboundedWidth = 1 << 30
 )
 
 // fullLock: at most one full-check run in this process at a time, across
@@ -61,7 +60,21 @@ type runner struct {
 
 	verifyMode     string
 	convergeRounds int
-	maxInFlight    int
+	// maxInFlight is the width; 0 is `auto`, every startable package.
+	maxInFlight int
+	memoryGuard bool
+	usageEvery  int
+	budgetUSD   float64
+
+	// Scheduler-goroutine state: whether new starts are held for memory
+	// pressure, and the packages integrated so far (usage notices).
+	holding         bool
+	integratedTotal int
+
+	// costMu guards the cached run-cost estimate.
+	costMu           sync.Mutex
+	costSeen, costOK bool
+	costAt, costUSD  float64
 
 	// intLock is held while the integration tree is written or checked
 	// (integrate, full, convergence) and while a worker starts a dispatch
@@ -365,16 +378,39 @@ func (r *runner) resolveSettings() {
 		width, ok = explicitWidth(objGet(wave, "max_in_flight"))
 		source = "config"
 		if !ok {
-			source = "auto"
-			width = defaultMaxInFlight
-			if r.host != nil && (r.hostName == "herdr" || r.hostName == "orca") {
-				width = autoMaxInFlight()
-			}
+			width, source = 0, "auto"
 		}
 	}
 	r.maxInFlight = width
-	r.emit("max-in-flight", "", map[string]any{"value": width, "source": source})
-	fmt.Fprintf(r.stderr, "max-in-flight: %d (%s)\n", width, source)
+	if width == 0 {
+		r.emit("max-in-flight", "", map[string]any{"value": "auto (unbounded)", "source": source})
+		fmt.Fprintln(r.stderr, "max-in-flight: auto (unbounded)")
+	} else {
+		r.emit("max-in-flight", "", map[string]any{"value": width, "source": source})
+		fmt.Fprintf(r.stderr, "max-in-flight: %d (%s)\n", width, source)
+	}
+
+	r.memoryGuard = objGet(wave, "memory_guard") != false
+	r.usageEvery = config.DefaultUsageEvery
+	if n, ok := objGet(wave, "usage_every").(int64); ok && n >= 0 {
+		r.usageEvery = int(n)
+	}
+	r.budgetUSD = 0
+	if r.opts.BudgetUSD != nil {
+		r.budgetUSD = *r.opts.BudgetUSD
+	} else {
+		switch n := objGet(wave, "budget_usd").(type) {
+		case int64:
+			r.budgetUSD = float64(n)
+		case float64:
+			r.budgetUSD = n
+		}
+	}
+	if r.budgetUSD > 0 && r.opts.RunID == "" {
+		r.emit("budget-off", "", map[string]any{"budget_usd": r.budgetUSD, "reason": "no --run-id"})
+		fmt.Fprintf(r.stderr, "warning: budget $%.2f ignored: the run's cost needs --run-id\n", r.budgetUSD)
+		r.budgetUSD = 0
+	}
 }
 
 func (r *runner) interactiveMode() string {

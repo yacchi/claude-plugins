@@ -119,12 +119,13 @@ func dedupe(list []string) []any {
 // normalize applies the post-merge rules in
 // place: the sandbox section is rebuilt from the unions, executor
 // network_domains, the isolation path lists and throttle.heavy_extra are
-// replaced by their unions, and the enforcement knobs are coerced to their
-// known values (fail-safe per knob).
+// replaced by their unions, and the enforcement and wave knobs are coerced
+// to their known values (fail-safe per knob).
 func normalize(values map[string]any, u *union) {
 	values["sandbox"] = normalizeSandbox(ObjectAt(values, "sandbox"), u)
 	normalizeIsolation(values, u)
 	normalizeThrottle(values, u)
+	normalizeWave(values)
 	if ext := ObjectAt(values, "external_executors"); ext != nil {
 		for _, name := range slices.Sorted(maps.Keys(u.executorDomains)) {
 			if ecfg := ObjectAt(ext, name); ecfg != nil {
@@ -251,6 +252,55 @@ func normalizeThrottle(values map[string]any, u *union) {
 	}
 	th["heavy_slots"] = slots
 	th["heavy_extra"] = dedupe(u.heavyExtra)
+}
+
+// normalizeWave writes max_in_flight as "auto" or a positive integer,
+// memory_guard as a bool (only false or "off" turn it off), usage_every as a
+// non-negative integer (0 = no notices) and budget_usd as a non-negative
+// number (0 = none); anything unusable is the default.
+func normalizeWave(values map[string]any) {
+	w := ObjectAt(values, "wave")
+	if w == nil {
+		w = map[string]any{}
+		values["wave"] = w
+	}
+	width := any("auto")
+	switch x := w["max_in_flight"].(type) {
+	case int64:
+		if x >= 1 {
+			width = x
+		}
+	case float64:
+		if x >= 1 && x == float64(int64(x)) {
+			width = int64(x)
+		}
+	}
+	w["max_in_flight"] = width
+	w["memory_guard"] = !isOff(w["memory_guard"])
+	every := int64(DefaultUsageEvery)
+	switch x := w["usage_every"].(type) {
+	case int64:
+		if x >= 0 {
+			every = x
+		}
+	case float64:
+		if x >= 0 && x == float64(int64(x)) {
+			every = int64(x)
+		}
+	}
+	w["usage_every"] = every
+	budget := any(int64(0))
+	switch x := w["budget_usd"].(type) {
+	case int64:
+		if x > 0 {
+			budget = x
+		}
+	case float64:
+		if x > 0 {
+			budget = x
+		}
+	}
+	w["budget_usd"] = budget
 }
 
 // normalizePathList normalizes each directory entry (see normalizePath),

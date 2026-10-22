@@ -5,6 +5,7 @@ import (
 	"maps"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/approvals"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
@@ -41,8 +42,8 @@ func (r *runner) loop() {
 
 type job struct{ pid, phase, note string }
 
-// pool runs package jobs on at most width goroutines at once; done
-// receives each finished job's id.
+// pool runs package jobs on at most width goroutines at once (any number
+// for a width below 1); done receives each finished job's id.
 type pool struct {
 	sem  chan struct{}
 	done chan int
@@ -50,16 +51,24 @@ type pool struct {
 }
 
 func newPool(width int) *pool {
-	return &pool{sem: make(chan struct{}, max(1, width)), done: make(chan int, 64)}
+	p := &pool{done: make(chan int, 64)}
+	if width >= 1 {
+		p.sem = make(chan struct{}, width)
+	}
+	return p
 }
 
 func (p *pool) submit(r *runner, j job) int {
 	id := p.next
 	p.next++
 	go func() {
-		p.sem <- struct{}{}
+		if p.sem != nil {
+			p.sem <- struct{}{}
+		}
 		defer func() {
-			<-p.sem
+			if p.sem != nil {
+				<-p.sem
+			}
 			p.done <- id
 		}()
 		r.runPackage(j.pid, j.phase, j.note)
@@ -108,11 +117,22 @@ func (r *runner) schedule(p *pool, running map[int]string) (progressed, halted b
 			awaiting = append(awaiting, pkg.ID)
 		}
 	}
-	selected := plan.Select(r.plan, view, r.maxInFlight)
+	limit := r.maxInFlight
+	if limit < 1 {
+		limit = unboundedWidth
+	}
+	selected := plan.Select(r.plan, view, limit)
+	if len(selected) == 0 {
+		r.holding = false // nothing left to hold
+	}
 	if len(selected) == 0 && len(carried) == 0 && len(awaiting) == 0 {
 		return false, false
 	}
-	if reason := r.stopCheck(); reason != "" {
+	reason := r.stopCheck()
+	if reason == "" && len(selected) > 0 {
+		reason = r.budgetCheck()
+	}
+	if reason != "" {
 		r.stop(reason)
 		halted = true
 		selected = nil
@@ -126,6 +146,9 @@ func (r *runner) schedule(p *pool, running map[int]string) (progressed, halted b
 		if len(selected) > left {
 			selected = selected[:left]
 		}
+	}
+	if len(selected) > 0 && r.holdStarts() {
+		selected = nil
 	}
 	var verify []string
 	for _, pid := range carried {
@@ -174,6 +197,7 @@ func (r *runner) afterJobs() {
 	integrated := r.integrateReady()
 	if integrated > 0 {
 		r.integrateRounds++
+		r.noteIntegrated(integrated)
 	}
 	every := r.opts.FullEvery
 	if every < 1 {
@@ -190,8 +214,10 @@ func (r *runner) afterJobs() {
 	}
 }
 
-// runWaves is the rolling scheduler: keep up to max_in_flight jobs running;
-// each finished job is integrated at once and frees its slot.
+// runWaves is the rolling scheduler: start every job that may start (up to
+// an integer max_in_flight); each finished job is integrated at once and
+// frees its slot. While memory pressure holds new starts, it looks again
+// every memoryRecheck.
 func (r *runner) runWaves() {
 	running := map[int]string{}
 	p := newPool(r.maxInFlight)
@@ -200,7 +226,17 @@ func (r *runner) runWaves() {
 		progressed, stopNow := r.schedule(p, running)
 		halted = halted || stopNow
 		if len(running) > 0 {
-			delete(running, <-p.done)
+			var id int
+			if r.holding {
+				select {
+				case id = <-p.done:
+				case <-time.After(memoryRecheck):
+					continue
+				}
+			} else {
+				id = <-p.done
+			}
+			delete(running, id)
 			for drained := false; !drained; {
 				select {
 				case id := <-p.done:
@@ -219,6 +255,10 @@ func (r *runner) runWaves() {
 			continue
 		}
 		r.afterJobs()
+		if r.holding && !halted && !r.stopped() {
+			r.sleep(memoryRecheck.Seconds())
+			continue
+		}
 		if halted || r.stopped() || !progressed {
 			break
 		}

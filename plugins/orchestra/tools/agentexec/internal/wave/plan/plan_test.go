@@ -74,7 +74,7 @@ func TestLoadDefaultsAndResolution(t *testing.T) {
 	  "warm_read": ["./docs/../docs/g.md", "docs/g.md", "README.md"],
 	  "rules": [{"if": "src/**", "require": ["tests/**"]}],
 	  "packages": [
-	    {"id": "A", "spec": "specs/a.md", "cls": "deep", "unknown": 1},
+	    {"id": "A", "spec": "specs/a.md", "cls": "deep", "unknown": 1, "est_seconds": 240},
 	    {"id": "B", "spec": "specs/a.md", "cls": "light", "depends_on": ["A", "EXT"], "files_owned": ["x"], "prio": 3}
 	  ]}`, "pre.md", "specs/a.md")
 	p, err := Load(path)
@@ -89,7 +89,7 @@ func TestLoadDefaultsAndResolution(t *testing.T) {
 		t.Fatalf("warm_read: %v", p.WarmRead)
 	}
 	a, b := p.Packages[0], p.Packages[1]
-	if len(a.DependsOn) != 0 || len(a.FilesOwned) != 0 || a.Prio != 0 || b.Prio != 3 {
+	if len(a.DependsOn) != 0 || len(a.FilesOwned) != 0 || a.Prio != 0 || b.Prio != 3 || a.EstSeconds != 240 || b.EstSeconds != 0 {
 		t.Fatalf("defaults: %+v %+v", a, b)
 	}
 	if !reflect.DeepEqual(p.Rules, []Rule{{If: "src/**", Require: []string{"tests/**"}}}) || p.ExternalDone[0] != "EXT" {
@@ -176,6 +176,55 @@ func TestSelect(t *testing.T) {
 	check("zero", three, nil, 0)
 	check("ready counts as in flight", three, Status{"A": "ready"}, 1)
 	check("needs is not pending", three, Status{"A": "needs"}, 10, "B", "C")
+}
+
+func TestSelectCriticalPathOrder(t *testing.T) {
+	// Diamond under D (D -> E, F -> G) and a longer chain under C
+	// (C -> H -> I -> J); A and B have nothing below them.
+	shapes := []Package{
+		P("A", nil, nil, 0), P("B", nil, nil, 0), P("C", nil, nil, 0), P("D", nil, nil, 0),
+		P("E", []string{"D"}, nil, 0), P("F", []string{"D"}, nil, 0), P("G", []string{"E", "F"}, nil, 0),
+		P("H", []string{"C"}, nil, 0), P("I", []string{"H"}, nil, 0), P("J", []string{"I"}, nil, 0),
+	}
+	withPrio := append([]Package(nil), shapes...)
+	withPrio[1].Prio = 1
+	allTimed := append([]Package(nil), shapes...)
+	for i := range allTimed {
+		allTimed[i].EstSeconds = 10
+	}
+	allTimed[4].EstSeconds = 100 // the diamond's E branch outweighs the chain
+	partlyTimed := append([]Package(nil), allTimed...)
+	partlyTimed[9].EstSeconds = 0
+	for _, c := range []struct {
+		name string
+		pkgs []Package
+		want []string
+	}{
+		{"longest chain first, ties by plan order", shapes, []string{"C", "D", "A", "B"}},
+		{"prio still wins", withPrio, []string{"B", "C", "D", "A"}},
+		{"est_seconds sums when every package has one", allTimed, []string{"D", "C", "A", "B"}},
+		{"counts when one package lacks est_seconds", partlyTimed, []string{"C", "D", "A", "B"}},
+	} {
+		if got := Select(mk(c.pkgs...), nil, 10); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: got %v want %v", c.name, got, c.want)
+		}
+	}
+	chain := CriticalPath(mk(shapes...))
+	if chain["D"] != 2 || chain["C"] != 3 || chain["G"] != 0 || chain["E"] != 1 {
+		t.Errorf("chain lengths: %v", chain)
+	}
+}
+
+func TestCriticalPathIsComputedOncePerPlan(t *testing.T) {
+	p := mk(P("A", nil, nil, 0), P("B", []string{"A"}, nil, 0))
+	CriticalPath(p)["A"] = 99 // a cached map comes back as is
+	if CriticalPath(p)["A"] != 99 {
+		t.Fatal("recomputed although the plan did not change")
+	}
+	p.Packages = append(p.Packages, P("C", []string{"B"}, nil, 0))
+	if got := CriticalPath(p); got["A"] != 2 || got["B"] != 1 {
+		t.Fatalf("not recomputed after an appended package: %v", got)
+	}
 }
 
 func TestSummary(t *testing.T) {
