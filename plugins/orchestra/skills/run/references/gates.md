@@ -1,6 +1,6 @@
 # Gate discipline — rationale (orchestra `run`)
 
-Long form behind `SKILL.md` §11. Load it when a gate rule is actually biting: a rejection looks out of scope, rounds keep closing one sibling at a time, or you are deciding whether a third round is worth it. Introduced in v0.14.0.
+Long form behind `SKILL.md` §11. Load it when a gate rule is actually biting: a rejection looks out of scope, rounds keep closing one sibling at a time, or you are deciding whether a third round is worth it.
 
 The short version of why any of this exists: **a round is a full worker + review cycle, and it is the unit you actually pay in.** Every rule here converts "spend another round" into "spend a better round."
 
@@ -46,7 +46,7 @@ Escalating the class never authorizes expanding scope. A `deep` worker on an esc
 
 ## 5. Why corrections resume the executor's session when one exists
 
-The old rule here was "always a fresh worker" — reasoning that resuming the rejected instance is anchored on the reasoning that produced the defect, and its context is now full of dead ends you re-pay for on every subsequent turn. That reasoning still holds for a genuinely fresh *reasoning* re-start. But it turns out to be the wrong lesson to draw for *executor sessions*: an executor's per-task session (pi, via `agent-exec`'s per-task session store) is not "the same worker re-guessing" — it is the SAME worker being handed precise findings instead of the whole contract again, and the anchoring cost is small next to not re-sending everything it already has.
+A fresh worker avoids anchoring on the reasoning that produced the defect, which matters for a genuinely fresh *reasoning* re-start. An executor's per-task session (pi, via `agent-exec`'s per-task session store) is different: resuming it hands the same worker precise findings instead of the whole contract again, and the anchoring cost is small next to re-sending everything it already has.
 
 So `runTask()` (`workflow-template.md`) now sends a correction round back through `dispatchClass()` with a per-task correction token, so agent-exec auto-resumes the round-1 session when one exists. This is a **delta** packet: just the findings, `cited_contract`, and `must_not_change` — no contract restatement, because the session already holds it. Only when there is genuinely nothing to resume — a Claude-tier round 1 (`agent()` has no session concept), or a task with no correction tokens prepared at all — does the correction fall back to a fresh pinned-Sonnet `agent()` call with the full, stand-alone packet described below.
 

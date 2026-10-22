@@ -15,7 +15,7 @@ when_to_use: Use when orchestra worktrees have piled up in a repo (`git worktree
 
 This skill drives `agent-exec isolate sweep`, which is repo-wide rather than session-scoped.
 
-The orchestrated pipeline sweeps at **run end** (`run` SKILL.md §5/§10), which is the reliable moment — nothing is racing it and every diff is already collected. `SessionEnd` and this skill are the two backstops for everything that still slips through.
+The orchestrated pipeline sweeps at **run end** (`run` SKILL.md §5/§12), which is the reliable moment — nothing is racing it and every diff is already collected. `SessionEnd` and this skill are the two backstops for everything that still slips through.
 
 ## 1. Report first, always
 
