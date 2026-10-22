@@ -11,10 +11,13 @@ var sandboxModes = []string{"auto", "required", "off"}
 // union accumulates the lists that are UNIONED across layers instead of
 // replaced: sandbox.allow_write/deny_read, the sandbox.network domain lists
 // (seeded from the defaults, so a layer can add a domain but never drop
-// api.anthropic.com) and each executor's network_domains.
+// api.anthropic.com), each executor's network_domains and
+// isolation.exclude_paths/keep_paths (exclude seeded from the defaults:
+// only keep_paths takes an entry back out).
 type union struct {
 	sandbox         map[string][]string
 	network         map[string][]string
+	isolation       map[string][]string
 	executorDomains map[string]any // name -> []string, first-seen order
 }
 
@@ -25,6 +28,10 @@ func newUnion() *union {
 			"allowed_domains": append([]string(nil), DefaultAllowedDomains...),
 			"denied_domains":  nil,
 			"quiet_domains":   append([]string(nil), DefaultQuietDomains...),
+		},
+		isolation: map[string][]string{
+			"exclude_paths": append([]string(nil), DefaultExcludePaths...),
+			"keep_paths":    nil,
 		},
 		executorDomains: map[string]any{},
 	}
@@ -66,6 +73,11 @@ func (u *union) add(layer map[string]any) {
 			}
 		}
 	}
+	if iso := ObjectAt(layer, "isolation"); iso != nil {
+		for key := range u.isolation {
+			u.isolation[key] = appendNew(u.isolation[key], iso[key])
+		}
+	}
 	ext := ObjectAt(layer, "external_executors")
 	for _, name := range slices.Sorted(maps.Keys(ext)) {
 		ecfg := ObjectAt(ext, name)
@@ -102,10 +114,12 @@ func dedupe(list []string) []any {
 
 // normalize applies the post-merge rules in
 // place: the sandbox section is rebuilt from the unions, executor
-// network_domains are replaced by their unions, and the enforcement knobs
-// are coerced to their known values (fail-safe per knob).
+// network_domains and the isolation path lists are replaced by their
+// unions, and the enforcement knobs are coerced to their known values
+// (fail-safe per knob).
 func normalize(values map[string]any, u *union) {
 	values["sandbox"] = normalizeSandbox(ObjectAt(values, "sandbox"), u)
+	normalizeIsolation(values, u)
 	if ext := ObjectAt(values, "external_executors"); ext != nil {
 		for _, name := range slices.Sorted(maps.Keys(u.executorDomains)) {
 			if ecfg := ObjectAt(ext, name); ecfg != nil {
@@ -170,6 +184,76 @@ func normalizeNetwork(raw map[string]any, u *union) map[string]any {
 		out[key] = dedupe(norm)
 	}
 	return out
+}
+
+// normalizeIsolation writes the final exclude_paths (the union minus every
+// keep_paths entry), keep_paths, and a max_added_files that is a
+// non-negative integer (anything else is the default).
+func normalizeIsolation(values map[string]any, u *union) {
+	iso := ObjectAt(values, "isolation")
+	if iso == nil {
+		iso = map[string]any{}
+		values["isolation"] = iso
+	}
+	keep := normalizePathList(u.isolation["keep_paths"])
+	var exclude []string
+	for _, p := range normalizePathList(u.isolation["exclude_paths"]) {
+		if !contains(keep, p) {
+			exclude = append(exclude, p)
+		}
+	}
+	iso["exclude_paths"] = toAny(exclude)
+	iso["keep_paths"] = toAny(keep)
+	switch x := iso["max_added_files"].(type) {
+	case int64:
+		if x < 0 {
+			iso["max_added_files"] = int64(DefaultMaxAddedFiles)
+		}
+	case float64:
+		if x >= 0 && x == float64(int64(x)) {
+			iso["max_added_files"] = int64(x)
+		} else {
+			iso["max_added_files"] = int64(DefaultMaxAddedFiles)
+		}
+	default:
+		iso["max_added_files"] = int64(DefaultMaxAddedFiles)
+	}
+}
+
+// normalizePathList normalizes each directory entry (see normalizePath),
+// dropping the unusable ones and duplicates, first-seen order kept.
+func normalizePathList(list []string) []string {
+	var out []string
+	for _, s := range list {
+		if p := normalizePath(s); p != "" && !contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// normalizePath is the canonical form of an isolation directory entry:
+// trimmed, without a leading "./" or "/", with one trailing "/". It is ""
+// for an empty entry and for any entry containing "..".
+func normalizePath(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.Contains(s, "..") {
+		return ""
+	}
+	for {
+		switch {
+		case strings.HasPrefix(s, "./"):
+			s = s[2:]
+		case strings.HasPrefix(s, "/"):
+			s = s[1:]
+		default:
+			s = strings.TrimRight(s, "/")
+			if s == "" || s == "." {
+				return ""
+			}
+			return s + "/"
+		}
+	}
 }
 
 func isOff(v any) bool {

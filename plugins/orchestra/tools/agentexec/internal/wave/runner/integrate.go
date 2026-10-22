@@ -109,7 +109,9 @@ func (r *runner) commitFor(task, since string) *string {
 }
 
 // integrateReady integrates every ready package (plan order, skip on
-// conflict, gate + bisect) and returns how many applied.
+// conflict, gate + bisect) and returns how many applied. A top-level
+// "refused" is per task like "conflicted": an oversized package becomes a
+// need, the rest integrate.
 func (r *runner) integrateReady() int {
 	st := r.store.Snapshot()
 	var ready []string
@@ -168,6 +170,9 @@ func (r *runner) integrateReady() int {
 		}
 		switch status {
 		case "applied":
+			if entry.Excluded > 0 {
+				r.emit("integrate-excluded", pid, map[string]any{"files": entry.Excluded})
+			}
 			commit := r.commitFor(r.task(pid), since)
 			_ = r.store.SetStatus(pid, "integrated", note, func(p *state.Package) { p.Commit = commit })
 			integrated++
@@ -189,6 +194,8 @@ func (r *runner) integrateReady() int {
 				excerpt = *entry.VerifyExcerpt
 			}
 			r.need(pid, "post-integration", excerpt)
+		case "refused":
+			r.need(pid, "oversized", entry.Reason)
 		default:
 			r.need(pid, "dispatch-error", "integrate reported "+status)
 		}
