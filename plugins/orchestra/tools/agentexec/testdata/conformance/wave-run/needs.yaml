@@ -25,6 +25,8 @@ setup:
       sandbox:
         mode: off
       interactive_host: none
+      wave:
+        memory_guard: false
     shared.txt: "base\n"
     ~/wave/specs/A.md: |
       FAKEPI-ANSWER: ESCALATE: the spec is unclear

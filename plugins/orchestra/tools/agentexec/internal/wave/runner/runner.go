@@ -2,7 +2,8 @@
 // outer loop that drives a plan through dispatch -> self-verify ->
 // integrate, every state change going through wave/state's Store.
 //
-// Scheduling is rolling: up to max_in_flight packages run as goroutines,
+// Scheduling is rolling: every package that may start runs as a goroutine
+// (an integer max_in_flight caps them; memory pressure holds new starts),
 // and whenever one finishes, every package that reached `ready` is
 // integrated (one integrate call at a time, plan order, skip on conflict,
 // gate + bisect) and the scheduler is asked again, so a dependent starts as
@@ -42,8 +43,11 @@ type Options struct {
 	// Repo is the repository (default: the cwd).
 	Repo string
 	// MaxInFlight is the width; 0 (or "auto" on the CLI) resolves from
-	// `wave.max_in_flight`, else the herdr formula / 4.
+	// `wave.max_in_flight`, else every package that may start does.
 	MaxInFlight int
+	// BudgetUSD overrides `wave.budget_usd`: no new starts once the run's
+	// estimated cost reaches it (0 = none; needs RunID).
+	BudgetUSD *float64
 	// VerifyMode / ConvergeRounds override `wave.verify_mode` /
 	// `wave.converge_rounds` (not CLI flags; tests and callers).
 	VerifyMode     string
@@ -89,6 +93,9 @@ type Deps struct {
 	// StartUI starts or reuses the dashboard and returns its URL; nil
 	// starts none.
 	StartUI func() (url string, err error)
+	// Cost is the run's estimated cost in USD (budget, usage notices); nil
+	// runs AgentExec `usage --run ID`.
+	Cost func(runID string) (usd float64, ok bool)
 	// Clock is epoch seconds; Sleep waits that many seconds.
 	Clock func() float64
 	Sleep func(seconds float64)

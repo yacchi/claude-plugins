@@ -54,7 +54,7 @@ func addWaveRunCommands(parent *cobra.Command) {
 	fl.StringVar(&o.State, "state", "", "state.json path")
 	fl.StringVar(&o.Into, "into", "", "integration task id")
 	fl.StringVar(&o.Repo, "repo", "", "repository path (default cwd)")
-	maxInFlight := fl.String("max-in-flight", "auto", "packages dispatched at once (N or auto)")
+	maxInFlight := fl.String("max-in-flight", "auto", "packages dispatched at once (N, or auto: every startable one)")
 	fl.StringVar(&o.Gate, "gate", "", "command run after each integration")
 	fl.StringVar(&o.Full, "full", "", "full verification command")
 	fl.IntVar(&o.FullEvery, "full-every", 1, "run --full every N waves")
@@ -65,6 +65,7 @@ func addWaveRunCommands(parent *cobra.Command) {
 	stopAt := fl.Float64("stop-at", 0, "epoch seconds to stop at")
 	maxWaves := fl.Int("max-waves", 0, "stop after N waves")
 	maxPackages := fl.Int("max-packages", 0, "stop after N packages")
+	budgetUSD := fl.Float64("budget-usd", 0, "start nothing new once the run's estimated cost reaches this (needs --run-id)")
 	fl.StringVar(&o.RunID, "run-id", "", "run ledger id")
 	fl.BoolVar(&o.ResumeOnReset, "resume-on-reset", false, "resume packages after a usage-limit reset")
 	fl.BoolVar(&o.NoUI, "no-ui", false, "do not start the dashboard")
@@ -111,6 +112,15 @@ func addWaveRunCommands(parent *cobra.Command) {
 		}
 		if changed("run-id") && !ledger.RunIDPattern.MatchString(o.RunID) {
 			return bad("invalid --run-id: %s", o.RunID)
+		}
+		if changed("budget-usd") {
+			if !finiteNonNegative(*budgetUSD) {
+				return bad("--budget-usd must be a non-negative number of US dollars")
+			}
+			if *budgetUSD > 0 && o.RunID == "" {
+				return bad("--budget-usd needs --run-id (the budget is that run's estimated cost)")
+			}
+			o.BudgetUSD = budgetUSD
 		}
 		return runWaveRun(cmd.OutOrStdout(), cmd.ErrOrStderr(), o, runFormat.is("text"))
 	}

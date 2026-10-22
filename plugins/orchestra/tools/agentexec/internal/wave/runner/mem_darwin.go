@@ -2,11 +2,11 @@ package runner
 
 import "golang.org/x/sys/unix"
 
-// physicalMemory is the machine's RAM in bytes (0 when unreadable).
-func physicalMemory() uint64 {
-	n, err := unix.SysctlUint64("hw.memsize")
+// probeMemoryPressure reads the kernel's memory pressure level.
+func probeMemoryPressure() (bool, string) {
+	level, err := unix.SysctlUint32("kern.memorystatus_vm_pressure_level")
 	if err != nil {
-		return 0
+		return false, ""
 	}
-	return n
+	return darwinPressure(level)
 }

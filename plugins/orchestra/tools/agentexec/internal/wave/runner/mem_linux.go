@@ -1,12 +1,16 @@
 package runner
 
-import "golang.org/x/sys/unix"
+import "os"
 
-// physicalMemory is the machine's RAM in bytes (0 when unreadable).
-func physicalMemory() uint64 {
-	var info unix.Sysinfo_t
-	if err := unix.Sysinfo(&info); err != nil {
-		return 0
+// probeMemoryPressure reads PSI, else /proc/meminfo.
+func probeMemoryPressure() (bool, string) {
+	psi, err := os.ReadFile("/proc/pressure/memory")
+	if err != nil {
+		psi = nil
 	}
-	return uint64(info.Totalram) * uint64(info.Unit)
+	meminfo, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		meminfo = nil
+	}
+	return linuxPressure(psi, meminfo)
 }
