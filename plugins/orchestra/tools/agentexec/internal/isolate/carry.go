@@ -108,15 +108,6 @@ func isSymlink(p string) bool {
 	return err == nil && st.Mode()&os.ModeSymlink != 0
 }
 
-// CopyTreeFast copies directory src to dst, preferring a copy-on-write clone
-// (APFS clonefile, reflink on Linux) and degrading to a plain copy.
-func CopyTreeFast(src, dst string) error {
-	if copyTreeMethod(src, dst) == carryFailed {
-		return errors.New("could not copy " + src)
-	}
-	return nil
-}
-
 // copyTreeMethod copies and reports clone, copy or failed.
 func copyTreeMethod(src, dst string) string {
 	if !isDir(src) {
@@ -252,7 +243,7 @@ func carryDependencies(root, path string, extra []string) (carried []string, met
 			present = append(present, rel)
 			continue
 		}
-		m := copyTreeMethod(filepath.Join(root, rel), target)
+		m := carryDir(root, path, rel)
 		switch {
 		case m == carryFailed:
 			method = carryFailed

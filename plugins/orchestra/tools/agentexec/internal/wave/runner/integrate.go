@@ -264,7 +264,7 @@ func (r *runner) greenTree(sha string) bool {
 			return false
 		}
 		for _, rel := range isolate.DetectCarryDirs(r.root, nil) {
-			_ = isolate.CopyTreeFast(filepath.Join(r.root, rel), filepath.Join(r.greenPath, rel))
+			_ = isolate.CarryDir(r.root, r.greenPath, rel)
 		}
 		return true
 	}
