@@ -207,7 +207,7 @@ func ResetResult(path string) {
 func PromptLine(promptFiles []string, resultPath string) string {
 	return "Read the worker prompt from " + strings.Join(promptFiles, " and ") +
 		" and carry it out. You are a worker: do it yourself in your working tree; do not load orchestra:run, call the Workflow tool, or run agent-exec dispatch or agent-exec wave. When you are completely done, write " + resultPath +
-		` containing JSON {"status": "ok"|"escalate", "summary": "<=15 lines"}.` +
+		` containing JSON {"status": "ok"|"escalate", "summary": "<what you changed and anything a reviewer must know; no code or logs>"}.` +
 		" If you must ESCALATE, put the reason in summary."
 }
 
