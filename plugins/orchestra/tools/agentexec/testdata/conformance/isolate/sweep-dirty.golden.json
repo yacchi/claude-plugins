@@ -141,6 +141,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
+        "added": 1,
         "baseline": "<SHA#3>",
         "branch": "orchestra/22222222/done",
         "files": [

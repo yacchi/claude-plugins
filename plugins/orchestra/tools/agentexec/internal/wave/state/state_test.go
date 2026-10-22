@@ -133,6 +133,20 @@ func TestSetStatusSinceAndEvents(t *testing.T) {
 	}
 }
 
+// integrate's refusal of an oversized package lands as a need, not an error.
+func TestOversizedNeedIsAccepted(t *testing.T) {
+	s := newStore(t)
+	if _, err := s.Init("p", []string{"a"}, "i"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddNeed("a", "oversized", "adds 600 new files"); err != nil {
+		t.Fatal(err)
+	}
+	if st := s.Snapshot(); st.Packages["a"].Status != "needs" {
+		t.Fatalf("status %q", st.Packages["a"].Status)
+	}
+}
+
 func TestNeeds(t *testing.T) {
 	s := newStore(t)
 	if _, err := s.Init("p", []string{"a", "b"}, "i"); err != nil {

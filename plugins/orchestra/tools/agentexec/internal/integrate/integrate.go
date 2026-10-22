@@ -43,13 +43,16 @@ const DefaultBisectMax = 3
 // takes no lock; LockWait waits up to LockTimeout, LockFail tries once.
 // Progress, when set, receives one JSON line per stage
 // ({"event","pkg","detail","at"}), one Write per line; its errors are
-// ignored.
+// ignored. Filter nil is isolate.CurrentFilter(): excluded paths never
+// enter a change set or a commit, and a task adding more than MaxAdded new
+// files is refused.
 type Options struct {
 	Onto, Into, OnConflict, Verify, Lock string
 	VerifyTimeout, LockTimeout           time.Duration
 	Bisect                               bool
 	BisectMax                            int
 	Progress                             io.Writer
+	Filter                               *isolate.ChangeFilter
 }
 
 // Integration names the integration worktree.
@@ -60,19 +63,24 @@ type Integration struct {
 }
 
 // TaskResult is one task's outcome. Status is applied | conflicted |
-// missing | empty | skipped | reverted.
+// missing | empty | skipped | reverted | refused (adds more new files than
+// the filter allows; Reason says how many, and the task was not applied).
+// Excluded counts the files the filter kept out of an applied change set.
 type TaskResult struct {
 	Task          string             `json:"task"`
 	Status        string             `json:"status"`
 	FilesChanged  int                `json:"files_changed"`
 	Conflicts     []isolate.Conflict `json:"conflicts"`
+	Reason        string             `json:"reason,omitempty"`
+	Excluded      int                `json:"excluded,omitempty"`
 	RolledBack    bool               `json:"rolled_back,omitempty"`
 	Revert        string             `json:"revert,omitempty"`
 	VerifyExcerpt *string            `json:"verify_excerpt,omitempty"`
 }
 
 // Result is `isolate integrate`'s output. Status is ok | conflicted |
-// verify-failed | reverted | error, or locked (then only Into, Holder,
+// verify-failed | reverted | refused (otherwise ok, but a task was
+// refused) | error, or locked (then only Into, Holder,
 // LockFile and Note are meaningful).
 type Result struct {
 	Status      string
@@ -128,6 +136,8 @@ func ExitCode(r Result) int {
 		return 5
 	case "locked":
 		return 6
+	case "refused":
+		return 7
 	}
 	return 3
 }
@@ -135,7 +145,13 @@ func ExitCode(r Result) int {
 const integrateIdentity = "user.email=orchestra@local"
 
 func commitAll(wt, message string) {
-	_, _ = gitx.Run(wt, "add", "-A")
+	commitAllWith(wt, message, isolate.CurrentFilter())
+}
+
+// commitAllWith commits everything but f's excluded paths: a cache dir
+// created in the integration tree never lands in a commit.
+func commitAllWith(wt, message string, f isolate.ChangeFilter) {
+	_, _ = gitx.Run(wt, append([]string{"add", "-A"}, f.Pathspec()...)...)
 	_, _ = gitx.Run(wt, "-c", integrateIdentity, "-c", "user.name=orchestra",
 		"commit", "-q", "--allow-empty", "-m", message)
 }
@@ -170,19 +186,22 @@ func emit(w io.Writer, event string, pkg string, detail map[string]any) {
 
 // changeSet is one source task's own changes.
 type changeSet struct {
-	task     string
-	state    string // missing | empty | ready
-	files    []string
-	patch    string
-	baseline string
+	task         string
+	state        string // missing | empty | ready
+	files        []string
+	patch        string
+	baseline     string
+	added        int // new files among files
+	excluded     int // files the filter kept out
+	excludedDirs []string
 }
 
-func taskChangeSet(root, task string) (changeSet, error) {
+func taskChangeSet(root, task string, f isolate.ChangeFilter) (changeSet, error) {
 	blank := changeSet{task: task, state: "missing"}
 	path, _, ok := isolate.ResolveWorktree(root, task, "")
 	if !ok {
 		// ResolveWorktree hides ambiguity; Diff below reports it.
-		if _, err := isolate.Diff(root, task, "", false); err != nil {
+		if _, err := isolate.DiffWith(root, task, "", false, f); err != nil {
 			return blank, err
 		}
 		return blank, nil
@@ -191,16 +210,18 @@ func taskChangeSet(root, task string) (changeSet, error) {
 		return blank, nil
 	}
 	// Stage in full first: `git apply --3way` needs the post-image blobs in
-	// the object database, and an intent-to-add file has none.
-	_, _ = gitx.Run(path, "add", "-A")
-	diff, err := isolate.Diff(root, task, "", true)
+	// the object database, and an intent-to-add file has none. Excluded
+	// paths are never staged.
+	_, _ = gitx.Run(path, append([]string{"add", "-A"}, f.Pathspec()...)...)
+	diff, err := isolate.DiffWith(root, task, "", true, f)
 	if err != nil {
 		return blank, err
 	}
 	if diff.Status != "ok" {
 		return blank, nil
 	}
-	cs := changeSet{task: task, state: "empty", patch: diff.Patch, baseline: diff.Baseline}
+	cs := changeSet{task: task, state: "empty", patch: diff.Patch, baseline: diff.Baseline,
+		added: diff.Added, excluded: diff.Excluded, excludedDirs: diff.ExcludedDirs}
 	for _, f := range diff.Files {
 		if f != "" {
 			cs.files = append(cs.files, f)
@@ -280,9 +301,15 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 		return failure("not a git repository")
 	}
 
+	var f isolate.ChangeFilter
+	if o.Filter != nil {
+		f = *o.Filter
+	} else {
+		f = isolate.CurrentFilter()
+	}
 	changes := make([]changeSet, len(ids))
 	for i, t := range ids {
-		if changes[i], err = taskChangeSet(resolved, t); err != nil {
+		if changes[i], err = taskChangeSet(resolved, t, f); err != nil {
 			return Result{}, err
 		}
 	}
@@ -343,6 +370,13 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 			}
 			continue
 		}
+		if f.MaxAdded > 0 && ch.added > f.MaxAdded {
+			// The source tree keeps its work (not collected) for the fix.
+			results = append(results, TaskResult{Task: task, Status: "refused", FilesChanged: len(ch.files),
+				Conflicts: []isolate.Conflict{}, Reason: refusal(ch, f.MaxAdded)})
+			emit(o.Progress, "integrate-task", task, map[string]any{"status": "refused"})
+			continue
+		}
 		pre := headSHA(wt)
 		if pre == "" {
 			pre = invocationBase
@@ -354,8 +388,9 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 		}
 		// Commit whatever resulted, markers included: staging resolves the
 		// index, so the next task still has a real base to merge against.
-		commitAll(wt, "orchestra integrate "+task)
-		entry := TaskResult{Task: task, Status: "applied", FilesChanged: len(ch.files), Conflicts: conflicts}
+		commitAllWith(wt, "orchestra integrate "+task, f)
+		entry := TaskResult{Task: task, Status: "applied", FilesChanged: len(ch.files), Conflicts: conflicts,
+			Excluded: ch.excluded}
 		switch {
 		case applyErr == nil:
 			markSourceCollected(resolved, task, ch.files, ch.patch)
@@ -389,6 +424,8 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 		status = "conflicted"
 	case hasStatus(results, "reverted"):
 		status = "reverted"
+	case hasStatus(results, "refused"):
+		status = "refused"
 	}
 	res := Result{
 		Status:      status,
@@ -400,6 +437,15 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 	}
 	emit(o.Progress, "integrate-end", "", map[string]any{"status": status})
 	return res, nil
+}
+
+// refusal is a refused task's reason.
+func refusal(ch changeSet, maxAdded int) string {
+	why := fmt.Sprintf("adds %d new files (isolation.max_added_files %d)", ch.added, maxAdded)
+	if ch.excluded > 0 {
+		why += fmt.Sprintf("; excluded %d files under %s", ch.excluded, strings.Join(ch.excludedDirs, ", "))
+	}
+	return why
 }
 
 // runVerifyStage runs o.Verify (and the bisection) after every task was
@@ -470,6 +516,9 @@ func note(results []TaskResult, intoTask, wt string) string {
 	}
 	if n := counts["reverted"]; n > 0 {
 		tail = append(tail, fmt.Sprintf("%d reverted", n))
+	}
+	if n := counts["refused"]; n > 0 {
+		tail = append(tail, fmt.Sprintf("%d refused", n))
 	}
 	suffix := ""
 	if len(tail) > 0 {
