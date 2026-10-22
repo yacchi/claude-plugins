@@ -329,9 +329,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
 // checked by sizeGate() below before anything is dispatched. Escape hatches,
 // each a non-empty reason string: allowLarge (skips the size limits, logged
 // and echoed in the task's result), noProbes (skips the probe author).
-// Optional: workdir, baseline (a snapshot ref - see
-// references/isolation.md - so a bad attempt can be rolled back instead of
-// patched, and the re-gate can diff against something real).
+// Optional: workdir.
 //
 // Also optional, and what makes a correction round resume the executor's
 // session instead of falling back to a pinned Sonnet invocation (§11):

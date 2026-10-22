@@ -32,7 +32,7 @@ Each task object:
 | Field | Required | Meaning |
 |---|---|---|
 | `id` | yes | Task id. Also the `--task` id of its isolated tree. |
-| `cls` | yes | `'light'`, `'standard'` or `'deep'`. Initial class; the script bumps it on escalation. |
+| `cls` | no | `'light'`, `'standard'` or `'deep'`. Initial class, default `'light'`; the script bumps it on escalation. |
 | `dispatchToken` | yes | Token from `agent-exec dispatch prepare --isolate always --task <id>`, minted with the round-1 prompt file. |
 | `workerPromptFile` | yes | Path to the literal spec, edge cases and verify command for the worker. |
 | `workerPrompt` | yes | The same contract text, inlined. Used in the correction packet when no session can be resumed. |
@@ -43,7 +43,6 @@ Each task object:
 | `allowLarge` | no | Non-empty reason string. Waives the `est_seconds` and `files_owned` limits. Logged and echoed in the task result. |
 | `noProbes` | no | Non-empty reason string. Skips the probe author. Logged. |
 | `workdir` | no | Working directory for the dispatch, when it is a subdirectory of the repo. |
-| `baseline` | no | Snapshot ref, so a bad attempt can be rolled back and the re-gate can diff against it. See `references/isolation.md`. |
 | `correctionPromptFile` | no | Path that does not exist yet. The script writes the correction packet there on a failed gate. |
 | `correctionTokenFull` | no | Token minted with the worker prompt file, the correction prompt file, `--task <id>` and `--isolate always`. Used when round 1 reported no session, or after a class bump. |
 | `correctionTokenDelta` | no | Token minted with the correction prompt file only. Used when round 1 reported a session and the class did not change. |
