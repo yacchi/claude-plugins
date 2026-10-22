@@ -28,7 +28,7 @@ So the reviewer classifies each finding, then checks the sibling sites in scope 
 
 ## 3. Why gate 2 is incremental, and why `new_family` stops the loop
 
-A second full specification audit re-reads everything the first one already accepted, re-derives the same conclusions, and costs about what the first gate cost — to check a handful of small corrections. So the re-gate gets the previous verdict, the closed finding ids, and the changed paths, and inspects only those plus regressions those specific corrections could cause. Six read-only shell invocations, first line `VERDICT: PASS|FAIL`. `regatePrompt()` in `workflow-template.md` builds it.
+A second full specification audit re-reads everything the first one already accepted, re-derives the same conclusions, and costs about what the first gate cost — to check a handful of small corrections. So the re-gate gets the previous verdict, the closed finding ids, and the changed paths, and inspects only those plus regressions those specific corrections could cause. Six shell invocations, first line `VERDICT: PASS|FAIL`. `regatePrompt()` in `workflow-template.md` builds it.
 
 The interesting case is when the re-gate finds a defect family that predates the correction. That is not "one more bug" — it is evidence that the **first review's sweep was wrong**. Another automatic round would re-run the same under-sweeping review and surface the next sibling of that family, and the one after that. So the loop stops and returns `needsInstructor`. Your move is to re-analyze: audit the family yourself or via a targeted worker, widen the contract or the verification, and re-enter — not to re-issue the same round.
 
