@@ -210,6 +210,10 @@ func TestClaudePackageRunsInOrcaAndIsAdopted(t *testing.T) {
 	if opt(create, "--setup") != "skip" || opt(create, "--base-branch") != "main" || opt(create, "--name") != "wave-run1-a" {
 		t.Error(create)
 	}
+	if sets := e.callsOf("worktree set"); len(sets) != 1 ||
+		opt(sets[0], "--worktree") != "path:"+s.Worktree || opt(sets[0], "--parent-worktree") != "path:"+e.repo {
+		t.Errorf("not nested under the caller's checkout: %v", sets)
+	}
 	_ = x.Close(s, true)
 	if _, ok := x.reg.Load(e.state)["A"]; ok {
 		t.Error("registry kept the closed package")
@@ -220,6 +224,22 @@ func TestClaudePackageRunsInOrcaAndIsAdopted(t *testing.T) {
 	if len(e.callsOf("worktree rm")) != 1 || len(e.callsOf("terminal close")) != 1 {
 		t.Error("not removed through orca")
 	}
+}
+
+func TestAFailedNestingStillStarts(t *testing.T) {
+	e := newEnv(t, map[string]any{"parent_fails": true})
+	x := e.executor("")
+	s, err := e.start(x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Terminal != "term-1" {
+		t.Errorf("%+v", s)
+	}
+	if !strings.Contains(x.Stderr.(*bytes.Buffer).String(), "could not nest") {
+		t.Error("the failed nesting was not reported")
+	}
+	_ = x.Close(s, true)
 }
 
 func TestAddDirsAndPermissionModeAreRendered(t *testing.T) {

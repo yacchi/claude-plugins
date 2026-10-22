@@ -76,6 +76,15 @@ func (c *call) orca(root string) int {
 		}
 		worktrees[path] = map[string]any{"repo": repo, "branch": name}
 		return c.orcaOut(map[string]any{"worktree": map[string]any{"id": "wt-" + name, "path": path, "branch": name}})
+	case "worktree set":
+		if truthy(sc["parent_fails"]) {
+			return c.orcaFail("parent worktree not found")
+		}
+		wtArg, _ := opt(args, "--worktree")
+		if _, ok := worktrees[strings.TrimPrefix(wtArg, "path:")]; !ok {
+			return c.orcaFail("unknown worktree")
+		}
+		return c.orcaOut(map[string]any{"worktree": map[string]any{"path": strings.TrimPrefix(wtArg, "path:")}})
 	case "worktree rm":
 		wtArg, _ := opt(args, "--worktree")
 		path := strings.TrimPrefix(wtArg, "path:")
