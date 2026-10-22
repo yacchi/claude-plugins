@@ -160,6 +160,7 @@ func Defaults() map[string]any {
 			"keep_paths", []any{},
 			"max_added_files", int64(DefaultMaxAddedFiles),
 		),
+		"throttle", obj("heavy_slots", "auto", "heavy_extra", []any{}),
 		"checks", obj(
 			"max_parallel", int64(2),
 			"items", []any{},

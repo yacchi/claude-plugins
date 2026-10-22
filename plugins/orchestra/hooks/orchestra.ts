@@ -6,12 +6,14 @@ import { checkWorkerVcs } from './guards/worker-vcs.ts'
 import { checkWorktreeLease, recordActivity, releaseLeases } from './guards/worktree-lease.ts'
 import { register as registerHud } from './hud.ts'
 import { cleanupWorktrees } from './lifecycle/cleanup-worktrees.ts'
-import { forgetAgent, noteAgent, workerCall } from './lib/agents.ts'
+import { forgetAgent, noteAgent, type WorkerCall, workerCall } from './lib/agents.ts'
 import type { EnvName, Io } from './lib/io.ts'
+import { withHeavySlot } from './lib/slot.ts'
 import { recordWorkerBash } from './lib/trace.ts'
 import { routerContext } from './router/inject.ts'
 import { reminderFor } from './router/remind.ts'
 import { turnEditsNudge } from './router/turn-edits.ts'
+import { verdictOf } from './router/verdict.ts'
 
 // The orchestra plugin's one hooks module (a plugin has one): each event is
 // hooked once here and handed to the files that own its rules. Every guard is
@@ -66,9 +68,10 @@ export const register: Register = (on, options) => {
     on('tool.call', async ($, e, next) => {
         const tool = String(e.tool)
         const io = ioOf($)
+        let call: WorkerCall | undefined
         if (WRITE_TOOLS.has(tool)) {
             // Only subagent calls are guarded; the main thread is never denied.
-            const call = await workerCall(io, e)
+            call = await workerCall(io, e)
             if (call) {
                 const deny = await checkWorkerVcs(io, call)
                     ?? await checkWorkerTree(io, call)
@@ -102,20 +105,31 @@ export const register: Register = (on, options) => {
         if (tool !== 'Bash') {
             return next(e)
         }
+        const input = e as unknown as Readonly<Record<string, unknown>>
+        const command = String(input.command ?? '')
+        const sessionId = await io.sessionId().catch(() => '')
         // Time the command itself; the record is written without holding up
         // the result, which is returned exactly as the tool produced it.
-        const startMs = await io.now().catch(() => Date.now())
-        const result = await next(e)
-        if (await $.env.get('ORCHESTRA_TRACE').catch(() => undefined) !== 'off') {
-            const endMs = await io.now().catch(() => Date.now())
-            const cwd = await io.sessionCwd().catch(() => '')
-            const sessionId = await io.sessionId().catch(() => '')
-            const isError = (result as { isError?: boolean } | undefined)?.isError === true
-            const command = String((e as unknown as Readonly<Record<string, unknown>>).command ?? '')
-            void recordWorkerBash(io, { startMs, endMs, command, cwd, isError, sessionId })
-        }
+        const run = async () => {
+            const startMs = await io.now().catch(() => Date.now())
+            const result = await next(e)
+            if (await $.env.get('ORCHESTRA_TRACE').catch(() => undefined) !== 'off') {
+                const endMs = await io.now().catch(() => Date.now())
+                const cwd = await io.sessionCwd().catch(() => '')
+                const isError = (result as { isError?: boolean } | undefined)?.isError === true
+                void recordWorkerBash(io, { startMs, endMs, command, cwd, isError, sessionId })
+            }
 
-        return result
+            return result
+        }
+        // A worker's heavy command (a subagent's, or the main thread of a
+        // session a wave hosts) waits for a machine-wide heavy slot before
+        // it starts. The instructor's own main thread never waits, and a
+        // background command is not admitted: it would release at once while
+        // it runs on.
+        const isWorker = call !== undefined || verdictOf(sessionId) === 'worker'
+
+        return isWorker && input.run_in_background !== true ? withHeavySlot(io, command, run) : run()
     }).catch(($, e, next) => next(e))
 
     on('classic.SubagentStart', ($, e, next) => {

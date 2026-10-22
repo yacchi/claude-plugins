@@ -21,8 +21,8 @@ import (
 const (
 	defaultVerifyMode     = "final"
 	defaultConvergeRounds = 2
-	// defaultMaxInFlight is `max_in_flight: auto` off a herdr host, and the
-	// fallback when the machine size cannot be read.
+	// defaultMaxInFlight is `max_in_flight: auto` without a herdr or orca
+	// host, and the fallback when the machine size cannot be read.
 	defaultMaxInFlight = 4
 	autoMaxInFlightCap = 16
 )
@@ -367,7 +367,7 @@ func (r *runner) resolveSettings() {
 		if !ok {
 			source = "auto"
 			width = defaultMaxInFlight
-			if r.host != nil && r.hostName == "herdr" {
+			if r.host != nil && (r.hostName == "herdr" || r.hostName == "orca") {
 				width = autoMaxInFlight()
 			}
 		}

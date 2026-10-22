@@ -13,11 +13,12 @@ var sandboxModes = []string{"auto", "required", "off"}
 // (seeded from the defaults, so a layer can add a domain but never drop
 // api.anthropic.com), each executor's network_domains and
 // isolation.exclude_paths/keep_paths (exclude seeded from the defaults:
-// only keep_paths takes an entry back out).
+// only keep_paths takes an entry back out) and throttle.heavy_extra.
 type union struct {
 	sandbox         map[string][]string
 	network         map[string][]string
 	isolation       map[string][]string
+	heavyExtra      []string
 	executorDomains map[string]any // name -> []string, first-seen order
 }
 
@@ -78,6 +79,9 @@ func (u *union) add(layer map[string]any) {
 			u.isolation[key] = appendNew(u.isolation[key], iso[key])
 		}
 	}
+	if th := ObjectAt(layer, "throttle"); th != nil {
+		u.heavyExtra = appendNew(u.heavyExtra, th["heavy_extra"])
+	}
 	ext := ObjectAt(layer, "external_executors")
 	for _, name := range slices.Sorted(maps.Keys(ext)) {
 		ecfg := ObjectAt(ext, name)
@@ -114,12 +118,13 @@ func dedupe(list []string) []any {
 
 // normalize applies the post-merge rules in
 // place: the sandbox section is rebuilt from the unions, executor
-// network_domains and the isolation path lists are replaced by their
-// unions, and the enforcement knobs are coerced to their known values
-// (fail-safe per knob).
+// network_domains, the isolation path lists and throttle.heavy_extra are
+// replaced by their unions, and the enforcement knobs are coerced to their
+// known values (fail-safe per knob).
 func normalize(values map[string]any, u *union) {
 	values["sandbox"] = normalizeSandbox(ObjectAt(values, "sandbox"), u)
 	normalizeIsolation(values, u)
+	normalizeThrottle(values, u)
 	if ext := ObjectAt(values, "external_executors"); ext != nil {
 		for _, name := range slices.Sorted(maps.Keys(u.executorDomains)) {
 			if ecfg := ObjectAt(ext, name); ecfg != nil {
@@ -218,6 +223,34 @@ func normalizeIsolation(values map[string]any, u *union) {
 	default:
 		iso["max_added_files"] = int64(DefaultMaxAddedFiles)
 	}
+}
+
+// normalizeThrottle writes heavy_slots as "auto" or a non-negative integer
+// ("off" and false are 0; anything else is "auto") and heavy_extra as the
+// union of every layer's patterns.
+func normalizeThrottle(values map[string]any, u *union) {
+	th := ObjectAt(values, "throttle")
+	if th == nil {
+		th = map[string]any{}
+		values["throttle"] = th
+	}
+	slots := any("auto")
+	switch x := th["heavy_slots"].(type) {
+	case int64:
+		if x >= 0 {
+			slots = x
+		}
+	case float64:
+		if x >= 0 && x == float64(int64(x)) {
+			slots = int64(x)
+		}
+	default:
+		if isOff(x) {
+			slots = int64(0)
+		}
+	}
+	th["heavy_slots"] = slots
+	th["heavy_extra"] = dedupe(u.heavyExtra)
 }
 
 // normalizePathList normalizes each directory entry (see normalizePath),
