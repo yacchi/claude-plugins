@@ -12,6 +12,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
 // carryDirNames are directories holding installed dependencies or build
@@ -125,7 +126,10 @@ func copyTreeMethod(src, dst string) string {
 		return carryFailed
 	}
 	if !lexists(dst) {
-		if cloneDir(src, dst) == nil {
+		end := trace.Begin(trace.KindFS, "clonefile", trace.Attrs{Detail: src + " -> " + dst})
+		err := cloneDir(src, dst)
+		end(exitOf(err))
+		if err == nil {
 			return carryClone
 		}
 		if lexists(dst) {
@@ -138,8 +142,11 @@ func copyTreeMethod(src, dst string) string {
 	}
 	attempts = append(attempts, []string{"cp", "-R", src, dst})
 	for i, argv := range attempts {
+		// The operation is the argv up to its two trailing paths.
+		end := trace.Begin(trace.KindFS, strings.Join(argv[:len(argv)-2], " "), trace.Attrs{Detail: src + " -> " + dst})
 		cmd := exec.Command(argv[0], argv[1:]...)
 		err := cmd.Run()
+		end(procExit(err))
 		if err == nil {
 			if i == 0 {
 				return carryClone
@@ -158,6 +165,19 @@ func copyTreeMethod(src, dst string) string {
 		return carryFailed
 	}
 	return carryCopy
+}
+
+// procExit is the timing-log exit code of a subprocess: its status, 0, or
+// -1 when it could not be started.
+func procExit(err error) int {
+	if err == nil {
+		return 0
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode()
+	}
+	return -1
 }
 
 func absPath(p string) string {
