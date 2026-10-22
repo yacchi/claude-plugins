@@ -21,7 +21,10 @@ The instructor handed you a task, a contract (exact spec, edge cases, verificati
 
    For each implementation round:
    1. Write the round's full prompt (contract + edge cases + verify command, plus retry feedback if this isn't round 1) to a temp file with the Write tool.
-   2. Run `agent-exec dispatch --class light --prompt-file <that path> --workdir <task's working directory> --capture [--exhausted <comma-joined exhausted list, if non-empty>]` via Bash and parse its JSON stdout.
+   2. Dispatch it detached — never as one long foreground `--capture` call: a pi round routinely outlives the Bash tool's ~600 s limit, and a call blocked that long shows nothing to whoever watches the run. Three Bash calls, each parsed as JSON:
+      1. `agent-exec dispatch prepare --class light --prompt-file <that path> --workdir <task's working directory>` (add `--isolate`/`--task` when the instructor's brief gives them) — take `token` from its output. One token per round.
+      2. `agent-exec dispatch --token <token> --class light --capture --detach [--exhausted <comma-joined exhausted list, if non-empty>]` — returns at once with `detached`.
+      3. `agent-exec dispatch wait --token <token> --summary` with Bash timeout 600000 — it blocks up to 560 s. While it answers `running` or `detached`, run it again; the first other status is the round's result. `wait` is idempotent, so re-running it after a timeout or an unparsable reply is safe.
    3. Branch on `status`:
       - **`"ok"`** — a CLI executor (e.g. pi) already implemented the round; treat its `answer` as this round's output and move on to the review step below.
       - **`"needs-permission"`** — stop this task without consuming a review or correction round; return a `needsInstructor` verdict with `needsPermission: true` and the sandbox denials (`path`, `grant_candidate`, and `why`). The instructor decides them (asking the user only for the cases its policy reserves); never ask the user yourself.

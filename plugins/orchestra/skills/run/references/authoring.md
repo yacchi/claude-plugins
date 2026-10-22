@@ -159,7 +159,7 @@ Where Dynamic Workflows are unavailable or disabled, fall back to a 3-level nest
 ```
 Instructor (Fable/Opus)
   └─ Agent tool: launch orchestra-delegate (no model needed - pinned to sonnet in its own frontmatter)
-       └─ orchestra-delegate itself runs `agent-exec dispatch --class light --capture` per round
+       └─ orchestra-delegate itself dispatches each round detached (`dispatch prepare` → `--detach` → `dispatch wait` hops)
             (no relay needed - it already has Bash) - whatever route resolves (Claude Haiku first, pi as fallback); orchestra-light/haiku
             only on that call's own "delegate" fallback, never launched directly
        └─ orchestra-delegate internally launches orchestra-review (sonnet) via the Agent tool

@@ -1,6 +1,12 @@
+import type { Io } from '../lib/io.ts'
+import { dirname } from '../lib/paths.ts'
+import { leaseFile } from '../guards/worktree-lease.ts'
 import { isInstructorModel, setVerdict } from './verdict.ts'
 
 // SessionStart (startup, resume, clear, compact): inject the routing protocol.
+//
+// A hosted worker (a task worktree launched by `agent-exec wave`) gets the
+// worker notice instead, whatever its model: the instructor already routed it.
 //
 // Hybrid gate on the input's `model` (documented as omittable):
 //   Opus/Fable -> the router, no self-gate paragraph (already gated here)
@@ -54,10 +60,58 @@ entire block).
 
 const SOURCES = new Set(['startup', 'resume', 'clear', 'compact'])
 
+const workerNotice = (tree: string): string => `<orchestra-worker>
+This session is an orchestra worker hosted in the task worktree ${tree}.
+Do the work your prompt names yourself, in this tree. Do not load
+\`orchestra:run\`, call the Workflow tool, spawn implementation subagents, or run
+\`agent-exec dispatch\` / \`agent-exec wave\`: the instructor that sent the prompt
+is already orchestrating. When the task cannot be done as specified, report
+ESCALATE the way your prompt says instead.
+</orchestra-worker>
+`
+
+// The task worktree a worker session is hosted in: a LINKED worktree whose git
+// dir carries the orchestra baseline or adopted marker, and whose role is not
+// `integration`. Anything unexpected reads as not a worker.
+const workerTree = async (io: Io, cwd: string): Promise<string | undefined> => {
+    try {
+        const found = cwd ? await leaseFile(io, cwd) : undefined
+        if (!found) {
+            return undefined
+        }
+        const gitDir = dirname(found.file)
+        const marked = await io.exists(`${gitDir}/orchestra-baseline`) || await io.exists(`${gitDir}/orchestra-adopted`)
+        if (!marked) {
+            return undefined
+        }
+        const role = `${gitDir}/orchestra-role`
+        if (await io.exists(role) && (await io.read(role)).trim() === 'integration') {
+            return undefined
+        }
+
+        return found.top
+    } catch {
+        return undefined
+    }
+}
+
 // Records the session's verdict and answers the text to inject, if any.
-export const routerContext = (source: string, sessionId: string, rawModel: unknown): string | undefined => {
+export const routerContext = async (
+    io: Io,
+    source: string,
+    sessionId: string,
+    rawModel: unknown,
+    rawCwd: unknown,
+): Promise<string | undefined> => {
     if (!SOURCES.has(source)) {
         return undefined
+    }
+    const cwd = typeof rawCwd === 'string' && rawCwd ? rawCwd : await io.sessionCwd().catch(() => '')
+    const tree = await workerTree(io, cwd)
+    if (tree !== undefined) {
+        setVerdict(sessionId, 'worker')
+
+        return workerNotice(tree)
     }
     const model = typeof rawModel === 'string' ? rawModel.trim() : ''
     if (!model) {

@@ -82,7 +82,8 @@ export const turnEditsNudge = async (io: Io, e: PostToolUse): Promise<string | u
         return undefined
     }
     const sessionId = e.session_id
-    if (verdictOf(sessionId) === 'cheap') {
+    const verdict = verdictOf(sessionId)
+    if (verdict === 'cheap' || verdict === 'worker') {
         return undefined
     }
     const threshold = await thresholdFor(io, sessionId)

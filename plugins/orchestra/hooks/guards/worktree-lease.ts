@@ -91,7 +91,7 @@ const readLease = async (io: Io, path: string): Promise<Lease | undefined> => {
 
 // The lease file and the worktree's top for a path inside a LINKED worktree;
 // undefined for the main worktree and outside any repository.
-const leaseFile = async (io: Io, path: string): Promise<{ file: string, top: string } | undefined> => {
+export const leaseFile = async (io: Io, path: string): Promise<{ file: string, top: string } | undefined> => {
     let dir = normalize(path)
     for (;;) {
         const stat = await io.stat(dir, false).catch(() => undefined)
