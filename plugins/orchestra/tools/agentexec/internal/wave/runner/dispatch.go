@@ -144,6 +144,11 @@ func (r *runner) writeContext(pid, refreshNote string) (string, error) {
 			"changes, no hand-vendoring. If the task cannot be finished without it, "+
 			"reply with a first line `ESCALATE: network <host>[, <host>...]`.",
 		"",
+		"Before you report done, run a real check that exercises your change (the spec's "+
+			"verification command, else the project's tests, type-checker or build); a syntax-only "+
+			"check or one that failed to start does not count. If none can run here, say in your "+
+			"result which one you did not run and why.",
+		"",
 		"Do not commit: leave every change uncommitted in the working tree.",
 	)
 	if refreshNote != "" {
