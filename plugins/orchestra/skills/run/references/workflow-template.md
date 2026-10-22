@@ -126,12 +126,11 @@ const MAX_WAIT_HOPS = 60
 // idempotent, a second dispatch of finished work is not.
 const MAX_GARBLED_HOPS = 3
 
-// Pull the agent-exec JSON line out of a relay reply. Relays decorate: a
-// ```json fence, a sentence of preamble, or a long `answer` whose prose
-// contains braces - which is why the old outermost-{...} extraction broke on
-// work that had succeeded. agent-exec prints its JSON as the LAST stdout
-// line, so scan lines from the end and take the first one that parses to an
-// object carrying a string `status`.
+// Pull the agent-exec JSON line out of a relay reply. Relays may decorate it
+// with a ```json fence or a sentence of preamble, and a long `answer` can
+// contain braces, so an outermost-{...} match is not reliable. agent-exec
+// prints its JSON as the LAST stdout line, so scan lines from the end and take
+// the first one that parses to an object carrying a string `status`.
 function extractDispatchJson(raw) {
   const lines = String(raw == null ? '' : raw).split('\n')
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -146,12 +145,12 @@ function extractDispatchJson(raw) {
 }
 
 // One relay hop = exactly ONE Bash command, run once, and only the last line
-// of its stdout comes back. The relay never loops, waits, or summarizes -
+// of its stdout comes back. The relay never loops, waits, or summarizes:
 // every loop lives in this script, where it is code, not a model's reading
-// of a prompt (a relay told to "repeat `wait` up to 20 times" returned on the
-// first `detached` and the run died on a misleading error). Never throws on a
-// bad reply: an unparsable one becomes {status: 'relay-failed', raw}, and the
-// caller decides whether that is worth another hop.
+// of a prompt, because a relay left to poll on its own stops at the first
+// `detached`. Never throws on a bad reply: an unparsable one becomes
+// {status: 'relay-failed', raw}, and the caller decides whether that is worth
+// another hop.
 async function relayHop(cmd, timeoutMs, label) {
   const raw = await agent(
     'Run the command between the BEGIN/END lines below, verbatim, as ONE foreground Bash call ' +
@@ -162,9 +161,9 @@ async function relayHop(cmd, timeoutMs, label) {
     {
       label,
       agentType: 'orchestra:orchestra-relay',
-      // The agents/orchestra-relay.md file pins model: haiku. Fallback only when the
-      // plugin-scoped relay type does not resolve:
-      // model: 'haiku', effort: 'low',
+      // Explicit because a Workflow agent() call does not honor the definition's frontmatter model/effort.
+      model: 'haiku',
+      effort: 'low',
     },
   )
   try {
@@ -197,8 +196,7 @@ async function awaitDispatch(token, label, first) {
     }
     hops++
     r = await relayHop('agent-exec dispatch wait --token ' + token + ' --summary', 600000, label + '-wait')
-    // Progress for whoever watches the run: a silent "running" hid ~50 minutes
-    // of spinning on finished work in the field report this protocol answers.
+    // Progress for whoever watches the run: a silent wait loop looks like a hang.
     log(label + ' wait #' + hops + ': ' + r.status +
       (r.wait_calls != null ? ' (wait_calls ' + r.wait_calls + ')' : '') +
       (r.pid != null ? ' pid ' + r.pid : '') +
@@ -222,7 +220,7 @@ async function awaitDispatch(token, label, first) {
 // "delegate" answer has no session concept, so it sets both to null/false.
 // opts.noResume — when true, appends `--no-resume` to the dispatch call so
 // agent-exec's per-task session store is not consulted for this call, even
-// though `--task` is present (used on class escalation - B4 below).
+// though `--task` is present (used on class escalation).
 async function dispatchClass(cls, promptText, opts = {}) {
   const promptFiles = Array.isArray(promptText) ? promptText : [promptText]
   // The token keeps the relay from reading what it dispatches; a path in its prompt is enough for it to try.
@@ -283,24 +281,26 @@ async function dispatchClass(cls, promptText, opts = {}) {
     // route picked Claude or an agent-dispatch executor - only
     // your own agent() call can spawn either, so detecting ITS unavailability
     // (agent() returning null) and feeding it back into `exhausted` is on you.
-    // For an agent-dispatch executor, `model`/`effort` are NOT agent() options
-    // (those pick a Claude tier) - they belong to the executor behind the
-    // subagent, which reads them off the prompt text; dropping them here
-    // silently runs that executor at its own defaults instead of the
-    // class_policy this route just resolved.
+    // `model` and `effort` are always passed to agent() explicitly, because a
+    // Workflow agent() call does not honor a definition's frontmatter. For an
+    // agent-dispatch executor, `agent_type` is not a Claude definition: its
+    // subagent reads the flags off the prompt text (routingFlags) as well.
     const directPrompt = 'Read the worker prompt from ' + promptFiles.join(' and ') + ' and carry it out.'
     // Isolation is NOT automatic on this path. `agent()` starts in the user's tree,
-    // so a delegated worker edits the user's uncommitted work unless you say otherwise
-    // - the asymmetry that used to make Claude-routed workers the only unisolated ones.
+    // so a delegated worker edits the user's uncommitted work unless you say otherwise.
     // dispatch already made the tree: point the worker at it (a fresh `isolation:
     // 'worktree'` here would be a SECOND tree, losing the carried-in uncommitted work
     // and the per-task reuse that lets retry rounds see each other's files). Only when
     // dispatch could not isolate does `agent()` open one itself.
     const cwdLine = treeLine(iso.isolate ? (iso.workdir || iso.path) : null)
     const isoOpt = iso.isolate ? {} : { isolation: 'worktree' }
-    const answer = r.agent_type
-      ? await agent(cwdLine + directPrompt + routingFlags(r), { label: opts.label || cls, agentType: r.agent_type, ...isoOpt })
-      : await agent(cwdLine + directPrompt, { label: opts.label || cls, model: r.model, effort: r.effort, ...isoOpt })
+    const answer = await agent(cwdLine + directPrompt + (r.agent_type ? routingFlags(r) : ''), {
+      label: opts.label || cls,
+      ...(r.agent_type ? { agentType: r.agent_type } : {}),
+      model: r.model,
+      effort: r.effort,
+      ...isoOpt,
+    })
     if (answer === null) {
       exhausted.add(r.executor)
       return dispatchClass(cls, promptText, opts)
@@ -354,7 +354,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
 //     minted with `--prompt-file <workerPromptFile> --prompt-file
 //     <correctionPromptFile> --task <id> --isolate always` (same task id/tree
 //     as the round-1 token). Used when round 1 reported no session, or on a
-//     class escalation (B4 below).
+//     class escalation.
 //   correctionTokenDelta  - same, but `--prompt-file <correctionPromptFile>`
 //     ONLY (no contract - the resumed session already holds it). Used when
 //     round 1 reported a session and the class did not escalate.
@@ -367,12 +367,11 @@ async function dispatchClass(cls, promptText, opts = {}) {
 const tasks = (typeof args !== 'undefined' && args && args.tasks) ? args.tasks : []
 
 // --- Size gate (§7): runs before ANY dispatch ---
-// The run's wall clock is its longest task chain, not the sum of its tasks:
-// in measured runs the single longest task was 89-100% of the wall clock while
-// 1-4 of 16 slots were busy. A task over ~300 s of worker time is a long pole
-// to split by file ownership (120-300 s each; ~45-65 s of fixed overhead per
-// chain does not add across parallel tasks). One fast failed script costs
-// seconds; one long-pole task costs the whole run.
+// The run's wall clock is its longest task chain, not the sum of its tasks, so
+// one long task sets the length of the whole run. A task over MAX_TASK_SECONDS
+// is a long pole: split it by file ownership into 120-300 s tasks, since the
+// fixed per-chain overhead (~45-65 s) does not add across parallel tasks. A
+// failed gate costs seconds; a long pole costs the whole run.
 const MAX_TASK_SECONDS = 300
 const MAX_OWNED_FILES = 3   // the same threshold `agent-exec wave lint` uses
 
@@ -444,24 +443,11 @@ function correctionPacket(task, verdict, gate, isoPath) {
     correctionPacketBody(gate, false, JSON.stringify(verdict.feedback))
 }
 
-// Writes the correction packet to task.correctionPromptFile on FAIL. This is
-// the SCRIPT's job, not the reviewer's: an earlier version asked the
-// reviewer agent to write the file itself as a trailing prompt instruction,
-// and it routinely returned a well-formed FAIL verdict without writing
-// anything - a schema-constrained `agent()` call optimizes for the schema,
-// not for prose instructions appended after it. A missing file then failed
-// the whole task at the next dispatch (`could not read prompt file`) even
-// though both the work and the review had already succeeded. Building the
-// packet here from the verdict JSON we already hold removes the reviewer
-// as a dependency entirely.
-//
-// And it is no model's job either: the text goes to `agent-exec write-file`
-// through a quoted heredoc that one relay hop runs verbatim. The old version
-// asked a Haiku writer to "write this text to the file", and it read the
-// packet's "fix F1-F3" as an instruction to itself and edited the worker's
-// tree (new tests, a type error) - two packages then failed review twice for
-// it. A relay that may only paste one command cannot act on the text, and
-// `--expect-chars` catches a mangled paste: on mismatch nothing is written.
+// Writes the correction packet to task.correctionPromptFile on FAIL. The
+// script does it, from the verdict JSON: a schema-constrained reviewer skips
+// trailing prose instructions, and a model asked to write the text acts on it
+// ("fix F1-F3") instead. One relay hop pastes it through a quoted heredoc to
+// `agent-exec write-file`, and `--expect-chars` refuses a mangled paste.
 // Retried once; a second failure fails the task loudly rather than leaving a
 // missing file for the next dispatch to trip over.
 function shellQuote(s) {
@@ -499,17 +485,15 @@ function regatePrompt(task, verdict) {
     'corrections could plausibly cause. Do NOT restart the full specification audit and do ' +
     'not re-litigate anything the previous verdict accepted. If you find a defect family ' +
     'that predates the correction, set new_family true and say so - do not silently fail it. ' +
-    'Cap yourself at 6 read-only shell invocations.'
+    'Cap yourself at 6 shell invocations.'
 }
 
 // --- Probes authored concurrently with round 1 (§7) ---
-// Review was 28% of the critical path in measured runs, and its dominant cost
-// is authoring probes - which derive from the contract, not the
-// implementation. So a Sonnet author writes them from the contract WHILE the
-// worker implements, and gate 1 only runs them. Documented as an option, this
-// was used in 0 of 9 runs; it is the default now. It never sees the
-// implementation (none exists yet), and a failed author never fails the task:
-// the review simply runs without probes.
+// Authoring probes is most of a review's cost, and probes derive from the
+// contract, not the implementation. So a Sonnet author writes them from the
+// contract WHILE the worker implements, and gate 1 only runs them. It never
+// sees the implementation (none exists yet), and a failed author never fails
+// the task: the review simply runs without probes.
 const PROBE_SCHEMA = {
   type: 'object',
   required: ['files', 'mistakes'],
@@ -532,7 +516,7 @@ async function authorProbes(task) {
         'Probe for the implementation mistakes named in this reviewer brief (use only its list of mistakes):\n' +
         task.verifierPrompt + '\n\n' +
         'Return files (absolute paths written) and mistakes (the mistake each detects, same order).',
-      { label: task.id + '-probes', model: 'sonnet', schema: PROBE_SCHEMA },
+      { label: task.id + '-probes', model: 'sonnet', effort: 'medium', schema: PROBE_SCHEMA },
     )
   } catch (e) {
     r = null
@@ -613,7 +597,7 @@ async function runTask(task) {
   let sessionClass = cls          // class in effect when `out` below was last populated
   let prior = null
   const iso = {}                  // dispatchClass fills iso.path with the task's tree
-  const out = { sessionId: null, resumed: false, sandbox: null } // dispatchClass fills this from the last dispatch (§11 B1)
+  const out = { sessionId: null, resumed: false, sandbox: null } // dispatchClass fills this from the last dispatch (§11)
   let runawaySeen = false
   let fullReviewDone = false      // the first REAL review is the full one, even at gate 2
   if (task.preimplementedPath) iso.path = task.preimplementedPath
@@ -635,8 +619,8 @@ async function runTask(task) {
       // never sees the contract go cold. A class escalation forces the full,
       // non-resuming token regardless of out.sessionId: the resumed session
       // belongs to the OLD class's executor, which the new class may not even
-      // route to (§11 B4). Otherwise, full vs delta is chosen by whether
-      // round 1 reported a session at all (§11 B2).
+      // route to (§11). Otherwise, full vs delta is chosen by whether
+      // round 1 reported a session at all (§11).
       const escalated = cls !== sessionClass
       const token = escalated
         ? task.correctionTokenFull
@@ -654,7 +638,7 @@ async function runTask(task) {
         // No correction token prepared for this task (or round 1 could not be
         // isolated at all): fall back to the pinned-Sonnet path, unchanged.
         work = await agent(correctionPacket(task, prior, gate, iso.path), {
-          label: task.id + '-work-' + gate, model: 'sonnet',
+          label: task.id + '-work-' + gate, model: 'sonnet', effort: 'medium',
           // No tree from round 1 means it ran in the user's tree; a fresh worktree
           // costs the predecessor's files but keeps this round off that tree.
           ...(iso.path ? {} : { isolation: 'worktree' }),
@@ -724,7 +708,9 @@ async function runTask(task) {
         treeLine(iso.path) + (full ? firstGatePrompt(task, probes) : regatePrompt(task, prior)),
         {
           label: task.id + '-verify-' + gate,
+          agentType: 'orchestra:orchestra-review',
           model: 'sonnet',
+          effort: 'medium',
           schema: VERDICT_SCHEMA,
         },
       )
@@ -808,13 +794,14 @@ const results = await pipeline(tasks, async (task) => {
 // reported, and so does an integration tree whose branch is not merged yet.
 // Await every agent working in a surviving tree before this call. Fold the telemetry emission (§10) into this same relay call when
 // telemetry is enabled, rather than spending a second agent on it.
-await agent(
-  'Run `agent-exec isolate sweep --include-current --text` as ONE foreground Bash call ' +
-    'with timeout 120000. Print its stdout verbatim - nothing else.',
+const runEnd = await agent(
+  'Run `agent-exec isolate sweep --include-current --text; agent-exec usage --run ' + RUN_ID +
+    ' --text` as ONE foreground Bash call with timeout 120000. Print its stdout verbatim - nothing else.',
   { label: 'cleanup', model: 'haiku', effort: 'low' },
 )
 
-return results
+// The usage text must reach the instructor (SKILL §5 reports cost from it), so it rides in the return value; log() only reaches the user.
+return { results, runEnd }
 ```
 
 ## 2. Run id
