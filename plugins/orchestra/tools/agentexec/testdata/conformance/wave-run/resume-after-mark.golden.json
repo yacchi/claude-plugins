@@ -47,7 +47,7 @@
             "needs": [
               {
                 "at": "<AT>",
-                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-light\",\"effort\":\"medium\",\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
                 "id": "A",
                 "kind": "delegate"
               }
@@ -56,7 +56,7 @@
               "A": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-light\",\"effort\":\"medium\",\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,
@@ -180,7 +180,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"agent_type\":\"orchestra:orchestra-light\",\"effort\":\"medium\",\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "A",

@@ -10,7 +10,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "default",
         "candidates": [
           "claude",
@@ -20,7 +20,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "high",
         "executor": "claude",
         "model": "haiku",
         "remaining": [

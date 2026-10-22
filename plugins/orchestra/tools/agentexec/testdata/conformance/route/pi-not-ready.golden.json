@@ -10,7 +10,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "default",
         "candidates": [
           "claude",
@@ -20,7 +20,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "high",
         "executor": "claude",
         "model": "haiku",
         "remaining": [
@@ -41,7 +41,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-deep",
         "archetype": "default",
         "candidates": [
           "claude",
@@ -51,7 +51,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "medium",
         "executor": "claude",
         "model": "opus",
         "remaining": [
@@ -105,7 +105,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: claude, pi\nresolved: claude (dispatch=claude model=haiku effort=-)\nremaining: pi\nsource: priority\n"
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: claude, pi\nresolved: claude (dispatch=claude model=haiku effort=high agent_type=orchestra:orchestra-light)\nremaining: pi\nsource: priority\n"
     },
     {
       "argv": [

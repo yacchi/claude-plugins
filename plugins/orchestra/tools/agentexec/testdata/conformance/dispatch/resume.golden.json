@@ -17,7 +17,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "round",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -40,7 +40,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -100,7 +100,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "round",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -123,7 +123,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -172,7 +172,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "round",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -195,7 +195,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -245,7 +245,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "round",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -268,7 +268,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -316,7 +316,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "round",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -339,7 +339,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -399,7 +399,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "round",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -422,7 +422,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -470,7 +470,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "round",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -493,7 +493,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
