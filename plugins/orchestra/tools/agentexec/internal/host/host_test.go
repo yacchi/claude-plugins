@@ -244,7 +244,7 @@ func TestShellSplit(t *testing.T) {
 func TestPromptLineAndResultOutput(t *testing.T) {
 	line := PromptLine([]string{"/p/one.md", "/p/two.md"}, "/s/a.result.json")
 	want := `Read the worker prompt from /p/one.md and /p/two.md and carry it out. You are a worker: do it yourself in your working tree; do not load orchestra:run, call the Workflow tool, or run agent-exec dispatch or agent-exec wave. When you are completely done, ` +
-		`write /s/a.result.json containing JSON {"status": "ok"|"escalate", "summary": "<=15 lines"}. ` +
+		`write /s/a.result.json containing JSON {"status": "ok"|"escalate", "summary": "<what you changed and anything a reviewer must know; no code or logs>"}. ` +
 		`If you must ESCALATE, put the reason in summary.`
 	if line != want {
 		t.Errorf("%s", line)
