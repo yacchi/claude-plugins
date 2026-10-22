@@ -73,16 +73,18 @@ func TestDetectCarryDirs(t *testing.T) {
 	}
 }
 
-func TestCopyTreeFast(t *testing.T) {
-	src := filepath.Join(t.TempDir(), "src")
+func TestCarryDir(t *testing.T) {
+	srcRoot := t.TempDir()
+	src := filepath.Join(srcRoot, "deps")
 	writeFile(t, filepath.Join(src, "sub", "f.txt"), "content")
 	if err := os.Symlink("sub/f.txt", filepath.Join(src, "link")); err != nil {
 		t.Fatal(err)
 	}
-	dst := filepath.Join(t.TempDir(), "deeper", "dst")
-	if err := CopyTreeFast(src, dst); err != nil {
+	dstRoot := filepath.Join(t.TempDir(), "deeper", "dst")
+	if err := CarryDir(srcRoot, dstRoot, "deps"); err != nil {
 		t.Fatal(err)
 	}
+	dst := filepath.Join(dstRoot, "deps")
 	if readFile(t, filepath.Join(dst, "sub", "f.txt")) != "content" {
 		t.Fatal("content not copied")
 	}
@@ -90,13 +92,13 @@ func TestCopyTreeFast(t *testing.T) {
 		t.Fatalf("symlink not kept as a link: %q %v", link, err)
 	}
 	// A failed clone onto an existing directory must not wipe it.
-	existing := filepath.Join(t.TempDir(), "existing")
-	writeFile(t, filepath.Join(existing, "keep.txt"), "mine")
-	_ = CopyTreeFast(src, existing)
-	if readFile(t, filepath.Join(existing, "keep.txt")) != "mine" {
+	existingRoot := t.TempDir()
+	writeFile(t, filepath.Join(existingRoot, "deps", "keep.txt"), "mine")
+	_ = CarryDir(srcRoot, existingRoot, "deps")
+	if readFile(t, filepath.Join(existingRoot, "deps", "keep.txt")) != "mine" {
 		t.Fatal("an existing destination was clobbered")
 	}
-	if err := CopyTreeFast(filepath.Join(src, "missing"), filepath.Join(t.TempDir(), "x")); err == nil {
+	if err := CarryDir(srcRoot, t.TempDir(), "missing"); err == nil {
 		t.Fatal("a missing source was reported as copied")
 	}
 }

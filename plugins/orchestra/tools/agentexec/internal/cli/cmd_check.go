@@ -233,7 +233,7 @@ func markPreexisting(root, ref, tree string, files []string, cfg *config.Resolve
 		return
 	}
 	for _, rel := range isolate.DetectCarryDirs(root, cfg.StringList("isolation", "carry_extra")) {
-		_ = isolate.CopyTreeFast(filepath.Join(root, rel), filepath.Join(baseTree, rel))
+		_ = isolate.CarryDir(root, baseTree, rel)
 	}
 	items := make([]checks.Item, len(failed))
 	for i, f := range failed {
