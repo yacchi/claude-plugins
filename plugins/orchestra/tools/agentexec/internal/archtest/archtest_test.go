@@ -28,6 +28,7 @@ const (
 var deps = map[string][]string{
 	"internal/fsutil":             {},
 	"internal/paths":              {},
+	"internal/trace":              {"internal/paths"},
 	"internal/watchdog":           {},
 	"internal/wave/plan":          {},
 	"internal/config":             {"internal/paths", "internal/fsutil"},
@@ -68,7 +69,7 @@ var deps = map[string][]string{
 }
 
 // leaves may be imported by any package.
-var leaves = []string{"internal/fsutil", "internal/paths"}
+var leaves = []string{"internal/fsutil", "internal/paths", "internal/trace"}
 
 // thirdParty are the only non-standard imports allowed outside tests.
 var thirdParty = []string{"github.com/spf13/cobra", "go.yaml.in/yaml/v3", "golang.org/x/sys/unix"}
