@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
 // ExitError is git exiting non-zero. Code is -1 when git could not be
@@ -45,6 +47,7 @@ func RunInput(cwd string, input []byte, args ...string) (string, error) {
 }
 
 func run(cwd string, env []string, input []byte, args []string) (string, error) {
+	end := trace.Begin(trace.KindGit, gitOp(args), trace.Attrs{Cwd: cwd, Detail: strings.Join(args, " ")})
 	cmd := exec.Command("git", args...)
 	cmd.Dir = cwd
 	cmd.Env = env
@@ -55,13 +58,41 @@ func run(cwd string, env []string, input []byte, args []string) (string, error) 
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
 	if err == nil {
+		end(0)
 		return stdout.String(), nil
 	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
+		end(ee.ExitCode())
 		return stdout.String(), &ExitError{Code: ee.ExitCode(), Stderr: stderr.String()}
 	}
+	end(-1)
 	return "", &ExitError{Code: -1, Stderr: err.Error()}
+}
+
+// subSubcommands are the git subcommands whose first operand names the
+// operation (`git worktree add`, `git stash push`).
+var subSubcommands = map[string]bool{"worktree": true, "stash": true, "submodule": true, "remote": true}
+
+// gitOp names a git call for the timing log: "git <subcommand>", plus the
+// operand for subSubcommands. Global options (-c k=v, -C dir, other flags)
+// are skipped.
+func gitOp(args []string) string {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "-c" || a == "-C" {
+			i++
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if subSubcommands[a] && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			return "git " + a + " " + args[i+1]
+		}
+		return "git " + a
+	}
+	return "git"
 }
 
 // RepoRoot is the working tree root containing path, or false outside a

@@ -11,6 +11,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
 // RemoveResult is `isolate remove`'s output, for one task or (IsSession,
@@ -256,6 +257,14 @@ func uncollected(root, path, task, branch, session string) (files []string, reas
 	return nil, "", false, nil
 }
 
+// exitOf is the timing-log exit code for a filesystem call: 0 or 1.
+func exitOf(err error) int {
+	if err != nil {
+		return 1
+	}
+	return 0
+}
+
 // trashMarker names the sibling a tree is renamed to while it is removed:
 // .<base>.orchestra-removing-<pid>-<unixnano>.
 const trashMarker = ".orchestra-removing-"
@@ -273,10 +282,15 @@ func trashPath(path string) string {
 func deleteDetached(path string) error {
 	cmd := exec.Command("/bin/rm", "-rf", "--", path)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	end := trace.Begin(trace.KindFS, "rm -rf (detached)", trace.Attrs{Detail: path})
 	if err := cmd.Start(); err != nil {
+		end(-1)
 		return err
 	}
-	go func() { _ = cmd.Wait() }() // reaped while the caller lives
+	go func() { // reaped while the caller lives
+		_ = cmd.Wait()
+		end(cmd.ProcessState.ExitCode())
+	}()
 	return nil
 }
 
@@ -292,7 +306,10 @@ func discard(repo, path, branch string) (ok bool, reason string) {
 		return false, fmt.Sprintf("cannot locate the worktree's git metadata (%v); nothing was changed", err)
 	}
 	trash := trashPath(path)
-	if err := os.Rename(path, trash); err != nil {
+	end := trace.Begin(trace.KindFS, "rename-aside", trace.Attrs{Detail: path})
+	err = os.Rename(path, trash)
+	end(exitOf(err))
+	if err != nil {
 		return false, fmt.Sprintf("could not move the worktree aside (%v); nothing was changed: "+
 			"tree and git metadata intact at %s", err, path)
 	}
@@ -304,7 +321,10 @@ func discard(repo, path, branch string) (ok bool, reason string) {
 		if pruneErr != nil {
 			why = fmt.Sprintf("git worktree prune failed (%v)", pruneErr)
 		}
-		if err := os.Rename(trash, path); err != nil {
+		end := trace.Begin(trace.KindFS, "rename-back", trace.Attrs{Detail: trash})
+		err := os.Rename(trash, path)
+		end(exitOf(err))
+		if err != nil {
 			return false, fmt.Sprintf("%s, and moving the tree back failed (%v): git metadata kept at %s, "+
 				"tree at %s; recover with `mv %s %s`", why, err, admin, trash, trash, path)
 		}
@@ -315,7 +335,10 @@ func discard(repo, path, branch string) (ok bool, reason string) {
 	}
 	if err := deleteDetached(trash); err != nil {
 		// Nothing to hand it to: delete it here rather than leave it.
-		if err := os.RemoveAll(trash); err != nil {
+		end := trace.Begin(trace.KindFS, "remove-all", trace.Attrs{Detail: trash})
+		err := os.RemoveAll(trash)
+		end(exitOf(err))
+		if err != nil {
 			return true, fmt.Sprintf("git state removed, but the old tree is left at %s (%v); delete it by hand", trash, err)
 		}
 	}
