@@ -3,8 +3,11 @@ package fsutil
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
 type LockMode int
@@ -20,6 +23,10 @@ var ErrLockTimeout = errors.New("lock timeout")
 
 const lockPoll = 50 * time.Millisecond
 
+// minTracedWait is the shortest busy wait on a lock that is written to the
+// trace log.
+const minTracedWait = 50 * time.Millisecond
+
 // Lock takes a flock(2) on path (created 0600 if missing). timeout 0 tries
 // once; a negative timeout waits indefinitely. unlock releases the lock and
 // closes the descriptor.
@@ -33,29 +40,52 @@ func Lock(path string, mode LockMode, timeout time.Duration) (unlock func() erro
 		how = syscall.LOCK_EX
 	}
 	fd := int(f.Fd())
-	if timeout < 0 {
-		if err := flockRetry(fd, how); err != nil {
-			f.Close()
-			return nil, err
-		}
+	start := time.Now()
+	deadline := start.Add(timeout)
+	err = flockRetry(fd, how|syscall.LOCK_NB)
+	if err == nil {
 		return release(f), nil
 	}
-	deadline := time.Now().Add(timeout)
-	for {
-		err := flockRetry(fd, how|syscall.LOCK_NB)
-		if err == nil {
-			return release(f), nil
+	if !errors.Is(err, syscall.EWOULDBLOCK) {
+		f.Close()
+		return nil, err
+	}
+	// Only a wait that found the lock busy and lasted at least minTracedWait
+	// is traced: an uncontended lock is taken constantly and short waits
+	// would flood the log.
+	end := trace.Begin(trace.KindLock, "flock "+filepath.Base(path), trace.Attrs{Detail: path})
+	done := func(code int) {
+		if time.Since(start) >= minTracedWait {
+			end(code)
 		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) {
+	}
+	if timeout < 0 {
+		if err := flockRetry(fd, how); err != nil {
+			done(1)
 			f.Close()
 			return nil, err
 		}
+		done(0)
+		return release(f), nil
+	}
+	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
+			done(1)
 			f.Close()
 			return nil, ErrLockTimeout
 		}
 		time.Sleep(min(lockPoll, remaining))
+		err := flockRetry(fd, how|syscall.LOCK_NB)
+		if err == nil {
+			done(0)
+			return release(f), nil
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) {
+			done(1)
+			f.Close()
+			return nil, err
+		}
 	}
 }
 

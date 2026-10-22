@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -8,6 +9,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
 func TestConfigEnvNumbersPairsAndExtendsAnExistingCount(t *testing.T) {
@@ -114,6 +118,49 @@ func TestRunReportsTheExitCodeAndStderr(t *testing.T) {
 	var ee *ExitError
 	if !errors.As(err, &ee) || ee.Code == 0 || ee.Stderr == "" {
 		t.Fatalf("got %#v", err)
+	}
+}
+
+func TestGitOpNamesTheSubcommandPastGlobalOptions(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-c", "user.email=x", "-c", "user.name=y", "commit", "-q"}, "git commit"},
+		{[]string{"-C", "/x", "worktree", "prune"}, "git worktree prune"},
+		{[]string{"worktree", "add", "-q", "-b", "b", "/p", "HEAD"}, "git worktree add"},
+		{[]string{"stash", "-q"}, "git stash"},
+		{[]string{"status", "--porcelain"}, "git status"},
+		{[]string{}, "git"},
+	}
+	for _, c := range cases {
+		if got := gitOp(c.args); got != c.want {
+			t.Errorf("gitOp(%v) = %q, want %q", c.args, got, c.want)
+		}
+	}
+}
+
+func TestRunTracesAFailingCallWithItsExitCode(t *testing.T) {
+	repo := newRepo(t)
+	t.Setenv("ORCHESTRA_TRACE", "on")
+	t.Setenv("ORCHESTRA_TRACE_DIR", t.TempDir())
+	// Nothing is staged, so commit exits non-zero.
+	_, err := Run(repo, "-c", "user.email=x", "commit", "-q", "-m", "nothing")
+	var ee *ExitError
+	if !errors.As(err, &ee) || ee.Code == 0 {
+		t.Fatalf("got %#v", err)
+	}
+	data, err := os.ReadFile(trace.FileFor(time.Now()))
+	if err != nil {
+		t.Fatalf("no trace record written: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	var rec trace.Record
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Op != "git commit" || rec.Kind != trace.KindGit || rec.Exit != ee.Code {
+		t.Fatalf("got %+v, want op git commit, exit %d", rec, ee.Code)
 	}
 }
 

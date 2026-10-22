@@ -17,6 +17,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -342,7 +343,9 @@ func (r *runner) runCheck(args []string) (string, int) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
+	end := trace.Begin(trace.KindExec, "wave verify", trace.Attrs{})
 	err := cmd.Run()
+	end(exitCode(err))
 	var ee *exec.ExitError
 	switch {
 	case err == nil:
