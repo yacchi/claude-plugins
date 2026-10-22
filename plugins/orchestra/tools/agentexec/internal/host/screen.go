@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -136,18 +137,62 @@ func SplitLines(text string) []string {
 // ReadResult is the result file at path when it holds a JSON object with
 // status ok or escalate; nil otherwise (missing, partial, other status).
 func ReadResult(path string) map[string]any {
+	data, _ := ReadResultErr(path)
+	return data
+}
+
+// ReadResultErr is ReadResult that says why a file that exists is not a
+// result: (nil, nil) when it is missing, (nil, err) when it is not a JSON
+// object or its status is not ok/escalate, (data, nil) when valid.
+func ReadResultErr(path string) (map[string]any, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	var data map[string]any
-	if json.Unmarshal(raw, &data) != nil || data == nil {
-		return nil
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	if data == nil {
+		return nil, errors.New("invalid JSON: not an object")
 	}
 	if st, _ := data["status"].(string); st != "ok" && st != "escalate" {
-		return nil
+		return nil, fmt.Errorf("status must be \"ok\" or \"escalate\", got %v", data["status"])
 	}
-	return data
+	return data, nil
+}
+
+func isRuleLine(line string) bool {
+	rules, other := 0, 0
+	for _, r := range line {
+		switch {
+		case r == '─':
+			rules++
+		case !unicode.IsSpace(r):
+			other++
+		}
+	}
+	return rules >= 20 && rules > other
+}
+
+// PendingInput is the text sitting in Claude's input box: the lines
+// between the LAST TWO rule lines, joined with spaces, the leading "❯"
+// removed and whitespace collapsed. ok is false when the screen has fewer
+// than two rule lines; text is "" for an empty box.
+func PendingInput(lines []string) (text string, ok bool) {
+	var rules []int
+	for i, line := range lines {
+		if isRuleLine(line) {
+			rules = append(rules, i)
+		}
+	}
+	if len(rules) < 2 {
+		return "", false
+	}
+	box := lines[rules[len(rules)-2]+1 : rules[len(rules)-1]]
+	joined := strings.Join(strings.Fields(strings.Join(box, " ")), " ")
+	joined = strings.TrimSpace(strings.TrimPrefix(joined, "❯"))
+	return joined, true
 }
 
 // ResetResult removes a stale result file and makes its directory.

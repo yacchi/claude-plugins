@@ -19,7 +19,7 @@ func initHerdr(sc map[string]any) map[string]any {
 	stalls, _ := sc["stalls"].(float64)
 	return map[string]any{
 		"running": truthy(sc["running"]), "not_ready": truthy(sc["not_ready"]),
-		"screen": str(sc["screen"]), "statuses": statuses, "stalls": stalls,
+		"screen": str(sc["screen"]), "screens": strList(sc["screens"]), "statuses": statuses, "stalls": stalls,
 		"after_keys": strList(sc["after_keys"]), "keys_sent": false, "workspaces": 0.0,
 	}
 }
@@ -76,6 +76,13 @@ func (c *call) herdr() int {
 		}
 		return c.herdrOK(map[string]any{})
 	case verb == "agent read":
+		// "screens" is a per-read sequence; its last entry sticks.
+		if screens := strList(st["screens"]); len(screens) > 0 {
+			st["screen"] = screens[0]
+			if len(screens) > 1 {
+				st["screens"] = screens[1:]
+			}
+		}
 		keys := strList(st["after_keys"])
 		if truthy(st["keys_sent"]) && len(keys) > 0 {
 			st["screen"] = keys[0]
