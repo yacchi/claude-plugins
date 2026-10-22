@@ -72,7 +72,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "ensure:built/marker fail 0.0s\np1 pass 0.0s\nl1 pass 0.0s\nt1 pass 0.0s\nh1 pass 0.0s\nFAIL building\n"
+      "stdout": "ensure:built/marker fail <S>s\np1 pass <S>s\nl1 pass <S>s\nt1 pass <S>s\nh1 pass <S>s\nFAIL building\n"
     }
   ]
 }

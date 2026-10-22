@@ -52,6 +52,10 @@ setup:
   dirty:
     a.txt: "a2\n"
 normalize_keys: [seconds]
+normalize_text:
+  # --text の行末の所要時間は負荷で 0.0s / 0.1s と揺れる
+  - pattern: '(?m) [0-9]+\.[0-9]s$'
+    replace: ' <S>s'
 steps:
   - argv: [check, --path, ., --all, --no-retry]
   - argv: [check, --path, ., --all, --no-retry, --text]
