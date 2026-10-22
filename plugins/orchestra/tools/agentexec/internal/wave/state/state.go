@@ -15,7 +15,7 @@ var Statuses = []string{
 // NeedKinds are the accepted `needs` kinds.
 var NeedKinds = []string{
 	"escalate", "conflict", "post-integration", "self-verify", "delegate", "dispatch-error",
-	"empty-after-refresh", "scope", "environment", "permission", "runaway", "network",
+	"empty-after-refresh", "scope", "environment", "permission", "runaway", "network", "oversized",
 }
 
 var inFlight = map[string]bool{"implementing": true, "verifying": true, "fixing": true, "ready": true}

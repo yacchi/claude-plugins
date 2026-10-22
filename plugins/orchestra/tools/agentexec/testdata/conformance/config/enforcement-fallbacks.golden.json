@@ -95,7 +95,19 @@
             ".claude/settings.local.json",
             ".claude/orchestra.local.yaml",
             "CLAUDE.local.md"
-          ]
+          ],
+          "exclude_paths": [
+            ".pnpm-store/",
+            "node_modules/",
+            ".venv/",
+            "__pycache__/",
+            ".turbo/",
+            ".next/",
+            ".gradle/",
+            ".terraform/"
+          ],
+          "keep_paths": [],
+          "max_added_files": 500
         },
         "ledger": {
           "dir": "~/.claude/orchestra/runs",
@@ -325,7 +337,19 @@
             ".claude/settings.local.json",
             ".claude/orchestra.local.yaml",
             "CLAUDE.local.md"
-          ]
+          ],
+          "exclude_paths": [
+            ".pnpm-store/",
+            "node_modules/",
+            ".venv/",
+            "__pycache__/",
+            ".turbo/",
+            ".next/",
+            ".gradle/",
+            ".terraform/"
+          ],
+          "keep_paths": [],
+          "max_added_files": 500
         },
         "ledger": {
           "dir": "~/.claude/orchestra/runs",
@@ -555,7 +579,19 @@
             ".claude/settings.local.json",
             ".claude/orchestra.local.yaml",
             "CLAUDE.local.md"
-          ]
+          ],
+          "exclude_paths": [
+            ".pnpm-store/",
+            "node_modules/",
+            ".venv/",
+            "__pycache__/",
+            ".turbo/",
+            ".next/",
+            ".gradle/",
+            ".terraform/"
+          ],
+          "keep_paths": [],
+          "max_added_files": 500
         },
         "ledger": {
           "dir": "~/.claude/orchestra/runs",
@@ -785,7 +821,19 @@
             ".claude/settings.local.json",
             ".claude/orchestra.local.yaml",
             "CLAUDE.local.md"
-          ]
+          ],
+          "exclude_paths": [
+            ".pnpm-store/",
+            "node_modules/",
+            ".venv/",
+            "__pycache__/",
+            ".turbo/",
+            ".next/",
+            ".gradle/",
+            ".terraform/"
+          ],
+          "keep_paths": [],
+          "max_added_files": 500
         },
         "ledger": {
           "dir": "~/.claude/orchestra/runs",

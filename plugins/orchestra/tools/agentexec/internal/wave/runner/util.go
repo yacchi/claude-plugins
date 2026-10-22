@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
@@ -67,7 +68,9 @@ func (r *runner) notify(kind string, payload map[string]any) {
 
 // need records a need ("" pid: wave-level) and notifies.
 func (r *runner) need(pid, kind, detail string) {
-	_ = r.store.AddNeed(pid, kind, detail)
+	if err := r.store.AddNeed(pid, kind, detail); err != nil {
+		fmt.Fprintf(r.stderr, "agent-exec: wave: could not record need %s for %s: %v\n", kind, pid, err)
+	}
 	r.notify("need", map[string]any{
 		"event":  "need",
 		"pkg":    nullable(pid),

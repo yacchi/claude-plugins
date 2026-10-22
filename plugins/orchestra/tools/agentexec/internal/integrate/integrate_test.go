@@ -202,3 +202,28 @@ func TestBisectAbortsAConflictingRevert(t *testing.T) {
 		t.Error("bisect without a branch and base accepted")
 	}
 }
+
+// A task adding more new files than the filter allows is refused, not
+// applied; the others still land and the run exits 7.
+func TestOversizedTaskIsRefused(t *testing.T) {
+	repo := newRepo(t)
+	task(t, repo, "big", map[string]string{"n1": "1\n", "n2": "2\n", "n3": "3\n"})
+	task(t, repo, "fits", map[string]string{"m1": "1\n", "m2": "2\n"})
+	r, err := Integrate(repo, []string{"big", "fits"}, Options{Filter: &isolate.ChangeFilter{MaxAdded: 2}})
+	if err != nil || r.Status != "refused" || ExitCode(r) != 7 {
+		t.Fatalf("integrate: %+v %v", r, err)
+	}
+	if got := r.Tasks[0]; got.Status != "refused" || got.Reason != "adds 3 new files (isolation.max_added_files 2)" {
+		t.Errorf("big: %+v", got)
+	}
+	if got := r.Tasks[1]; got.Status != "applied" {
+		t.Errorf("fits: %+v", got)
+	}
+	wt := string(r.Integration.Path)
+	if _, err := os.Stat(filepath.Join(wt, "n1")); err == nil {
+		t.Error("the refused task was applied")
+	}
+	if _, err := os.Stat(filepath.Join(wt, "m1")); err != nil {
+		t.Errorf("the fitting task is missing: %v", err)
+	}
+}

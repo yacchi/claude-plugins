@@ -39,6 +39,9 @@ func FormatText(r Result) string {
 		if len(t.Conflicts) > 0 {
 			line += "  " + isolate.FormatConflicts(t.Conflicts)
 		}
+		if t.Reason != "" {
+			line += "  (" + t.Reason + ")"
+		}
 		lines = append(lines, line)
 	}
 	if v := r.Verify; v != nil {
