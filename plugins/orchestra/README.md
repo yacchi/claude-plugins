@@ -16,7 +16,7 @@ flowchart TD
     I -->|"EXPRESS: one self-contained change,<br/>or conversational / read-only"| E["Handled directly, or by ONE cheap worker<br/>reviewed by the instructor itself"]
     E -.->|"scope grows mid-flight"| O
     I -->|"ORCHESTRATED: everything else,<br/>and whenever in doubt"| O["orchestra:run skill<br/>decomposes tasks, writes contracts and the script<br/>never reads implementation files, logs, or diffs"]
-    O --> W["Workflow script<br/>(or orchestra-delegate as fallback)"]
+    O --> W["Workflow pipeline<br/>(or orchestra-delegate as fallback)"]
     W --> L["light-class implementer<br/>agent-exec route: Claude Haiku first,<br/>pi as fallback"]
     L --> R["orchestra-review<br/>(Sonnet, adversarial)"]
     R -->|"FAIL: one correction round<br/>to a FRESH worker (2 gates max)"| L
@@ -25,7 +25,7 @@ flowchart TD
 ```
 
 - **Two lanes.** A `SessionStart` hook injects a router that makes the instructor classify every request. EXPRESS (one self-contained change, or conversational/read-only) is handled directly; everything else — and anything in doubt — goes through the `orchestra:run` playbook. Lane choices never persist across requests.
-- **Two execution paths.** Dynamic Workflows (preferred: the instructor writes a JavaScript script with `agent()`/`pipeline()`, template in `skills/run/SKILL.md`), or nested subagents via `orchestra-delegate` when Workflows are unavailable.
+- **Two execution paths.** Dynamic Workflows (preferred: the instructor runs the shipped `orchestra:pipeline` workflow with a task list, see `skills/run/SKILL.md` §5), or nested subagents via `orchestra-delegate` when Workflows are unavailable.
 - **Two gates.** One review gate plus at most one correction round and an incremental re-gate. A rejection must cite the contract; non-required improvements go to `optional_hardening` and never block.
 - **Isolated workers.** When the working tree holds uncommitted work, `agent-exec dispatch` gives each worker its own git worktree, and hooks keep subagents from running destructive VCS commands or writing into your main tree.
 - **Sandbox and learned grants.** CLI workers use the OS sandbox by default; cache denials may be learned, while other denials return `needsPermission` for instructor approval via `agent-exec sandbox allow`.
@@ -44,7 +44,7 @@ This plugin is distributed as part of the `yacchi-plugins` marketplace:
 
 The `agent-exec` CLI (used by pi dispatch, worktree isolation, `wave run`, the dashboard, and the hooks) is written in Go and built from source on first use: it needs [mise](https://mise.jdx.dev/) (agent-exec then uses the Go version pinned in `tools/agentexec/.go-version`) or Go on `PATH`. The first call builds it in a few seconds and caches the binary under `~/.cache/claude-orchestra/agent-exec/`, keyed by the source hash, OS and CPU arch; `agent-exec doctor` (run by `/orchestra:setup`) builds it ahead of time.
 
-Inside Claude Code no shim is needed: the plugin's `bin/` directory puts `agent-exec` on the Bash tool's `PATH`. `agent-exec install` is still needed for a shell outside Claude Code that must run `agent-exec` by name: a pi worker's shell (pi is a child process and does not get the plugin's `bin/`) and your own terminal. The runner starts the binary it is running from by absolute path, and herdr panes host Claude Code sessions, which get `bin/`; neither needs the shim.
+Inside Claude Code no shim is needed: the plugin's `bin/` directory puts `agent-exec` on the Bash tool's `PATH`. `agent-exec install` is still needed for a shell outside Claude Code that must run `agent-exec` by name: a pi worker's shell (pi is a child process and does not necessarily get the plugin's `bin/`) and your own terminal. The runner starts the binary it is running from by absolute path, and herdr panes host Claude Code sessions, which get `bin/`; neither needs the shim.
 
 For local development, add the marketplace repository root as a local marketplace instead:
 
@@ -70,7 +70,7 @@ Once installed, the router activates on its own in Opus/Fable sessions (Sonnet/H
 Or just describe a task that needs cost-tiered delegation — Claude can invoke the skill automatically. The playbook has the instructor:
 
 1. Decompose the task and define per-task contracts (literal spec, the mistakes to detect, a verification command).
-2. Write (or reuse) a Workflow script that pipelines each task through a light-class implementer → `orchestra-review` → at most one correction round and re-gate. Design-latitude tasks go to `orchestra-deep` (Opus) instead.
+2. Run the shipped Workflow pipeline (`orchestra:pipeline`) with a task list, which pipelines each task through a light-class implementer → `orchestra-review` → at most one correction round and re-gate. Design-latitude tasks go to `orchestra-deep` (Opus) instead.
 3. Receive only structured verdicts, never raw logs, diffs, or intermediate files.
 
 Companion skills:
@@ -86,7 +86,7 @@ Companion skills:
 Config is deep-merged from four layers (later wins): built-in defaults ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`. A project file only needs the keys it changes. `agent-exec config` prints the merged result.
 
 - **`tiers`** — Claude models per class/role (`light`, `standard`, `deep`, `review`), used whenever routing resolves to `claude`.
-- **`external_executors`** — pi, … as implementers or reviewers. Enabled by default but gated on real availability; with the CLI not installed, everything resolves to `claude`. The recommended setup is the bundled `agent-exec` wrapper (`agent-exec install`) plus one `Bash(agent-exec:*)` allow rule.
+- **`external_executors`** — pi, … as implementers or reviewers. Enabled by default but gated on real availability; with the CLI not installed, everything resolves to `claude`. Inside Claude Code the bundled `agent-exec` wrapper is already on `PATH`; `agent-exec install` is for shells outside it. The recommended setup adds one `Bash(agent-exec:*)` allow rule.
 - **`tools`** — pins executor binaries (pi, herdr) to a known version in orchestra's own state dir (`agent-exec tools install`). pi runs with its own agent dir by default, so your personal pi settings do not reach workers.
 - **`sandbox.network`** — the herdr host's outbound domain allowlist, enforced by sandbox-runtime (srt); blocked hosts are audited and surfaced per package, `agent-exec sandbox allow-domain` approves one live (default `api.anthropic.com` only).
 - **`interactive_host`** — which host runs Claude-tier packages in `wave run`: `herdr`, `orca`, or `none` (default `auto`).

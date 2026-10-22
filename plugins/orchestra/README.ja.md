@@ -16,7 +16,7 @@ flowchart TD
     I -->|"EXPRESS: 自己完結した 1 つの変更、<br/>または会話・読み取りのみ"| E["直接処理するか、安いワーカー 1 つに任せ<br/>指示役自身が確認する"]
     E -.->|"途中で範囲が広がった"| O
     I -->|"ORCHESTRATED: それ以外すべて、<br/>判断に迷うとき"| O["orchestra:run スキル<br/>作業を分解し、契約とスクリプトを書く<br/>実装ファイル・ログ・差分は読まない"]
-    O --> W["Workflow スクリプト<br/>(使えなければ orchestra-delegate)"]
+    O --> W["Workflow パイプライン<br/>(使えなければ orchestra-delegate)"]
     W --> L["light クラスの実装役<br/>agent-exec route: 既定は Claude Haiku、<br/>予備は pi"]
     L --> R["orchestra-review<br/>(Sonnet、壊しにいくレビュー)"]
     R -->|"FAIL: 新しいワーカーで<br/>修正 1 回 (ゲートは最大 2 回)"| L
@@ -25,7 +25,7 @@ flowchart TD
 ```
 
 - **2 つのレーン。** `SessionStart` フックがルーターを注入し、指示役は依頼ごとにレーンを判定します。EXPRESS(自己完結した 1 つの変更、または会話・読み取りのみ)は直接処理し、それ以外と判断に迷うものはすべて `orchestra:run` の手順に従います。判定は依頼をまたいで持ち越しません。
-- **2 つの実行経路。** Dynamic Workflows(推奨。指示役が `agent()`/`pipeline()` を使う JavaScript を書く。雛形は `skills/run/SKILL.md`)と、Workflows が使えない環境での `orchestra-delegate` によるサブエージェントの入れ子です。
+- **2 つの実行経路。** Dynamic Workflows(推奨。指示役が同梱の `orchestra:pipeline` をタスク一覧つきで実行する。`skills/run/SKILL.md` §5 を参照)と、Workflows が使えない環境での `orchestra-delegate` によるサブエージェントの入れ子です。
 - **2 回のゲート。** レビューのゲート 1 回に、修正 1 回と差分だけを見る再ゲートが続きます。差し戻しには契約の該当箇所の引用が必須で、契約が求めていない改善は `optional_hardening` に回り、合否には影響しません。
 - **ワーカーの隔離。** 作業ツリーに未コミットの変更があると、`agent-exec dispatch` はワーカーごとに専用の git worktree を用意します。さらにフックが、サブエージェントによる破壊的な VCS コマンドや、利用者のメインの作業ツリーへの書き込みを止めます。
 - **サンドボックスと学習済み許可。** CLI ワーカーには既定で OS サンドボックスを適用します。キャッシュへの拒否は学習でき、それ以外は `needsPermission` として指示役に返り、`agent-exec sandbox allow` で許可します。
@@ -44,7 +44,7 @@ flowchart TD
 
 `agent-exec` CLI(pi への振り分け、ワークツリー隔離、`wave run`、ダッシュボード、フックが使います)は Go で書かれており、初回の実行時にソースからビルドします。[mise](https://mise.jdx.dev/)(`tools/agentexec/.go-version` で固定した Go の版を使います)か、`PATH` 上の Go が必要です。初回の呼び出しで数秒かけてビルドし、バイナリを `~/.cache/claude-orchestra/agent-exec/` に保存します(ソースのハッシュ、OS、CPU アーキテクチャごとに分けます)。`agent-exec doctor`(`/orchestra:setup` が実行します)で事前にビルドできます。
 
-Claude Code の中では shim は不要です。プラグインの `bin/` ディレクトリが Bash ツールの `PATH` に `agent-exec` を載せます。`agent-exec install` が引き続き必要なのは、Claude Code の外で `agent-exec` を名前で呼ぶシェル、つまり pi ワーカーのシェル(pi は子プロセスとして動き、プラグインの `bin/` を受け取りません)とご自身のターミナルです。ランナーは実行中のバイナリを絶対パスで起動し、herdr のペインは Claude Code のセッションを動かすため `bin/` を受け取るので、どちらも shim を必要としません。
+Claude Code の中では shim は不要です。プラグインの `bin/` ディレクトリが Bash ツールの `PATH` に `agent-exec` を載せます。`agent-exec install` が引き続き必要なのは、Claude Code の外で `agent-exec` を名前で呼ぶシェル、つまり pi ワーカーのシェル(pi は子プロセスとして動き、プラグインの `bin/` を受け取るとは限りません)とご自身のターミナルです。ランナーは実行中のバイナリを絶対パスで起動し、herdr のペインは Claude Code のセッションを動かすため `bin/` を受け取るので、どちらも shim を必要としません。
 
 ローカルで開発する場合は、マーケットプレイスのリポジトリのルートをローカルのマーケットプレイスとして追加します:
 
@@ -70,7 +70,7 @@ claude plugin validate .
 コスト階層型の委譲が向いている作業を説明するだけでも、Claude がスキルを自動で呼び出します。手順の中で指示役は次のことを行います:
 
 1. 作業を分解し、タスクごとの契約(文字どおりの仕様、検出すべき誤り、検証コマンド)を定める。
-2. 各タスクを light クラスの実装役 → `orchestra-review` → 最大 1 回の修正と再ゲート、と流す Workflow スクリプトを書く(または再利用する)。設計の裁量があるタスクは `orchestra-deep`(Opus)に回す。
+2. 同梱の Workflow パイプライン(`orchestra:pipeline`)にタスク一覧を渡して実行する。各タスクを light クラスの実装役 → `orchestra-review` → 最大 1 回の修正と再ゲート、と流す。設計の裁量があるタスクは `orchestra-deep`(Opus)に回す。
 3. 生のログや差分、途中の成果物は受け取らず、構造化された判定だけを受け取る。
 
 付属のスキル:
@@ -86,7 +86,7 @@ claude plugin validate .
 設定は 4 つの層を後勝ちで深くマージします: 組み込みの既定値 ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`。プロジェクトの設定ファイルには変えたいキーだけを書けば足ります。マージ結果は `agent-exec config` で確認できます。
 
 - **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。
-- **`external_executors`** — pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、CLI が入っていなければすべて `claude` に振り分けられます。推奨は同梱の `agent-exec` ラッパー(`agent-exec install`)と、`Bash(agent-exec:*)` の許可ルール 1 つです。
+- **`external_executors`** — pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、CLI が入っていなければすべて `claude` に振り分けられます。Claude Code の中では同梱の `agent-exec` ラッパーが既に `PATH` に載っており、`agent-exec install` は Claude Code の外のシェル向けです。推奨は `Bash(agent-exec:*)` の許可ルール 1 つを加えることです。
 - **`tools`** — 実行役のバイナリ(pi、herdr)を決まった版で orchestra 専用の状態ディレクトリに入れます(`agent-exec tools install`)。pi は既定で専用のエージェントディレクトリを使うため、個人の pi の設定はワーカーに届きません。
 - **`sandbox.network`** — herdr ホストの外向き通信を sandbox-runtime(srt)でドメイン許可リストに絞ります。遮断した接続は記録してパッケージごとに表示し、`agent-exec sandbox allow-domain` で動いたまま許可できます(既定は `api.anthropic.com` のみ)。
 - **`interactive_host`** — `wave run` で Claude 系のパッケージを動かすホストを選びます: `herdr`、`orca`、`none`(既定は `auto`)。
