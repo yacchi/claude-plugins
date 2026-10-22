@@ -8,6 +8,7 @@ import { register as registerHud } from './hud.ts'
 import { cleanupWorktrees } from './lifecycle/cleanup-worktrees.ts'
 import { forgetAgent, noteAgent, workerCall } from './lib/agents.ts'
 import type { EnvName, Io } from './lib/io.ts'
+import { recordWorkerBash } from './lib/trace.ts'
 import { routerContext } from './router/inject.ts'
 import { reminderFor } from './router/remind.ts'
 import { turnEditsNudge } from './router/turn-edits.ts'
@@ -98,7 +99,23 @@ export const register: Register = (on, options) => {
             }
         }
 
-        return next(e)
+        if (tool !== 'Bash') {
+            return next(e)
+        }
+        // Time the command itself; the record is written without holding up
+        // the result, which is returned exactly as the tool produced it.
+        const startMs = await io.now().catch(() => Date.now())
+        const result = await next(e)
+        if (await $.env.get('ORCHESTRA_TRACE').catch(() => undefined) !== 'off') {
+            const endMs = await io.now().catch(() => Date.now())
+            const cwd = await io.sessionCwd().catch(() => '')
+            const sessionId = await io.sessionId().catch(() => '')
+            const isError = (result as { isError?: boolean } | undefined)?.isError === true
+            const command = String((e as unknown as Readonly<Record<string, unknown>>).command ?? '')
+            void recordWorkerBash(io, { startMs, endMs, command, cwd, isError, sessionId })
+        }
+
+        return result
     }).catch(($, e, next) => next(e))
 
     on('classic.SubagentStart', ($, e, next) => {
