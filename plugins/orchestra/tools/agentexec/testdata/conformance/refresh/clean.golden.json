@@ -248,6 +248,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
+        "added": 1,
         "baseline": "<SHA#5>",
         "branch": "orchestra/00000000/t1",
         "files": [

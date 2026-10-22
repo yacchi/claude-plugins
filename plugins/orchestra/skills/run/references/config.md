@@ -174,6 +174,21 @@ isolation:
     - .claude/settings.local.json
     - .claude/orchestra.local.yaml
     - CLAUDE.local.md
+  # Dependency/cache directories kept out of every task's change set even
+  # when the repo does not ignore them: never intent-added, diffed, patched,
+  # committed by integrate, or copied into a worker tree from your checkout.
+  # An entry without an inner "/" matches that directory name at any depth;
+  # one with an inner "/" (packages/a/.cache/) is repo-root relative. UNIONED
+  # across layers (a layer adds entries, never drops a default); entries are
+  # normalized ("./x" and "/x" become "x/", entries with ".." are dropped).
+  exclude_paths: [.pnpm-store/, node_modules/, .venv/, __pycache__/, .turbo/, .next/, .gradle/, .terraform/]
+  # Escape hatch, also unioned: every entry here is removed from exclude_paths
+  # (e.g. keep_paths: [node_modules/] for a repo that vendors node_modules).
+  keep_paths: []
+  # A task adding more new files than this is refused by `isolate integrate`
+  # (task status "refused" with a reason, exit 7; the other tasks still land)
+  # and becomes an `oversized` need in a wave run. 0 disables the limit.
+  max_added_files: 500
 
 # Nudges and guards, never hard walls - see the `enforcement` paragraphs below
 # for the escape hatches. NOTE: quote "off" - YAML 1.1 parses a bareword `off`

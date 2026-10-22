@@ -176,10 +176,16 @@ func sameContent(path, ref string, files []string) bool {
 
 // uncommitted is what the tree at path holds beyond HEAD: index and working
 // tree changes, untracked non-ignored files included (made visible to `git
-// diff` as intent-to-add, as Diff does).
+// diff` as intent-to-add, as Diff does), excluded directories left out as
+// Diff leaves them out.
 func uncommitted(path string) ([]string, error) {
-	_, _ = gitx.Run(path, "add", "-A", "-N")
-	out, err := gitx.Run(path, "diff", "--name-only", "--no-renames", "-z", "HEAD")
+	return uncommittedWith(path, CurrentFilter())
+}
+
+func uncommittedWith(path string, f ChangeFilter) ([]string, error) {
+	spec := f.Pathspec()
+	_, _ = gitx.Run(path, append([]string{"add", "-A", "-N"}, spec...)...)
+	out, err := gitx.Run(path, append([]string{"diff", "--name-only", "--no-renames", "-z", "HEAD"}, spec...)...)
 	if err != nil {
 		return nil, err
 	}

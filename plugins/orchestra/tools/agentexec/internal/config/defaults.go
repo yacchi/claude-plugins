@@ -15,6 +15,17 @@ var DefaultQuietDomains = []string{
 // DefaultAllowedDomains is the only host a hosted Claude Code session needs.
 var DefaultAllowedDomains = []string{"api.anthropic.com"}
 
+// DefaultExcludePaths are dependency and cache directories kept out of every
+// task's change set even when the repository does not ignore them: an entry
+// without an inner "/" matches that directory name at any depth.
+var DefaultExcludePaths = []string{
+	".pnpm-store/", "node_modules/", ".venv/", "__pycache__/", ".turbo/", ".next/", ".gradle/", ".terraform/",
+}
+
+// DefaultMaxAddedFiles is how many new files one task may add before
+// integrate refuses it (0 = no limit).
+const DefaultMaxAddedFiles = 500
+
 // ToolOrder and ClassOrder are the built-in tools and worker classes in the
 // order listings present them (see OrderedKeys).
 var (
@@ -145,6 +156,9 @@ func Defaults() map[string]any {
 			"carry_extra", []any{},
 			"carry_files", strs(".claude/settings.local.json", ".claude/orchestra.local.yaml",
 				"CLAUDE.local.md"),
+			"exclude_paths", strs(DefaultExcludePaths...),
+			"keep_paths", []any{},
+			"max_added_files", int64(DefaultMaxAddedFiles),
 		),
 		"checks", obj(
 			"max_parallel", int64(2),
