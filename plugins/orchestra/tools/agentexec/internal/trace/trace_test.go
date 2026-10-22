@@ -115,3 +115,15 @@ func TestLoad1IsReadOnDarwin(t *testing.T) {
 		t.Fatalf("load1 = %v", v)
 	}
 }
+
+func TestTestBinaryWritesOnlyToAnExplicitDir(t *testing.T) {
+	t.Setenv("ORCHESTRA_TRACE", "")
+	t.Setenv("ORCHESTRA_TRACE_DIR", "")
+	if Enabled() {
+		t.Fatal("a test binary without ORCHESTRA_TRACE_DIR would write to the real log")
+	}
+	t.Setenv("ORCHESTRA_TRACE_DIR", t.TempDir())
+	if !Enabled() {
+		t.Fatal("an explicit ORCHESTRA_TRACE_DIR must enable tracing in tests")
+	}
+}
