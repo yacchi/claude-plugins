@@ -95,9 +95,9 @@ func Blocked(p *Plan, st Status) map[string]string {
 }
 
 // Select returns the ids ready to start now, most eligible first (highest
-// prio, then plan order), capped by limit minus the packages in flight. A
-// candidate whose files_owned overlap an in-flight or already selected
-// package is held back.
+// prio, then the longest dependent chain below it, then plan order), capped
+// by limit minus the packages in flight. A candidate whose files_owned
+// overlap an in-flight or already selected package is held back.
 func Select(p *Plan, st Status, limit int) []string {
 	blocked := Blocked(p, st)
 	inFlightCount := 0
@@ -131,7 +131,23 @@ func Select(p *Plan, st Status, limit int) []string {
 			candidates = append(candidates, pkg)
 		}
 	}
-	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].Prio > candidates[j].Prio })
+	// One unit per selection: seconds only when every candidate's chain is
+	// timed, so seconds are never compared with counts.
+	c := chainsOf(p)
+	chain := c.own
+	for _, pkg := range candidates {
+		if !c.timed[pkg.ID] {
+			chain = c.count
+			break
+		}
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
+		if a.Prio != b.Prio {
+			return a.Prio > b.Prio
+		}
+		return chain[a.ID] > chain[b.ID]
+	})
 
 	selected := []string{}
 	var selectedFiles [][]string
@@ -146,6 +162,75 @@ func Select(p *Plan, st Status, limit int) []string {
 		selectedFiles = append(selectedFiles, pkg.FilesOwned)
 	}
 	return selected
+}
+
+// chains holds, per package, the longest chain of packages that transitively
+// depend on it, the package itself not counted.
+type chains struct {
+	own   map[string]float64 // seconds when timed, else count
+	count map[string]float64 // number of packages
+	timed map[string]bool    // every package below has est_seconds
+}
+
+// CriticalPath maps each package to the length of the longest chain of
+// packages that transitively depend on it, the package itself not counted:
+// the sum of their est_seconds when every package below it has one, else
+// their count.
+func CriticalPath(p *Plan) map[string]float64 {
+	return chainsOf(p).own
+}
+
+// chainsOf is computed once per plan and again only after packages were
+// appended.
+func chainsOf(p *Plan) *chains {
+	if p.chain != nil && p.chainN == len(p.Packages) {
+		return p.chain
+	}
+	index := make(map[string]int, len(p.Packages))
+	for i, pkg := range p.Packages {
+		index[pkg.ID] = i
+	}
+	dependents := make([][]int, len(p.Packages))
+	for i, pkg := range p.Packages {
+		for _, dep := range pkg.DependsOn {
+			if d, ok := index[dep]; ok {
+				dependents[d] = append(dependents[d], i)
+			}
+		}
+	}
+	count := make([]float64, len(p.Packages))
+	secs := make([]float64, len(p.Packages))
+	timed := make([]bool, len(p.Packages))
+	done := make([]bool, len(p.Packages))
+	var visit func(i int)
+	visit = func(i int) {
+		if done[i] {
+			return
+		}
+		done[i] = true // Load rejects cycles; this also guards against one
+		timed[i] = true
+		for _, d := range dependents[i] {
+			visit(d)
+			count[i] = max(count[i], 1+count[d])
+			secs[i] = max(secs[i], p.Packages[d].EstSeconds+secs[d])
+			timed[i] = timed[i] && timed[d] && p.Packages[d].EstSeconds > 0
+		}
+	}
+	c := &chains{
+		own:   make(map[string]float64, len(p.Packages)),
+		count: make(map[string]float64, len(p.Packages)),
+		timed: make(map[string]bool, len(p.Packages)),
+	}
+	for i, pkg := range p.Packages {
+		visit(i)
+		c.count[pkg.ID], c.timed[pkg.ID] = count[i], timed[i]
+		c.own[pkg.ID] = count[i]
+		if timed[i] {
+			c.own[pkg.ID] = secs[i]
+		}
+	}
+	p.chain, p.chainN = c, len(p.Packages)
+	return c
 }
 
 func overlapsAny(files []string, others [][]string) bool {

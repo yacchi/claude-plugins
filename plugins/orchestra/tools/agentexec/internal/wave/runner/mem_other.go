@@ -2,5 +2,5 @@
 
 package runner
 
-// physicalMemory is unknown off darwin/linux: the default width applies.
-func physicalMemory() uint64 { return 0 }
+// probeMemoryPressure has no probe off darwin/linux: starts are never held.
+func probeMemoryPressure() (bool, string) { return false, "" }

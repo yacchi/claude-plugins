@@ -26,6 +26,10 @@ var DefaultExcludePaths = []string{
 // integrate refuses it (0 = no limit).
 const DefaultMaxAddedFiles = 500
 
+// DefaultUsageEvery is how many integrated packages `wave run` lets pass
+// between two usage notices.
+const DefaultUsageEvery = 10
+
 // ToolOrder and ClassOrder are the built-in tools and worker classes in the
 // order listings present them (see OrderedKeys).
 var (
@@ -161,6 +165,12 @@ func Defaults() map[string]any {
 			"max_added_files", int64(DefaultMaxAddedFiles),
 		),
 		"throttle", obj("heavy_slots", "auto", "heavy_extra", []any{}),
+		"wave", obj(
+			"max_in_flight", "auto",
+			"memory_guard", true,
+			"usage_every", int64(DefaultUsageEvery),
+			"budget_usd", int64(0),
+		),
 		"checks", obj(
 			"max_parallel", int64(2),
 			"items", []any{},

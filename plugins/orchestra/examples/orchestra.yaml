@@ -228,6 +228,18 @@ isolation:
 #   heavy_extra: []       # extra regexes, unioned across layers,
 #                         # e.g. ['^make (check|test)\b']
 
+# `agent-exec wave run` starts every package that may start and keeps
+# flowing until the plan is done, `wave stop`, or a budget agreed up front
+# (see `references/config.md` §9). Machine load is handled by `throttle`
+# and the memory guard, never by lowering max_in_flight.
+# wave:
+#   max_in_flight: auto   # auto = every startable package; an integer caps it
+#   memory_guard: true    # hold new starts while the OS reports memory pressure
+#   usage_every: 10       # a `usage` notice (WAVE_EVENT=usage) every N integrated packages
+#   budget_usd: 0         # stop new starts at this estimated run cost (needs --run-id); 0 = none
+#   verify_mode: final    # final | gated
+#   converge_rounds: 2
+
 # `agent-exec check` runs these config-declared lint/test commands over a
 # tree's changed files (see `references/config.md` §4 for full semantics).
 # `items` is a LIST: a higher config layer replaces it whole, it is never
