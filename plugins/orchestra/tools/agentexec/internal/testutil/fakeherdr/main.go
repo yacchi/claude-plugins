@@ -26,7 +26,8 @@
 // {"status": "ok"}. `server` marks the server running and exits.
 //
 // orca scenario keys: status_ok (default true), trust (the folder-trust
-// dialog shows first), never_ready, prompts: {pkg: [{files: {rel: body},
+// dialog shows first), never_ready, parent_fails (`worktree set` fails),
+// prompts: {pkg: [{files: {rel: body},
 // result: {...}, after_waits: n, dialog: bool}]}. Worktrees are real `git
 // worktree add`s under $FAKEHERDR_DIR/workspaces.
 package main

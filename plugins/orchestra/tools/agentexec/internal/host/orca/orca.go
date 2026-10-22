@@ -4,7 +4,8 @@
 // Each package gets an Orca-created worktree (`orca worktree create`; Orca
 // cannot open a terminal in a tree it did not create), adopted as task
 // `pkg-<id>` (isolate.Adopt) so diff/check/refresh/integrate reach it by
-// task id. Completion is signalled only by the result file: `terminal wait
+// task id, and nested under the caller's checkout in Orca's sidebar
+// (`worktree set --parent-worktree`, best effort). Completion is signalled only by the result file: `terminal wait
 // --for tui-idle` can report idle before the TUI started or while a dialog
 // is up. Sessions persist in `<state dir>/orca-sessions.json`.
 package orca
@@ -479,6 +480,13 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	path, _ := wt["path"].(string)
 	if st, err := os.Stat(path); path == "" || err != nil || !st.IsDir() {
 		return nil, host.Need(host.KindError, "orca worktree create returned no usable path")
+	}
+	// Nest the tree under the caller's checkout in Orca's sidebar, which
+	// always lists Orca-created trees. Set after create so a checkout Orca
+	// does not know cannot fail the package.
+	if _, err := e.call(ctx, callTimeout, "worktree", "set", "--worktree", "path:"+path,
+		"--parent-worktree", "path:"+repo); err != nil {
+		e.warnf("could not nest %s under %s: %v", path, repo, err)
 	}
 	s := &host.Session{Pkg: pkgID, Name: e.Name(), Worktree: path, Extra: map[string]any{
 		"branch": wt["branch"], "request_ids": []any{}, "repo": repo, "model": model, "cls": cls,
