@@ -13,18 +13,18 @@ type Context = { additionalContext?: string[] }
 const begin = ($: any, sessionId: string, model?: string, source = 'startup'): Promise<Context> =>
     $.classic.SessionStart({ session_id: sessionId, source, ...(model ? { model } : {}) })
 
-const prompt = ($: any, sessionId: string): Promise<Context> =>
-    $.classic.UserPromptSubmit({ session_id: sessionId, prompt: 'y' })
+// Every edit names a file of its own unless `file` is given.
+let fileSeq = 0
 
 // The nudges handed back over `n` edits of one turn.
-const edits = async ($: any, n: number, sessionId: string, promptId: string | undefined, tool = 'Edit', agentId?: string) => {
+const edits = async ($: any, n: number, sessionId: string, promptId: string | undefined, tool = 'Edit', agentId?: string, file?: string) => {
     const said: string[] = []
     for (let i = 0; i < n; i++) {
         const r: Context = await $.classic.PostToolUse({
             session_id: sessionId,
             ...(promptId ? { prompt_id: promptId } : {}),
             ...(agentId ? { agent_id: agentId, agent_type: 'orchestra:orchestra-light' } : {}),
-            tool_name: tool, tool_input: { file_path: '/tmp/x.ts' }, tool_response: {}, tool_use_id: `t${i}`,
+            tool_name: tool, tool_input: { file_path: file ?? `/tmp/f${fileSeq++}.ts` }, tool_response: {}, tool_use_id: `t${i}`,
         })
         said.push(...(r.additionalContext ?? []))
     }
@@ -47,17 +47,6 @@ describe('router', () => {
         expect((await begin($, 's-fork', 'claude-opus-5', 'fork')).additionalContext ?? []).toEqual([])
     })
 
-    test('the per-prompt reminder follows the session verdict', async ($, on) => {
-        host(on)
-        await begin($, 's-opus', 'claude-opus-5')
-        await begin($, 's-sonnet', 'claude-sonnet-5')
-        const instructor = (await prompt($, 's-opus')).additionalContext ?? []
-        expect(instructor[0]).toContain('<orchestra-router-reminder>')
-        expect(instructor[0]).not.toContain('Applies ONLY')
-        expect((await prompt($, 's-sonnet')).additionalContext ?? []).toEqual([])
-        expect((await prompt($, 's-never-started')).additionalContext?.[0]).toContain('Applies ONLY')
-    })
-
     test('turn edits: stage 1 at the threshold, stage 2 at twice it, once each per turn', async ($, on) => {
         host(on)
         await begin($, 's1', 'claude-opus-5')
@@ -73,6 +62,15 @@ describe('router', () => {
         expect(await edits($, 5, 's1', 'p1'), 'stage 2 once per turn').toEqual([])
         expect(await edits($, 7, 's1', 'p2'), 'the counter resets on a new turn').toEqual([])
         expect((await edits($, 9, 's1', 'p2')).length, 'a new turn nudges again').toBe(2)
+    })
+
+    test('turn edits: counts distinct files, not calls', async ($, on) => {
+        host(on)
+        await begin($, 's1', 'claude-opus-5')
+        expect(await edits($, 20, 's1', 'p1', 'Edit', undefined, '/repo/a.ts'), 'one file, many edits').toEqual([])
+        expect(await edits($, 6, 's1', 'p1'), 'six more files: seven in all').toEqual([])
+        expect((await edits($, 1, 's1', 'p1')).length, 'the eighth file').toBe(1)
+        expect(await edits($, 1, 's1', 'p1', 'Edit', undefined, '/repo/a.ts'), 'a repeat of a counted file').toEqual([])
     })
 
     test('turn edits: what counts and where', async ($, on) => {
@@ -137,7 +135,7 @@ const startIn = ($: any, sessionId: string, cwd: string, model?: string): Promis
     $.classic.SessionStart({ session_id: sessionId, source: 'startup', cwd, ...(model ? { model } : {}) })
 
 describe('router: hosted workers', () => {
-    test('a worker gets the worker notice on any model, with no reminder or nudge', async ($, on) => {
+    test('a worker gets the worker notice on any model, and no nudge', async ($, on) => {
         tasks(on)
         for (const [sessionId, model] of [['w-opus', 'claude-opus-5'], ['w-sonnet', 'claude-sonnet-5'], ['w-none', undefined]] as const) {
             const said = (await startIn($, sessionId, '/work/task-a', model)).additionalContext ?? []
@@ -145,7 +143,6 @@ describe('router: hosted workers', () => {
             expect(said[0]).toContain('<orchestra-worker>')
             expect(said[0]).toContain('/work/task-a')
             expect(said[0]).not.toContain('<orchestra-router>')
-            expect((await prompt($, sessionId)).additionalContext ?? [], 'no reminder').toEqual([])
             expect(await edits($, 20, sessionId, 'p1'), 'no nudge').toEqual([])
         }
     })

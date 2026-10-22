@@ -31,7 +31,7 @@ describe('opus-generalist', () => {
         expect((await spawn($, { ...generic, model: 'opus' })).deny, 'one deny per session, full stop').toBeUndefined()
     })
 
-    for (const args of [{ ...generic, model: 'opus' }, { model: 'claude-opus-5-5' }, { ...generic, model: 'fable' }]) {
+    for (const args of [{ ...generic, model: 'fable' }, { model: 'claude-fable-5-1' }]) {
         test(`instructor class: ${JSON.stringify(args)}`, async ($, on) => {
             const { sessionId } = host(on)
             await begin($, sessionId, 'claude-opus-5')
@@ -45,6 +45,8 @@ describe('opus-generalist', () => {
         const allowed: Record<string, unknown>[] = [
             { ...generic, model: 'sonnet' },
             { ...generic, model: 'haiku' },
+            { ...generic, model: 'opus' },
+            { model: 'claude-opus-5-5' },
             { subagent_type: 'Explore' },
             { subagent_type: 'orchestra:orchestra-deep' },
             { ...generic, model: 'opus', prompt: '[orchestra:allow-opus: needs the deep model] audit' },

@@ -117,7 +117,7 @@ Log in to either provider with `agent-exec pi login --provider <id>` (Claude run
 | `skills/setup/`, `skills/cleanup/`, `skills/ui/` | Companion skills |
 | `tools/agent-exec` | Bootstrap for the `agent-exec` CLI: builds `tools/agentexec/` on first use and runs the cached binary |
 | `tools/agentexec/` | The `agent-exec` CLI (Go): route, dispatch, isolate, shelf, wave, ui, telemetry, managed executor binaries (pinned pi and herdr), the herdr/Orca interactive hosts, … |
-| `hooks/` | Router injection and reminder, turn-size tripwire, worker VCS/tree/lease guards, Opus-generalist nudge, worktree cleanup |
+| `hooks/` | Router injection, turn-size tripwire, worker VCS/tree/lease guards, Opus-generalist nudge, worktree cleanup |
 | `examples/orchestra.yaml` | Sample configuration |
 
 Per-file detail: [`docs/components.md`](docs/components.md).

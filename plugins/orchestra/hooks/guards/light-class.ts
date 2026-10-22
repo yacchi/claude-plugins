@@ -78,7 +78,7 @@ const reason = (s: SessionState): string => {
     const target = s.executor || 'an external executor'
     const detail = s.model ? ` (model ${s.model}${s.effort ? `, effort ${s.effort}` : ''})` : ''
 
-    return `orchestra: enforcement.light_class=block prefers ${target}${detail} over a direct Claude Haiku subagent for light-class work. Use: agent-exec dispatch --class light --prompt-file <prompt-file> --workdir <workdir> --capture -- one call, replaces the manual multi-step relay. This nudge fires at most ONCE per session: every further orchestra-light/Haiku call this session -- this same task, a retry with feedback, or an unrelated task -- will be allowed automatically from here on. To bypass permanently for a legitimate reason (e.g. you need a named subagent for fine-grained tool control or a specialized system prompt, which an external executor has no equivalent for), add [orchestra:allow-claude: <reason>] to the prompt.`
+    return `orchestra: enforcement.light_class=block prefers ${target}${detail} over a direct Claude Haiku subagent for light-class work. Route the task through the orchestra:run skill (its Workflow, or the orchestra-delegate subagent when Workflows are unavailable), which dispatches it detached; a foreground agent-exec dispatch in your own Bash dies at the 600 s Bash limit. This nudge fires at most once per session: every further orchestra-light/Haiku call this session -- this same task, a retry with feedback, or an unrelated task -- is allowed from here on. If you need a named subagent for fine-grained tool control or a specialized system prompt (an external executor has no equivalent), add [orchestra:allow-claude: <reason>] to the prompt.`
 }
 
 export const checkLightClass = async (
