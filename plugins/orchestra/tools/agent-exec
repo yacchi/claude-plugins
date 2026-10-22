@@ -33,7 +33,9 @@ fi
 SRC="$DIR/agentexec"
 
 # The cache key covers everything the binary is built from: module files,
-# the toolchain pin, and every non-test Go file (names and contents).
+# the toolchain pin, every non-test Go file (names and contents), and the
+# OS and CPU arch it is built for, so a cache shared across machines never
+# runs a binary built for another platform.
 source_hash() {
     (
         cd "$SRC" || exit 1
@@ -42,7 +44,7 @@ source_hash() {
                -o -name .go-version -o -path '*/assets/*' \) \
             ! -path '*/testdata/*' | LC_ALL=C sort)
         # shellcheck disable=SC2086 # file names have no spaces
-        { printf '%s\n' "$files"; cat $files; } | sha256
+        { printf 'platform: %s %s\n' "$(uname -s)" "$(uname -m)"; printf '%s\n' "$files"; cat $files; } | sha256
     )
 }
 
