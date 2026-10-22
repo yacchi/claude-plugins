@@ -11,7 +11,6 @@ import type { EnvName, Io } from './lib/io.ts'
 import { withHeavySlot } from './lib/slot.ts'
 import { recordWorkerBash } from './lib/trace.ts'
 import { routerContext } from './router/inject.ts'
-import { reminderFor } from './router/remind.ts'
 import { turnEditsNudge } from './router/turn-edits.ts'
 import { verdictOf } from './router/verdict.ts'
 
@@ -60,9 +59,6 @@ export const register: Register = (on, options) => {
         await next(e),
         await routerContext(ioOf($), e.source, e.session_id, e.model, e.cwd),
     ))
-        .catch(($, e, next) => next(e))
-
-    on('classic.UserPromptSubmit', async ($, e, next) => withContext(await next(e), reminderFor(e.session_id)))
         .catch(($, e, next) => next(e))
 
     on('tool.call', async ($, e, next) => {

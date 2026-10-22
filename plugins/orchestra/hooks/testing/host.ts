@@ -210,7 +210,7 @@ export const fakeHost = (on: On, options: HostOptions) => {
         return { value: undefined }
     })
     on('tool.call', () => ({ result: 'ran' }))
-    for (const event of ['SessionStart', 'UserPromptSubmit', 'SubagentStart', 'SubagentStop', 'PostToolUse', 'PostToolUseFailure', 'SessionEnd'] as const) {
+    for (const event of ['SessionStart', 'SubagentStart', 'SubagentStop', 'PostToolUse', 'PostToolUseFailure', 'SessionEnd'] as const) {
         on(`classic.${event}`, () => ({}))
     }
     const clock = mock.clock(on, { now: options.now ?? 1_000_000 })
