@@ -285,8 +285,9 @@ func Resolve(cfg *config.Resolved, ready map[string]readiness.ExecReady, cls, ar
 	r.Executor = winner
 	r.Remaining = append([]string{}, cands[idx+1:]...)
 	if winner == "claude" {
-		model := cfg.Section("tiers")[cls]
-		r.Dispatch, r.Model = "claude", model
+		model, effort := config.Tier(cfg, cls)
+		r.Dispatch, r.Model, r.Effort = "claude", nullIfEmpty(model), nullIfEmpty(effort)
+		r.AgentType = nullIfEmpty(claudeAgentType[cls])
 		return r
 	}
 	ecfg := config.ObjectAt(external, winner)
@@ -299,6 +300,23 @@ func Resolve(cfg *config.Resolved, ready map[string]readiness.ExecReady, cls, ar
 		r.AgentType = ecfg["agent_type"]
 	}
 	return r
+}
+
+// claudeAgentType maps a class to the plugin subagent a Claude winner runs
+// as; classes absent here (independent-review) have none.
+var claudeAgentType = map[string]string{
+	"light":    "orchestra:orchestra-light",
+	"standard": "orchestra:orchestra-light",
+	"deep":     "orchestra:orchestra-deep",
+	"review":   "orchestra:orchestra-review",
+}
+
+// nullIfEmpty is the JSON null for an unset route field.
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // show formats a nullable route field for text output: nil as "-".
@@ -317,8 +335,8 @@ func FormatText(r Route) string {
 	fmt.Fprintf(&b, "class: %s (archetype: %s)\n", r.Class, r.Archetype)
 	fmt.Fprintf(&b, "candidates: %s\n", strings.Join(r.Candidates, ", "))
 	if r.Routable() {
-		fmt.Fprintf(&b, "resolved: %s (dispatch=%s model=%s effort=%s)\n",
-			r.Executor, show(r.Dispatch), show(r.Model), show(r.Effort))
+		fmt.Fprintf(&b, "resolved: %s (dispatch=%s model=%s effort=%s agent_type=%s)\n",
+			r.Executor, show(r.Dispatch), show(r.Model), show(r.Effort), show(r.AgentType))
 	} else {
 		b.WriteString("resolved: UNROUTABLE\n")
 	}

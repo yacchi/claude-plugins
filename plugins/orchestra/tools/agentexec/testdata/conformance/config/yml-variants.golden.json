@@ -52,7 +52,7 @@
                 "model": "openai-codex/gpt-5.6-luna"
               },
               "standard": {
-                "effort": "medium",
+                "effort": "high",
                 "model": "openai-codex/gpt-5.6-luna"
               }
             },
@@ -200,7 +200,10 @@
         "tiers": {
           "deep": "from-local-yaml",
           "light": "from-user-yml",
-          "review": "sonnet",
+          "review": {
+            "effort": "medium",
+            "model": "sonnet"
+          },
           "standard": "from-project-yml"
         },
         "tools": {

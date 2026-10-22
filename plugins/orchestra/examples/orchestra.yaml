@@ -32,12 +32,23 @@
 # Both live here so the whole tier vocabulary is in one place. Used wherever the
 # run skill routes work by class/role.
 tiers:
+  # Each tier is either a model string (effort unset) or an object
+  # { model: <alias>, effort: low|medium|high|xhigh|max }. The effort is passed
+  # to the Claude subagent that `agent-exec route` names for the class.
   # implementation capability classes (cheapest/fastest -> hardest)
-  light: haiku       # fast, mechanical, fully-specified work
-  standard: haiku    # normal implementation with modest design latitude
-  deep: opus         # design-sensitive / hard problems needing real judgment
+  light:             # fast, mechanical, fully-specified work
+    model: haiku
+    effort: medium
+  standard:          # normal implementation with modest design latitude
+    model: haiku
+    effort: high
+  deep:              # design-sensitive / hard problems needing real judgment
+    model: opus
+    effort: medium
   # verification role
-  review: sonnet     # mandatory same-run adversarial review of the work
+  review:            # mandatory same-run adversarial review of the work
+    model: sonnet
+    effort: medium
   # `independent-review` has no built-in Claude model on purpose — it exists to
   # add a DIFFERENT provider's eyes; see `priority.independent-review` below.
 
@@ -74,7 +85,7 @@ external_executors:
         effort: medium
       standard:
         model: openai-codex/gpt-5.6-luna
-        effort: medium
+        effort: high
       deep:
         model: openai-codex/gpt-6.1-sol
         effort: high
