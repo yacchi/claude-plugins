@@ -29,7 +29,7 @@ describe('light-class', () => {
     test('denies the first direct Haiku spawn once, then never again this session', async ($, on) => {
         const h = host(on, PI)
         const first = await spawn($, haiku)
-        expect(first.deny).toContain('agent-exec dispatch --class light')
+        expect(first.deny).toContain('orchestra:run skill')
         expect(first.deny).toContain('prefers pi (model openai-codex/gpt-5.6-luna, effort medium)')
         const asked = execs(h.runs)
         expect((await spawn($, haiku)).deny, 'identical retry').toBeUndefined()
