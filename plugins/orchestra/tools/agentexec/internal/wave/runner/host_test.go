@@ -177,7 +177,7 @@ func TestInteractiveHostSelection(t *testing.T) {
 	eq(t, "no host started", len(herdrHost.started)+len(orcaHost.started), 0)
 	eq(t, "width", w.details("max-in-flight", "")[0]["source"], any("auto"))
 
-	// auto prefers herdr, and herdr widens max_in_flight: auto.
+	// auto prefers herdr.
 	w2 := newWaveRepo(t)
 	w2.verifyMode = "final"
 	w2.plan(pkgDef{id: "A"})
@@ -187,7 +187,6 @@ func TestInteractiveHostSelection(t *testing.T) {
 	_, code = w2.runWithHost(ex, Deps{Herdr: herdrHost, Orca: orcaHost})
 	eq(t, "exit", code, 0)
 	eq(t, "herdr started", len(herdrHost.started), 1)
-	eq(t, "auto width", w2.details("max-in-flight", "")[0]["value"], any(float64(autoMaxInFlight())))
 
 	// An `enabled: true` host that is unreachable stops the run up front.
 	w3 := newWaveRepo(t)
@@ -207,13 +206,13 @@ func TestMaxInFlightResolution(t *testing.T) {
 		name   string
 		option int
 		config string
-		want   int
+		want   any
 		source string
 	}{
-		{"option wins", 3, "wave:\n  max_in_flight: 5\n", 3, "option"},
-		{"config", 0, "wave:\n  max_in_flight: 5\n", 5, "config"},
-		{"config auto", 0, "wave:\n  max_in_flight: auto\n", 4, "auto"},
-		{"default", 0, "", 4, "auto"},
+		{"option wins", 3, "wave:\n  max_in_flight: 5\n", float64(3), "option"},
+		{"config", 0, "wave:\n  max_in_flight: 5\n", float64(5), "config"},
+		{"config auto", 0, "wave:\n  max_in_flight: auto\n", "auto (unbounded)", "auto"},
+		{"default", 0, "", "auto (unbounded)", "auto"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			w := newWaveRepo(t)
@@ -222,34 +221,8 @@ func TestMaxInFlightResolution(t *testing.T) {
 			w.run(newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}}),
 				func(o *Options) { o.MaxInFlight = c.option })
 			d := w.details("max-in-flight", "")[0]
-			eq(t, "value", d["value"], any(float64(c.want)))
+			eq(t, "value", d["value"], c.want)
 			eq(t, "source", d["source"], any(c.source))
-		})
-	}
-}
-
-func TestMaxInFlightAutoByHost(t *testing.T) {
-	for _, c := range []struct {
-		host string // "" = no interactive host
-		want int
-	}{
-		{"herdr", autoMaxInFlight()},
-		{"orca", autoMaxInFlight()},
-		{"other", defaultMaxInFlight},
-		{"", defaultMaxInFlight},
-	} {
-		t.Run("host="+c.host, func(t *testing.T) {
-			w := newWaveRepo(t)
-			w.plan(pkgDef{id: "A"})
-			ex := newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}})
-			if c.host == "" {
-				w.run(ex)
-			} else {
-				w.runWithHost(ex, Deps{Host: newFakeHost(c.host)})
-			}
-			d := w.details("max-in-flight", "")[0]
-			eq(t, "value", d["value"], any(float64(c.want)))
-			eq(t, "source", d["source"], any("auto"))
 		})
 	}
 }

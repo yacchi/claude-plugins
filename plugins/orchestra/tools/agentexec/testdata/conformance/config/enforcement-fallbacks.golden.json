@@ -244,6 +244,12 @@
             "light": 1200,
             "standard": 2400
           }
+        },
+        "wave": {
+          "budget_usd": 0,
+          "max_in_flight": "auto",
+          "memory_guard": true,
+          "usage_every": 10
         }
       }
     },
@@ -490,6 +496,12 @@
             "light": 1200,
             "standard": 2400
           }
+        },
+        "wave": {
+          "budget_usd": 0,
+          "max_in_flight": "auto",
+          "memory_guard": true,
+          "usage_every": 10
         }
       }
     },
@@ -736,6 +748,12 @@
             "light": 1200,
             "standard": 2400
           }
+        },
+        "wave": {
+          "budget_usd": 0,
+          "max_in_flight": "auto",
+          "memory_guard": true,
+          "usage_every": 10
         }
       }
     },
@@ -982,6 +1000,12 @@
             "light": 1200,
             "standard": 2400
           }
+        },
+        "wave": {
+          "budget_usd": 0,
+          "max_in_flight": "auto",
+          "memory_guard": true,
+          "usage_every": 10
         }
       }
     }

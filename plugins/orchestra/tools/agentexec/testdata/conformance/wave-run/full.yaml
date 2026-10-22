@@ -26,6 +26,8 @@ setup:
       sandbox:
         mode: off
       interactive_host: none
+      wave:
+        memory_guard: false
     ~/gated-root/.claude/orchestra.yaml: |
       wave:
         verify_mode: gated

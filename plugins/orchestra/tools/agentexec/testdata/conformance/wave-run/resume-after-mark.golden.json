@@ -140,7 +140,7 @@
           "content": [
             {
               "at": "<AT>",
-              "detail": "{\"source\":\"auto\",\"value\":4}",
+              "detail": "{\"source\":\"auto\",\"value\":\"auto (unbounded)\"}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,
@@ -196,7 +196,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"source\":\"auto\",\"value\":4}",
+              "detail": "{\"source\":\"auto\",\"value\":\"auto (unbounded)\"}",
               "event": "max-in-flight",
               "from": null,
               "pkg": null,

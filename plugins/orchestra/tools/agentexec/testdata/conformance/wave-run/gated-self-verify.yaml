@@ -25,6 +25,7 @@ setup:
         mode: off
       interactive_host: none
       wave:
+        memory_guard: false
         verify_mode: gated
       checks:
         items:
