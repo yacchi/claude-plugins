@@ -38,7 +38,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: independent-review (archetype: default)\ncandidates: pi\nresolved: pi (dispatch=cli model=openai-codex/gpt-6.1-sol effort=medium)\ncooldown: BYPASSED (all candidates were cooled down)\nsource: priority\n"
+      "stdout": "agent-exec route\n-----------------\nclass: independent-review (archetype: default)\ncandidates: pi\nresolved: pi (dispatch=cli model=openai-codex/gpt-6.1-sol effort=medium agent_type=-)\ncooldown: BYPASSED (all candidates were cooled down)\nsource: priority\n"
     },
     {
       "argv": [

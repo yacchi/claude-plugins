@@ -61,7 +61,7 @@
                 "model": "openai-codex/gpt-5.6-luna"
               },
               "standard": {
-                "effort": "medium",
+                "effort": "high",
                 "model": "openai-codex/gpt-5.6-luna"
               }
             },
@@ -212,7 +212,10 @@
           "deep": "sonnet",
           "light": "sonnet",
           "review": "haiku",
-          "standard": "haiku"
+          "standard": {
+            "effort": "high",
+            "model": "haiku"
+          }
         },
         "tools": {
           "herdr": {

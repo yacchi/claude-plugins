@@ -52,7 +52,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "default",
         "candidates": [
           "offexec",
@@ -65,7 +65,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "high",
         "executor": "claude",
         "model": "haiku",
         "remaining": [],
@@ -103,7 +103,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "investigation",
         "candidates": [
           "offexec",
@@ -116,7 +116,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "high",
         "executor": "claude",
         "model": "haiku",
         "remaining": [],
@@ -187,7 +187,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-review",
         "archetype": "default",
         "candidates": [
           "pi",
@@ -197,7 +197,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "medium",
         "executor": "claude",
         "model": "sonnet",
         "remaining": [],
@@ -221,7 +221,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: offexec, nopolicy, agentexec, weird, claude\nresolved: claude (dispatch=claude model=haiku effort=-)\nskipped:\n  - offexec: unknown-executor:offexec\n  - nopolicy: unknown-executor:nopolicy\n  - agentexec: unknown-executor:agentexec\n  - weird: unknown-executor:weird\nsource: priority\n"
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: offexec, nopolicy, agentexec, weird, claude\nresolved: claude (dispatch=claude model=haiku effort=high agent_type=orchestra:orchestra-light)\nskipped:\n  - offexec: unknown-executor:offexec\n  - nopolicy: unknown-executor:nopolicy\n  - agentexec: unknown-executor:agentexec\n  - weird: unknown-executor:weird\nsource: priority\n"
     }
   ]
 }

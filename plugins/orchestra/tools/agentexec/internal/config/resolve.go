@@ -149,6 +149,9 @@ func Resolve() (*Resolved, error) {
 		values = DeepMerge(values, data)
 	}
 	normalize(values, u)
+	if err := validateTiers(values); err != nil {
+		return nil, err
+	}
 	return &Resolved{Values: values, Layers: layers, Root: base}, nil
 }
 

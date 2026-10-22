@@ -17,7 +17,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "isolated",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -45,7 +45,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -93,7 +93,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "isolated",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -121,7 +121,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -171,7 +171,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "isolated",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -199,7 +199,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -261,7 +261,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "isolated",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -289,7 +289,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [
@@ -338,8 +338,8 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
-        "effort": null,
+        "agent_type": "orchestra:orchestra-light",
+        "effort": "medium",
         "executor": "claude",
         "isolation": {
           "backend": "git",
@@ -354,7 +354,7 @@
         },
         "model": "haiku",
         "route": {
-          "agent_type": null,
+          "agent_type": "orchestra:orchestra-light",
           "archetype": "default",
           "candidates": [
             "claude",
@@ -364,7 +364,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "claude",
-          "effort": null,
+          "effort": "medium",
           "executor": "claude",
           "model": "haiku",
           "remaining": [
@@ -400,8 +400,8 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
-        "effort": null,
+        "agent_type": "orchestra:orchestra-light",
+        "effort": "medium",
         "executor": "claude",
         "isolation": {
           "isolate": false,
@@ -410,7 +410,7 @@
         },
         "model": "haiku",
         "route": {
-          "agent_type": null,
+          "agent_type": "orchestra:orchestra-light",
           "archetype": "default",
           "candidates": [
             "claude",
@@ -420,7 +420,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "claude",
-          "effort": null,
+          "effort": "medium",
           "executor": "claude",
           "model": "haiku",
           "remaining": [
@@ -458,8 +458,8 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
-        "effort": null,
+        "agent_type": "orchestra:orchestra-light",
+        "effort": "medium",
         "executor": "claude",
         "isolation": {
           "isolate": false,
@@ -468,7 +468,7 @@
         },
         "model": "haiku",
         "route": {
-          "agent_type": null,
+          "agent_type": "orchestra:orchestra-light",
           "archetype": "default",
           "candidates": [
             "claude",
@@ -478,7 +478,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "claude",
-          "effort": null,
+          "effort": "medium",
           "executor": "claude",
           "model": "haiku",
           "remaining": [
@@ -516,8 +516,8 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
-        "effort": null,
+        "agent_type": "orchestra:orchestra-light",
+        "effort": "medium",
         "executor": "claude",
         "isolation": {
           "isolate": false,
@@ -526,7 +526,7 @@
         },
         "model": "haiku",
         "route": {
-          "agent_type": null,
+          "agent_type": "orchestra:orchestra-light",
           "archetype": "default",
           "candidates": [
             "claude",
@@ -536,7 +536,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "claude",
-          "effort": null,
+          "effort": "medium",
           "executor": "claude",
           "model": "haiku",
           "remaining": [
@@ -574,8 +574,8 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
-        "effort": null,
+        "agent_type": "orchestra:orchestra-light",
+        "effort": "medium",
         "executor": "claude",
         "isolation": {
           "isolate": false,
@@ -584,7 +584,7 @@
         },
         "model": "haiku",
         "route": {
-          "agent_type": null,
+          "agent_type": "orchestra:orchestra-light",
           "archetype": "default",
           "candidates": [
             "claude",
@@ -594,7 +594,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "claude",
-          "effort": null,
+          "effort": "medium",
           "executor": "claude",
           "model": "haiku",
           "remaining": [
