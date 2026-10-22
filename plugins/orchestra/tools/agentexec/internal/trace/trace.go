@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
@@ -67,10 +68,15 @@ func Dir() string {
 	return filepath.Join(paths.StateDir(), "trace")
 }
 
-// Enabled is false only when ORCHESTRA_TRACE is "off", "0" or "false".
+// Enabled is false when ORCHESTRA_TRACE is "off", "0" or "false", and
+// inside a test binary unless ORCHESTRA_TRACE_DIR names where to write:
+// the suite runs thousands of git calls that must not land in the real log.
 func Enabled() bool {
 	switch strings.ToLower(os.Getenv("ORCHESTRA_TRACE")) {
 	case "off", "0", "false":
+		return false
+	}
+	if testing.Testing() && os.Getenv("ORCHESTRA_TRACE_DIR") == "" {
 		return false
 	}
 	return true
