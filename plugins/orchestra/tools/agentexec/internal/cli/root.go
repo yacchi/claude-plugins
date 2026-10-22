@@ -116,6 +116,7 @@ func newRoot() *cobra.Command {
 		newUICmd(),
 		newPiCmd(),
 		newSandboxExecCmd(),
+		newTraceCmd(),
 	)
 	root.SetHelpCommand(&cobra.Command{
 		Use:    "help [command]",
