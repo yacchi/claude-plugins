@@ -204,6 +204,10 @@
           "dir": null,
           "enabled": false
         },
+        "throttle": {
+          "heavy_extra": [],
+          "heavy_slots": "auto"
+        },
         "tiers": {
           "deep": "sonnet",
           "light": "sonnet",

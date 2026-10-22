@@ -200,6 +200,10 @@
           "dir": "~/.claude/orchestra/telemetry",
           "enabled": false
         },
+        "throttle": {
+          "heavy_extra": [],
+          "heavy_slots": "auto"
+        },
         "tiers": {
           "deep": "opus",
           "light": "haiku",
@@ -447,6 +451,10 @@
           "dir": "~/.claude/orchestra/telemetry",
           "enabled": false
         },
+        "throttle": {
+          "heavy_extra": [],
+          "heavy_slots": "auto"
+        },
         "tiers": {
           "deep": "opus",
           "light": "corrupt-store",
@@ -693,6 +701,10 @@
         "telemetry": {
           "dir": "~/.claude/orchestra/telemetry",
           "enabled": false
+        },
+        "throttle": {
+          "heavy_extra": [],
+          "heavy_slots": "auto"
         },
         "tiers": {
           "deep": "opus",

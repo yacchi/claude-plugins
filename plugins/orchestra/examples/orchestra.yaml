@@ -219,6 +219,15 @@ isolation:
   carry_extra: []
   # carry_extra: [pkg]   # e.g. packages/core-wasm/pkg, a generated wasm package
 
+# Heavy local commands (installs, tests, typechecks, lints, builds) are
+# admitted machine-wide a few at a time: a worker's Bash command waits in the
+# orchestra hook for a slot, and every check command holds one while it runs
+# (see `references/config.md` §10). `agent-exec slot status` shows the pool.
+# throttle:
+#   heavy_slots: auto     # max(2, (cpus + 1) / 3); a positive integer; 0 = off
+#   heavy_extra: []       # extra regexes, unioned across layers,
+#                         # e.g. ['^make (check|test)\b']
+
 # `agent-exec check` runs these config-declared lint/test commands over a
 # tree's changed files (see `references/config.md` §4 for full semantics).
 # `items` is a LIST: a higher config layer replaces it whole, it is never
