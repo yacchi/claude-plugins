@@ -40,6 +40,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/tools"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
 // RegistryName is the session registry file in the wave state dir.
@@ -454,7 +455,17 @@ func (e *Executor) call(ctx context.Context, timeout time.Duration, sname string
 		return nil, "", &CallError{Msg: host.AsNeed(err).Detail}
 	}
 	label := strings.Join(args[:min(2, len(args))], " ")
+	// An agent prompt's text is not traced, only the agent's name.
+	detail := strings.Join(args, " ")
+	if len(args) >= 2 && args[0] == "agent" && args[1] == "prompt" {
+		detail = ""
+		if len(args) >= 3 {
+			detail = args[2]
+		}
+	}
+	end := trace.Begin(trace.KindHerdr, "herdr "+label, trace.Attrs{Detail: detail})
 	stdout, stderr, code, err := run(ctx, argv, env, timeout)
+	end(code)
 	if errors.Is(err, errTimeout) {
 		return nil, "", &CallError{Msg: fmt.Sprintf("herdr %s timed out after %ss", label, host.Seconds(timeout))}
 	}
