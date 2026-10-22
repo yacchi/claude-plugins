@@ -285,9 +285,9 @@ func pathLike(s string) bool {
 	return strings.Contains(s, "/") || pathTail1.MatchString(s) || pathTail2.MatchString(s)
 }
 
-// autoMaxInFlight is the width for a herdr host: min(16, cpus - 2, GiB of
-// RAM / 2), each at least 2; defaultMaxInFlight when the machine size is
-// unreadable.
+// autoMaxInFlight is the width for a herdr or orca host: min(16, cpus - 2,
+// GiB of RAM / 2), each at least 2; defaultMaxInFlight when the machine size
+// is unreadable.
 func autoMaxInFlight() int {
 	return autoWidth(runtime.NumCPU(), physicalMemory())
 }

@@ -2,6 +2,7 @@ package checks
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -9,11 +10,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/slot"
 )
 
 // DefaultTimeout is a check's timeout in seconds when it declares none.
@@ -300,11 +303,14 @@ type shellResult struct {
 }
 
 // runShell runs command via /bin/sh -c in its own session, killing the whole
-// process group on timeout. A command that cannot be started is reported as
-// output of a failed run rather than raised.
+// process group on timeout. It holds one of the maxParallel check slots and
+// one slot of the machine-wide heavy pool while it runs. A command that
+// cannot be started is reported as output of a failed run rather than
+// raised.
 func runShell(command, cwd string, timeout time.Duration, slotDir string, maxParallel int) shellResult {
 	release := acquireSlot(slotDir, maxParallel)
 	defer release()
+	defer holdHeavy(command, timeout)()
 	start := time.Now()
 	cmd := exec.Command("/bin/sh", "-c", command)
 	cmd.Dir = cwd
@@ -366,9 +372,39 @@ func acquireSlot(dir string, maxParallel int) func() {
 	}
 }
 
+// heavyPool is the machine-wide pool of heavy commands (`throttle.heavy_slots`),
+// read once per process.
+var heavyPool = sync.OnceValue(func() slot.Pool {
+	var size any
+	if cfg, err := config.Resolve(); err == nil {
+		size, _ = cfg.Lookup("throttle", "heavy_slots")
+	}
+	return slot.New(slot.Heavy, slot.SizeOf(size))
+})
+
+// holdHeavy takes one heavy slot for command and returns its release. Any
+// failure runs the command unadmitted: admission must never fail a check.
+func holdHeavy(command string, timeout time.Duration) func() {
+	p := heavyPool()
+	if p.Off() {
+		return func() {}
+	}
+	ttl := 24 * time.Hour // no timeout: the owner's death still frees it
+	if timeout > 0 {
+		ttl = timeout + time.Minute
+	}
+	op, _ := slot.Classify(command, nil)
+	lease, _, err := p.Acquire(context.Background(), slot.Request{Owner: os.Getpid(), TTL: ttl, Op: op})
+	if err != nil {
+		return func() {}
+	}
+	return func() { _ = p.Release(lease.Token) }
+}
+
 // RerunFailedAlone re-runs the failing files output names with template
-// ({failed} = the shell-quoted files) while holding every concurrency
-// slot, so the retry is not disturbed by other checks. status is pass,
+// ({failed} = the shell-quoted files) while holding every check slot, so
+// the retry is not disturbed by other checks; like any check command it
+// takes only one slot of the machine-wide heavy pool. status is pass,
 // fail, or skipped (no file named); timeout <= 0 means no limit.
 func RerunFailedAlone(output, template, cwd, slotDir string, maxParallel int, timeout time.Duration) (status string, failed []string) {
 	failed = ParseFailedFiles(output)

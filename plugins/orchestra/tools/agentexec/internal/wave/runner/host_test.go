@@ -227,3 +227,29 @@ func TestMaxInFlightResolution(t *testing.T) {
 		})
 	}
 }
+
+func TestMaxInFlightAutoByHost(t *testing.T) {
+	for _, c := range []struct {
+		host string // "" = no interactive host
+		want int
+	}{
+		{"herdr", autoMaxInFlight()},
+		{"orca", autoMaxInFlight()},
+		{"other", defaultMaxInFlight},
+		{"", defaultMaxInFlight},
+	} {
+		t.Run("host="+c.host, func(t *testing.T) {
+			w := newWaveRepo(t)
+			w.plan(pkgDef{id: "A"})
+			ex := newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}})
+			if c.host == "" {
+				w.run(ex)
+			} else {
+				w.runWithHost(ex, Deps{Host: newFakeHost(c.host)})
+			}
+			d := w.details("max-in-flight", "")[0]
+			eq(t, "value", d["value"], any(float64(c.want)))
+			eq(t, "source", d["source"], any("auto"))
+		})
+	}
+}

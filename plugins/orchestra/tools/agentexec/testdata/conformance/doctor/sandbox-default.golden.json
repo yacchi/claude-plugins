@@ -219,6 +219,10 @@
               "dir": "~/.claude/orchestra/telemetry",
               "enabled": false
             },
+            "throttle": {
+              "heavy_extra": [],
+              "heavy_slots": "auto"
+            },
             "tiers": {
               "deep": "opus",
               "light": "haiku",

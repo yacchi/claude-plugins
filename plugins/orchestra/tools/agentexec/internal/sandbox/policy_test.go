@@ -332,3 +332,104 @@ func TestHostPolicy(t *testing.T) {
 		t.Errorf("required host without seatbelt/bwrap: %+v", s)
 	}
 }
+
+// The pnpm store both policies seed is the one ChildEnv pins, whichever
+// of PNPM_HOME / XDG_DATA_HOME / the platform default decides it.
+func TestPnpmPinIsTheSeededStore(t *testing.T) {
+	base := tempReal(t)
+	home := filepath.Join(base, "home")
+	t.Setenv("XDG_STATE_HOME", "")
+	t.Setenv("HOME", home)
+	none := []Grant{}
+	cases := []struct {
+		platform string
+		env      map[string]string
+		want     string
+	}{
+		{"darwin", map[string]string{}, filepath.Join(home, "Library", "pnpm", "store")},
+		{"linux", map[string]string{}, filepath.Join(home, ".local", "share", "pnpm", "store")},
+		{"darwin", map[string]string{"PNPM_HOME": filepath.Join(base, "ph"), "XDG_DATA_HOME": filepath.Join(base, "xdg")},
+			filepath.Join(base, "ph", "store")},
+		{"linux", map[string]string{"XDG_DATA_HOME": filepath.Join(base, "xdg")}, filepath.Join(base, "xdg", "pnpm", "store")},
+	}
+	for _, c := range cases {
+		o := policyOpts{home: home, env: c.env, platform: c.platform, learned: &none}
+		cli := buildPolicy(filepath.Join(base, "tree"), "codex", Config{}, o)
+		host := hostPolicy(HostInput{Repo: filepath.Join(base, "repo"), WorktreeBase: filepath.Join(base, "wt"),
+			HerdrHome: filepath.Join(base, "hx")}, Config{}, o)
+		var env []string
+		for k, v := range c.env {
+			env = append(env, k+"="+v)
+		}
+		for name, p := range map[string]*Policy{"cli": cli, "host": host} {
+			if p.PnpmStore != c.want || !contains(p.Writable, c.want) {
+				t.Errorf("%s %v %s: store %q, writable %v; want %q seeded", c.platform, c.env, name, p.PnpmStore, p.Writable, c.want)
+			}
+			for _, w := range []string{filepath.Join(home, ".cargo", "registry"), filepath.Join(home, ".bun", "install", "cache")} {
+				if !contains(p.Writable, w) {
+					t.Errorf("%s: %s not seeded", name, w)
+				}
+			}
+			got := ChildEnv(Spec{Backend: "seatbelt", Policy: p}, env)
+			if !contains(got, "pnpm_config_store_dir="+c.want) {
+				t.Errorf("%s %v %s: child env %v lacks pnpm_config_store_dir=%s", c.platform, c.env, name, got, c.want)
+			}
+			for _, kv := range got {
+				if strings.HasPrefix(kv, "npm_config_store_dir=") {
+					t.Errorf("%s %v %s: child env sets %s (npm rejects the key)", c.platform, c.env, name, kv)
+				}
+			}
+		}
+	}
+}
+
+func TestChildEnvKeepsAnExplicitPnpmStore(t *testing.T) {
+	spec := Spec{Backend: "seatbelt", Policy: &Policy{PnpmStore: "/seeded"}}
+	pins := func(env []string) []string {
+		var out []string
+		for _, kv := range ChildEnv(spec, env)[len(env):] {
+			if strings.Contains(strings.ToLower(kv), "store_dir") {
+				out = append(out, kv)
+			}
+		}
+		return out
+	}
+	cases := []struct {
+		env, want []string
+	}{
+		{[]string{"pnpm_config_store_dir=/mine"}, nil},
+		{[]string{"npm_config_store_dir=/mine"}, []string{"pnpm_config_store_dir=/mine"}},
+		{[]string{"NPM_CONFIG_STORE_DIR=/mine"}, []string{"pnpm_config_store_dir=/mine"}},
+		{[]string{"pnpm_config_store_dir=/a", "npm_config_store_dir=/b"}, nil},
+	}
+	for _, c := range cases {
+		if got := pins(c.env); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("env %v: pinned %v, want %v", c.env, got, c.want)
+		}
+	}
+	unsandboxed := Spec{Backend: "none", Policy: &Policy{PnpmStore: "/seeded"}}
+	if env := ChildEnv(unsandboxed, nil); len(env) != 0 {
+		t.Errorf("unsandboxed child pinned: %v", env)
+	}
+}
+
+// A seed is a cache, never a toolchain home whose executables run later
+// outside any sandbox.
+func TestSeedsHoldNoExecutables(t *testing.T) {
+	home := "/h"
+	execs := []string{"~/.cargo", "~/.cargo/bin", "~/Library/pnpm", "~/Library/pnpm/bin", "~/Library/pnpm/global",
+		"~/.local/share/pnpm", "~/.bun", "~/.bun/bin", "~/.bun/install/global", "~/.pub-cache", "~/.pub-cache/bin",
+		"~/.gradle", "~/.gradle/wrapper", "~/.local/share/mise", "~/.local/share/uv/tools", "~/go", "~/go/bin"}
+	for _, platform := range []string{"darwin", "linux"} {
+		for _, env := range []map[string]string{{}, {"PNPM_HOME": "/h/Library/pnpm"}, {"PNPM_HOME": "/h/.local/share/pnpm"}} {
+			seeded, _ := seeds(platform, home, func(k string) string { return env[k] })
+			for _, s := range seeded {
+				for _, e := range execs {
+					if under(expand(e, home), s) {
+						t.Errorf("%s %v: seed %s holds %s", platform, env, s, e)
+					}
+				}
+			}
+		}
+	}
+}
