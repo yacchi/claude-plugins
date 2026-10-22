@@ -27,7 +27,7 @@ piは複数プロバイダに単一インターフェースで到達するコー
 | `openai-codex/*` | `openai-codex/gpt-5.6-luna`、`openai-codex/gpt-6.1-sol` | ChatGPTサブスクリプション |
 | `github-copilot/*` | `github-copilot/gpt-5.6-luna`、`github-copilot/claude-haiku-5.5` | トークン従量(2026-06以降のGitHub課金) |
 
-既定の`class_policy`は、`light`/`standard`が`openai-codex/gpt-5.6-luna`/medium、`deep`が`openai-codex/gpt-6.1-sol`/high、`independent-review`が`openai-codex/gpt-6.1-sol`/mediumである。`gpt-6-luna`は再ベンチで36/38(`order=asc|desc`の読み違い、`poc-findings.md`参照)だったため既定には入れていない。
+既定の`class_policy`は、`light`が`openai-codex/gpt-5.6-luna`/medium、`standard`が`openai-codex/gpt-5.6-luna`/high、`deep`が`openai-codex/gpt-6.1-sol`/high、`independent-review`が`openai-codex/gpt-6.1-sol`/mediumである。`gpt-6-luna`は再ベンチで36/38(`order=asc|desc`の読み違い、`poc-findings.md`参照)だったため既定には入れていない。
 
 設定に書かれた未知のエグゼキュータ名(削除済みの`copilot`/`opencode`を除く)は`unknown-executor:<name>`としてスキップされる。削除済みの名前は設定エラーになり、移行ガイドが表示される。
 
