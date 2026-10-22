@@ -12,6 +12,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/integrate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 )
 
@@ -107,7 +108,7 @@ func (r *runner) finalChecks() ([]failure, bool) {
 	}
 	fullLock.Lock()
 	defer fullLock.Unlock()
-	r.intLock.Lock()
+	trace.Lock(&r.intLock, "wave integration", trace.Attrs{})
 	defer r.intLock.Unlock()
 	r.emit("full-start", "", map[string]any{"mode": "final"})
 	started := time.Now()
