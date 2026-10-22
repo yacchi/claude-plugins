@@ -249,7 +249,7 @@ const variants = await parallel(
   ['a', 'b', 'c'].map((v) => () =>
     agent(task.workerPrompt, {
       label: task.id + '-variant-' + v,
-      agentType: 'orchestra:orchestra-deep',   // or model: 'sonnet' / dispatchClass(...)
+      agentType: 'orchestra:orchestra-deep',   // or model: 'sonnet' / the pipeline's dispatchClass(...)
       isolation: 'worktree',
     }),
   ),

@@ -6,7 +6,7 @@ The shapes below have run end to end at programme scale (hundreds of packages, d
 
 ## 1. Budget before anything else
 
-- **Pin every agent.** Implementation goes through `dispatchClass()`/`runTask()` (§5 of the skill), review stays on Sonnet, planning roles are pinned per §2's table, relays are Haiku. §4 of the skill applies to every line of every script here.
+- **Pin every agent.** Implementation goes through `dispatchClass()`/`runTask()` (§5 of the skill, in `workflows/pipeline.js`), review stays on Sonnet, planning roles are pinned per §2's table, relays are Haiku. §4 of the skill applies to every line of every script here.
 - **Run continuously; fix any budget up front.** Do not chunk the programme. Start it once and let it flow: every package that may start does (`wave run --max-in-flight auto`, the default), and it stops only on `agent-exec wave stop --state ...` or at a budget agreed with the user *before* the start, if they want one (`--budget-usd X` with `--run-id <id>`: once the run's estimated cost, the figure `agent-exec usage --run <id>` prints, reaches X, nothing new starts and the packages in flight finish). Why: in a 123-package run, 8 chunk stops each drained 40-60 min while the slowest in-flight package finished (8.5 h of 18.3 h wall), against 0.9 h of restart gaps in total.
 - **Never manage machine load with the width.** Do not lower `--max-in-flight` or cap packages (`--max-packages`) because the machine is small or busy: heavy commands are admitted machine-wide (`throttle.heavy_slots`, `config.md` §10), and the runner holds new starts by itself while the OS reports memory pressure (`wave.memory_guard`, `config.md` §9). There is nothing machine-related for you to judge.
 - **Relay usage, never stop for it.** Every `wave.usage_every` integrated packages (default 10) the run emits a `usage` event (packages integrated / in flight / pending, and the estimated cost so far when it has a `--run-id`) and runs `--notify-cmd` with `WAVE_EVENT=usage`; pass the numbers on to the user as they come. The notice never pauses anything; `agent-exec usage --run <id>` gives the full breakdown at any time.
@@ -72,7 +72,7 @@ A package's worktree is created when its dispatch runs, from the integration wor
 
 ### Template
 
-Paste the skill's §5 helpers from `workflow-template.md` (`VERDICT_SCHEMA` through `runTask`, minus the final `pipeline`/cleanup/`return`) above this block. Each package in `args.packages` is a `runTask` task (its `dispatchToken` minted as above) plus `deps`, `files_owned`, `probeDir`, and optional `prio`. Give every package a `probeDir` — a per-package directory under your scratch dir, outside every worktree — rather than `noProbes`: packages are reviewed by the same Sonnet gates, and their probes overlap the package's long implementation for free. The size gate (`sizeGate()`) is not called here — packages are session-sized by design and run continuously instead — but the ownership pre-check is: a package that changes a path outside its `files_owned` (trailing `/**` globs count as directory prefixes) fails its gate without a review, which is one more reason the reality check above must correct `files_owned` before scheduling.
+Paste the helpers from `workflows/pipeline.js` (`VERDICT_SCHEMA` through `runTask`, minus the final `pipeline`/cleanup/`return`) above this block. Copy them from that file rather than re-typing them: the protocol is fixed, and a copy is what keeps the model and effort pins identical to the shipped pipeline. Each package in `args.packages` is a `runTask` task (its `dispatchToken` minted as above) plus `deps`, `files_owned`, `probeDir`, and optional `prio`. Give every package a `probeDir` — a per-package directory under your scratch dir, outside every worktree — rather than `noProbes`: packages are reviewed by the same Sonnet gates, and their probes overlap the package's long implementation for free. The size gate (`sizeGate()` in `workflows/pipeline.js`) is not called here — packages are session-sized by design and run continuously instead — but the ownership pre-check is: a package that changes a path outside its `files_owned` (trailing `/**` globs count as directory prefixes) fails its gate without a review, which is one more reason the reality check above must correct `files_owned` before scheduling.
 
 ```javascript
 export const meta = {
@@ -85,7 +85,7 @@ export const meta = {
   ],
 }
 
-// ... §5 helpers pasted here ...
+// ... pipeline.js helpers (VERDICT_SCHEMA through runTask) pasted here ...
 
 const P = args
 const INTO = P.into                       // e.g. 'prog-features'

@@ -393,8 +393,8 @@ priority:
 # lease; a DIFFERENT subagent writing there while the holder was active within
 # worktree_lease_window seconds (default 120) is denied. A SubagentStop hook
 # releases the lease, so back-to-back rounds are never blocked. Exists because
-# a message to a running workflow agent once resumed a copy of it and both
-# committed into the same worktree. The main worktree, the main thread, and
+# a message to a running workflow agent resumes a copy of it, and the copy
+# and the original then write the same worktree. The main worktree, the main thread, and
 # orchestra-delegate are never affected. Escapes: `[orchestra:allow-lease:
 # <reason>]` and ORCHESTRA_LEASE_GUARD=off.
 #
