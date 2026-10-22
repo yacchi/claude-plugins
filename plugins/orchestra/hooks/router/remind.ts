@@ -16,7 +16,7 @@ const SELF_GATE = '(Applies ONLY if this session\'s main model is Opus or Fable;
 
 export const reminderFor = (sessionId: string): string | undefined => {
     const verdict = verdictOf(sessionId)
-    if (verdict === 'cheap') {
+    if (verdict === 'cheap' || verdict === 'worker') {
         return undefined
     }
 

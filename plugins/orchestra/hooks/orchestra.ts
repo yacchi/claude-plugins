@@ -53,7 +53,10 @@ const withContext = <R extends { additionalContext?: string[] }>(r: R, text: str
     text ? { ...r, additionalContext: [...(r.additionalContext ?? []), text] } : r
 
 export const register: Register = (on, options) => {
-    on('classic.SessionStart', async ($, e, next) => withContext(await next(e), routerContext(e.source, e.session_id, e.model)))
+    on('classic.SessionStart', async ($, e, next) => withContext(
+        await next(e),
+        await routerContext(ioOf($), e.source, e.session_id, e.model, e.cwd),
+    ))
         .catch(($, e, next) => next(e))
 
     on('classic.UserPromptSubmit', async ($, e, next) => withContext(await next(e), reminderFor(e.session_id)))

@@ -112,3 +112,80 @@ describe('router', () => {
         expect(await edits($, 10, 's1', 'p1')).toEqual([])
     })
 })
+
+// A repository with one main tree and linked task trees; the task trees carry
+// their orchestra markers in their own git dirs.
+const TASKS = {
+    '/repo/.git/worktrees/task-a/orchestra-baseline': 'base\n',
+    '/repo/.git/worktrees/task-c/orchestra-adopted': 'adopted\n',
+}
+const tasks = (on: On, extra: Partial<HostOptions> = {}) => host(on, {
+    repos: [{
+        main: '/repo',
+        linked: [
+            { path: '/work/task-a', branch: 'orchestra/task-a' },
+            { path: '/work/task-b', branch: 'orchestra/task-b' },
+            { path: '/work/task-c', branch: 'orchestra/task-c' },
+        ],
+    }],
+    files: TASKS,
+    ...extra,
+})
+
+// A SessionStart with an explicit cwd, as the engine always sends one.
+const startIn = ($: any, sessionId: string, cwd: string, model?: string): Promise<Context> =>
+    $.classic.SessionStart({ session_id: sessionId, source: 'startup', cwd, ...(model ? { model } : {}) })
+
+describe('router: hosted workers', () => {
+    test('a worker gets the worker notice on any model, with no reminder or nudge', async ($, on) => {
+        tasks(on)
+        for (const [sessionId, model] of [['w-opus', 'claude-opus-5'], ['w-sonnet', 'claude-sonnet-5'], ['w-none', undefined]] as const) {
+            const said = (await startIn($, sessionId, '/work/task-a', model)).additionalContext ?? []
+            expect(said.length, String(model)).toBe(1)
+            expect(said[0]).toContain('<orchestra-worker>')
+            expect(said[0]).toContain('/work/task-a')
+            expect(said[0]).not.toContain('<orchestra-router>')
+            expect((await prompt($, sessionId)).additionalContext ?? [], 'no reminder').toEqual([])
+            expect(await edits($, 20, sessionId, 'p1'), 'no nudge').toEqual([])
+        }
+    })
+
+    test('the SessionStart cwd decides, falling back to the session cwd when blank', async ($, on) => {
+        tasks(on, { cwd: '/work/task-a' })
+        expect((await startIn($, 'w-blank', '', 'claude-opus-5')).additionalContext?.[0], 'blank cwd: session cwd').toContain('<orchestra-worker>')
+        expect((await startIn($, 'w-main', '/repo', 'claude-opus-5')).additionalContext?.[0], 'input cwd wins').toContain('<orchestra-router>')
+    })
+
+    test('the main worktree is never a worker, even with a stray marker', async ($, on) => {
+        host(on, {
+            repos: [{ main: '/repo' }],
+            files: { '/repo/.git/orchestra-baseline': 'base\n' },
+            cwd: '/repo',
+        })
+        const said = (await startIn($, 'main-opus', '/repo', 'claude-opus-5')).additionalContext ?? []
+        expect(said[0]).toContain('<orchestra-router>\nClassify EACH')
+        expect(said[0]).not.toContain('<orchestra-worker>')
+    })
+
+    test('an integration tree gets the router, not the worker notice', async ($, on) => {
+        tasks(on, {
+            files: { ...TASKS, '/repo/.git/worktrees/task-a/orchestra-role': 'integration\n' },
+        })
+        const said = (await startIn($, 'int-opus', '/work/task-a', 'claude-opus-5')).additionalContext ?? []
+        expect(said[0]).toContain('<orchestra-router>\nClassify EACH')
+        expect((await startIn($, 'int-sonnet', '/work/task-a', 'claude-sonnet-5')).additionalContext ?? [], 'cheap').toEqual([])
+    })
+
+    test('a linked tree is a worker only with a task marker', async ($, on) => {
+        tasks(on)
+        expect((await startIn($, 'no-marker', '/work/task-b', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-router>')
+        expect((await startIn($, 'adopted', '/work/task-c', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-worker>')
+        expect((await startIn($, 'baseline', '/work/task-a', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-worker>')
+    })
+
+    test('outside any repository, or with git unavailable, the router applies', async ($, on) => {
+        host(on, { cwd: '/nowhere' })
+        expect((await startIn($, 'no-repo', '/nowhere', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-router>')
+        expect((await startIn($, 'no-tree', '/nowhere/else', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-router>')
+    })
+})

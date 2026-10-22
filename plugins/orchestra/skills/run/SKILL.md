@@ -135,9 +135,11 @@ Mandatory for every `workerPrompt`:
 
 Measured numbers, the restructured `runTask`, and the full barrier/sizing rules: `references/authoring.md` §2 and §4.
 
-## 8. Fallback (no Workflow tool)
+## 8. Fallback (no Workflow tool, or no opt-in for it)
 
-Launch `orchestra-delegate` (Sonnet, pinned in its own frontmatter) via the Agent tool; it runs `agent-exec dispatch --class light --capture` per round itself, spawns `orchestra-review`, applies the same two-gate discipline (§11) — one correction round with a cited, family-swept packet to a fresh worker, then an incremental re-gate — and reports back only the structured verdict. When it returns `needsInstructor`, that is your re-analysis cue, not a signal to tell it to try again. Full shape: `references/authoring.md` §5.
+The harness gates the Workflow tool on the user's explicit opt-in (ultracode, asking for a workflow, or invoking `/run` themselves). When the router loaded this skill and that opt-in is absent, this section is the path; when the work is big enough that a Workflow pays off, ask the user once whether to run it as one — a yes is the opt-in. Never improvise with `agent-exec` in your own Bash instead: `agent-exec dispatch` without `--detach` or `agent-exec wave run` as a foreground call blocks for minutes with nothing for the user to watch, and dies at the Bash tool's 600 s limit (`wave run`: `references/programme.md` §6).
+
+Launch `orchestra-delegate` (Sonnet, pinned in its own frontmatter) via the Agent tool; it dispatches each round detached itself (`dispatch prepare` → `dispatch --token … --capture --detach` → `dispatch wait` hops), spawns `orchestra-review`, applies the same two-gate discipline (§11) — one correction round with a cited, family-swept packet to a fresh worker, then an incremental re-gate — and reports back only the structured verdict. When it returns `needsInstructor`, that is your re-analysis cue, not a signal to tell it to try again. Full shape: `references/authoring.md` §5.
 
 When a verdict has `needsPermission: true` (or a wave has pending `agent-exec approvals`), **you decide** each denial yourself against the package's spec, using this policy:
 
