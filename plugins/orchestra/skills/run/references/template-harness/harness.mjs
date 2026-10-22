@@ -60,7 +60,9 @@ async function run(tasks, { probe = 'ok', diffs = [] } = {}) {
   }
   const pipeline = async (items, fn) => Promise.all(items.map(fn))
   const parallel = async fns => Promise.all(fns.map(f => f()))
-  const result = await script(agent, pipeline, parallel, m => logs.push(m), { tasks })
+  const out = await script(agent, pipeline, parallel, m => logs.push(m), { tasks })
+  // A completed run returns {results, runEnd}; a failed size gate returns its own object.
+  const result = out && Array.isArray(out.results) ? out.results : out
   return { result, events, calls, logs }
 }
 
@@ -167,6 +169,47 @@ await check('(e) a failed pre-check hop falls through to the review', async () =
   assert(calls.some(c => c.label === 't1-verify-1'), 'review did not run')
   assert(result[0].pass === true && result[0].rounds === 1, 'result')
   assert(logs.some(l => l.includes('ownership pre-check unavailable')), 'not logged')
+})
+
+// Static guard: every agent() call in the script states its own model and
+// effort, because a Workflow agent() call does not honor a definition's
+// frontmatter. Comments are stripped first so prose mentions of `agent()` do
+// not count as calls.
+function agentCallArgs(src) {
+  const code = src.replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/.*$/gm, '')
+  const found = []
+  const re = /\bagent\(/g
+  let m
+  while ((m = re.exec(code))) {
+    let depth = 0
+    let quote = null
+    let i = m.index + m[0].length - 1
+    for (; i < code.length; i++) {
+      const ch = code[i]
+      if (quote) {
+        if (ch === '\\') i++
+        else if (ch === quote) quote = null
+      } else if (ch === '\'' || ch === '"' || ch === '`') quote = ch
+      else if (ch === '(') depth++
+      else if (ch === ')' && --depth === 0) break
+    }
+    found.push(code.slice(m.index, i + 1))
+  }
+  return found
+}
+
+await check('(f) every agent() call in the script states model and effort', async () => {
+  const calls = agentCallArgs(body)
+  assert(calls.length >= 6, 'expected the script to have agent() calls, found ' + calls.length)
+  for (const c of calls) {
+    assert(/\bmodel\s*:/.test(c) && /\beffort\s*:/.test(c), 'agent() call lacks model or effort: ' + c.slice(0, 120))
+  }
+})
+
+await check('(g) run-end relay also reports the run usage', async () => {
+  const { calls } = await run([base('t1')])
+  const cleanup = calls.find(c => c.label === 'cleanup')
+  assert(cleanup && cleanup.prompt.includes('agent-exec usage --run'), 'cleanup relay lacks usage report')
 })
 
 console.log(passed + ' passed, ' + failed + ' failed')
