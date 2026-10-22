@@ -1,6 +1,6 @@
 # Isolation, checkpointing, and aggressive parallelism (orchestra `run`)
 
-Load this file when a run needs any of: **a worker to touch a tree that holds uncommitted work**, **rollback on failure**, **a reliable diff for the reviewer**, **parallel work on files that would otherwise collide**, or **competing implementations of the same task**. Introduced in v0.14.0; isolation became the dirty-tree default in v0.15.0.
+Load this file when a run needs any of: **a worker to touch a tree that holds uncommitted work**, **rollback on failure**, **a reliable diff for the reviewer**, **parallel work on files that would otherwise collide**, or **competing implementations of the same task**.
 
 The premise: version control is effectively free, and an orchestration that can always return to a known-good state is strictly better than one that edits in place and hopes. A run that cannot roll back has to be cautious; a run that can roll back can be aggressive.
 
@@ -25,8 +25,10 @@ Destructive VCS commands are only the loudest case. The same structural point co
 
 ```bash
 # The default. Isolates exactly when the tree has uncommitted work.
-agent-exec dispatch --class light --task <task-id> \
-    --prompt-file <file> --workdir <repo> --capture
+# Flags go on `prepare`; the run itself is detached (a foreground dispatch dies at the 600 s Bash limit).
+agent-exec dispatch prepare --class light --task <task-id> --prompt-file <file> --workdir <repo>   # -> token
+agent-exec dispatch --token <token> --capture --detach
+agent-exec dispatch wait --token <token> --summary                                               # repeat until final
 # --isolate always  : isolate even a clean tree (parallel/competing variants)
 # --isolate never   : opt out, e.g. a strictly sequential phase on one tree
 ```

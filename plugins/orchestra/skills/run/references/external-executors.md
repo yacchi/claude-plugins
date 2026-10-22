@@ -55,7 +55,7 @@ agent-exec dispatch --executor pi --resume "$SESSION_ID" --model openai-codex/gp
 
 **導入。** 公式のインストーラとnpm版は、PATH上の`node`で動く。そのため、miseなどでnodeのバージョンが切り替わる環境では壊れやすい。**スタンドアロンのリリースバイナリの利用を推奨する**(GitHubのリリースから取得してPATH上に置く)。導入後に`pi`でプロバイダへログインし(`openai-codex`はChatGPTアカウント)、`agent-exec doctor --json`の`ready.pi.ok`を確認する。
 
-**認可設定。** Claude Code側で必要な許可ルールは`Bash(agent-exec:*)`の1つだけである。`agent-exec install`が`agent-exec`のシムをPATH上(既定`~/.local/bin/agent-exec`)に置く。シムはプラグインのマーケットプレイス・クローンパスを指すため、`/plugin update`でラッパーの中身も追従する。`agent-exec`を使わない場合は`Bash(pi:*)`を許可する。
+**認可設定。** Claude Code側で必要な許可ルールは`Bash(agent-exec:*)`の1つだけである。Claude Code内では`bin/`が`agent-exec`をBashのPATHに載せるので不要で、`agent-exec install`はClaude Code外のシェル(piのワーカーのシェル、自分のターミナル)向けにシムをPATH上(既定`~/.local/bin/agent-exec`)に置く。シムはプラグインのマーケットプレイス・クローンパスを指すため、`/plugin update`でラッパーの中身も追従する。`agent-exec`を使わない場合は`Bash(pi:*)`を許可する。
 
 **封じ込めの注意。** piはツールの実行前に承認を求めない(`-p`では確認なしに読み書き・コマンド実行を行う)。ワークツリー隔離(`agent-exec dispatch`が未コミット作業のあるリポジトリで自動で行う)を使い、ワーカーのプロンプトにstashの禁止と`agent-exec shelf`の使用を明記すること。CLI実行役はClaudeのフックの外で動くため、フックによるガードは効かない。
 
@@ -132,7 +132,7 @@ The default-on run ledger is the deterministic source for reading pi cost per wo
 
 ```yaml
 # Ordered executor preference per class/role (and, for the implementation classes,
-# per task archetype). The instructor tries candidates left-to-right and drops to
+# per task archetype). `agent-exec route` tries candidates left-to-right and drops to
 # the NEXT one on a *reactive fallback signal*: the current executor is unavailable
 # — NOT the task failing. "Unavailable" = hit a rate-limit / usage-window cap
 # (Claude, pi), ran out of credits / quota (a metered pi provider), is
@@ -153,8 +153,8 @@ The default-on run ledger is the deterministic source for reading pi cost per wo
 # implementation that goes through the review/retry loop). Other keys normally only
 # need `default`.
 #
-# Omit `priority` entirely to keep the legacy behavior: the Claude `tiers.<name>`
-# model, with external executors woven in ad hoc per their own `classes` list.
+# A class with no list here routes to `claude` (the `tiers.<name>` model) only;
+# `external_executors.*.classes` is not read by routing.
 priority:
   light:
     # Claude Haiku 5.5 first (subscription, fastest in the 2026-10-08 re-bench);
@@ -197,13 +197,13 @@ priority:
 
 **クロスランcooldown(枯渇の時間減衰)。** 同じunavailableの再発を次のランで毎回発見し直さないため、`agent-exec dispatch`(直接実行を含む)は、パースした結果が`status=unavailable`になった瞬間に、LLMを介さず`~/.claude/orchestra/executor-state.json`(`{executor: {reason, until}}`)へ自動保存する。理由ごとのcooldown秒数は設定(`rate-limit: 900`、`quota: 3600`、`credits: 3600`、`auth: 0`、`nonzero-exit: 0`)から取り、`agent-exec route`/`dispatch`はファイルを読み、期限内のエントリを既存の`--exhausted`と同じ候補ゲートへ渡す(スキップ理由は`cooldown:<reason>`)。これは2026-07-28 09:23〜09:32(UTC)に、外部エグゼキュータ側の本物の枯渇(`session.error` / `errorType: quota` / HTTP 402)を9分間で12回連続して発見し直したための最適化である。ただしcooldownはクラスをunroutableにしない: 全候補がcooldown中ならcooldownを無視してウォークをやり直し、結果に`cooldown_bypassed: true`を付ける。認証とnonzero-exitはリソース枯渇ではなく一過性なので`0`(cooldownなし)であり、missing/corruptな状態ファイル、書き込み不能なパス、保存失敗もすべてfail-openで従来どおりルーティングする。`--no-cooldown`(route/dispatch)、`cooldown.enabled: false`、`agent-exec ui`ダッシュボードからのクリアがescape hatchであり、期限内のエントリは`agent-exec doctor`の`cooldowns`で確認できる。これはラン内の`Set`によるsticky exhaustionを置き換えず、その下に加わるクロスラン層である。cooldownはディスパッチ時に実際に観測したシグナルだけを反応的に記憶し、リモートの残量APIは問い合わせない — 事前の照会はサブスクリプションの使用ウィンドウを読む`usage_routing`の役割であり、両者は同じウォークの中でソフトな降格として並ぶ。
 
-**`priority`は`classes`より優先してオーダリングを決める。** `priority.<class>`が存在する場合、そのクラス/ロールの候補集合と順序についてはこちらが正となる。`external_executors.<key>.classes`は後方互換のために残されており、`priority`がそのクラス/ロールに存在しない場合にのみ、従来の「各エグゼキュータの`classes`リストから逆引きして織り込む」方式が適用される。いずれの方式でも、実際のモデル/effort/dispatch設定は`class_policy`から取り、`enabled: false`はどちらの方式でもそのエグゼキュータを無条件に除外する。
+**候補の順序は`priority`だけが決める。** `priority.<class>`(アーキタイプ、なければ`default`)のリストがそのクラス/ロールの候補集合と順序であり、リストが無いクラスは`claude`だけになる。`external_executors.<key>.classes`はルーティングでは読まれない。実際のモデル/effort/dispatch設定は`class_policy`から取り、`enabled: false`はそのエグゼキュータを無条件に除外する。
 
 **タスクアーキタイプの分類**は分解(decomposition)時点でのinstructorの判断であり、実行時に動的に切り替えるものではない: `investigation`は読み取り専用の調査・研究・コードベース探索的なfan-outで、ファイル変更もreviewループも伴わないもの。`default`はそれ以外すべて(review/retryループを通るファイル変更を伴う実装)。他のクラス/ロール(`deep`・`review`・`independent-review`)は通常`default`だけで十分。
 
 **deep-mergeの注意点は他の設定キーと同じ**: `priority`のリストはリストとして扱われるため、より詳細なレイヤ(project設定など)で上書きされると要素単位でマージされず丸ごと置き換わる。部分的に変えたいだけでも、そのクラス/ロール/アーキタイプの配列は全体を書き直す必要がある。
 
-**Workflowスクリプトでの実装イメージ(参考 — v0.11.0以降は不要な手書きロジック)。** 以下は`agent-exec route`/`dispatch`が存在する前に、instructorがこのフォールバック・ウォークを自前で実装するとしたら何をする必要があったかを示す参考コードであり、`route`が内部で行っているマッピング・正規化・降格判定の意味論を理解するために残している。**実際にWorkflowスクリプトを書くときは、これを書き写すのではなく`run` SKILL.md §5の`dispatchClass()`(1回の`agent-exec dispatch --class <cls> ... --capture`呼び出しを1つの安価なリレーエージェントに任せるだけの実装)を使うこと。** 各候補を実際のディスパッチ手段(Claudeの`agent()`、piのリレーエージェント)にマップし、戻り値を`{ status: 'ok'|'unavailable', answer?, reason?, sessionId? }`という共通の形に正規化してから、フォールバックのループに渡す、という考え方自体は`route`/`dispatch`の内部実装と同じである:
+**Workflowスクリプトでの実装イメージ(参考 — v0.11.0以降は不要な手書きロジック)。** 以下は`agent-exec route`/`dispatch`が存在する前に、instructorがこのフォールバック・ウォークを自前で実装するとしたら何をする必要があったかを示す参考コードであり、`route`が内部で行っているマッピング・正規化・降格判定の意味論を理解するために残している。**実際のWorkflow実行では、このコードを書き写さず、同梱のパイプライン(`run` SKILL.md §5)を使うこと。** 各候補を実際のディスパッチ手段(Claudeの`agent()`、piのリレーエージェント)にマップし、戻り値を`{ status: 'ok'|'unavailable', answer?, reason?, sessionId? }`という共通の形に正規化してから、フォールバックのループに渡す、という考え方自体は`route`/`dispatch`の内部実装と同じである:
 
 ```javascript
 // candidates: 解決済みの、このクラス/ロール(+アーキタイプ)向け順序リスト
@@ -349,4 +349,4 @@ v0.43.0で次の2つのCLI実行役を削除した(`codex`はv0.52.0で削除、
 - **`copilot`(GitHub Copilot CLI)** — 同じモデルでもpiより遅く、新規入力トークンが桁違いに多い(2026-10-08の再ベンチでopencodeの約19倍)うえ、課金はpiの`github-copilot/*`プロバイダと同じトークン従量で、勝てる点が無い。Copilotのモデルは今後も`pi`の`github-copilot/*`経由で使える(§3の単価表)。
 - **`opencode`** — 同じ課金の同じモデルに対して、piより遅く(同じ`gpt-5.6-luna`で86秒対49-70秒)、入力トークンは約3-4倍。長時間のランナウェイ(単一の`glob`が2539秒)も観測した。Codex系モデルを呼ぶ用途はpiの`openai-codex/*`が担う。
 
-理由は両者とも「同じ課金で厳密に劣る」ことである(データと表は`poc-findings.md`の2026-10-08節)。ユーザー設定に`copilot`/`opencode`のブロックや`priority`の項目が残っていると設定エラーになり、v0.43.0で削除されたことと、piの`github-copilot/*` / `openai-codex/*`へ移行する案内が表示される。キーを削除するか`orchestra:setup`を再実行すること。過去のPoC節(`poc-findings.md`の2026-07〜09)にある両者の記述は履歴としてそのまま残してある。
+理由は両者とも「同じ課金で厳密に劣る」ことである(データと表は`poc-findings.md`の2026-10-08節)。ユーザー設定の`priority`に`copilot`/`opencode`が残っていても、§1の`codex`と同じく`route`は`unknown-executor:<name>`として黙って外す(警告は出ない)。`external_executors`のブロックも使われない。キーを削除するか`orchestra:setup`を再実行すること。
