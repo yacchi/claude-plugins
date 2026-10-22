@@ -1,7 +1,8 @@
-// Regression guard for ../workflow-template.md's script: extracts its
-// ```javascript block, runs it with stubbed Workflow globals, and checks the
-// size gate, the concurrent probe author and the ownership pre-check.
-// No dependencies.
+// Regression guard for the plugin's pipeline workflow (workflows/pipeline.js):
+// runs it with stubbed Workflow globals and checks the args refusal, the meta
+// literal, the size gate, the concurrent probe author, the ownership pre-check,
+// the delegate branch for Claude and agent-dispatch winners, and the run-end
+// relay. No dependencies.
 //
 //   node plugins/orchestra/skills/run/references/template-harness/harness.mjs
 import { readFileSync } from 'node:fs'
@@ -9,10 +10,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const md = readFileSync(join(here, '..', 'workflow-template.md'), 'utf8')
-const block = md.match(/```javascript\n([\s\S]*?)\n```/)
-if (!block) throw new Error('no ```javascript block in workflow-template.md')
-const body = block[1].replace(/^export const meta/m, 'const meta')
+const source = readFileSync(join(here, '..', '..', '..', '..', 'workflows', 'pipeline.js'), 'utf8')
+const body = source.replace(/^export const meta/m, 'const meta')
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const script = new AsyncFunction('agent', 'pipeline', 'parallel', 'log', 'args', body)
 
@@ -22,7 +21,7 @@ const tick = () => new Promise(r => setTimeout(r, 0))
 // is what the probe author returns (null = failed author); `diffs` are the
 // `isolate diff` file lists per pre-check hop, in order ('garbled' = an
 // unparsable relay reply; past the end = only owned files).
-async function run(tasks, { probe = 'ok', diffs = [] } = {}) {
+async function run(tasks, { probe = 'ok', diffs = [], dispatchWait, ...rest } = {}) {
   let diffHop = 0
   const events = []
   const calls = []
@@ -43,7 +42,7 @@ async function run(tasks, { probe = 'ok', diffs = [] } = {}) {
         out = JSON.stringify({ status: 'ok' })
       } else {
         out = prompt.includes('dispatch wait')
-          ? JSON.stringify({ status: 'ok', answer: 'done', isolation: { isolate: true, path: '/wt/' + label } })
+          ? JSON.stringify(dispatchWait || { status: 'ok', answer: 'done', isolation: { isolate: true, path: '/wt/' + label } })
           : JSON.stringify({ status: 'detached' })
       }
     } else if (opts.schema && opts.schema.required.includes('files')) {
@@ -60,7 +59,9 @@ async function run(tasks, { probe = 'ok', diffs = [] } = {}) {
   }
   const pipeline = async (items, fn) => Promise.all(items.map(fn))
   const parallel = async fns => Promise.all(fns.map(f => f()))
-  const out = await script(agent, pipeline, parallel, m => logs.push(m), { tasks })
+  // `args` given explicitly (even undefined) overrides the default run input.
+  const args = 'args' in rest ? rest.args : { runId: 'run-1', tasks }
+  const out = await script(agent, pipeline, parallel, m => logs.push(m), args)
   // A completed run returns {results, runEnd}; a failed size gate returns its own object.
   const result = out && Array.isArray(out.results) ? out.results : out
   return { result, events, calls, logs }
@@ -206,10 +207,66 @@ await check('(f) every agent() call in the script states model and effort', asyn
   }
 })
 
-await check('(g) run-end relay also reports the run usage', async () => {
+await check('(g) run-end relay reports the run usage for args.runId', async () => {
   const { calls } = await run([base('t1')])
   const cleanup = calls.find(c => c.label === 'cleanup')
-  assert(cleanup && cleanup.prompt.includes('agent-exec usage --run'), 'cleanup relay lacks usage report')
+  assert(cleanup && cleanup.prompt.includes('agent-exec usage --run run-1'), 'cleanup relay lacks usage report for runId')
+})
+
+await check('(h) missing args, runId or tasks refuses with zero agent() calls', async () => {
+  const cases = [
+    ['args undefined', undefined, 'args missing'],
+    ['args null', null, 'args missing'],
+    ['runId missing', { tasks: [base('t1')] }, 'args.runId missing'],
+    ['tasks not an array', { runId: 'run-1', tasks: {} }, 'args.tasks is not an array'],
+    ['tasks missing', { runId: 'run-1' }, 'args.tasks is not an array'],
+  ]
+  for (const [name, args, want] of cases) {
+    const { result, calls } = await run([], { args })
+    assert(calls.length === 0, name + ': agent() called ' + calls.length + ' times')
+    assert(result && typeof result.error === 'string' && result.error.includes(want), name + ': ' + JSON.stringify(result))
+  }
+})
+
+await check('(i) meta is a pure literal named pipeline', async () => {
+  const start = source.indexOf('export const meta = ')
+  assert(start >= 0, 'no export const meta')
+  let depth = 0
+  let end = -1
+  for (let i = source.indexOf('{', start); i < source.length; i++) {
+    if (source[i] === '{') depth++
+    else if (source[i] === '}' && --depth === 0) { end = i + 1; break }
+  }
+  const literal = source.slice(source.indexOf('{', start), end)
+  assert(!literal.includes('${'), 'meta interpolates')
+  // A free identifier or call in the literal throws here, so this is the purity check.
+  const meta = new Function('return (' + literal + ')')()
+  assert(meta.name === 'pipeline', 'meta.name=' + meta.name)
+  assert(Array.isArray(meta.phases) && meta.phases.length > 0, 'phases')
+})
+
+await check('(j) a Claude winner gets agentType, model and effort and no flag text', async () => {
+  const dispatchWait = {
+    status: 'delegate', executor: 'claude', dispatch: 'claude', agent_type: 'orchestra:orchestra-light',
+    model: 'haiku', effort: 'low', isolation: { isolate: true, path: '/wt/t1' },
+  }
+  const { calls } = await run([base('t1')], { dispatchWait })
+  const work = calls.find(c => c.label === 't1-work-1')
+  assert(work, 'no delegated worker call')
+  assert(work.opts.agentType === 'orchestra:orchestra-light' && work.opts.model === 'haiku' && work.opts.effort === 'low', 'options ' + JSON.stringify(work.opts))
+  assert(!/--model|--effort/.test(work.prompt), 'flag text on a Claude winner')
+})
+
+await check('(k) an agent-dispatch winner gets its flag text plus agentType, model and effort', async () => {
+  const dispatchWait = {
+    status: 'delegate', executor: 'pi-worker', dispatch: 'agent', agent_type: 'pi:worker',
+    model: 'gpt-x', effort: 'high', isolation: { isolate: true, path: '/wt/t1' },
+  }
+  const { calls } = await run([base('t1')], { dispatchWait })
+  const work = calls.find(c => c.label === 't1-work-1')
+  assert(work, 'no delegated worker call')
+  assert(work.opts.agentType === 'pi:worker' && work.opts.model === 'gpt-x' && work.opts.effort === 'high', 'options ' + JSON.stringify(work.opts))
+  assert(work.prompt.includes('--model gpt-x --effort high'), 'flag text missing on agent-dispatch winner')
 })
 
 console.log(passed + ' passed, ' + failed + ' failed')
