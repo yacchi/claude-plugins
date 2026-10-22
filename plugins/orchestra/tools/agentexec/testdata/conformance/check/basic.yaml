@@ -26,6 +26,10 @@ setup:
     a.txt: "changed\n"
     new.txt: "new\n"
 normalize_keys: [seconds]
+normalize_text:
+  # --text の行末の所要時間は負荷で 0.0s / 0.1s と揺れる
+  - pattern: '(?m) [0-9]+\.[0-9]s$'
+    replace: ' <S>s'
 steps:
   - argv: [check, --path, .]
   - argv: [check, --path, ., --all]

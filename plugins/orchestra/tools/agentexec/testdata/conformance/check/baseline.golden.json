@@ -59,7 +59,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "preexisting-one preexisting 0.0s\nmine fail 0.0s\nfine pass 0.0s\n"
+      "stdout": "preexisting-one preexisting <S>s\nmine fail <S>s\nfine pass <S>s\n"
     }
   ]
 }

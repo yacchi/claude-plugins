@@ -115,7 +115,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "lint pass 0.0s\ntypes pass 0.0s\nunit fail 0.0s\nheavy skipped 0.0s\nAssertionError: nope\nFAIL a.test.ts > case one\n"
+      "stdout": "lint pass <S>s\ntypes pass <S>s\nunit fail <S>s\nheavy skipped <S>s\nAssertionError: nope\nFAIL a.test.ts > case one\n"
     },
     {
       "argv": [
@@ -127,7 +127,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "lint pass 0.0s\ntypes pass 0.0s\nunit fail 0.0s\nheavy pass 0.0s\nAssertionError: nope\nFAIL a.test.ts > case one\n"
+      "stdout": "lint pass <S>s\ntypes pass <S>s\nunit fail <S>s\nheavy pass <S>s\nAssertionError: nope\nFAIL a.test.ts > case one\n"
     },
     {
       "argv": [
