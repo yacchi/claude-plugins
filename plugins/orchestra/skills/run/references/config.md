@@ -9,7 +9,7 @@ Load this file only when a configuration question actually arises: what a key me
 
 At the start of every orchestration, the instructor resolves configuration from up to four layers, merged in this order (later layers win):
 
-1. **Defaults**: `tiers` — light: haiku, standard: haiku, deep: opus, review: sonnet (these remain the Claude-side fallback models `agent-exec route` resolves to). `external_executors.pi` now ships **`enabled: true`** out of the box, with its `class_policy` (pi: `openai-codex/gpt-5.6-luna`/medium for `light`+`standard`, `openai-codex/gpt-6.1-sol`/high `deep`, `openai-codex/gpt-6.1-sol`/medium `independent-review`) and a built-in `priority` (`light: [claude, pi]` (investigation the same), `standard: [claude, pi]`, `deep: [claude, pi]`, `review: [claude]`, `independent-review: [pi]`), plus `enforcement.light_class: off` and `ledger.enabled: true`, `ledger.dir: "~/.claude/orchestra/runs"`, `ledger.retention_days: 30`. Shipping external executors enabled by default is safe because `agent-exec route` gates every candidate on actual availability (below) — on a machine without pi installed, every call still resolves to `claude`.
+1. **Defaults**: `tiers` — light: haiku/medium, standard: haiku/high, deep: opus/medium, review: sonnet/medium as `{model, effort}` (these remain the Claude-side fallback models and efforts `agent-exec route` resolves to). `external_executors.pi` now ships **`enabled: true`** out of the box, with its `class_policy` (pi: `openai-codex/gpt-5.6-luna`/medium for `light`, `openai-codex/gpt-5.6-luna`/high for `standard`, `openai-codex/gpt-6.1-sol`/high `deep`, `openai-codex/gpt-6.1-sol`/medium `independent-review`) and a built-in `priority` (`light: [claude, pi]` (investigation the same), `standard: [claude, pi]`, `deep: [claude, pi]`, `review: [claude]`, `independent-review: [pi]`), plus `enforcement.light_class: off` and `ledger.enabled: true`, `ledger.dir: "~/.claude/orchestra/runs"`, `ledger.retention_days: 30`. Shipping external executors enabled by default is safe because `agent-exec route` gates every candidate on actual availability (below) — on a machine without pi installed, every call still resolves to `claude`.
 2. **User**: `~/.claude/orchestra.yaml` (or `.yml`), if present.
 3. **Project**: `.claude/orchestra.yaml` (or `.yml`), if present — checked into git, shared with the team.
 4. **Project-local**: `.claude/orchestra.local.yaml` (or `.yml`), if present — this developer's personal override for this one project. Mirrors Claude Code's own `settings.json` / `settings.local.json` split; never commit this file (see `setup` SKILL.md §1).
@@ -38,11 +38,19 @@ tiers:
   # are the CLAUDE-side fallback models `agent-exec route` resolves to when
   # no external executor is enabled/ready for the class - see `priority`
   # below for what actually gets tried first.
-  light: haiku       # fast, mechanical, fully-specified work
-  standard: haiku    # normal implementation with modest design latitude
-  deep: opus         # design-sensitive / hard problems needing real judgment
+  light:             # fast, mechanical, fully-specified work
+    model: haiku
+    effort: medium
+  standard:          # normal implementation with modest design latitude
+    model: haiku
+    effort: high
+  deep:              # design-sensitive / hard problems needing real judgment
+    model: opus
+    effort: medium
   # verification role
-  review: sonnet     # mandatory same-run adversarial review of the work
+  review:            # mandatory same-run adversarial review of the work
+    model: sonnet
+    effort: medium
   # `independent-review` has no built-in Claude model on purpose - it exists to
   # add a DIFFERENT provider's eyes; see `priority.independent-review` below.
 
@@ -212,7 +220,7 @@ could not address. Older un-prefixed files are still read and are not migrated.
 
 To set this up interactively (detect whether pi is actually available in this environment, choose project vs user scope, edit the file in place without clobbering existing comments), use the `setup` skill instead of hand-editing — see its own SKILL.md.
 
-**`tiers`** overrides the model-class defaults of section 3. Values are model aliases (or full model IDs) used whenever this skill — or `agent-exec route` — resolves a class/role to a Claude model: the `claude` candidate in `priority`, or any class/role with no external executor configured for it.
+**`tiers`** overrides the model-class defaults of section 3. Each entry is either a model alias (or full model ID) string, which leaves the effort unset, or an object `{model, effort}` where `effort` is one of `low`, `medium`, `high`, `xhigh`, `max`; any other key or effort value is a config error. They are used whenever this skill — or `agent-exec route` — resolves a class/role to a Claude model: the `claude` candidate in `priority`, or any class/role with no external executor configured for it. When the winner is `claude`, `agent-exec route` returns `model`, `effort` and `agent_type` for it (`orchestra:orchestra-light` for `light` and `standard`, `orchestra:orchestra-deep` for `deep`, `orchestra:orchestra-review` for `review`, null for `independent-review`).
 
 **`external_executors`** declares non-Claude executors (pi, etc.) that may be woven into the pipeline. Only entries with `"enabled": true` are used. Two dispatch mechanisms:
 

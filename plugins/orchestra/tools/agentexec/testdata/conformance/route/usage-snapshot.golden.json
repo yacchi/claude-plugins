@@ -20,7 +20,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "cli",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "model": "openai-codex/gpt-5.6-luna",
         "remaining": [],
@@ -53,7 +53,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: claude, pi\nresolved: pi (dispatch=cli model=openai-codex/gpt-5.6-luna effort=medium)\nskipped:\n  - claude: usage:claude:five_hour=85%\nusage: claude (claude five_hour=85% >= 80%) resets <TS>\nsource: priority\n"
+      "stdout": "agent-exec route\n-----------------\nclass: standard (archetype: default)\ncandidates: claude, pi\nresolved: pi (dispatch=cli model=openai-codex/gpt-5.6-luna effort=high agent_type=-)\nskipped:\n  - claude: usage:claude:five_hour=85%\nusage: claude (claude five_hour=85% >= 80%) resets <TS>\nsource: priority\n"
     },
     {
       "argv": [
@@ -65,7 +65,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "default",
         "candidates": [
           "claude",
@@ -75,7 +75,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "high",
         "executor": "claude",
         "model": "haiku",
         "remaining": [
@@ -96,7 +96,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "default",
         "candidates": [
           "claude",
@@ -106,7 +106,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "medium",
         "executor": "claude",
         "model": "haiku",
         "remaining": [
@@ -144,7 +144,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec route\n-----------------\nclass: light (archetype: default)\ncandidates: claude, pi\nresolved: claude (dispatch=claude model=haiku effort=-)\nusage: claude (claude five_hour=85% >= 80%) resets -\nusage: pi (openai-codex seven_day=93.3% >= 90%) resets -\nusage: BYPASSED (every candidate was demoted or cooled down)\nremaining: pi\nsource: priority\n"
+      "stdout": "agent-exec route\n-----------------\nclass: light (archetype: default)\ncandidates: claude, pi\nresolved: claude (dispatch=claude model=haiku effort=medium agent_type=orchestra:orchestra-light)\nusage: claude (claude five_hour=85% >= 80%) resets -\nusage: pi (openai-codex seven_day=93.3% >= 90%) resets -\nusage: BYPASSED (every candidate was demoted or cooled down)\nremaining: pi\nsource: priority\n"
     },
     {
       "argv": [
@@ -186,7 +186,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "default",
         "candidates": [
           "claude",
@@ -196,7 +196,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "high",
         "executor": "claude",
         "model": "haiku",
         "remaining": [

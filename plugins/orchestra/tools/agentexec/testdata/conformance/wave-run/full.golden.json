@@ -848,7 +848,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+              "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "fix-1",
@@ -928,7 +928,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+              "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "fix-2",
@@ -987,13 +987,13 @@
             "needs": [
               {
                 "at": "<AT>",
-                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
                 "id": "fix-1",
                 "kind": "delegate"
               },
               {
                 "at": "<AT>",
-                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
                 "id": "fix-2",
                 "kind": "delegate"
               },
@@ -1030,7 +1030,7 @@
               "fix-1": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,
@@ -1041,7 +1041,7 @@
               "fix-2": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"agent_type\":null,\"effort\":null,\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,

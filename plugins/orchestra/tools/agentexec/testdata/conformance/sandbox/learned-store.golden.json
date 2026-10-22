@@ -52,7 +52,7 @@
                 "model": "openai-codex/gpt-5.6-luna"
               },
               "standard": {
-                "effort": "medium",
+                "effort": "high",
                 "model": "openai-codex/gpt-5.6-luna"
               }
             },
@@ -211,10 +211,22 @@
           "heavy_slots": "auto"
         },
         "tiers": {
-          "deep": "opus",
-          "light": "haiku",
-          "review": "sonnet",
-          "standard": "haiku"
+          "deep": {
+            "effort": "medium",
+            "model": "opus"
+          },
+          "light": {
+            "effort": "medium",
+            "model": "haiku"
+          },
+          "review": {
+            "effort": "medium",
+            "model": "sonnet"
+          },
+          "standard": {
+            "effort": "high",
+            "model": "haiku"
+          }
         },
         "tools": {
           "herdr": {

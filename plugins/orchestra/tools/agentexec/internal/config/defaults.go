@@ -101,7 +101,12 @@ func Defaults() map[string]any {
 			"wall_seconds", obj("light", int64(1200), "standard", int64(2400),
 				"deep", int64(5400), "independent-review", int64(2400)),
 		),
-		"tiers", obj("light", "haiku", "standard", "haiku", "deep", "opus", "review", "sonnet"),
+		"tiers", obj(
+			"light", modelEffort("haiku", "medium"),
+			"standard", modelEffort("haiku", "high"),
+			"deep", modelEffort("opus", "medium"),
+			"review", modelEffort("sonnet", "medium"),
+		),
 		"external_executors", obj(
 			"pi", obj(
 				"enabled", true,
@@ -111,7 +116,7 @@ func Defaults() map[string]any {
 				"classes", strs("light", "standard", "deep", "independent-review"),
 				"class_policy", obj(
 					"light", modelEffort("openai-codex/gpt-5.6-luna", "medium"),
-					"standard", modelEffort("openai-codex/gpt-5.6-luna", "medium"),
+					"standard", modelEffort("openai-codex/gpt-5.6-luna", "high"),
 					"deep", modelEffort("openai-codex/gpt-6.1-sol", "high"),
 					"independent-review", modelEffort("openai-codex/gpt-6.1-sol", "medium"),
 				),

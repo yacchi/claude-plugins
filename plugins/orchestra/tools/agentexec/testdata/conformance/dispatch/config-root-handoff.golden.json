@@ -36,7 +36,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "from the other side",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -57,7 +57,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [],
@@ -97,7 +97,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "from the other side",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -118,7 +118,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [],
@@ -177,7 +177,7 @@
       "stdout": {
         "answer": "from the other side",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
-        "effort": "medium",
+        "effort": "high",
         "executor": "pi",
         "exit_code": 0,
         "isolation": {
@@ -198,7 +198,7 @@
           "cooldown_bypassed": false,
           "cooldowns_applied": [],
           "dispatch": "cli",
-          "effort": "medium",
+          "effort": "high",
           "executor": "pi",
           "model": "openai-codex/gpt-5.6-luna",
           "remaining": [],

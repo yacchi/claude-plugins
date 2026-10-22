@@ -10,7 +10,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "default",
         "candidates": [
           "claude",
@@ -20,7 +20,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "medium",
         "executor": "claude",
         "model": "haiku",
         "remaining": [
@@ -42,7 +42,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "default",
         "candidates": [
           "claude",
@@ -52,7 +52,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "high",
         "executor": "claude",
         "model": "haiku",
         "remaining": [
@@ -73,7 +73,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-deep",
         "archetype": "default",
         "candidates": [
           "claude",
@@ -83,7 +83,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "medium",
         "executor": "claude",
         "model": "opus",
         "remaining": [
@@ -104,7 +104,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-review",
         "archetype": "default",
         "candidates": [
           "claude"
@@ -113,7 +113,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "medium",
         "executor": "claude",
         "model": "sonnet",
         "remaining": [],
@@ -162,7 +162,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "investigation",
         "candidates": [
           "claude",
@@ -172,7 +172,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "medium",
         "executor": "claude",
         "model": "haiku",
         "remaining": [
@@ -195,7 +195,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "agent_type": null,
+        "agent_type": "orchestra:orchestra-light",
         "archetype": "investigation",
         "candidates": [
           "claude",
@@ -205,7 +205,7 @@
         "cooldown_bypassed": false,
         "cooldowns_applied": [],
         "dispatch": "claude",
-        "effort": null,
+        "effort": "high",
         "executor": "claude",
         "model": "haiku",
         "remaining": [

@@ -81,7 +81,7 @@
                     "model": "openai-codex/gpt-5.6-luna"
                   },
                   "standard": {
-                    "effort": "medium",
+                    "effort": "high",
                     "model": "openai-codex/gpt-5.6-luna"
                   }
                 },
@@ -226,10 +226,22 @@
               "heavy_slots": "auto"
             },
             "tiers": {
-              "deep": "opus",
-              "light": "haiku",
-              "review": "sonnet",
-              "standard": "haiku"
+              "deep": {
+                "effort": "medium",
+                "model": "opus"
+              },
+              "light": {
+                "effort": "medium",
+                "model": "haiku"
+              },
+              "review": {
+                "effort": "medium",
+                "model": "sonnet"
+              },
+              "standard": {
+                "effort": "high",
+                "model": "haiku"
+              }
             },
             "tools": {
               "herdr": {
@@ -336,7 +348,7 @@
         },
         "route": {
           "deep": {
-            "agent_type": null,
+            "agent_type": "orchestra:orchestra-deep",
             "archetype": "default",
             "candidates": [
               "claude",
@@ -346,7 +358,7 @@
             "cooldown_bypassed": false,
             "cooldowns_applied": [],
             "dispatch": "claude",
-            "effort": null,
+            "effort": "medium",
             "executor": "claude",
             "model": "opus",
             "remaining": [
@@ -358,7 +370,7 @@
             "usage_bypassed": false
           },
           "light": {
-            "agent_type": null,
+            "agent_type": "orchestra:orchestra-light",
             "archetype": "default",
             "candidates": [
               "claude",
@@ -368,7 +380,7 @@
             "cooldown_bypassed": false,
             "cooldowns_applied": [],
             "dispatch": "claude",
-            "effort": null,
+            "effort": "medium",
             "executor": "claude",
             "model": "haiku",
             "remaining": [
@@ -380,7 +392,7 @@
             "usage_bypassed": false
           },
           "review": {
-            "agent_type": null,
+            "agent_type": "orchestra:orchestra-review",
             "archetype": "default",
             "candidates": [
               "claude"
@@ -389,7 +401,7 @@
             "cooldown_bypassed": false,
             "cooldowns_applied": [],
             "dispatch": "claude",
-            "effort": null,
+            "effort": "medium",
             "executor": "claude",
             "model": "sonnet",
             "remaining": [],
@@ -399,7 +411,7 @@
             "usage_bypassed": false
           },
           "standard": {
-            "agent_type": null,
+            "agent_type": "orchestra:orchestra-light",
             "archetype": "default",
             "candidates": [
               "claude",
@@ -409,7 +421,7 @@
             "cooldown_bypassed": false,
             "cooldowns_applied": [],
             "dispatch": "claude",
-            "effort": null,
+            "effort": "high",
             "executor": "claude",
             "model": "haiku",
             "remaining": [
