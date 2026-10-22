@@ -2,6 +2,8 @@ package herdr
 
 import (
 	"context"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -63,6 +65,7 @@ func (e *Executor) Prompt(ctx context.Context, s *host.Session, promptFiles []st
 			"in " + warm + "; any path under it maps to the same relative path under your working " +
 			"tree. Never read or write under " + warm + ". " + line
 	}
+	s.Set("last_prompt", line)
 	return e.sendPrompt(ctx, s, name, line, resultPath)
 }
 
@@ -150,9 +153,17 @@ func (e *Executor) waitResult(ctx context.Context, s *host.Session, resultPath s
 		return nil, host.Need(host.KindStalled, "agent is no longer registered")
 	}
 	deadline := e.now().Add(timeout)
+	grace := e.cfg.Seconds("idle_grace", 300)
+	var (
+		idleSince  time.Time
+		idleScreen string
+		nudged     bool
+		brokenSize int64 = -1
+	)
 	for {
 		e.NetworkTick()
-		if data := host.ReadResult(resultPath); data != nil {
+		data, resErr := host.ReadResultErr(resultPath)
+		if data != nil {
 			return data, nil
 		}
 		status, err := e.status(ctx, name, "")
@@ -164,11 +175,49 @@ func (e *Executor) waitResult(ctx context.Context, s *host.Session, resultPath s
 		}
 		// idle/done: the TUI settled, but only the result file ends the task
 		// (or a login failure, which no amount of waiting fixes).
-		if status == "idle" || status == "done" {
-			if scr, err := e.screen(ctx, name); err == nil && host.IsLoginText(scr) {
+		settled := status == "idle" || status == "done"
+		scr, scrErr := "", error(nil)
+		if settled {
+			scr, scrErr = e.screen(ctx, name)
+			if scrErr == nil && host.IsLoginText(scr) {
 				return nil, host.Need(host.KindError, "Claude Code in "+name+" has no usable login "+
 					"(run `claude auth status` with the herdr server's CLAUDE_CONFIG_DIR):\n"+host.TailText(scr))
 			}
+		}
+		// A result file that exists but does not parse, with the agent
+		// settled and the file no longer growing, will never get fixed.
+		if resErr != nil && settled {
+			size := int64(-1)
+			if st, err := os.Stat(resultPath); err == nil {
+				size = st.Size()
+			}
+			if size == brokenSize {
+				return nil, host.Need(host.KindError, "result file "+resultPath+" is not valid: "+resErr.Error()+
+					"\n"+firstBytes(resultPath, 300))
+			}
+			brokenSize = size
+		} else {
+			brokenSize = -1
+		}
+		// Idle with an unchanged screen for the grace period: nudge once,
+		// then give up.
+		if !settled || scrErr != nil || scr != idleScreen || idleSince.IsZero() {
+			idleScreen = scr
+			idleSince = time.Time{}
+			if settled && scrErr == nil {
+				idleSince = e.now()
+			}
+		} else if e.now().Sub(idleSince) >= grace {
+			if nudged {
+				return nil, host.Need(host.KindStalled, "idle without a result for "+host.Seconds(grace)+
+					"s after a nudge:\n"+host.TailText(scr))
+			}
+			nudged = true
+			if err := e.nudge(ctx, s, name, scr, resultPath); err != nil {
+				return nil, err
+			}
+			idleSince = time.Time{}
+			idleScreen = ""
 		}
 		if !e.now().Before(deadline) {
 			tail := ""
@@ -183,6 +232,39 @@ func (e *Executor) waitResult(ctx context.Context, s *host.Session, resultPath s
 			}
 		}
 	}
+}
+
+// nudge wakes an agent that stopped without a result: Enter when its
+// prompt sits unsent in the input box, the prompt again otherwise.
+func (e *Executor) nudge(ctx context.Context, s *host.Session, name, scr, resultPath string) error {
+	if text, ok := host.PendingInput(host.SplitLines(scr)); ok && text != "" {
+		if _, _, err := e.call(ctx, callTimeout, "", "agent", "send-keys", name, "enter"); err != nil {
+			return host.Need(host.KindError, err.Error())
+		}
+		e.emit(s.Pkg, "nudge", name, map[string]any{"how": "enter"})
+		return nil
+	}
+	line := "You stopped without writing " + resultPath + ". If the task below is already done, write that file now and stop."
+	if last := s.Str("last_prompt"); last != "" {
+		line = line[:len(line)-1] + "; otherwise carry it out. " + last
+	}
+	if err := e.sendPrompt(ctx, s, name, line, resultPath); err != nil {
+		return err
+	}
+	e.emit(s.Pkg, "nudge", name, map[string]any{"how": "resend"})
+	return nil
+}
+
+// firstBytes is up to n bytes of the file at path ("" when unreadable).
+func firstBytes(path string, n int) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	buf := make([]byte, n)
+	got, _ := io.ReadFull(f, buf)
+	return string(buf[:got])
 }
 
 // Close closes the workspace; with removeWorktree the worktree goes too

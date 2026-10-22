@@ -11,6 +11,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
 // warmRecord is one model's warm reader record under WarmKey: session_id,
@@ -101,7 +102,7 @@ func (e *Executor) warmFor(ctx context.Context, pkg, repo, baseRef, model, state
 		v := warm[k]
 		return v
 	}
-	e.warmMu.Lock()
+	trace.Lock(&e.warmMu, "herdr warm", trace.Attrs{Pkg: pkg})
 	defer e.warmMu.Unlock()
 	if !host.Truthy(get("enabled")) || len(e.warmPaths) == 0 ||
 		float64(e.warmCounts[model]) < host.ConfigFloat(get("min_packages"), 2) {
@@ -180,7 +181,7 @@ func sameList(v any, paths []string) bool {
 // EnsureWarm makes sure model has a usable warm reader at baseRef.
 func (e *Executor) EnsureWarm(ctx context.Context, model, baseRef string, paths []string, repo, stateDir string, addDirs []string) error {
 	stateDir = e.adoptStateDir(stateDir)
-	e.warmMu.Lock()
+	trace.Lock(&e.warmMu, "herdr warm", trace.Attrs{Pkg: "warm-" + model})
 	defer e.warmMu.Unlock()
 	_, err := e.ensureWarm(ctx, model, baseRef, paths, repo, stateDir, host.SortedDirs(addDirs))
 	return err
@@ -198,7 +199,7 @@ func newUUID() string {
 // it is fresh and its files are unchanged, otherwise rebuilt (a reader
 // session that reads the files and writes a result). Fails on anything
 // wrong; the caller falls back to a fresh start.
-func (e *Executor) ensureWarm(ctx context.Context, model, baseRef string, paths []string, repo, stateDir string, addDirs []string) (warmRecord, error) {
+func (e *Executor) ensureWarm(ctx context.Context, model, baseRef string, paths []string, repo, stateDir string, addDirs []string) (rec warmRecord, err error) {
 	paths = append([]string{}, paths...)
 	baseRev := revParseCommit(repo, baseRef)
 	if baseRev == "" {
@@ -220,6 +221,14 @@ func (e *Executor) ensureWarm(ctx context.Context, model, baseRef string, paths 
 		tag = "model"
 	}
 	task := "warm-" + tag
+	end := trace.Begin(trace.KindExec, "herdr warm rebuild", trace.Attrs{Pkg: task})
+	defer func() {
+		if err != nil {
+			end(1)
+			return
+		}
+		end(0)
+	}()
 	created, err := isolate.Create(repo, task, isolate.CreateOptions{Backend: isolate.BackendGit, Onto: baseRev})
 	if err != nil || (created.Status != "created" && created.Status != "exists") || !isDir(created.Path) {
 		reason := created.Reason
@@ -277,7 +286,7 @@ func (e *Executor) ensureWarm(ctx context.Context, model, baseRef string, paths 
 	if out, err := gitx.Run(created.Path, "status", "--porcelain"); err != nil || strings.TrimSpace(out) != "" {
 		return nil, host.Need(host.KindError, "warm worktree is not clean after reading")
 	}
-	rec := warmRecord{
+	rec = warmRecord{
 		"session_id": sid, "worktree": created.Path, "base_ref": baseRef, "base_rev": baseRev,
 		"files": files, "requested": paths, "repo": repo, "task": task,
 		"created_at": now, "last_used": now,

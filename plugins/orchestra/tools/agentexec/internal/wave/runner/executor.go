@@ -11,6 +11,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/dispatch"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
 // Executor prepares and runs one package dispatch. Dispatch returns the
@@ -75,7 +76,9 @@ func (c *CliExecutor) call(args ...string) (map[string]any, string) {
 	cmd.Dir = c.Cwd
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	end := trace.Begin(trace.KindExec, execOp(args), trace.Attrs{Cwd: c.Cwd})
 	err := cmd.Run()
+	end(exitCode(err))
 	var ee *exec.ExitError
 	if err != nil && !errors.As(err, &ee) {
 		return nil, err.Error()
@@ -121,7 +124,7 @@ func (c *CliExecutor) Dispatch(token, cls string, exhausted []string, noResume b
 	lock := c.startLock
 	c.mu.Unlock()
 	if lock != nil {
-		lock.Lock()
+		trace.Lock(lock, "wave dispatch start", trace.Attrs{})
 	}
 	parsed, msg := c.call(args...)
 	if lock != nil {
@@ -148,6 +151,32 @@ func (c *CliExecutor) Dispatch(token, cls string, exhausted []string, noResume b
 			return parsed
 		}
 	}
+}
+
+// execOp names a subprocess by its command words: the leading arguments
+// before the first flag, so flag values and paths never reach the log.
+func execOp(args []string) string {
+	words := []string{"agent-exec"}
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			break
+		}
+		words = append(words, a)
+	}
+	return strings.Join(words, " ")
+}
+
+// exitCode is a finished subprocess's exit code: 0 on success, the code
+// when it exited non-zero, -1 when it could not start.
+func exitCode(err error) int {
+	var ee *exec.ExitError
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &ee):
+		return ee.ExitCode()
+	}
+	return -1
 }
 
 // normalizeNumbers turns integral float64s (encoding/json's numbers) back

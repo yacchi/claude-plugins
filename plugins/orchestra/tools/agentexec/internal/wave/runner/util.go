@@ -12,6 +12,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -59,7 +60,8 @@ func (r *runner) notify(kind string, payload map[string]any) {
 		c := exec.CommandContext(ctx, "/bin/sh", "-c", cmd)
 		c.Env = env
 		c.Stdin = bytes.NewReader(data)
-		_ = c.Run()
+		end := trace.Begin(trace.KindExec, "wave notify", trace.Attrs{})
+		end(exitCode(c.Run()))
 	}()
 }
 
