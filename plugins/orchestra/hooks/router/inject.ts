@@ -19,8 +19,8 @@ const BODY = `Classify EACH user request before acting.
 EXPRESS — ALL of: one self-contained change (or conversational/read-only/a
 question); no decomposition, no design decisions, no cross-task coordination;
 small expected context bloat. File count is NOT a criterion.
-→ Do it yourself, or via ONE cheap subagent (haiku/sonnet). No verifier
-  pipeline, no workflow. Hand the test/build run to a cheap subagent and read
+→ Do it yourself, or via cheap subagents (haiku/sonnet), in parallel when the
+  parts are independent. No verifier pipeline, no workflow. Hand the test/build run to a cheap subagent and read
   back only its verdict. Name the tier: a subagent call that leaves \`model\`
   out inherits YOUR model (Opus/Fable), so pass \`model: "sonnet"\` (or
   "haiku") explicitly for investigation, search, and test runs.
@@ -36,8 +36,9 @@ ORCHESTRATED — anything else, and WHENEVER IN DOUBT.
   structured verdicts.
 
 A lane never persists — re-classify every request and at every phase shift.
-Forced ORCHESTRATED, even mid-conversation: you are about to hand-write or
-edit substantive code in 2+ files; a design discussion just turned into
+Forced ORCHESTRATED, even mid-conversation: you are about to hand-write
+substantive code you have not already worked out in this conversation; a
+design discussion just turned into
 "implement it" / 「PRを出しましょう」/「直しておきましょう」; or you are planning your
 own multi-step implement-then-verify sequence. Then STOP and load
 \`orchestra:run\` first.

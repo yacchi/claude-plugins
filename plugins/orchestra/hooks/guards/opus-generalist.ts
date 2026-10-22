@@ -4,18 +4,17 @@ import { isOff, loadEnforcement } from '../lib/config.ts'
 import { hasEscape } from '../lib/shell.ts'
 import { verdictOf } from '../router/verdict.ts'
 
-// A general-purpose subagent that would run on the instructor's own model.
-// A 30-day, two-machine review (feedback/2026-10-03-usage-review.md) found 45
-// generalist calls naming `model: opus` and 43 omitting `model` (which
-// inherits Opus/Fable) against 72 Sonnet and 33 Haiku, ~1.58M output tokens:
-// nothing said that an omitted model means Opus. This says it, once.
+// A general-purpose subagent that would run on the instructor's top tier: one
+// that omits `model` (so it inherits the session's Opus/Fable model) or names
+// Fable. Naming Opus is a deliberate choice and is never denied (SKILL §3).
 //
 // A NUDGE, NEVER A WALL (about half were read-only investigation, where Opus
 // is occasionally right): at most ONE deny per session, and that deny says
 // how to proceed either way. Escape hatches: the cap;
 // [orchestra:allow-opus(: reason)] in the prompt or description (does not
 // spend the cap); carve-outs for a prompt mentioning `agent-exec`, a named
-// subagent_type other than general-purpose/claude, or a non-Opus/Fable model;
+// subagent_type other than general-purpose/claude, or a named model other
+// than Fable;
 // ORCHESTRA_OPUS_NUDGE=off or enforcement.opus_generalist: off; fail-open.
 //
 // Scope: the main thread of a session the SessionStart gate classified as
@@ -29,14 +28,15 @@ const reason = (model: string): string => {
         ? 'leaves `model` out, so it inherits this session\'s Opus/Fable model'
         : `names \`model: ${model}\``
 
-    return `orchestra: this general-purpose subagent ${how}. Opus-class generalists were `
-        + 'the largest avoidable cost in past sessions. Re-issue the call as: '
+    return `orchestra: this general-purpose subagent ${how}, the most expensive tier `
+        + '(Fable 5x and Opus 2x Sonnet per token), usually by accident. Re-issue the call as: '
         + '(1) read-only investigation, search, test or build runs -> add '
         + '`model: "sonnet"` (or "haiku" for a mechanical lookup); '
         + '(2) writing or changing code -> do not use a generalist: load the '
-        + '`orchestra:run` skill and send it to a worker (`agent-exec dispatch '
-        + '--class light` / `standard`, or orchestra-deep for design-sensitive '
-        + 'work). If this one really needs the instructor-class model, retry the '
+        + '`orchestra:run` skill and route it through its Workflow, or through the '
+        + 'orchestra-delegate subagent when Workflows are unavailable (both dispatch '
+        + 'detached; a foreground `agent-exec dispatch` in your own Bash dies at the '
+        + '600 s limit). If this one really needs the instructor-class model, retry the '
         + 'same call with `[orchestra:allow-opus: <reason>]` in the description. '
         + 'This is denied once per session; the retry is never blocked.'
 }
@@ -55,9 +55,10 @@ export const checkOpusGeneralist = async (
     const subagentType = field(input, 'subagent_type').trim().toLowerCase()
     const model = field(input, 'model').trim().toLowerCase()
     const isGeneric = ['', 'general-purpose', 'claude'].includes(subagentType)
-    // An omitted model inherits the instructor's; naming Opus/Fable is the
-    // same spawn on purpose; anything else is already a cheaper tier.
-    const isInstructorClass = model === '' || model.includes('opus') || model.includes('fable')
+    // An omitted model inherits the instructor's (the accident this catches);
+    // naming Fable is the top tier. Naming Opus is a deliberate choice -- SKILL §3
+    // sanctions it for judgment-heavy review, and from a Fable session it is the cheaper tier.
+    const isInstructorClass = model === '' || model.includes('fable')
     if (!isGeneric || !isInstructorClass || hasEscape('opus', prompt, description)
         || `${prompt}\n${description}`.toLowerCase().includes('agent-exec')) {
         return undefined

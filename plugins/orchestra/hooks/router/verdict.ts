@@ -1,6 +1,6 @@
 // The SessionStart gate's verdict per session, reused by the hooks whose own
-// input does not reliably carry the model (UserPromptSubmit, PostToolUse,
-// Agent calls). Absent reads as `unknown`.
+// input does not reliably carry the model (PostToolUse, Agent calls).
+// Absent reads as `unknown`.
 
 // `worker`: a session hosted in an orchestra task worktree, told to do its
 // prompt itself rather than orchestrate.
