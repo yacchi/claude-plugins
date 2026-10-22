@@ -15,6 +15,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/integrate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -293,7 +294,9 @@ func (r *runner) onGreen(sha string) {
 func runPlain(dir, command string, timeout time.Duration, env []string) *int {
 	c := exec.Command("/bin/sh", "-c", command)
 	c.Dir, c.Env = dir, env
+	end := trace.Begin(trace.KindExec, "wave on-green", trace.Attrs{Cwd: dir})
 	if err := c.Start(); err != nil {
+		end(-1)
 		return nil
 	}
 	done := make(chan error, 1)
@@ -304,12 +307,14 @@ func runPlain(dir, command string, timeout time.Duration, env []string) *int {
 		case <-time.After(timeout):
 			_ = c.Process.Kill()
 			<-done
+			end(-1)
 			return nil
 		}
 	} else {
 		<-done
 	}
 	code := c.ProcessState.ExitCode()
+	end(code)
 	return &code
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/approvals"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -28,7 +29,7 @@ func (r *runner) loop() {
 		}
 		// A final red --full that sent packages back re-enters the loop.
 		fullLock.Lock()
-		r.intLock.Lock()
+		trace.Lock(&r.intLock, "wave integration", trace.Attrs{})
 		reset := r.full()
 		r.intLock.Unlock()
 		fullLock.Unlock()
@@ -148,7 +149,7 @@ func (r *runner) schedule(p *pool, running map[int]string) (progressed, halted b
 	for _, pid := range awaiting {
 		jobs = append(jobs, job{pid, "await", ""})
 	}
-	r.intLock.Lock()
+	trace.Lock(&r.intLock, "wave integration", trace.Attrs{})
 	head := r.intHead()
 	for _, pid := range selected {
 		if ok, note := r.refresh(pid, head); ok {
@@ -168,7 +169,7 @@ func (r *runner) schedule(p *pool, running map[int]string) (progressed, halted b
 // afterJobs integrates every ready package; in gated mode it runs --full
 // every full_every integrating rounds. Serialized on the scheduler.
 func (r *runner) afterJobs() {
-	r.intLock.Lock()
+	trace.Lock(&r.intLock, "wave integration", trace.Attrs{})
 	defer r.intLock.Unlock()
 	integrated := r.integrateReady()
 	if integrated > 0 {

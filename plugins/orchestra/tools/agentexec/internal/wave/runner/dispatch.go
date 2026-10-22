@@ -14,6 +14,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -226,7 +227,7 @@ func (r *runner) dispatch(pid string, promptFiles []string, noResume bool, kind 
 // "_stop" means the executor pool is exhausted (reason in "reason").
 func (r *runner) dispatchOnce(pid string, promptFiles []string, noResume bool) (string, map[string]any) {
 	pkg := r.pkg(pid)
-	r.intLock.Lock()
+	trace.Lock(&r.intLock, "wave integration", trace.Attrs{Pkg: pid})
 	r.cleanIntegration("pre-dispatch")
 	token, err := r.exec.Prepare(promptFiles, pkg.Cls, r.intPath, r.task(pid), r.opts.RunID)
 	r.intLock.Unlock()
