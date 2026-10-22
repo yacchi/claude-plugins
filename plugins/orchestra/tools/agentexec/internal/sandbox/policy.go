@@ -33,6 +33,8 @@ type Policy struct {
 	Tamper         []string `json:"tamper"`
 	RepoRoot       string   `json:"repo_root"`
 	Learned        []string `json:"learned"`
+	// PnpmStore is the seeded pnpm store root ChildEnv pins pnpm to.
+	PnpmStore string `json:"-"`
 }
 
 func (p *Policy) clone() *Policy {
@@ -240,12 +242,39 @@ func tmpRoot(platform string) string {
 	return realPath("/tmp")
 }
 
-func seeds(platform string) []string {
-	s := append([]string(nil), seedCacheWrites...)
+// seeds are the realpath'd cache writes every policy starts with, and the
+// pnpm store root among them: the one ChildEnv pins pnpm to, so the seed
+// and the pin cannot diverge.
+func seeds(platform, home string, getenv func(string) string) ([]string, string) {
+	rel := append([]string(nil), seedCacheWrites...)
 	if platform == "darwin" {
-		s = append(s, seedCacheWritesDarwin...)
+		rel = append(rel, seedCacheWritesDarwin...)
 	}
-	return s
+	rel = append(rel, seedPackageCaches...)
+	var out []string
+	for _, p := range rel {
+		out = append(out, expand(p, home))
+	}
+	store := pnpmStoreDir(platform, home, getenv)
+	return append(out, store), store
+}
+
+// pnpmStoreDir is pnpm's own default store root (pnpm appends /v<N>):
+// $PNPM_HOME/store, else $XDG_DATA_HOME/pnpm/store, else the platform's
+// data dir. Its parent holds pnpm's bin/ and global/, so only the store is
+// seeded; pnpm then moves its store into the tree unless pinned (ChildEnv).
+// Relative values are ignored, as for XDG_STATE_HOME.
+func pnpmStoreDir(platform, home string, getenv func(string) string) string {
+	if h := getenv("PNPM_HOME"); strings.HasPrefix(h, "/") {
+		return realPath(filepath.Join(h, "store"))
+	}
+	if x := getenv("XDG_DATA_HOME"); strings.HasPrefix(x, "/") {
+		return realPath(filepath.Join(x, "pnpm", "store"))
+	}
+	if platform == "darwin" {
+		return expand("~/Library/pnpm/store", home)
+	}
+	return expand("~/.local/share/pnpm/store", home)
 }
 
 func grantPaths(learned []Grant) []string {
@@ -293,9 +322,8 @@ func buildPolicy(tree, executor string, sc Config, o policyOpts) *Policy {
 			denyWrite = append(denyWrite, piDenyPaths(state)...)
 		}
 	}
-	for _, p := range seeds(platform) {
-		writable = append(writable, expand(p, home))
-	}
+	seeded, pnpmStore := seeds(platform, home, o.getenv)
+	writable = append(writable, seeded...)
 	for _, p := range sc.AllowWrite {
 		writable = append(writable, expand(p, home))
 	}
@@ -336,6 +364,7 @@ func buildPolicy(tree, executor string, sc Config, o policyOpts) *Policy {
 		Tamper:         tamper,
 		RepoRoot:       root,
 		Learned:        grantPaths(learned),
+		PnpmStore:      pnpmStore,
 	}
 }
 

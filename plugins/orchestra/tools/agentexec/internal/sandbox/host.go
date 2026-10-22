@@ -156,9 +156,8 @@ func hostPolicy(in HostInput, sc Config, o policyOpts) *Policy {
 	if cache := o.darwinUserCache(); platform == "darwin" && cache != "" {
 		writable = append(writable, realPath(filepath.Join(cache, "mds")))
 	}
-	for _, p := range seeds(platform) {
-		writable = append(writable, expand(p, home))
-	}
+	seeded, pnpmStore := seeds(platform, home, o.getenv)
+	writable = append(writable, seeded...)
 	if tmp := o.getenv("TMPDIR"); tmp != "" {
 		writable = append(writable, realPath(tmp))
 	}
@@ -220,6 +219,7 @@ func hostPolicy(in HostInput, sc Config, o policyOpts) *Policy {
 		Tamper:         dedupe(denyWrite),
 		RepoRoot:       repoRoot(in.Repo),
 		Learned:        grantPaths(learned),
+		PnpmStore:      pnpmStore,
 	}
 }
 
