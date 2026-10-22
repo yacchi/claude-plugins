@@ -193,247 +193,9 @@
           "dir": "~/.claude/orchestra/telemetry",
           "enabled": false
         },
-        "tiers": {
-          "deep": "opus",
-          "light": "haiku",
-          "review": "sonnet",
-          "standard": "haiku"
-        },
-        "tools": {
-          "herdr": {
-            "bin": "herdr",
-            "source": "auto",
-            "spec": "aqua:herdrdev/herdr",
-            "version": "0.8.2"
-          },
-          "installer": "auto",
-          "pi": {
-            "bin": "pi",
-            "source": "auto",
-            "spec": "npm:@earendil-works/pi-coding-agent",
-            "version": "1.2.0"
-          },
-          "srt": {
-            "bin": "srt",
-            "source": "auto",
-            "spec": "npm:@anthropic-ai/sandbox-runtime",
-            "version": "0.0.79"
-          }
-        },
-        "usage_routing": {
-          "cache_seconds": 120,
-          "enabled": true,
-          "thresholds": {
-            "five_hour": 80,
-            "seven_day": 90
-          }
-        },
-        "warnings": [],
-        "watchdog": {
-          "enabled": true,
-          "idle_seconds": 600,
-          "repeat_limit": 3,
-          "tool_idle_seconds": 900,
-          "wall_seconds": {
-            "deep": 5400,
-            "independent-review": 2400,
-            "light": 1200,
-            "standard": 2400
-          }
-        }
-      }
-    },
-    {
-      "argv": [
-        "config"
-      ],
-      "exit": 0,
-      "stdout_shape": "json",
-      "stdout": {
-        "checks": {
-          "ensure": [],
-          "flaky_threshold": 3,
-          "items": [],
-          "max_parallel": 2,
-          "retry_failed_alone": true
-        },
-        "cooldown": {
-          "enabled": true,
-          "path": "~/.claude/orchestra/executor-state.json",
-          "seconds": {
-            "auth": 0,
-            "credits": 3600,
-            "nonzero-exit": 0,
-            "quota": 3600,
-            "rate-limit": 900,
-            "sandbox": 0
-          }
-        },
-        "enforcement": {
-          "light_class": "off",
-          "opus_generalist": "nudge",
-          "session_cleanup": "on",
-          "turn_edits": 8,
-          "worker_vcs": "block"
-        },
-        "external_executors": {
-          "pi": {
-            "agent_dir": "managed",
-            "available": false,
-            "class_policy": {
-              "deep": {
-                "effort": "high",
-                "model": "openai-codex/gpt-6.1-sol"
-              },
-              "independent-review": {
-                "effort": "medium",
-                "model": "openai-codex/gpt-6.1-sol"
-              },
-              "light": {
-                "effort": "medium",
-                "model": "openai-codex/gpt-5.6-luna"
-              },
-              "standard": {
-                "effort": "medium",
-                "model": "openai-codex/gpt-5.6-luna"
-              }
-            },
-            "classes": [
-              "light",
-              "standard",
-              "deep",
-              "independent-review"
-            ],
-            "context_files": true,
-            "dispatch": "cli",
-            "enabled": true
-          }
-        },
-        "herdr": {
-          "add_dirs": [],
-          "args": "--model {model} --permission-mode {permission_mode}",
-          "auto_trust": true,
-          "enabled": "auto",
-          "keep_sessions": true,
-          "models": {
-            "deep": "opus",
-            "light": "sonnet",
-            "standard": "opus"
-          },
-          "permission_mode": "auto",
-          "startup_timeout": 90,
-          "task_timeout": 3600,
-          "user_config": "isolate",
-          "warm": {
-            "enabled": true,
-            "min_packages": 2,
-            "ttl_seconds": 3000
-          }
-        },
-        "interactive_host": "auto",
-        "isolation": {
-          "carry_extra": [],
-          "carry_files": [
-            ".claude/settings.local.json",
-            ".claude/orchestra.local.yaml",
-            "CLAUDE.local.md"
-          ],
-          "exclude_paths": [
-            ".pnpm-store/",
-            "node_modules/",
-            ".venv/",
-            "__pycache__/",
-            ".turbo/",
-            ".next/",
-            ".gradle/",
-            ".terraform/"
-          ],
-          "keep_paths": [],
-          "max_added_files": 500
-        },
-        "ledger": {
-          "dir": "~/.claude/orchestra/runs",
-          "enabled": true,
-          "retention_days": 30
-        },
-        "orca": {
-          "add_dirs": [],
-          "auto_trust": false,
-          "command": "claude --model {model} --permission-mode {permission_mode}",
-          "enabled": "auto",
-          "keep_sessions": true,
-          "models": {
-            "deep": "opus",
-            "light": "sonnet",
-            "standard": "opus"
-          },
-          "permission_mode": "auto",
-          "setup": "skip",
-          "startup_timeout": 90,
-          "task_timeout": 3600,
-          "user_config": "isolate"
-        },
-        "priority": {
-          "deep": {
-            "default": [
-              "claude",
-              "pi"
-            ]
-          },
-          "independent-review": {
-            "default": [
-              "pi"
-            ]
-          },
-          "light": {
-            "default": [
-              "claude",
-              "pi"
-            ],
-            "investigation": [
-              "claude",
-              "pi"
-            ]
-          },
-          "review": {
-            "default": [
-              "claude"
-            ]
-          },
-          "standard": {
-            "default": [
-              "claude",
-              "pi"
-            ]
-          }
-        },
-        "sandbox": {
-          "allow_write": [],
-          "deny_read": [],
-          "learned": [],
-          "mode": "off",
-          "network": {
-            "allowed_domains": [
-              "api.anthropic.com"
-            ],
-            "denied_domains": [],
-            "ecosystem": true,
-            "mode": "allowlist",
-            "quiet_domains": [
-              "mcp-proxy.anthropic.com",
-              "downloads.claude.ai",
-              "statsig.anthropic.com",
-              "datadoghq.com",
-              "*.datadoghq.com",
-              "sentry.io",
-              "*.sentry.io",
-              "herdr.dev"
-            ]
-          }
-        },
-        "telemetry": {
-          "dir": "~/.claude/orchestra/telemetry",
-          "enabled": false
+        "throttle": {
+          "heavy_extra": [],
+          "heavy_slots": "auto"
         },
         "tiers": {
           "deep": "opus",
@@ -676,6 +438,256 @@
         "telemetry": {
           "dir": "~/.claude/orchestra/telemetry",
           "enabled": false
+        },
+        "throttle": {
+          "heavy_extra": [],
+          "heavy_slots": "auto"
+        },
+        "tiers": {
+          "deep": "opus",
+          "light": "haiku",
+          "review": "sonnet",
+          "standard": "haiku"
+        },
+        "tools": {
+          "herdr": {
+            "bin": "herdr",
+            "source": "auto",
+            "spec": "aqua:herdrdev/herdr",
+            "version": "0.8.2"
+          },
+          "installer": "auto",
+          "pi": {
+            "bin": "pi",
+            "source": "auto",
+            "spec": "npm:@earendil-works/pi-coding-agent",
+            "version": "1.2.0"
+          },
+          "srt": {
+            "bin": "srt",
+            "source": "auto",
+            "spec": "npm:@anthropic-ai/sandbox-runtime",
+            "version": "0.0.79"
+          }
+        },
+        "usage_routing": {
+          "cache_seconds": 120,
+          "enabled": true,
+          "thresholds": {
+            "five_hour": 80,
+            "seven_day": 90
+          }
+        },
+        "warnings": [],
+        "watchdog": {
+          "enabled": true,
+          "idle_seconds": 600,
+          "repeat_limit": 3,
+          "tool_idle_seconds": 900,
+          "wall_seconds": {
+            "deep": 5400,
+            "independent-review": 2400,
+            "light": 1200,
+            "standard": 2400
+          }
+        }
+      }
+    },
+    {
+      "argv": [
+        "config"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "checks": {
+          "ensure": [],
+          "flaky_threshold": 3,
+          "items": [],
+          "max_parallel": 2,
+          "retry_failed_alone": true
+        },
+        "cooldown": {
+          "enabled": true,
+          "path": "~/.claude/orchestra/executor-state.json",
+          "seconds": {
+            "auth": 0,
+            "credits": 3600,
+            "nonzero-exit": 0,
+            "quota": 3600,
+            "rate-limit": 900,
+            "sandbox": 0
+          }
+        },
+        "enforcement": {
+          "light_class": "off",
+          "opus_generalist": "nudge",
+          "session_cleanup": "on",
+          "turn_edits": 8,
+          "worker_vcs": "block"
+        },
+        "external_executors": {
+          "pi": {
+            "agent_dir": "managed",
+            "available": false,
+            "class_policy": {
+              "deep": {
+                "effort": "high",
+                "model": "openai-codex/gpt-6.1-sol"
+              },
+              "independent-review": {
+                "effort": "medium",
+                "model": "openai-codex/gpt-6.1-sol"
+              },
+              "light": {
+                "effort": "medium",
+                "model": "openai-codex/gpt-5.6-luna"
+              },
+              "standard": {
+                "effort": "medium",
+                "model": "openai-codex/gpt-5.6-luna"
+              }
+            },
+            "classes": [
+              "light",
+              "standard",
+              "deep",
+              "independent-review"
+            ],
+            "context_files": true,
+            "dispatch": "cli",
+            "enabled": true
+          }
+        },
+        "herdr": {
+          "add_dirs": [],
+          "args": "--model {model} --permission-mode {permission_mode}",
+          "auto_trust": true,
+          "enabled": "auto",
+          "keep_sessions": true,
+          "models": {
+            "deep": "opus",
+            "light": "sonnet",
+            "standard": "opus"
+          },
+          "permission_mode": "auto",
+          "startup_timeout": 90,
+          "task_timeout": 3600,
+          "user_config": "isolate",
+          "warm": {
+            "enabled": true,
+            "min_packages": 2,
+            "ttl_seconds": 3000
+          }
+        },
+        "interactive_host": "auto",
+        "isolation": {
+          "carry_extra": [],
+          "carry_files": [
+            ".claude/settings.local.json",
+            ".claude/orchestra.local.yaml",
+            "CLAUDE.local.md"
+          ],
+          "exclude_paths": [
+            ".pnpm-store/",
+            "node_modules/",
+            ".venv/",
+            "__pycache__/",
+            ".turbo/",
+            ".next/",
+            ".gradle/",
+            ".terraform/"
+          ],
+          "keep_paths": [],
+          "max_added_files": 500
+        },
+        "ledger": {
+          "dir": "~/.claude/orchestra/runs",
+          "enabled": true,
+          "retention_days": 30
+        },
+        "orca": {
+          "add_dirs": [],
+          "auto_trust": false,
+          "command": "claude --model {model} --permission-mode {permission_mode}",
+          "enabled": "auto",
+          "keep_sessions": true,
+          "models": {
+            "deep": "opus",
+            "light": "sonnet",
+            "standard": "opus"
+          },
+          "permission_mode": "auto",
+          "setup": "skip",
+          "startup_timeout": 90,
+          "task_timeout": 3600,
+          "user_config": "isolate"
+        },
+        "priority": {
+          "deep": {
+            "default": [
+              "claude",
+              "pi"
+            ]
+          },
+          "independent-review": {
+            "default": [
+              "pi"
+            ]
+          },
+          "light": {
+            "default": [
+              "claude",
+              "pi"
+            ],
+            "investigation": [
+              "claude",
+              "pi"
+            ]
+          },
+          "review": {
+            "default": [
+              "claude"
+            ]
+          },
+          "standard": {
+            "default": [
+              "claude",
+              "pi"
+            ]
+          }
+        },
+        "sandbox": {
+          "allow_write": [],
+          "deny_read": [],
+          "learned": [],
+          "mode": "off",
+          "network": {
+            "allowed_domains": [
+              "api.anthropic.com"
+            ],
+            "denied_domains": [],
+            "ecosystem": true,
+            "mode": "allowlist",
+            "quiet_domains": [
+              "mcp-proxy.anthropic.com",
+              "downloads.claude.ai",
+              "statsig.anthropic.com",
+              "datadoghq.com",
+              "*.datadoghq.com",
+              "sentry.io",
+              "*.sentry.io",
+              "herdr.dev"
+            ]
+          }
+        },
+        "telemetry": {
+          "dir": "~/.claude/orchestra/telemetry",
+          "enabled": false
+        },
+        "throttle": {
+          "heavy_extra": [],
+          "heavy_slots": "auto"
         },
         "tiers": {
           "deep": "opus",
@@ -918,6 +930,10 @@
         "telemetry": {
           "dir": "~/.claude/orchestra/telemetry",
           "enabled": false
+        },
+        "throttle": {
+          "heavy_extra": [],
+          "heavy_slots": "auto"
         },
         "tiers": {
           "deep": "opus",
