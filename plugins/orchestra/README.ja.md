@@ -117,7 +117,7 @@ Copilotのモデルはpiの`github-copilot/*`、ChatGPTサブスクリプショ�
 | `skills/setup/`、`skills/cleanup/`、`skills/ui/` | 付属のスキル |
 | `tools/agent-exec` | `agent-exec` CLI の起動スクリプト。初回に `tools/agentexec/` をビルドし、保存したバイナリを実行します |
 | `tools/agentexec/` | `agent-exec` CLI(Go): route、dispatch、isolate、shelf、wave、ui、telemetry、版を固定して管理する実行役バイナリ(pi と herdr)、herdr と Orca の対話ホストなど |
-| `hooks/` | ルーターの注入と再通知、ターン規模の検知、ワーカーの VCS・作業ツリー・lease の防護、Opus 汎用サブエージェントへの通知、worktree の後片付け |
+| `hooks/` | ルーターの注入、ターン規模の検知、ワーカーの VCS・作業ツリー・lease の防護、Opus 汎用サブエージェントへの通知、worktree の後片付け |
 | `examples/orchestra.yaml` | 設定のサンプル |
 
 ファイルごとの詳細: [`docs/components.md`](docs/components.md)
