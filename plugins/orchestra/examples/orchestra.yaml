@@ -291,6 +291,8 @@ checks:
 #   # sandbox-runtime (srt) with `sandbox.network` as its domain allowlist.
 #   startup_timeout: 90
 #   task_timeout: 3600
+#   idle_grace: 300        # (v0.61.0) idle with an unchanged screen and no result this long:
+#                          # submit a prompt left in the input box (or resend it) once, then a need
 #   keep_sessions: true
 #   warm:                  # (v0.48.0) fork package sessions from one warm reader
 #     enabled: true        # needs plan.json preamble-in-repo / warm_read files

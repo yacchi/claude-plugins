@@ -341,6 +341,14 @@ Example `run_summary` payload — categorical/numeric fields only, no ids or fre
 
   **Claude token counts de-duplicate by message id (v0.45.0).** Claude Code writes one API response to the transcript once per content block, each line carrying the same `usage`, and a resumed or forked session copies earlier lines again. Before v0.45.0 every line was summed, which overstated a real session about 2.5x in input, output and cache reads. Each message id is now counted once (a later line for the same id replaces an earlier one, since a streamed response's last line carries the final output count); lines without an id are still all counted. Figures taken before v0.45.0 are not comparable.
 
+### 2.1 Timing trace (always on, local)
+
+Separate from telemetry, which is anonymized and allowlisted, `agent-exec` writes one JSON line per finished operation to `<state dir>/trace/YYYY-MM-DD.jsonl` (`~/.local/state/claude-orchestra/trace/` unless `XDG_STATE_HOME` is set; override with `ORCHESTRA_TRACE_DIR`, disable with `ORCHESTRA_TRACE=off`; 14 days are kept). It records paths and commands and never leaves the machine.
+
+- What is timed: every git subprocess (`git worktree add`, `git status`, …), tree removal (`rm -rf (detached)`, `rename-aside`), dependency copies (`cp -c -R`, `clonefile`), herdr CLI calls, `agent-exec` self-calls from the wave runner, wave verify/notify commands, lock waits (`wave integration`, `wave dispatch start`, `herdr warm`, flock waits of 50 ms or more), the warm reader rebuild, and — through the orchestra hook — every Bash command a Claude session runs (`worker-bash`, with the session id as `pkg`).
+- Record: `{"at", "end", "ms", "kind", "op", "pid", "pkg"?, "cwd"?, "exit", "load1", "detail"?}`.
+- `agent-exec trace report [--since 24h] [--kind K] [--op-prefix P] [--min-count 3] [--json]` groups by operation and, for each, shows count / p50 / p95 / max and p50 per concurrency bucket (how many other non-lock operations were running when it started: 1, 2-3, 4-6, 7-10, 11+). `sensitivity` is p50 in the busiest bucket over p50 in the quietest one: the operations that slow down as parallelism goes up sort first. Lock waits are listed separately by total time — a long lock wait is what a stall where every package starts in the same second looks like.
+
 ## 3. Run ledger
 
 The ledger is a default-on, local-only store, separate from telemetry and never uploaded. `ledger` participates in the same four-layer deep merge as `telemetry`: `enabled` defaults to `true`, `dir` to `"~/.claude/orchestra/runs"`, and `retention_days` to `30`; `retention_days` must be a positive integer or it falls back to `30`. `ledger.enabled: false` stops all ledger writes, but does not prevent reading existing data, and either setting is independent of `telemetry.enabled`.
@@ -509,12 +517,14 @@ herdr:
   auto_trust: true         # (v0.49.0) only for worktrees orchestra created, under a sandboxed server
   startup_timeout: 90
   task_timeout: 3600
+  idle_grace: 300          # (v0.61.0) seconds idle with no result before one nudge, then a need
   keep_sessions: true
   warm: {enabled: true, ttl_seconds: 3000, min_packages: 2}   # (v0.48.0)
 ```
 
 - `auto`: herdr when it is available, else Orca when available, else none. `herdr` or `orca` selects only that backend. `none` never uses an interactive host. Each backend's own `enabled` still applies. In `auto`, a backend with `enabled: true` that is unreachable stops the run with `<name> unavailable: <reason>`.
 - `herdr` runs each package in its own orchestra-owned worktree (task `pkg-<id>`), with one workspace and one named agent. Completion is signalled only by the result file the prompt asks Claude to write.
+- **Idle without a result.** A worker that sits idle with an unchanged screen for `idle_grace` seconds (default 300) and no result file is nudged once: a prompt left unsubmitted in the input box (a swallowed Enter, a `[Pasted text …]` placeholder) gets Enter, an empty box gets the prompt again, prefixed with "write the result file now if the task is already done". Idle for another `idle_grace` after that is a `stalled` need. A result file that exists but is not valid (bad JSON, or a status other than `ok`/`escalate`) is an `error` need as soon as the worker is idle, naming the file and the parse error. Both used to wait the full `task_timeout`.
 - `args` are passed after `--`. The prompt and result directories and `add_dirs` are appended as `--add-dir`.
 - `auto_trust: true` accepts Claude's folder-trust dialog only for worktrees the executor created itself, as with `orca`.
 - **`user_config` (herdr and orca).** `isolate` (default) appends `--strict-mcp-config --setting-sources project,local --plugin-dir <orchestra plugin root>` to the claude argv on every start (fresh, warm reader, forks, reopen), so the worker loads none of the user's MCP servers, user hooks or user-enabled plugins; the repo's own project/local settings and the user's CLAUDE.md still apply, and orchestra's hooks and agents come back through `--plugin-dir`. A flag already present in `args`/`command` is not added again. `inherit` keeps the plain argv. `agent-exec doctor` shows `user_config=` for both hosts.
