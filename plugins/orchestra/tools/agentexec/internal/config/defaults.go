@@ -1,8 +1,16 @@
 package config
 
 import (
+	"fmt"
+	"io"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // DefaultQuietDomains is background traffic of Claude Code and herdr that no
@@ -29,6 +37,102 @@ const DefaultMaxAddedFiles = 500
 // DefaultUsageEvery is how many integrated packages `wave run` lets pass
 // between two usage notices.
 const DefaultUsageEvery = 10
+
+// PnpmGVSEnv turns pnpm's global virtual store on for one process (pnpm 12
+// reads pnpm_config_*, not npm_config_*). Every process orchestra starts in
+// a tree prepared that way must carry it: a pnpm run without it rebuilds the
+// classic layout, and one with it converts a classic layout.
+const PnpmGVSEnv = "pnpm_config_enable_global_virtual_store=true"
+
+// PnpmGVS is isolation.pnpm_global_virtual_store (off for a nil cfg).
+func PnpmGVS(cfg *Resolved) bool {
+	on, _ := cfg.Bool("isolation", "pnpm_global_virtual_store")
+	return on
+}
+
+// PnpmGVSTree reports whether processes in tree run under the global
+// virtual store: on (the setting, see PnpmGVS), tree is a linked worktree
+// (its .git is a file, so never the user's main checkout) whose root holds
+// pnpm-lock.yaml, and its node_modules, when present, is not of the classic
+// layout (a clone fallback, or a tree the user installed: the env would
+// convert it).
+func PnpmGVSTree(on bool, tree string) bool {
+	if !on || tree == "" || !isFile(filepath.Join(tree, ".git")) ||
+		!isFile(filepath.Join(tree, "pnpm-lock.yaml")) {
+		return false
+	}
+	nm := filepath.Join(tree, "node_modules")
+	if _, err := os.Lstat(nm); err != nil {
+		return true // nothing installed yet: the first install builds it
+	}
+	return pnpmGVSLayout(nm)
+}
+
+// pnpmGVSLayout reports whether node_modules dir was installed with the
+// global virtual store: its virtualStoreDir lies outside it (in the store's
+// links), where the classic one is node_modules/.pnpm. Unreadable reads as
+// classic.
+func pnpmGVSLayout(dir string) bool {
+	raw, err := os.ReadFile(filepath.Join(dir, ".modules.yaml"))
+	if err != nil {
+		return false
+	}
+	var meta struct {
+		VirtualStoreDir string `yaml:"virtualStoreDir"`
+	}
+	if yaml.Unmarshal(raw, &meta) != nil || meta.VirtualStoreDir == "" {
+		return false
+	}
+	v := meta.VirtualStoreDir
+	if !filepath.IsAbs(v) {
+		v = filepath.Join(dir, v)
+	}
+	rel, err := filepath.Rel(dir, v)
+	return err == nil && (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+var (
+	pnpmCIWarn   sync.Once
+	pnpmCIStderr io.Writer = os.Stderr
+)
+
+// PnpmGVSOn is isolation.pnpm_global_virtual_store of the resolved config,
+// read once per process (a test seam).
+var PnpmGVSOn = sync.OnceValue(func() bool {
+	cfg, err := Resolve()
+	return err == nil && PnpmGVS(cfg)
+})
+
+// TreeEnv is the env of a command orchestra runs in tree: the process's own
+// plus PnpmGVSEnv when tree runs under the global virtual store
+// (PnpmGVSTree), else nil (inherited as is).
+func TreeEnv(tree string) []string {
+	if !PnpmGVSTree(PnpmGVSOn(), tree) {
+		return nil
+	}
+	return WithPnpmGVS(os.Environ())
+}
+
+// WithPnpmGVS is env plus PnpmGVSEnv. pnpm ignores the setting under a
+// truthy CI, which is left alone but warned about once per process.
+func WithPnpmGVS(env []string) []string {
+	out := append(append([]string(nil), env...), PnpmGVSEnv)
+	ci := ""
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "CI="); ok {
+			ci = v
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(ci)) {
+	case "", "0", "false":
+	default:
+		pnpmCIWarn.Do(func() {
+			fmt.Fprintf(pnpmCIStderr, "agent-exec: CI=%s is set: pnpm ignores its global virtual store under CI "+
+				"(isolation.pnpm_global_virtual_store), so installs in orchestra trees build the classic layout\n", ci)
+		})
+	}
+	return out
+}
 
 // ToolOrder and ClassOrder are the built-in tools and worker classes in the
 // order listings present them (see OrderedKeys).
@@ -168,6 +272,7 @@ func Defaults() map[string]any {
 			"exclude_paths", strs(DefaultExcludePaths...),
 			"keep_paths", []any{},
 			"max_added_files", int64(DefaultMaxAddedFiles),
+			"pnpm_global_virtual_store", false,
 		),
 		"throttle", obj("heavy_slots", "auto", "heavy_extra", []any{}),
 		"wave", obj(

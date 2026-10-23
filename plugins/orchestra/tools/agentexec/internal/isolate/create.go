@@ -47,7 +47,7 @@ type CreateResult struct {
 	Backend        string // gtr | git | existing
 	Baseline       string // created only
 	Carried        []string
-	CarryMethod    string // none | clone | copy | failed
+	CarryMethod    string // none | clone | copy | failed | pnpm-gvs
 	CarriedFiles   []string
 	AlreadyPresent []string
 	CarryNote      string
@@ -75,6 +75,17 @@ func (r CreateResult) MarshalJSON() ([]byte, error) {
 		o["carry_note"] = r.CarryNote
 	}
 	return fsutil.MarshalJSON(o)
+}
+
+// joinNote joins notes a and b with "; ", either of which may be empty.
+func joinNote(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	}
+	return a + "; " + b
 }
 
 func nullable(s string) any {
@@ -181,7 +192,7 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 		Baseline: baseline, Carried: []string{}, CarryMethod: carryNone, CarriedFiles: []string{},
 	}
 	if carryDeps {
-		res.Carried, res.CarryMethod, res.AlreadyPresent = carryDependencies(resolved, path, o.CarryExtra)
+		res.Carried, res.CarryMethod, res.AlreadyPresent, res.CarryNote = CarryDependencies(resolved, path, o.CarryExtra)
 		res.CarriedFiles = carryLocalFiles(resolved, path, carryFiles)
 	}
 	// The ignored surface exactly as the worker receives it.
@@ -189,9 +200,9 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 
 	switch res.CarryMethod {
 	case carryCopy:
-		res.CarryNote = "CoW was unavailable; carrying dependencies cost real time and disk."
+		res.CarryNote = joinNote(res.CarryNote, "CoW was unavailable; carrying dependencies cost real time and disk.")
 	case carryFailed:
-		res.CarryNote = "Workers need a dependency install; run it ONCE with a cheap agent, not per worker."
+		res.CarryNote = joinNote(res.CarryNote, "Workers need a dependency install; run it ONCE with a cheap agent, not per worker.")
 	}
 	return res, nil
 }

@@ -358,6 +358,11 @@ func (e *Executor) command(s *host.Session) (string, error) {
 	for _, f := range flags {
 		command += " " + sandbox.ShellQuote(f)
 	}
+	// The terminal's env is Orca's, not ours: a tree on pnpm's global
+	// virtual store gets the switch on the command line.
+	if config.PnpmGVSTree(config.PnpmGVS(e.tools), s.Worktree) {
+		command = "env " + sandbox.ShellQuote(config.PnpmGVSEnv) + " " + command
+	}
 	return command, nil
 }
 

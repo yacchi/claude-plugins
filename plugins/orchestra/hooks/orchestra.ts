@@ -7,6 +7,7 @@ import { checkWorktreeLease, recordActivity, releaseLeases } from './guards/work
 import { register as registerHud } from './hud.ts'
 import { cleanupWorktrees } from './lifecycle/cleanup-worktrees.ts'
 import { forgetAgent, noteAgent, type WorkerCall, workerCall } from './lib/agents.ts'
+import { checkDependencyEdit } from './lib/dependency-edit.ts'
 import type { EnvName, Io } from './lib/io.ts'
 import { withHeavySlot } from './lib/slot.ts'
 import { recordWorkerBash } from './lib/trace.ts'
@@ -66,8 +67,16 @@ export const register: Register = (on, options) => {
         const io = ioOf($)
         let call: WorkerCall | undefined
         if (WRITE_TOOLS.has(tool)) {
-            // Only subagent calls are guarded; the main thread is never denied.
+            // Only subagent calls are guarded; the main thread is never denied
+            // (except a wave-hosted worker session's, for dependency edits).
             call = await workerCall(io, e)
+            if (tool !== 'Bash' && (call || verdictOf(await io.sessionId().catch(() => '')) === 'worker')) {
+                const cwd = call?.cwd ?? await io.sessionCwd().catch(() => '')
+                const deny = checkDependencyEdit(tool, e as unknown as Readonly<Record<string, unknown>>, cwd)
+                if (deny) {
+                    return { deny }
+                }
+            }
             if (call) {
                 const deny = await checkWorkerVcs(io, call)
                     ?? await checkWorkerTree(io, call)

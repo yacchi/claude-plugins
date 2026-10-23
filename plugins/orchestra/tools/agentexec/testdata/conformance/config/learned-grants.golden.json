@@ -107,7 +107,8 @@
             ".terraform/"
           ],
           "keep_paths": [],
-          "max_added_files": 500
+          "max_added_files": 500,
+          "pnpm_global_virtual_store": false
         },
         "ledger": {
           "dir": "~/.claude/orchestra/runs",
@@ -383,7 +384,8 @@
             ".terraform/"
           ],
           "keep_paths": [],
-          "max_added_files": 500
+          "max_added_files": 500,
+          "pnpm_global_virtual_store": false
         },
         "ledger": {
           "dir": "~/.claude/orchestra/runs",
@@ -649,7 +651,8 @@
             ".terraform/"
           ],
           "keep_paths": [],
-          "max_added_files": 500
+          "max_added_files": 500,
+          "pnpm_global_virtual_store": false
         },
         "ledger": {
           "dir": "~/.claude/orchestra/runs",

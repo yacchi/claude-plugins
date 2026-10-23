@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/integrate"
@@ -263,9 +264,7 @@ func (r *runner) greenTree(sha string) bool {
 		if _, err := gitRun(r.root, "worktree", "add", "--detach", r.greenPath, sha); err != nil {
 			return false
 		}
-		for _, rel := range isolate.DetectCarryDirs(r.root, nil) {
-			_ = isolate.CarryDir(r.root, r.greenPath, rel)
-		}
+		_, _, _, _ = isolate.CarryDependencies(r.root, r.greenPath, nil)
 		return true
 	}
 	if _, err := gitRun(r.greenPath, "checkout", "-q", "--detach", sha); err != nil {
@@ -286,7 +285,11 @@ func (r *runner) onGreen(sha string) {
 	}
 	started := time.Now()
 	command = strings.ReplaceAll(command, "{sha}", sha)
-	exit := runPlain(r.greenPath, command, r.opts.FullTimeout, append(os.Environ(), "WAVE_GREEN_SHA="+sha))
+	env := config.TreeEnv(r.greenPath)
+	if env == nil {
+		env = os.Environ()
+	}
+	exit := runPlain(r.greenPath, command, r.opts.FullTimeout, append(env, "WAVE_GREEN_SHA="+sha))
 	_, _ = gitRun(r.greenPath, "reset", "-q", "--hard", "HEAD")
 	_, _ = gitRun(r.greenPath, "clean", "-fdq")
 	var exitV any

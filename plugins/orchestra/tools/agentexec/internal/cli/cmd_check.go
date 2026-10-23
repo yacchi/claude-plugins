@@ -232,9 +232,7 @@ func markPreexisting(root, ref, tree string, files []string, cfg *config.Resolve
 	if _, err := gitx.Run(root, "worktree", "add", "--detach", "-q", baseTree, ref); err != nil {
 		return
 	}
-	for _, rel := range isolate.DetectCarryDirs(root, cfg.StringList("isolation", "carry_extra")) {
-		_ = isolate.CarryDir(root, baseTree, rel)
-	}
+	_, _, _, _ = isolate.CarryDependencies(root, baseTree, cfg.StringList("isolation", "carry_extra"))
 	items := make([]checks.Item, len(failed))
 	for i, f := range failed {
 		items[i] = f.item

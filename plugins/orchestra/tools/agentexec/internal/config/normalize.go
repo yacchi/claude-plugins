@@ -193,8 +193,9 @@ func normalizeNetwork(raw map[string]any, u *union) map[string]any {
 }
 
 // normalizeIsolation writes the final exclude_paths (the union minus every
-// keep_paths entry), keep_paths, and a max_added_files that is a
-// non-negative integer (anything else is the default).
+// keep_paths entry), keep_paths, a max_added_files that is a non-negative
+// integer (anything else is the default) and a boolean
+// pnpm_global_virtual_store (anything but true is off).
 func normalizeIsolation(values map[string]any, u *union) {
 	iso := ObjectAt(values, "isolation")
 	if iso == nil {
@@ -224,6 +225,8 @@ func normalizeIsolation(values map[string]any, u *union) {
 	default:
 		iso["max_added_files"] = int64(DefaultMaxAddedFiles)
 	}
+	gvs, _ := iso["pnpm_global_virtual_store"].(bool)
+	iso["pnpm_global_virtual_store"] = gvs
 }
 
 // normalizeThrottle writes heavy_slots as "auto" or a non-negative integer

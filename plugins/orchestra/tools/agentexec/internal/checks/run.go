@@ -160,9 +160,10 @@ func Run(root string, items []Item, o Options) Result {
 	ordered := append([]Item(nil), items...)
 	sort.SliceStable(ordered, func(i, j int) bool { return phaseOrder[phaseOf(ordered[i])] < phaseOrder[phaseOf(ordered[j])] })
 
+	env := config.TreeEnv(root)
 	var results []CheckResult
 	var ensureFailure *CheckResult
-	for _, r := range runEnsure(o.Ensure, root, o) {
+	for _, r := range runEnsure(o.Ensure, root, env, o) {
 		if r.Status == "fail" {
 			r := r
 			ensureFailure = &r
@@ -184,7 +185,7 @@ func Run(root string, items []Item, o Options) Result {
 			results = append(results, emptyResult(it.Name, "skipped", "not run after earlier failure"))
 			continue
 		}
-		res, raw := runCheck(it, root, o.Files, o.SlotDir, o.MaxParallel, o.OnEvent)
+		res, raw := runCheck(it, root, env, o.Files, o.SlotDir, o.MaxParallel, o.OnEvent)
 		if res.Status == "fail" && o.RetryFailedAlone {
 			template := it.RetryAlone
 			if template == "" && strings.Contains(it.Run, "{files}") {
@@ -221,14 +222,14 @@ func timeoutOf(sec float64) time.Duration {
 	return time.Duration(sec * float64(time.Second))
 }
 
-func runEnsure(entries []Ensure, root string, o Options) []CheckResult {
+func runEnsure(entries []Ensure, root string, env []string, o Options) []CheckResult {
 	var results []CheckResult
 	for _, e := range entries {
 		if _, err := os.Stat(filepath.Join(root, e.Exists)); err == nil {
 			continue
 		}
 		item := Item{Name: "ensure:" + e.Exists, Run: e.Run, Cwd: e.Cwd, Timeout: e.Timeout}
-		res, _ := runCheck(item, root, nil, o.SlotDir, o.MaxParallel, o.OnEvent)
+		res, _ := runCheck(item, root, env, nil, o.SlotDir, o.MaxParallel, o.OnEvent)
 		results = append(results, res)
 		if res.Status == "fail" {
 			break
@@ -242,7 +243,7 @@ func isFile(p string) bool {
 	return err == nil && st.Mode().IsRegular()
 }
 
-func runCheck(it Item, tree string, files []string, slotDir string, maxParallel int, on func(Event)) (CheckResult, string) {
+func runCheck(it Item, tree string, env, files []string, slotDir string, maxParallel int, on func(Event)) (CheckResult, string) {
 	cwdRel := it.Cwd
 	if cwdRel == "" {
 		cwdRel = "."
@@ -273,13 +274,13 @@ func runCheck(it Item, tree string, files []string, slotDir string, maxParallel 
 		if strings.Contains(fix, "{files}") {
 			fix = strings.ReplaceAll(fix, "{files}", quoted)
 		}
-		runShell(fix, cwdDir, timeout, slotDir, maxParallel)
+		runShell(fix, cwdDir, env, timeout, slotDir, maxParallel)
 	}
 	cmd := it.Run
 	if usesFiles {
 		cmd = strings.ReplaceAll(cmd, "{files}", quoted)
 	}
-	sh := runShell(cmd, cwdDir, timeout, slotDir, maxParallel)
+	sh := runShell(cmd, cwdDir, env, timeout, slotDir, maxParallel)
 	passed := sh.exit != nil && *sh.exit == 0 && !sh.timedOut
 	status := "fail"
 	excerpt := ""
@@ -302,18 +303,19 @@ type shellResult struct {
 	seconds        float64
 }
 
-// runShell runs command via /bin/sh -c in its own session, killing the whole
-// process group on timeout. It holds one of the maxParallel check slots and
-// one slot of the machine-wide heavy pool while it runs. A command that
-// cannot be started is reported as output of a failed run rather than
-// raised.
-func runShell(command, cwd string, timeout time.Duration, slotDir string, maxParallel int) shellResult {
+// runShell runs command via /bin/sh -c in its own session (env nil: the
+// process's own), killing the whole process group on timeout. It holds one
+// of the maxParallel check slots and one slot of the machine-wide heavy
+// pool while it runs. A command that cannot be started is reported as
+// output of a failed run rather than raised.
+func runShell(command, cwd string, env []string, timeout time.Duration, slotDir string, maxParallel int) shellResult {
 	release := acquireSlot(slotDir, maxParallel)
 	defer release()
 	defer holdHeavy(command, timeout)()
 	start := time.Now()
 	cmd := exec.Command("/bin/sh", "-c", command)
 	cmd.Dir = cwd
+	cmd.Env = env
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -438,7 +440,7 @@ func RerunFailedAlone(output, template, cwd, slotDir string, maxParallel int, ti
 			}
 		}()
 	}
-	sh := runShell(command, cwd, timeout, slotDir, 0)
+	sh := runShell(command, cwd, config.TreeEnv(cwd), timeout, slotDir, 0)
 	if sh.exit != nil && *sh.exit == 0 && !sh.timedOut {
 		return "pass", failed
 	}

@@ -148,8 +148,9 @@ func Adopt(root, task, path string, o AdoptOptions) (AdoptResult, error) {
 	}
 	_ = WriteBaseline(wt.Path, baseline)
 	res.CarryMethod = carryNone
+	carryNote := ""
 	if o.Carry {
-		res.Carried, res.CarryMethod, res.AlreadyPresent = carryDependencies(resolved, wt.Path, o.CarryExtra)
+		res.Carried, res.CarryMethod, res.AlreadyPresent, carryNote = CarryDependencies(resolved, wt.Path, o.CarryExtra)
 		files := o.CarryFiles
 		if files == nil {
 			files = DefaultCarryFiles
@@ -158,7 +159,7 @@ func Adopt(root, task, path string, o AdoptOptions) (AdoptResult, error) {
 	}
 	_ = writeCreatedIgnored(wt.Path, ignoredDigest(IgnoredEntries(wt.Path)))
 	res.Status, res.Baseline = "adopted", baseline
-	res.Note = fmt.Sprintf("adopted %s as task %s", wt.Path, task)
+	res.Note = joinNote(fmt.Sprintf("adopted %s as task %s", wt.Path, task), carryNote)
 	return res, nil
 }
 
