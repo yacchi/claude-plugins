@@ -13,7 +13,8 @@
 //
 //	running        bool      the server is already up
 //	not_ready      bool      `agent start` fails with agent_not_ready (until keys are sent)
-//	screen         string    what `agent read` shows
+//	start_timeout  bool      `agent start` fails with code "timeout" (not agent_not_ready)
+//	screen         string    what `agent read` and `pane read` show
 //	statuses       []string  the agent_status sequence of `agent get` (the last repeats; default idle)
 //	stalls         int       the next N `agent prompt` calls fail with agent_prompt_stalled
 //	fail_warm      bool      a warm reader agent (p-warm*) never starts

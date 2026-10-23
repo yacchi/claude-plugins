@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
@@ -236,7 +237,8 @@ func ReadSession(stateDir, fileName, hostName, pkg string) (*Session, bool) {
 	return SessionFromRecord(hostName, rec), true
 }
 
-// SortedDirs is sorted(set(abspath(d) for d in dirs)).
+// SortedDirs is the sorted, deduplicated absolute dirs with any dir under
+// another listed dir dropped: --add-dir grants the whole subtree.
 func SortedDirs(dirs []string) []string {
 	seen := map[string]bool{}
 	out := []string{}
@@ -250,5 +252,23 @@ func SortedDirs(dirs []string) []string {
 		}
 	}
 	sort.Strings(out)
-	return out
+	// An ancestor always sorts before its descendants, so kept dirs are enough.
+	kept := []string{}
+	for _, d := range out {
+		nested := false
+		for _, a := range kept {
+			prefix := a
+			if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+				prefix += string(filepath.Separator)
+			}
+			if strings.HasPrefix(d, prefix) {
+				nested = true
+				break
+			}
+		}
+		if !nested {
+			kept = append(kept, d)
+		}
+	}
+	return kept
 }

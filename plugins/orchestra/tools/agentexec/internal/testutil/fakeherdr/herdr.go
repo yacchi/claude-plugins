@@ -32,7 +32,12 @@ func (c *call) herdrOK(payload any) int {
 // herdrErr is herdr's failure shape: the error object on stderr, stdout
 // empty.
 func (c *call) herdrErr(code string, rc int) int {
-	b, _ := json.Marshal(map[string]any{"error": map[string]any{"code": code, "message": code}})
+	return c.herdrErrMsg(code, code, rc)
+}
+
+// herdrErrMsg is herdrErr with a message of its own.
+func (c *call) herdrErrMsg(code, msg string, rc int) int {
+	b, _ := json.Marshal(map[string]any{"error": map[string]any{"code": code, "message": msg}})
 	c.errw.Write(append(b, '\n'))
 	return rc
 }
@@ -71,11 +76,14 @@ func (c *call) herdr() int {
 		if truthy(c.scenario["fail_warm"]) && len(args) > 2 && strings.HasPrefix(args[2], "p-warm") {
 			return c.herdrErr("boom", 1)
 		}
+		if truthy(c.scenario["start_timeout"]) {
+			return c.herdrErrMsg("timeout", "timed out waiting for agent startup", 1)
+		}
 		if truthy(st["not_ready"]) {
 			return c.herdrErr("agent_not_ready", 1)
 		}
 		return c.herdrOK(map[string]any{})
-	case verb == "agent read":
+	case verb == "agent read", verb == "pane read":
 		// "screens" is a per-read sequence; its last entry sticks.
 		if screens := strList(st["screens"]); len(screens) > 0 {
 			st["screen"] = screens[0]
