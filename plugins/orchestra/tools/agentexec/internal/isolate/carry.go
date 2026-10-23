@@ -1,6 +1,8 @@
 package isolate
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -9,7 +11,9 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
@@ -28,12 +32,14 @@ var carryDirNames = []string{
 // (packages/<pkg>/node_modules) without walking a whole large tree.
 const carryScanMaxDepth = 3
 
-// Carry methods reported by create.
+// Carry methods reported by create. pnpm-gvs: node_modules came from a
+// `pnpm install` against the global virtual store instead of a copy.
 const (
-	carryNone   = "none"
-	carryClone  = "clone"
-	carryCopy   = "copy"
-	carryFailed = "failed"
+	carryNone    = "none"
+	carryClone   = "clone"
+	carryCopy    = "copy"
+	carryFailed  = "failed"
+	carryPnpmGVS = "pnpm-gvs"
 )
 
 // DefaultCarryFiles are the local, normally-untracked files carried when the
@@ -231,32 +237,108 @@ func copyFile(src, dst string) error {
 	return nil
 }
 
-// carryDependencies copies root's dependency dirs into path. A directory
+// CarryDependencies copies root's dependency dirs into path. A directory
 // already present in path (gtr copy patterns, a setup script, a worker's own
 // install) is left alone: copying onto it would nest the copy inside it.
-func carryDependencies(root, path string, extra []string) (carried []string, method string, present []string) {
+// When path runs under pnpm's global virtual store (PnpmGVSTree) the
+// node_modules dirs are installed instead of copied, and copied after all
+// when the install fails, which note reports.
+func CarryDependencies(root, path string, extra []string) (carried []string, method string, present []string, note string) {
 	carried, present = []string{}, nil
 	method = carryNone
-	for _, rel := range DetectCarryDirs(root, extra) {
-		target := filepath.Join(path, rel)
-		if lexists(target) {
-			present = append(present, rel)
-			continue
+	dirs := DetectCarryDirs(root, extra)
+	gvs := config.PnpmGVSTree(config.PnpmGVSOn(), path)
+	var nodeModules []string
+	if gvs {
+		var rest []string
+		for _, rel := range dirs {
+			if filepath.Base(rel) == "node_modules" {
+				nodeModules = append(nodeModules, rel)
+			} else {
+				rest = append(rest, rel)
+			}
 		}
-		m := carryDir(root, path, rel)
-		switch {
-		case m == carryFailed:
-			method = carryFailed
-		case method != carryFailed && m == carryCopy:
-			method = carryCopy
-		case method == carryNone:
-			method = carryClone
-		}
-		if m != carryFailed {
-			carried = append(carried, rel)
+		dirs = rest
+	}
+	carry := func(rels []string) {
+		for _, rel := range rels {
+			target := filepath.Join(path, rel)
+			if lexists(target) {
+				present = append(present, rel)
+				continue
+			}
+			m := carryDir(root, path, rel)
+			switch {
+			case m == carryFailed:
+				method = carryFailed
+			case method != carryFailed && m == carryCopy:
+				method = carryCopy
+			case method == carryNone:
+				method = carryClone
+			}
+			if m != carryFailed {
+				carried = append(carried, rel)
+			}
 		}
 	}
-	return carried, method, present
+	carry(dirs)
+	if !gvs {
+		return carried, method, present, ""
+	}
+	if err := pnpmInstallGVS(path); err != nil {
+		// What a failed install left behind would block the copy.
+		_ = os.RemoveAll(filepath.Join(path, "node_modules"))
+		for _, rel := range nodeModules {
+			_ = os.RemoveAll(filepath.Join(path, rel))
+		}
+		carry(nodeModules)
+		return carried, method, present, "pnpm install (gvs) failed, node_modules copied instead: " + err.Error()
+	}
+	if method != carryFailed {
+		method = carryPnpmGVS
+	}
+	return carried, method, present, ""
+}
+
+// pnpmInstallTimeout bounds each install attempt (the online one can hang
+// on the network).
+const pnpmInstallTimeout = 10 * time.Minute
+
+// pnpmInstallGVS installs tree's locked dependencies against the global
+// virtual store, offline first (the store usually holds every package),
+// then online. The error is the last attempt's final output line.
+func pnpmInstallGVS(tree string) error {
+	var last error
+	for _, offline := range []bool{true, false} {
+		argv := []string{"pnpm", "install", "--frozen-lockfile"}
+		if offline {
+			argv = append(argv, "--offline")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), pnpmInstallTimeout)
+		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+		cmd.Dir = tree
+		cmd.Env = config.WithPnpmGVS(os.Environ())
+		var out bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &out, &out
+		end := trace.Begin(trace.KindFS, "pnpm install (gvs)", trace.Attrs{Cwd: tree, Detail: strings.Join(argv, " ")})
+		err := cmd.Run()
+		end(procExit(err))
+		cancel()
+		if err == nil {
+			return nil
+		}
+		last = errors.New(strings.Join(argv, " ") + ": " + lastLine(out.String(), err))
+	}
+	return last
+}
+
+// lastLine is the last non-empty line of output, else err's text.
+func lastLine(output string, err error) string {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if l := strings.TrimSpace(lines[len(lines)-1]); l != "" {
+		return l
+	}
+	return err.Error()
 }
 
 func pathInside(path, dir string) bool {

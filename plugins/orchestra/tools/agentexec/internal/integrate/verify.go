@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 )
@@ -60,7 +61,8 @@ const verifyKillGrace = 5 * time.Second
 // RunVerify runs cmd through /bin/sh -c in dir and grades it: exit 0 within
 // timeout (0 = no limit) passes. A timeout kills the whole process group
 // (the command may fork workers) and fails. Whatever the command left in the
-// tree is reset away afterwards. Never fails itself.
+// tree is reset away afterwards. It carries pnpm's global virtual store
+// switch when dir runs under it (config.TreeEnv). Never fails itself.
 func RunVerify(dir, cmd string, timeout time.Duration) VerifyResult {
 	start := time.Now()
 	ctx := context.Background()
@@ -70,7 +72,7 @@ func RunVerify(dir, cmd string, timeout time.Duration) VerifyResult {
 	}
 	defer cancel()
 	c := exec.CommandContext(ctx, "/bin/sh", "-c", cmd)
-	c.Dir = dir
+	c.Dir, c.Env = dir, config.TreeEnv(dir)
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	c.Cancel = func() error { return syscall.Kill(-c.Process.Pid, syscall.SIGKILL) }
 	c.WaitDelay = verifyKillGrace

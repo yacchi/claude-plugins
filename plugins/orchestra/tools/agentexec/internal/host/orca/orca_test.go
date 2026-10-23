@@ -429,3 +429,28 @@ func contains(list []string, s string) bool {
 	}
 	return false
 }
+
+// The hosted session in a tree on pnpm's global virtual store gets the
+// switch on its command line (the terminal's env is Orca's); a session
+// anywhere else does not.
+func TestCommandCarriesThePnpmGVSSwitchOnlyInActiveTrees(t *testing.T) {
+	x := New(&config.Resolved{Values: config.DeepMerge(config.Defaults(), map[string]any{
+		"isolation": map[string]any{"pnpm_global_virtual_store": true},
+		"orca":      map[string]any{"user_config": "inherit"},
+	})})
+	linked, main := t.TempDir(), t.TempDir()
+	for _, f := range []string{filepath.Join(linked, ".git"), filepath.Join(linked, "pnpm-lock.yaml"),
+		filepath.Join(main, ".git", "HEAD"), filepath.Join(main, "pnpm-lock.yaml")} {
+		_ = os.MkdirAll(filepath.Dir(f), 0o755)
+		_ = os.WriteFile(f, []byte("x\n"), 0o644)
+	}
+	for tree, want := range map[string]bool{linked: true, main: false} {
+		cmd, err := x.command(&host.Session{Worktree: tree, Extra: map[string]any{"model": "opus"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.HasPrefix(cmd, "env ") && strings.Contains(cmd, config.PnpmGVSEnv+" claude "); got != want {
+			t.Errorf("%s: %q, switch wanted %v", tree, cmd, want)
+		}
+	}
+}

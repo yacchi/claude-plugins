@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 )
 
 func gitT(t *testing.T, dir string, args ...string) {
@@ -431,5 +433,29 @@ func TestSeedsHoldNoExecutables(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A CLI executor in a tree on pnpm's global virtual store gets the switch,
+// sandboxed or not; one in the user's checkout never does.
+func TestChildEnvCarriesThePnpmGVSSwitchOnlyInActiveTrees(t *testing.T) {
+	cfg := &config.Resolved{Values: map[string]any{
+		"sandbox":   map[string]any{"mode": "off"},
+		"isolation": map[string]any{"pnpm_global_virtual_store": true},
+	}}
+	linked, main := t.TempDir(), t.TempDir()
+	for _, f := range []string{filepath.Join(linked, ".git"), filepath.Join(linked, "pnpm-lock.yaml"),
+		filepath.Join(main, "pnpm-lock.yaml"), filepath.Join(main, ".git", "HEAD")} {
+		_ = os.MkdirAll(filepath.Dir(f), 0o755)
+		if err := os.WriteFile(f, []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	has := func(env []string) bool { return contains(env, config.PnpmGVSEnv) }
+	if env := ChildEnv(Prepare("pi", linked, cfg, "", ""), nil); !has(env) {
+		t.Errorf("linked tree: env %v lacks the switch", env)
+	}
+	if env := ChildEnv(Prepare("pi", main, cfg, "", ""), nil); has(env) {
+		t.Errorf("main checkout got the switch: %v", env)
 	}
 }
