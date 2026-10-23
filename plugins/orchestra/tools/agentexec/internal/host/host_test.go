@@ -276,3 +276,30 @@ func TestReadResult(t *testing.T) {
 		t.Error("ResetResult did not make the dir")
 	}
 }
+
+func TestSortedDirsDropsNested(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"child dropped regardless of order", []string{"/a/specs/api", "/a/specs", "/a/specs/ui"}, []string{"/a/specs"}},
+		{"sibling prefix is not ancestor", []string{"/a/b", "/a/bc"}, []string{"/a/b", "/a/bc"}},
+		{"trailing slash cleaned then deduped", []string{"/a/b/", "/a/b"}, []string{"/a/b"}},
+		{"duplicates collapse", []string{"/x", "/a", "/x"}, []string{"/a", "/x"}},
+		{"root drops everything", []string{"/", "/a"}, []string{"/"}},
+		{"empty", []string{}, []string{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := SortedDirs(tc.in)
+			if got == nil || !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("SortedDirs(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+	rel := SortedDirs([]string{"rel"})
+	if len(rel) != 1 || !filepath.IsAbs(rel[0]) {
+		t.Errorf("relative dir not made absolute: %q", rel)
+	}
+}
