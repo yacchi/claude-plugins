@@ -3,6 +3,7 @@ package herdr
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -11,8 +12,15 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 )
+
+// maxStartLine keeps the start command under macOS MAX_CANON (1024): a pane
+// whose shell line editor is not up yet reads in canonical mode and drops
+// input past it, newline included, so claude never starts. The margin is
+// for herdr's own quoting.
+const maxStartLine = 1000
 
 // --- registry -------------------------------------------------------------------
 
@@ -164,6 +172,39 @@ func (e *Executor) nativeArgs(s *host.Session, fork bool) ([]string, error) {
 	return append(args, flags...), nil
 }
 
+// startLine is the command line the pane receives: claude with its
+// arguments shell-quoted.
+func startLine(native []string) string {
+	quoted := make([]string, 0, len(native))
+	for _, a := range native {
+		quoted = append(quoted, sandbox.ShellQuote(a))
+	}
+	return "claude " + strings.Join(quoted, " ")
+}
+
+// paneScreen is the visible screen of a pane as text. The pane is read, not
+// the agent: a failed start may leave the agent unknown to herdr.
+func (e *Executor) paneScreen(ctx context.Context, pane string) (string, error) {
+	payload, out, err := e.call(ctx, callTimeout, "", "pane", "read", pane, "--source", "visible")
+	if err != nil {
+		return "", err
+	}
+	if len(payload) > 0 {
+		return strings.Join(Strings(payload), "\n"), nil
+	}
+	return out, nil
+}
+
+// startFailure is the detail of a failed start: err, then the tail of the
+// pane's screen when there is one.
+func (e *Executor) startFailure(ctx context.Context, pane string, err error) string {
+	screen, serr := e.paneScreen(ctx, pane)
+	if serr != nil || strings.TrimSpace(screen) == "" {
+		return err.Error()
+	}
+	return err.Error() + "\n" + host.TailText(screen)
+}
+
 func callErr(err error) *CallError {
 	var ce *CallError
 	if errors.As(err, &ce) {
@@ -187,6 +228,13 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 	native, err := e.nativeArgs(s, fork)
 	if err != nil {
 		return "", err
+	}
+	if line := startLine(native); len(line) > maxStartLine {
+		return "", host.Need(host.KindError, fmt.Sprintf(
+			"the claude start line is %d bytes, over the %d limit: a pane that is not ready reads its "+
+				"input in canonical mode, and macOS MAX_CANON (1024) drops input past that, so claude never "+
+				"starts; shorten it with fewer or shorter --add-dir paths (keep specs in one directory, "+
+				"put the state dir on a shorter path)", len(line), maxStartLine))
 	}
 	name := AgentName(s.Pkg)
 	payload, _, err := e.call(ctx, callTimeout, "", "workspace", "create", "--cwd", s.Worktree,
@@ -225,7 +273,7 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 			continue
 		}
 		if ce := callErr(err); ce == nil || ce.Code != "agent_not_ready" {
-			return "", host.Need(host.KindError, err.Error())
+			return "", host.Need(host.KindError, e.startFailure(ctx, pane, err))
 		}
 		break
 	}
