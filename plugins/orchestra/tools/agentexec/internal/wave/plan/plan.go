@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/slot"
 )
 
 // ValidCls are the dispatch classes a package may name.
@@ -272,6 +273,19 @@ func Load(file string) (*Plan, error) {
 				pkg.Prio = float64(n)
 			case float64:
 				pkg.Prio = n
+			}
+		}
+		// A package's verification runs in its worker's tree, many at once:
+		// the whole suite there is the cost the run after integration exists
+		// to pay once.
+		if v, has := entry["verification"]; has {
+			verification, isStr := v.(string)
+			if !isStr {
+				return nil, errf("%s: verification must be a string", id)
+			}
+			if slot.Classify(verification, nil).Scope == slot.ScopeFull {
+				return nil, errf("%s: verification runs the whole suite: %s; name the changed packages' tests — "+
+					"the full suite runs after integration", id, verification)
 			}
 		}
 		switch n := entry["est_seconds"].(type) {

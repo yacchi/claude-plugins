@@ -4,8 +4,12 @@ import { type AgentExecAnswer, callTool, fakeHost, freshSession, startAgent } fr
 import type { Io } from './io.ts'
 import { withHeavySlot } from './slot.ts'
 
-// agent-exec as the hooks see it: `slot acquire` admits with token t1.
+// agent-exec as the hooks see it: every command is a targeted heavy one, and
+// `slot acquire` admits with token t1.
 const admitting = (args: readonly string[]): AgentExecAnswer => {
+    if (args[0] === 'slot' && args[1] === 'classify') {
+        return { exitCode: 0, stdout: '{"op":"pnpm test","heavy":true,"kind":"test","pool":"test","scope":"targeted"}\n' }
+    }
     if (args[0] === 'slot' && args[1] === 'acquire') {
         return { exitCode: 0, stdout: '{"admitted":true,"token":"t1","waited_ms":0}\n' }
     }
@@ -13,8 +17,10 @@ const admitting = (args: readonly string[]): AgentExecAnswer => {
     return { exitCode: 0, stdout: args[0] === 'config' ? '{"enforcement": {}}' : '' }
 }
 
+// The admission calls (acquire, release); the classify before them is the
+// full-suite guard's as much as admission's.
 const slotCalls = (runs: readonly string[][]) => runs
-    .filter(r => r[0] === 'sh' && r[4] === 'slot')
+    .filter(r => r[0] === 'sh' && r[4] === 'slot' && r[5] !== 'classify')
     .map(r => r.slice(5).join(' '))
 
 describe('heavy slot admission', () => {
@@ -24,7 +30,7 @@ describe('heavy slot admission', () => {
         const r = await callTool($, 'ag_1', { tool: 'Bash', command: 'cd pkg && pnpm test', description: 'test' })
         expect(r).toEqual({ result: 'ran' })
         expect(slotCalls(h.runs)).toEqual([
-            'acquire --pool heavy --command=cd pkg && pnpm test --max-wait 540s',
+            'acquire --command=cd pkg && pnpm test --max-wait 540s',
             'release t1',
         ])
     })

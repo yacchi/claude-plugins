@@ -114,7 +114,6 @@ setup:
   dirty:
     tree/b.txt: "b\n"
     tree/c.txt: "c\n"
-normalize_keys: [updated_ago]
 steps:
   - argv: ["wave", "status", "--state", "wave/state.json", "--live"]
   - argv: ["wave", "status", "--state", "wave/state.json", "--json", "--live"]

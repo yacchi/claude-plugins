@@ -196,7 +196,8 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": {
@@ -204,6 +205,10 @@
             "model": "opus"
           },
           "light": "home",
+          "planner": {
+            "effort": "max",
+            "model": "opus"
+          },
           "review": {
             "effort": "medium",
             "model": "sonnet"

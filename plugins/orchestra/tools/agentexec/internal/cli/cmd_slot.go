@@ -15,21 +15,36 @@ import (
 func newSlotCmd() *cobra.Command {
 	cmd := groupCommand("slot", "machine-wide admission for heavy commands")
 
-	acquire := &cobra.Command{
-		Use:   "acquire --command CMD",
-		Short: "wait for a heavy slot if CMD is heavy (used by the orchestra hooks)",
+	classify := &cobra.Command{
+		Use:   "classify --command CMD",
+		Short: "what CMD runs: heavy or not, its kind and pool, a full suite or targeted (used by the orchestra hooks)",
 		Args:  cobra.NoArgs,
 	}
-	pool := acquire.Flags().String("pool", slot.Heavy, "the pool (only heavy)")
+	classified := classify.Flags().String("command", "", "the command line to classify")
+	_ = classify.MarkFlagRequired("command")
+	classify.RunE = func(cmd *cobra.Command, _ []string) error {
+		c, _ := classifyConfigured(*classified)
+		var kind any
+		if c.Heavy {
+			kind = c.Kind
+		}
+		return writeJSONLine(cmd.OutOrStdout(), map[string]any{
+			"op": c.Op, "heavy": c.Heavy, "kind": kind, "pool": c.Pool(), "scope": c.Scope,
+		})
+	}
+	cmd.AddCommand(classify)
+
+	acquire := &cobra.Command{
+		Use:   "acquire --command CMD",
+		Short: "wait for a slot of CMD's pool if CMD is heavy (used by the orchestra hooks)",
+		Args:  cobra.NoArgs,
+	}
 	command := acquire.Flags().String("command", "", "the command line to classify")
 	owner := acquire.Flags().Int("owner-pid", 0, "the pid whose death frees the slot (default: the parent process)")
 	ttl := acquire.Flags().Duration("ttl", slot.DefaultTTL, "the longest the slot is held")
 	maxWait := acquire.Flags().Duration("max-wait", 0, "give up unadmitted after this long (0 = wait as long as it takes)")
 	_ = acquire.MarkFlagRequired("command")
 	acquire.RunE = func(cmd *cobra.Command, _ []string) error {
-		if *pool != slot.Heavy {
-			return exitf(2, "%s: unknown pool: %s", cmdName(cmd), *pool)
-		}
 		pid := *owner
 		if pid == 0 {
 			pid = os.Getppid()
@@ -54,29 +69,28 @@ func newSlotCmd() *cobra.Command {
 	}
 	cmd.AddCommand(release)
 
-	status := &cobra.Command{Use: "status", Short: "the heavy pool's size and held slots", Args: cobra.NoArgs}
+	status := &cobra.Command{Use: "status", Short: "each pool's size and held slots", Args: cobra.NoArgs}
 	asJSON := status.Flags().Bool("json", false, "machine-readable output")
 	status.RunE = func(cmd *cobra.Command, _ []string) error { return runSlotStatus(cmd, *asJSON) }
 	cmd.AddCommand(status)
 	return cmd
 }
 
-// heavyConfig is the heavy pool and the extra heavy patterns of the
-// resolved config (the built-in defaults on a broken layer).
-func heavyConfig() (slot.Pool, *config.Resolved) {
+// classifyConfigured classifies command with the extra heavy patterns of
+// the resolved config (the built-in defaults on a broken layer).
+func classifyConfigured(command string) (slot.Class, *config.Resolved) {
 	cfg := configOrDefaults()
-	size, _ := cfg.Lookup("throttle", "heavy_slots")
-	return slot.New(slot.Heavy, slot.SizeOf(size)), cfg
+	return slot.Classify(command, slot.CompileExtra(cfg.StringList("throttle", "heavy_extra"))), cfg
 }
 
 func runSlotAcquire(cmd *cobra.Command, command string, req slot.Request, maxWait time.Duration) error {
 	out := cmd.OutOrStdout()
-	p, cfg := heavyConfig()
-	op, heavy := slot.Classify(command, slot.CompileExtra(cfg.StringList("throttle", "heavy_extra")))
-	if !heavy || p.Off() {
+	c, cfg := classifyConfigured(command)
+	p := slot.Configured(cfg, c.Pool())
+	if !c.Heavy || p.Off() {
 		return writeJSONLine(out, map[string]any{"admitted": false})
 	}
-	req.Op = op
+	req.Op = c.Op
 	ctx := context.Background()
 	if maxWait > 0 {
 		var cancel context.CancelFunc
@@ -91,37 +105,45 @@ func runSlotAcquire(cmd *cobra.Command, command string, req slot.Request, maxWai
 		})
 	}
 	return writeJSONLine(out, map[string]any{
-		"admitted": true, "token": lease.Token, "waited_ms": waited.Milliseconds(), "op": op,
+		"admitted": true, "token": lease.Token, "waited_ms": waited.Milliseconds(), "op": c.Op, "pool": p.Name,
 	})
 }
 
 func runSlotStatus(cmd *cobra.Command, asJSON bool) error {
-	p, _ := heavyConfig()
-	leases, err := p.Leases()
-	if err != nil {
-		return exitf(1, "%s: %v", cmdName(cmd), err)
-	}
+	cfg := configOrDefaults()
 	now := float64(time.Now().UnixNano()) / 1e9
-	held := make([]map[string]any, 0, len(leases))
-	for _, l := range leases {
-		held = append(held, map[string]any{
-			"pid": l.PID, "age_s": int64(now - l.Start), "expires_in_s": int64(l.Expires - now),
-			"op": l.Op, "token": l.Token,
-		})
-	}
-	if asJSON {
-		return writeJSON(cmd.OutOrStdout(), map[string]any{
+	w := cmd.OutOrStdout()
+	pools := make([]map[string]any, 0, 2)
+	for _, name := range []string{slot.Heavy, slot.Test} {
+		p := slot.Configured(cfg, name)
+		leases, err := p.Leases()
+		if err != nil {
+			return exitf(1, "%s: %v", cmdName(cmd), err)
+		}
+		held := make([]map[string]any, 0, len(leases))
+		for _, l := range leases {
+			held = append(held, map[string]any{
+				"pid": l.PID, "age_s": int64(now - l.Start), "expires_in_s": int64(l.Expires - now),
+				"op": l.Op, "token": l.Token,
+			})
+		}
+		pools = append(pools, map[string]any{
 			"pool": p.Name, "size": p.Size, "off": p.Off(), "dir": p.Dir, "held": held,
 		})
+		if asJSON {
+			continue
+		}
+		if p.Off() {
+			fmt.Fprintf(w, "%s: off (throttle.%s: 0)\n", p.Name, slot.SizeKey(name))
+		} else {
+			fmt.Fprintf(w, "%s: %d/%d held\n", p.Name, len(leases), p.Size)
+		}
+		for _, h := range held {
+			fmt.Fprintf(w, "  pid %-7v %5vs  %v\n", h["pid"], h["age_s"], h["op"])
+		}
 	}
-	w := cmd.OutOrStdout()
-	if p.Off() {
-		fmt.Fprintf(w, "%s: off (throttle.heavy_slots: 0)\n", p.Name)
-	} else {
-		fmt.Fprintf(w, "%s: %d/%d held\n", p.Name, len(leases), p.Size)
-	}
-	for _, h := range held {
-		fmt.Fprintf(w, "  pid %-7v %5vs  %v\n", h["pid"], h["age_s"], h["op"])
+	if asJSON {
+		return writeJSON(w, map[string]any{"pools": pools})
 	}
 	return nil
 }

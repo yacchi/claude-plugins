@@ -36,9 +36,9 @@ func TestClassify(t *testing.T) {
 		"esbuild src/index.ts --bundle --outdir=dist": "esbuild",
 	}
 	for command, op := range heavy {
-		got, ok := Classify(command, nil)
-		if !ok || got != op {
-			t.Errorf("%q: (%q, %v), want (%q, heavy)", command, got, ok, op)
+		c := Classify(command, nil)
+		if !c.Heavy || c.Op != op {
+			t.Errorf("%q: (%q, %v), want (%q, heavy)", command, c.Op, c.Heavy, op)
 		}
 	}
 	cold := []string{
@@ -48,18 +48,46 @@ func TestClassify(t *testing.T) {
 		"cat <<EOF > task.txt\npnpm test\nEOF", "",
 	}
 	for _, command := range cold {
-		if op, ok := Classify(command, nil); ok {
-			t.Errorf("%q classified heavy (%q)", command, op)
+		if c := Classify(command, nil); c.Heavy {
+			t.Errorf("%q classified heavy (%q)", command, c.Op)
 		}
 	}
 }
 
 func TestClassifyExtraPatterns(t *testing.T) {
 	extra := CompileExtra([]string{`^make (check|test)\b`, "(invalid"})
-	if _, ok := Classify("FOO=1 make check", extra); !ok {
+	if !Classify("FOO=1 make check", extra).Heavy {
 		t.Error("make check not matched by heavy_extra")
 	}
-	if _, ok := Classify("make clean", extra); ok {
+	if Classify("make clean", extra).Heavy {
 		t.Error("make clean matched")
+	}
+}
+
+// A worker is denied a full run, so a targeted one read as full blocks real
+// work, and a full one read as targeted lets the whole suite through.
+func TestClassifyScope(t *testing.T) {
+	full := []string{
+		"go test ./...", "cd plugins/orchestra/tools/agentexec && go test -count=1 ./... 2>&1 | tail",
+		"go vet ./...", "pnpm -r test", "pnpm test", "npm test -- --watch=false", "yarn test",
+		"pytest", "uv run pytest -x", "cargo test --workspace", "cargo test", "make test",
+		"turbo run test", "go test ./internal/x/... && go test ./...",
+	}
+	for _, command := range full {
+		if c := Classify(command, nil); c.Scope != ScopeFull {
+			t.Errorf("%q classified %s, want full", command, c.Scope)
+		}
+	}
+	targeted := []string{
+		"go test ./internal/x/...", "go test -count=1 ./internal/slot/... ./internal/checks/...",
+		"go test -run TestClassify ./...", "pnpm --filter a test", "pnpm --filter=a test",
+		"cd packages/a && pnpm test", "npm test -w a", "pytest tests/test_a.py", "pytest -k scope",
+		"cargo test -p core", "make test PKG=./x", "turbo run test --filter=web", "npx vitest run src",
+		"go build ./...", "tsc --noEmit", "pnpm install", "pnpm -r lint", "git status",
+	}
+	for _, command := range targeted {
+		if c := Classify(command, nil); c.Scope != ScopeTargeted {
+			t.Errorf("%q classified %s, want targeted", command, c.Scope)
+		}
 	}
 }

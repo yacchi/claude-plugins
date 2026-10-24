@@ -34,6 +34,21 @@ ORCHESTRATED — anything else, and WHENEVER IN DOUBT.
 → Load the \`orchestra:run\` skill and follow it: decompose, write contracts,
   delegate to cheap workers with adversarial verifiers, take back only
   structured verdicts.
+→ Decomposition beyond a handful of tasks: planner first. Do not plan it
+  yourself; spawn \`orchestra:orchestra-planner\` with the \`model\`/\`effort\` of
+  \`tiers.planner\` (\`agent-exec config --json\`), then run the plan it writes.
+
+WORKFLOW OPT-IN — judge it from the context alone; never read settings files.
+The Workflow tool is usable this turn only when the context shows an opt-in: a
+system-reminder that ultracode is on or that the user's prompt carried the
+ultracode keyword; the user asking for a workflow in their own words; or the
+user having typed /orchestra:run (or /run) themselves. A skill the router
+loaded does not count. EXPRESS work never becomes a workflow, even with
+ultracode on. ORCHESTRATED work a Workflow fits, with no opt-in visible: do not
+fall back to orchestra-delegate silently — reply in one line asking the user
+to type \`/orchestra:run <the request>\` or add "workflow" to the request, then
+stop. Small ORCHESTRATED work may still go to Agent-tool workers directly.
+Never inject or rewrite a prompt to manufacture an opt-in.
 
 A lane never persists — re-classify every request and at every phase shift.
 Forced ORCHESTRATED, even mid-conversation: you are about to hand-write

@@ -196,11 +196,16 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": "from-local-yaml",
           "light": "from-user-yml",
+          "planner": {
+            "effort": "max",
+            "model": "opus"
+          },
           "review": {
             "effort": "medium",
             "model": "sonnet"

@@ -196,7 +196,8 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": {
@@ -206,6 +207,10 @@
           "light": {
             "effort": "medium",
             "model": "haiku"
+          },
+          "planner": {
+            "effort": "max",
+            "model": "opus"
           },
           "review": {
             "effort": "medium",
@@ -458,7 +463,8 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": {
@@ -466,6 +472,10 @@
             "model": "opus"
           },
           "light": "repo-root",
+          "planner": {
+            "effort": "max",
+            "model": "opus"
+          },
           "review": {
             "effort": "medium",
             "model": "sonnet"
@@ -720,7 +730,8 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": "forced-root",
@@ -728,6 +739,10 @@
             "effort": "medium",
             "model": "haiku"
           },
+          "planner": {
+            "effort": "max",
+            "model": "opus"
+          },
           "review": {
             "effort": "medium",
             "model": "sonnet"
@@ -982,7 +997,8 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": {
@@ -990,6 +1006,10 @@
             "model": "opus"
           },
           "light": "repo-root",
+          "planner": {
+            "effort": "max",
+            "model": "opus"
+          },
           "review": {
             "effort": "medium",
             "model": "sonnet"
@@ -1244,7 +1264,8 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": {
@@ -1254,6 +1275,10 @@
           "light": {
             "effort": "medium",
             "model": "haiku"
+          },
+          "planner": {
+            "effort": "max",
+            "model": "opus"
           },
           "review": {
             "effort": "medium",
