@@ -106,7 +106,6 @@ setup:
         "version": 1,
         "wave": 2
       }
-normalize_keys: [updated_ago]
 steps:
   - argv: ["wave", "stop", "--state", "wave/state.json", "--reason", "halt now"]
     snapshot: ["wave/STOP"]
