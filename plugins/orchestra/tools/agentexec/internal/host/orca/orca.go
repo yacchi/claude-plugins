@@ -6,10 +6,12 @@
 // `pkg-<id>` (isolate.Adopt) so diff/check/refresh/integrate reach it by
 // task id, and nested in Orca's sidebar under the tree its base branch is
 // checked out in, else the caller's checkout (orcanest, best effort). The
-// create holds a slot of the machine-wide heavy pool. Completion is
-// signalled only by the result file: `terminal wait
-// --for tui-idle` can report idle before the TUI started or while a dialog
-// is up. Sessions persist in `<state dir>/orca-sessions.json`.
+// create holds a slot of the machine-wide heavy pool. The terminal is
+// recorded in the tree (isolate.WriteHostSession), so a removal that
+// deletes the tree closes it. Completion is signalled only by the result
+// file: `terminal wait --for tui-idle` can report idle before the TUI
+// started or while a dialog is up. Sessions persist in
+// `<state dir>/orca-sessions.json`.
 package orca
 
 import (
@@ -32,6 +34,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/hostref"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/orcanest"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
@@ -398,6 +401,7 @@ func (e *Executor) openTerminal(ctx context.Context, s *host.Session) (string, e
 	}
 	s.Terminal = handle
 	e.save(s)
+	e.record(s.Worktree, handle)
 
 	startup := e.cfg.Seconds("startup_timeout", 90)
 	deadline := e.Clock.Now().Add(startup)
@@ -442,6 +446,18 @@ func (e *Executor) openTerminal(ctx context.Context, s *host.Session) (string, e
 	}
 }
 
+// record writes the terminal opened on tree into the tree, where every
+// removal of it finds and closes it.
+func (e *Executor) record(tree, handle string) {
+	bin := e.Binary
+	if p, err := exec.LookPath(bin); err == nil {
+		bin = p
+	}
+	if err := isolate.WriteHostSession(tree, hostref.Ref{Host: hostref.Orca, Binary: bin, Terminal: handle}); err != nil {
+		e.warnf("could not record the terminal in %s: %s", tree, err)
+	}
+}
+
 func (e *Executor) closeTerminal(s *host.Session) {
 	handle := s.Terminal
 	if handle == "" {
@@ -449,6 +465,8 @@ func (e *Executor) closeTerminal(s *host.Session) {
 	}
 	if _, err := e.call(context.Background(), callTimeout, "terminal", "close", "--terminal", handle, "--tab"); err != nil {
 		e.warnf("%s", err)
+	} else {
+		_ = isolate.ClearHostSession(s.Worktree)
 	}
 	s.Terminal = ""
 	e.save(s)

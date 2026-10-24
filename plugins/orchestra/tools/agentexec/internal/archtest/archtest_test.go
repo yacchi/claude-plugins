@@ -35,7 +35,8 @@ var deps = map[string][]string{
 	"internal/tools":              {"internal/config"},
 	"internal/gitx":               {"internal/fsutil"},
 	"internal/orcanest":           {"internal/gitx"},
-	"internal/isolate":            {"internal/gitx", "internal/config", "internal/paths", "internal/slot", "internal/orcanest"},
+	"internal/hostref":            {},
+	"internal/isolate":            {"internal/gitx", "internal/config", "internal/paths", "internal/slot", "internal/orcanest", "internal/hostref"},
 	"internal/integrate":          {"internal/checks", "internal/isolate"},
 	"internal/shelf":              {"internal/gitx"},
 	"internal/sandbox":            {"internal/config", "internal/paths", "internal/gitx"},
@@ -80,6 +81,9 @@ var thirdParty = []string{"github.com/spf13/cobra", "go.yaml.in/yaml/v3", "golan
 // says.
 var forbidden = [][2]string{
 	{"internal/ui", "internal/wave/runner"},
+	// A removal closes hosted sessions through hostref, never the hosts.
+	{"internal/isolate", "internal/host"},
+	{"internal/hostref", "internal/host"},
 }
 
 func closure(pkg string, seen map[string]bool) {

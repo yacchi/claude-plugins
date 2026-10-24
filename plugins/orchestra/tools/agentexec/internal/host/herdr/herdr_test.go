@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 )
 
@@ -163,14 +164,51 @@ func TestShutdownKeepsTheServerWhileSessionsAwaitResume(t *testing.T) {
 	}
 }
 
-func TestShutdownLeavesAServerItDidNotStart(t *testing.T) {
+func TestShutdownStopsAnAttachedServerOnceNoWorkspaceIsLeft(t *testing.T) {
 	e := newEnv(t)
 	e.scenario(map[string]any{"running": true}, true)
 	x := e.executor("")
-	e.mustStart(x, "a")
+	a := e.mustStart(x, "a")
+	// another wave of the same Claude session shares the herdr session
+	other, otherState := e.executor(""), filepath.Join(e.tmp, "state2")
+	b, err := other.Start(context.Background(), "b", e.repo, "main", "standard", "opus", "run-2", otherState, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = x.Close(a, true)
 	x.Shutdown()
-	if len(e.spawns) != 0 || e.has("server stop") {
-		t.Errorf("spawns %v", e.spawns)
+	if e.has("server stop") {
+		t.Fatal("stopped while another package's workspace is open")
+	}
+	_ = other.Close(b, true)
+	x.Shutdown()
+	if len(e.spawns) != 0 || !e.has("server stop") {
+		t.Errorf("an attached server with no workspace left kept running (spawns %v)", e.spawns)
+	}
+	// a resumed run with nothing left to start never reaches the server itself
+	e.scenario(map[string]any{"running": true}, true)
+	e.executor("").Shutdown()
+	if !e.has("server stop") {
+		t.Error("an idle server a run found running was left running")
+	}
+}
+
+func TestRemovingATreeClosesTheWorkspaceRecordedInIt(t *testing.T) {
+	e := newEnv(t)
+	e.scenario(map[string]any{"running": true}, true)
+	s := e.mustStart(e.executor(""), "a")
+	// a removal that knows nothing about herdr (sweep, the SessionEnd hook)
+	res, err := isolate.Remove(e.repo, "pkg-a", true, "")
+	if err != nil || res.Status != "removed" || res.Warning != "" {
+		t.Fatalf("%+v %v", res, err)
+	}
+	closes := e.callsOf("workspace close")
+	if len(closes) != 1 || closes[0].Argv[4] != s.Str("workspace") || closes[0].Argv[1] != session ||
+		closes[0].Env["XDG_CONFIG_HOME"] != e.home {
+		t.Errorf("workspace close calls %v", closes)
+	}
+	if !e.has("server stop") {
+		t.Error("the server was left running with no workspace in it")
 	}
 }
 

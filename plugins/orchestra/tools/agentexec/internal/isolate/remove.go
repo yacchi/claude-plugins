@@ -23,6 +23,7 @@ type RemoveResult struct {
 	Branch    string
 	Session   string
 	Reason    string   // dirty, busy, error; removed: a leftover trash dir
+	Warning   string   // removed: why the hosted session in the tree was left open
 	Files     []string // dirty only
 	IsSession bool
 	Removed   []RemoveResult
@@ -72,6 +73,9 @@ func (r RemoveResult) MarshalJSON() ([]byte, error) {
 		o["session"] = nullable(r.Session)
 		if r.Reason != "" {
 			o["reason"] = r.Reason
+		}
+		if r.Warning != "" {
+			o["warning"] = r.Warning
 		}
 	}
 	return fsutil.MarshalJSON(o)
@@ -360,7 +364,9 @@ func discard(repo, path, branch string) (ok bool, reason string) {
 // Remove deletes task's worktree and branch, refusing (status "dirty") to
 // discard changes nobody collected unless force, and (status "busy", even
 // with force) a tree somebody is still working in. An adopted tree is never
-// deleted: only its adoption is dropped. session "" is the calling session.
+// deleted: only its adoption is dropped. A hosted session recorded in a tree
+// that goes is closed first (Warning when it could not be). session "" is
+// the calling session.
 func Remove(root, task string, force bool, session string) (RemoveResult, error) {
 	resolved, ok := gitx.RepoRoot(root)
 	if !ok {
@@ -395,13 +401,14 @@ func Remove(root, task string, force bool, session string) (RemoveResult, error)
 			return RemoveResult{Status: "dirty", Task: task, Path: wt.Path, Files: files, Reason: reason}, nil
 		}
 	}
+	warning := closeHostSession(wt.Path)
 	removed, reason := discard(resolved, wt.Path, wt.Branch)
 	if !removed {
 		return RemoveResult{Status: "error", Task: task, Reason: reason}, nil
 	}
 	return RemoveResult{
 		Status: "removed", Task: task, Path: wt.Path, Branch: wt.Branch, Session: branchSession(wt.Branch),
-		Reason: reason,
+		Reason: reason, Warning: warning,
 	}, nil
 }
 

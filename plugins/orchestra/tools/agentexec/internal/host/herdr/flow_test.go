@@ -269,7 +269,7 @@ func (e *env) trustStart(cfg string, precreate, sandboxed bool) (*Executor, erro
 	x.sandboxed = sandboxed
 	if sandboxed {
 		// stand-in for a server started under Seatbelt/bwrap
-		x.serverReady, x.serverStarted = true, true
+		x.serverReady = true
 	}
 	_, err := e.start(x, "a")
 	return x, err

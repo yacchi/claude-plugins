@@ -77,7 +77,17 @@ hooks leave no stamp — finish such work before sweeping. Removal renames the t
 prunes its record, then hands the renamed copy to a detached `rm -rf` and returns
 without waiting for it, so a failure leaves either the intact tree at its path or a
 `.<name>.orchestra-removing-*` leftover that the next sweep deletes — never a
-half-deleted tree that git no longer knows.
+half-deleted tree that git no longer knows. Before the rename, a hosted worker
+session the herdr or Orca host recorded in the tree (`orchestra-host.json` in its
+git dir, cleared when the host closes the session itself) is closed — herdr:
+`workspace close` in that `orchestra-*` session under orchestra's herdr home, then
+`server stop` once no workspace is left in it; Orca: `terminal close --tab` —
+best effort within 5 s. A close that fails is reported as `warning` on the
+removal (and the sweep row) and never keeps the tree. This holds for every route
+built on `isolate remove` (sweep, `--session` and the SessionEnd hook, `/cleanup`,
+the host's own cleanup) and for `isolate refresh`, which closes it before
+recreating the tree. A tree that is kept (busy, dirty, skipped, a dry run) keeps
+its session, and an adopted tree is only unadopted, so its session stays.
 
 Other sessions running in the same repo are protected by a heartbeat rather than
 by luck: every `agent-exec isolate`/`dispatch`/`route`/`run` command touches
