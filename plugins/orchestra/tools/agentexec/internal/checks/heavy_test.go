@@ -17,9 +17,9 @@ import (
 func TestRerunFailedAloneTakesOneHeavySlot(t *testing.T) {
 	t.Setenv("ORCHESTRA_SLOT_DIR", t.TempDir())
 	pool := slot.New(slot.Heavy, 2)
-	was := heavyPool
-	heavyPool = func() slot.Pool { return pool }
-	t.Cleanup(func() { heavyPool = was })
+	was := slot.HeavyPool
+	slot.HeavyPool = func() slot.Pool { return pool }
+	t.Cleanup(func() { slot.HeavyPool = was })
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, _, err := pool.Acquire(ctx, slot.Request{Owner: os.Getpid(), Op: "pnpm test"}); err != nil {

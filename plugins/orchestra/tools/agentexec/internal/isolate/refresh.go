@@ -194,8 +194,12 @@ func Refresh(root, task, onto, session string) (RefreshResult, error) {
 	}
 
 	// The patch is the safety net now: bypass the collected gate and remove
-	// the old worktree and branch outright.
-	if _, err := gitx.Run(resolved, "worktree", "remove", wt.Path, "--force"); err != nil {
+	// the old worktree and branch outright. The slot is released before
+	// Create takes its own.
+	release := HoldHeavy("git worktree remove")
+	_, err = gitx.Run(resolved, "worktree", "remove", wt.Path, "--force")
+	release()
+	if err != nil {
 		return fail("could not remove the old worktree for " + task)
 	}
 	_, _ = gitx.Run(resolved, "branch", "-D", wt.Branch)

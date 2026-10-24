@@ -284,8 +284,9 @@ func trashPath(path string) string {
 // session and returns at once: git already forgot the tree, and a carried
 // node_modules is hundreds of thousands of files nobody should wait on. The
 // rm outlives Ctrl-C and the caller; whatever it never finishes, sweep
-// reclaims.
-func deleteDetached(path string) error {
+// reclaims. done runs once the rm exits (while the caller lives); never when
+// it could not start.
+func deleteDetached(path string, done func()) error {
 	cmd := exec.Command("/bin/rm", "-rf", "--", path)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	end := trace.Begin(trace.KindFS, "rm -rf (detached)", trace.Attrs{Detail: path})
@@ -296,6 +297,7 @@ func deleteDetached(path string) error {
 	go func() { // reaped while the caller lives
 		_ = cmd.Wait()
 		end(cmd.ProcessState.ExitCode())
+		done()
 	}()
 	return nil
 }
@@ -339,11 +341,15 @@ func discard(repo, path, branch string) (ok bool, reason string) {
 	if branch != "" {
 		_, _ = gitx.Run(repo, "branch", "-D", branch)
 	}
-	if err := deleteDetached(trash); err != nil {
+	// The delete holds a heavy slot until it is done (or this process
+	// exits, which frees the slot while a detached rm carries on).
+	release := HoldHeavy("rm -rf worktree")
+	if err := deleteDetached(trash, release); err != nil {
 		// Nothing to hand it to: delete it here rather than leave it.
 		end := trace.Begin(trace.KindFS, "remove-all", trace.Attrs{Detail: trash})
 		err := os.RemoveAll(trash)
 		end(exitOf(err))
+		release()
 		if err != nil {
 			return true, fmt.Sprintf("git state removed, but the old tree is left at %s (%v); delete it by hand", trash, err)
 		}
