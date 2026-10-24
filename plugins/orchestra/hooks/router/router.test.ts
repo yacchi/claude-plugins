@@ -39,6 +39,9 @@ describe('router', () => {
         expect(opus.length).toBe(1)
         expect(opus[0]).toContain('<orchestra-router>\nClassify EACH user request')
         expect(opus[0]).not.toContain('applies ONLY')
+        expect(opus[0], 'the lane split').toContain('EXPRESS — ALL of')
+        expect(opus[0]).toContain('ORCHESTRATED — anything else')
+        expect(opus[0], 'decomposition goes to the planner').toContain('orchestra:orchestra-planner')
         expect((await begin($, 's-sonnet', 'claude-sonnet-5')).additionalContext ?? [], 'cheap: zero context').toEqual([])
         expect((await begin($, 's-none')).additionalContext?.[0], 'unknown: self-gated').toContain('applies ONLY when')
         for (const source of ['resume', 'clear', 'compact']) {

@@ -41,7 +41,7 @@ The full pipeline on every request is overkill. **Express only when ALL hold:**
 2. **No** decomposition, **no** design decisions, **no** cross-task coordination
 3. Small expected context bloat: few tool calls, little file reading, mechanical or localized change
 
-**File count is NOT a criterion** — incidental doc updates may ride along. When decomposition or design judgment is needed, **or whenever in doubt**, take the orchestrated lane.
+**File count is NOT a criterion** — incidental doc updates may ride along. When decomposition or design judgment is needed, **or whenever in doubt**, take the orchestrated lane. An orchestrated request that decomposes into more than a handful of tasks goes to the planner first (§14): you do not plan it yourself.
 
 **The gate is context bloat, not your model tier.** Being on an expensive model is not itself a reason to delegate: a few-line, single-file, mechanical change with no design judgment is express even on Fable/Opus, because delegating it costs more in prompt authoring, spawn latency, and handoff than it saves.
 
@@ -105,6 +105,8 @@ The pipeline ships as `plugins/orchestra/workflows/pipeline.js` (`VERDICT_SCHEMA
 **Then report what the run cost, every run.** Have the same relay also run `agent-exec usage --run <workflow-run-id> --text` and return it verbatim, then tell the user, per source: input split into fresh / cache write / cache read, output, and the estimated cost with its `~$` figure. Never report only input and output: cache reads are the bulk of the volume and the cache writes are priced above plain input, so in/out alone neither shows the real volume nor supports a cost. Quote `PARTIAL: unpriced …` when it is present — it means a model with no list price is *not* in the figure — and say the figure is an estimate from list prices (the report carries the price-list date), not an invoice. Without a run id, use `--session <session-id>`; use a `--since` window only as a last resort, since a window also counts unrelated sessions.
 
 ## 6. Writing worker prompts
+
+You decompose and write contracts yourself only for a handful of tasks. Beyond that, the planner (§14) decomposes and writes one spec file per package plus a shared preamble that already follow the rules below; pass those files as the prompts (rule 6) instead of rewriting them.
 
 Mandatory for every `workerPrompt`:
 
@@ -199,3 +201,15 @@ Integrate flags and lock semantics, what a worktree carries in (uncommitted work
 ## 13. Programme scale
 
 When the request is dozens of session-sized packages with dependencies between them, §5's `pipeline(tasks, runTask)` is the wrong outer loop: packages need each other's *code*, HEAD moves under every package while it runs, and the plan itself must be produced by agents first. Read `references/programme.md`: planning workflows, a dependency scheduler, a rolling integration base, and carry-over instead of escalation, all reusing §5's `runTask` unchanged per package. **Run continuously**: do not chunk the programme. If the user wants a budget, agree it up front and pass it (`--budget-usd`, with `--run-id`); relay the `usage` notices the run sends every `wave.usage_every` integrated packages; stop it with `agent-exec wave stop`. Never lower `--max-in-flight` or cap packages to manage machine load: heavy commands are admitted machine-wide and memory pressure holds new starts by itself.
+
+## 14. Planning: the planner, not you
+
+You run at low effort; planning a large programme is high-effort work. So beyond a handful of tasks you never plan anything yourself — not the decomposition, not the contracts, not the package list:
+
+1. Read `tiers.planner` from `agent-exec config --json` (default `{model: opus, effort: max}`).
+2. Spawn `orchestra:orchestra-planner` with the Agent tool, passing that `model` and `effort` (instruction-sourced, so allowed). Its prompt carries: the user's goal, the user's constraints and prohibitions verbatim, the repo path, a specs directory and a plan path under your scratch dir.
+3. It fans read-only exploration out to pinned Sonnet/Haiku subagents (`references/programme.md` §2 is its playbook), does the synthesis, design decisions and contracts itself, runs `agent-exec wave lint`, and returns only the package count, total and critical-path estimates, its decisions, open questions and the paths.
+4. Relay its open questions to the user, verbatim and before any dispatch; send the answers back to the same planner with `SendMessage` so it revises the plan.
+5. Run the plan: `agent-exec wave run --plan <plan>` (`references/programme.md` §6), or for a handful of independent packages the §5 pipeline with each spec file as the `workerPrompt`.
+
+**A planned package never carries `allowLarge`** unless the user approved that package by name; split it instead. Read the planner's report, never its spec bodies.

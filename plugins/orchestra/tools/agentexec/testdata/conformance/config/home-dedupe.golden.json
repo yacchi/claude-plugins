@@ -204,6 +204,10 @@
             "model": "opus"
           },
           "light": "home",
+          "planner": {
+            "effort": "max",
+            "model": "opus"
+          },
           "review": {
             "effort": "medium",
             "model": "sonnet"
