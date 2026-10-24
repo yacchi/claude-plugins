@@ -247,10 +247,12 @@ func UserConfigMode(c Config) (string, error) {
 
 // Settings JSON of a hosted worker, compact: the herdr start line is capped
 // (maxStartLine). disableRemoteControl stops the worker registering a Remote
-// Control session, which no CLI flag can.
+// Control session, which no CLI flag can. The 1h cache TTL keeps a worker's
+// prefix cached across the waits between its prompts (a subagent's default is
+// 5m).
 const (
-	remoteControlOffSettings = `{"disableRemoteControl":true}`
-	isolateSettings          = `{"autoMemoryEnabled":false,"disableClaudeAiConnectors":true,"disableRemoteControl":true}`
+	remoteControlOffSettings = `{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}`
+	isolateSettings          = `{"autoMemoryEnabled":false,"disableClaudeAiConnectors":true,"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}`
 )
 
 // IsolationFlags are the Claude flags a hosted worker is started with. Every

@@ -401,7 +401,7 @@ func TestNativeArgsAndIsolationFlags(t *testing.T) {
 	args, _ := e.executor("").nativeArgs(s, false)
 	want := []string{"--model", "opus", "--permission-mode", "auto", "--add-dir", "/x/state",
 		"--strict-mcp-config", "--setting-sources", "project,local", "--plugin-dir", e.pluginRoot(),
-		"--settings", `{"autoMemoryEnabled":false,"disableClaudeAiConnectors":true,"disableRemoteControl":true}`, "--no-chrome"}
+		"--settings", `{"autoMemoryEnabled":false,"disableClaudeAiConnectors":true,"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}`, "--no-chrome"}
 	if !reflect.DeepEqual(args, want) {
 		t.Errorf("%v", args)
 	}
@@ -409,7 +409,7 @@ func TestNativeArgsAndIsolationFlags(t *testing.T) {
 		t.Error(err)
 	}
 	args, _ = e.executor(`{"herdr": {"user_config": "inherit"}}`).nativeArgs(s, false)
-	if !reflect.DeepEqual(args, append(want[:6:6], "--settings", `{"disableRemoteControl":true}`)) {
+	if !reflect.DeepEqual(args, append(want[:6:6], "--settings", `{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}`)) {
 		t.Errorf("inherit %v", args)
 	}
 	args, _ = e.executor(`{"herdr": {"args": "--model {model} --strict-mcp-config --setting-sources=user --plugin-dir /mine"}}`).
@@ -455,7 +455,7 @@ func TestWarmReaderForkAndReopenCarryTheSameFlags(t *testing.T) {
 	e.warmStart(x, "a", "opus")
 	e.warmStart(x, "b", "opus")
 	flags := []string{"--strict-mcp-config", "--setting-sources", "project,local", "--plugin-dir", e.pluginRoot(),
-		"--settings", `{"autoMemoryEnabled":false,"disableClaudeAiConnectors":true,"disableRemoteControl":true}`, "--no-chrome"}
+		"--settings", `{"autoMemoryEnabled":false,"disableClaudeAiConnectors":true,"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}`, "--no-chrome"}
 	starts := e.starts()
 	if len(starts) != 3 {
 		t.Fatal(starts)

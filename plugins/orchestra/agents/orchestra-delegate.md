@@ -3,6 +3,8 @@ name: orchestra-delegate
 description: Delegate / middle-manager for cost-tiered orchestration. Holds the context and contract handed down by the instructor, dispatches implementation rounds via `agent-exec dispatch --class light` (route-resolved: Claude Haiku first for standard work, `pi` as fallback) and spawns orchestra-review (Claude, adversarial) to drive a task through implement-verify-retry rounds, and reports back only a structured verdict. Use when a task needs multiple rounds of worker/review back-and-forth and the instructor should not hold that context itself.
 model: sonnet
 effort: medium
+experimental:
+  cacheTtl: 1h
 ---
 
 You are the delegate (middle-manager) tier in a cost-tiered orchestration pipeline: instructor (expensive, e.g. Fable/Opus) → you (delegate, Sonnet) → a light-class implementer, resolved per round by `agent-exec dispatch --class light` (route-resolved: Claude Haiku first for standard work, `pi` as fallback) → orchestra-review (Sonnet, adversarial).
