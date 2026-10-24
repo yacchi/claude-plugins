@@ -1,0 +1,1441 @@
+<title>orchestra ダッシュボード</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root {
+    --bg: #f3f5f7;
+    --surface: #ffffff;
+    --surface-2: #eaeef2;
+    --border: #d3dae2;
+    --fg: #17202a;
+    --muted: #5b6875;
+    --accent: #2453b8;
+    --accent-fg: #ffffff;
+    --accent-bg: #e3ebfa;
+    --good: #1d7a45;
+    --good-bg: #e2f3e8;
+    --warn: #9a5b00;
+    --warn-bg: #fdf0d8;
+    --crit: #b4232c;
+    --crit-bg: #fbe3e4;
+    --neutral: #4d5967;
+    --neutral-bg: #e6eaef;
+    --track: #dde3ea;
+    --focus: #2453b8;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #11161c;
+        --surface: #182029;
+        --surface-2: #202a35;
+        --border: #2e3a47;
+        --fg: #e4e9ee;
+        --muted: #93a1af;
+        --accent: #7aa2f7;
+        --accent-fg: #0d1420;
+        --accent-bg: #1d2b45;
+        --good: #5cc98a;
+        --good-bg: #16301f;
+        --warn: #e9b14f;
+        --warn-bg: #36290f;
+        --crit: #f07a80;
+        --crit-bg: #3d1a1d;
+        --neutral: #a9b5c1;
+        --neutral-bg: #26303b;
+        --track: #2a3541;
+        --focus: #7aa2f7;
+        color-scheme: dark;
+    }
+}
+:root[data-theme="dark"] {
+    --bg: #11161c;
+    --surface: #182029;
+    --surface-2: #202a35;
+    --border: #2e3a47;
+    --fg: #e4e9ee;
+    --muted: #93a1af;
+    --accent: #7aa2f7;
+    --accent-fg: #0d1420;
+    --accent-bg: #1d2b45;
+    --good: #5cc98a;
+    --good-bg: #16301f;
+    --warn: #e9b14f;
+    --warn-bg: #36290f;
+    --crit: #f07a80;
+    --crit-bg: #3d1a1d;
+    --neutral: #a9b5c1;
+    --neutral-bg: #26303b;
+    --track: #2a3541;
+    --focus: #7aa2f7;
+    color-scheme: dark;
+}
+body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "IBM Plex Sans JP", "Noto Sans JP", system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    line-height: 1.5;
+    overflow-x: hidden;
+}
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top, 0px);
+    background: var(--surface);
+    z-index: 3;
+}
+.mono, code {
+    font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.num {
+    font-variant-numeric: tabular-nums;
+}
+.top {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 2;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 10px;
+}
+.top-in {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 1280px;
+    margin: 0 auto;
+}
+.top h1 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.01em;
+}
+.conn {
+    font-size: 12px;
+    color: var(--muted);
+}
+.wrap {
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 14px 28px;
+    max-width: 1280px;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+.notice {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--warn);
+    background: var(--warn-bg);
+    color: var(--fg);
+    padding: 10px 12px;
+    border-radius: 4px;
+    margin-bottom: 14px;
+}
+.notice.crit {
+    border-left-color: var(--crit);
+    background: var(--crit-bg);
+}
+.notice p {
+    margin: 0;
+}
+.notice p + p {
+    margin-top: 4px;
+}
+.grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+}
+@media (min-width: 900px) {
+    .grid {
+        grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+        align-items: start;
+    }
+    .runs {
+        position: sticky;
+        top: calc(env(safe-area-inset-top, 0px) + 58px);
+        max-height: calc(100vh - env(safe-area-inset-top, 0px) - 72px);
+        overflow-y: auto;
+    }
+}
+.grid > * {
+    min-width: 0;
+}
+h2.sec {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 8px;
+}
+.placeholder {
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    color: var(--muted);
+    background: var(--surface);
+}
+.placeholder p {
+    margin: 0;
+}
+.placeholder p + p {
+    margin-top: 6px;
+}
+.run-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.run-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--neutral);
+    border-radius: 4px;
+    padding: 9px 10px;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+.run-item:hover {
+    background: var(--surface-2);
+}
+.run-item[aria-pressed="true"] {
+    border-color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--accent-bg);
+}
+.run-item.s-needs {
+    border-left-color: var(--warn);
+}
+.run-item.s-done {
+    border-left-color: var(--good);
+}
+.run-item.s-crashed {
+    border-left-color: var(--crit);
+}
+.run-item.s-running {
+    border-left-color: var(--accent);
+}
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.row.between {
+    justify-content: space-between;
+}
+.ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.run-id {
+    font-weight: 500;
+    font-size: 13px;
+}
+.meta {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    margin-top: 4px;
+}
+.ago.is-stale {
+    color: var(--warn);
+    font-weight: 600;
+}
+.pill {
+    display: inline-block;
+    flex: none;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 4px 7px;
+    border-radius: 3px;
+    background: var(--neutral-bg);
+    color: var(--neutral);
+    white-space: nowrap;
+}
+.pill.running {
+    background: var(--accent-bg);
+    color: var(--accent);
+}
+.pill.needs, .pill.warn {
+    background: var(--warn-bg);
+    color: var(--warn);
+}
+.pill.done, .pill.good {
+    background: var(--good-bg);
+    color: var(--good);
+}
+.pill.crashed, .pill.crit {
+    background: var(--crit-bg);
+    color: var(--crit);
+}
+.bar {
+    height: 6px;
+    background: var(--track);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.bar > span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+}
+.bar.good > span {
+    background: var(--good);
+}
+.bar.warn > span {
+    background: var(--warn);
+}
+.bar.crit > span {
+    background: var(--crit);
+}
+.run-item .bar {
+    margin-top: 7px;
+    height: 4px;
+}
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    min-width: 0;
+}
+.head h2 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+.line {
+    margin: 8px 0 0;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+.stale-banner {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: var(--warn-bg);
+    color: var(--warn);
+    font-weight: 500;
+    font-size: 13px;
+}
+.prog {
+    margin-top: 12px;
+}
+.prog .bar {
+    height: 10px;
+    border-radius: 5px;
+    margin-top: 4px;
+}
+.prog-top {
+    font-size: 13px;
+}
+.prog-top strong {
+    font-size: 18px;
+    font-weight: 600;
+}
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
+    margin: 12px 0 0;
+}
+.stats div {
+    min-width: 0;
+}
+.stats dt {
+    font-size: 11px;
+    color: var(--muted);
+}
+.stats dd {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 500;
+}
+.cards {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+}
+@media (min-width: 1180px) {
+    .cards {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .cards .wide {
+        grid-column: 1 / -1;
+    }
+}
+.card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--surface-2);
+    border-radius: 3px;
+    padding: 2px 6px;
+}
+.count.warn {
+    color: var(--warn);
+    background: var(--warn-bg);
+}
+.empty {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0;
+}
+.table-wrap {
+    overflow-x: auto;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+}
+th, td {
+    text-align: left;
+    padding: 6px 8px 6px 0;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    white-space: nowrap;
+}
+th {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+}
+tr:last-child td {
+    border-bottom: none;
+}
+td.over {
+    color: var(--warn);
+    font-weight: 600;
+}
+.mark {
+    font-size: 11px;
+    margin-left: 4px;
+}
+ul.items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+ul.items > li {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    min-width: 0;
+}
+ul.items > li:first-child {
+    padding-top: 0;
+}
+ul.items > li:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.detail-text {
+    font-size: 13px;
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+}
+.sub {
+    font-size: 12px;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.chip {
+    font-size: 12px;
+    padding: 3px 7px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    overflow-wrap: anywhere;
+}
+.decide {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+.decide .field {
+    flex: 1 1 180px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.decide label {
+    font-size: 11px;
+    color: var(--muted);
+}
+.decide input {
+    font: inherit;
+    font-size: 14px;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 8px;
+    min-width: 0;
+}
+.btn {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 7px 16px;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+.btn.allow {
+    background: var(--good);
+    color: var(--surface);
+}
+.btn.deny {
+    background: var(--surface);
+    color: var(--crit);
+    border-color: var(--crit);
+}
+.btn:hover:not(:disabled) {
+    filter: brightness(1.08);
+}
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+.dec-status {
+    margin-top: 6px;
+    font-size: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+.note {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0 0 8px;
+}
+.err {
+    font-size: 12px;
+    color: var(--crit);
+    margin: 6px 0 0;
+}
+.pc {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+.pc > div {
+    min-width: 0;
+    border-left: 3px solid var(--neutral);
+    padding-left: 8px;
+}
+.pc > div.good {
+    border-left-color: var(--good);
+}
+.pc > div.warn {
+    border-left-color: var(--warn);
+}
+.pc > div.crit {
+    border-left-color: var(--crit);
+}
+.pc .k {
+    font-size: 11px;
+    color: var(--muted);
+}
+.pc .v {
+    font-size: 15px;
+    font-weight: 500;
+}
+.pc .bar {
+    margin-top: 4px;
+    height: 4px;
+}
+:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+        animation: none !important;
+        scroll-behavior: auto !important;
+    }
+}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap">
+
+<header class="top">
+    <div class="top-in">
+        <h1>orchestra ダッシュボード</h1>
+        <span id="conn" class="conn">接続を準備しています…</span>
+    </div>
+</header>
+<main class="wrap">
+    <div id="notice" class="notice" hidden></div>
+    <div class="grid">
+        <section class="runs" aria-labelledby="runs-h">
+            <h2 id="runs-h" class="sec">実行一覧</h2>
+            <div id="runs">
+                <div class="placeholder">
+                    <p>実行を読み込んでいます…</p>
+                    <p>orchestra の各 wave が、状態・進捗・承認待ちとともにここに並びます。</p>
+                </div>
+            </div>
+        </section>
+        <section id="detail" class="detail" aria-label="実行の詳細">
+            <div class="placeholder">
+                <p>選択した実行の詳細がここに表示されます。</p>
+                <p>進捗、実行中のパッケージ、要対応、承認待ち（許可 / 拒否）、次に始まるもの、最近の統合、PC の負荷。</p>
+            </div>
+        </section>
+    </div>
+</main>
+
+<script>
+(() => {
+    "use strict";
+
+    const STALE_S = 180;
+    const LS_KEY = "orchestra-dashboard.selected-run";
+    const REASON_MAX = 200;
+
+    const STATUS = {
+        running: { label: "実行中", cls: "running" },
+        changed: { label: "実行中", cls: "running" },
+        needs: { label: "要対応", cls: "needs" },
+        done: { label: "完了", cls: "done" },
+        stopped: { label: "停止", cls: "stopped" },
+        crashed: { label: "異常終了", cls: "crashed" },
+    };
+    const LIVE_STATUSES = new Set(["running", "changed", "needs"]);
+    const PHASE = {
+        implementing: "実装",
+        verifying: "検証",
+        correcting: "修正",
+        integrating: "統合",
+        waiting: "待機",
+    };
+    const KIND = {
+        network: "ネットワーク",
+        path: "パス",
+        dialog: "ダイアログ",
+    };
+    const DECISION = {
+        allow: "許可",
+        deny: "拒否",
+    };
+    const DEC_STATUS = {
+        pending: { label: "適用待ち", cls: "running" },
+        applied: { label: "適用済み", cls: "good" },
+        failed: { label: "失敗", cls: "crit" },
+        stale: { label: "失効", cls: "warn" },
+    };
+    const MEM = {
+        normal: { label: "通常", cls: "good" },
+        warn: { label: "注意", cls: "warn" },
+        critical: { label: "危険", cls: "crit" },
+        unknown: { label: "不明", cls: "" },
+    };
+
+    const S = {
+        db: null,
+        dbState: "loading", // loading | none | ok
+        runs: [],
+        runsLoaded: false,
+        fromCache: false,
+        selected: lsGet(),
+        unsubRuns: null,
+        decisionsFor: null,
+        unsubDecisions: null,
+        decisions: new Map(), // approval id -> decision doc body
+        canWrite: null, // true | false | null (platform said nothing)
+        writing: new Set(),
+        reasons: new Map(),
+        errors: { runs: "", decisions: "", write: "" },
+        revoked: false,
+    };
+
+    // ---- untrusted-value coercion ----
+    const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
+    const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+    const arr = (v) => (Array.isArray(v) ? v : []);
+    const clip = (s, n) => Array.from(s).slice(0, n).join("");
+    const nowS = () => Date.now() / 1000;
+    const safeKey = (s) => s.replace(/[^a-zA-Z0-9-]/g, "_");
+
+    function lsGet() {
+        try {
+            return window.localStorage.getItem(LS_KEY);
+        } catch (e) {
+            return null;
+        }
+    }
+    function lsSet(v) {
+        try {
+            window.localStorage.setItem(LS_KEY, v);
+        } catch (e) {
+            // a convenience only
+        }
+    }
+
+    // DOM builder: strings and numbers become text nodes, never markup.
+    function h(tag, props, ...kids) {
+        const el = document.createElement(tag);
+        if (props) {
+            for (const [k, v] of Object.entries(props)) {
+                if (v == null || v === false) {
+                    continue;
+                }
+                if (k === "class") {
+                    el.className = v;
+                } else if (k === "text") {
+                    el.textContent = v;
+                } else if (k.startsWith("on")) {
+                    el.addEventListener(k.slice(2), v);
+                } else if (k === "dataset") {
+                    Object.assign(el.dataset, v);
+                } else if (k === "style") {
+                    el.setAttribute("style", v);
+                } else if (k in el) {
+                    el[k] = v;
+                } else {
+                    el.setAttribute(k, v === true ? "" : String(v));
+                }
+            }
+        }
+        for (const c of kids.flat()) {
+            if (c == null || c === false) {
+                continue;
+            }
+            el.append(typeof c === "string" || typeof c === "number" ? String(c) : c);
+        }
+        return el;
+    }
+
+    // ---- formatting ----
+    function fmtETA(seconds) {
+        const m = Math.ceil(Math.max(seconds, 0) / 60);
+        if (m < 60) {
+            return m + "m";
+        }
+        return Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0") + "m";
+    }
+    function fmtDur(seconds) {
+        const s = Math.max(Math.round(seconds), 0);
+        if (s < 60) {
+            return s + "秒";
+        }
+        const m = Math.floor(s / 60);
+        if (m < 60) {
+            return m + "分";
+        }
+        return Math.floor(m / 60) + "時間" + String(m % 60).padStart(2, "0") + "分";
+    }
+    function fmtAgo(at) {
+        const s = Math.max(Math.floor(nowS() - at), 0);
+        if (s < 120) {
+            return s + "秒前";
+        }
+        if (s < 7200) {
+            return Math.floor(s / 60) + "分前";
+        }
+        if (s < 172800) {
+            return Math.floor(s / 3600) + "時間前";
+        }
+        return Math.floor(s / 86400) + "日前";
+    }
+    function fmtCost(v) {
+        return "~$" + v.toFixed(2);
+    }
+    const statusOf = (data) => STATUS[str(data.status)] || { label: str(data.status) || "不明", cls: "" };
+    const isLive = (data) => LIVE_STATUSES.has(str(data.status));
+
+    // An element that shows "N秒前" and ticks; with live set it turns into
+    // the stale warning after STALE_S.
+    function agoEl(at, prefix, live) {
+        if (at == null) {
+            return h("span", { class: "ago", text: prefix + "不明" });
+        }
+        return h("span", {
+            class: "ago num",
+            dataset: { at: String(at), prefix: prefix, live: live ? "1" : "" },
+        });
+    }
+
+    // ---- db ----
+    function errMessage(e) {
+        const code = str(obj(e).code) || "unavailable";
+        switch (code) {
+            case "resource_exhausted":
+                return "読み込みが多すぎて制限されました。しばらくしてからページを開き直してください。";
+            case "quota_exceeded":
+                return "データベースの容量上限に達しています。所有者に古い decisions の削除を依頼してください。";
+            case "revoked":
+                return "このページではデータを読み込めなくなりました。";
+            case "not_granted":
+            case "capability_disabled":
+            case "capability_removed":
+                return "このページではデータベースを使えません。claude.ai にサインインしてページを開いてください。";
+            case "invalid_argument":
+            case "transform_error":
+                return "データの読み書きが拒否されました（" + code + "）。";
+            default:
+                return "接続が途切れました。再接続しています…";
+        }
+    }
+
+    function onSubError(which, e, resubscribe) {
+        const code = str(obj(e).code) || "unavailable";
+        S.errors[which] = errMessage(e);
+        if (code === "revoked") {
+            S.revoked = true;
+        } else if (code !== "invalid_argument" && code !== "transform_error" && code !== "not_granted"
+            && code !== "capability_disabled" && code !== "capability_removed" && code !== "resource_exhausted") {
+            window.setTimeout(resubscribe, 2000 + Math.random() * 3000);
+        }
+        render();
+    }
+
+    function subscribeRuns() {
+        if (S.unsubRuns) {
+            S.unsubRuns();
+            S.unsubRuns = null;
+        }
+        S.unsubRuns = S.db.collection("runs").onSnapshot((snap) => {
+            const runs = [];
+            for (const d of snap.docs) {
+                if (d.exists) {
+                    runs.push({ docId: d.id, data: obj(d.data()) });
+                }
+            }
+            runs.sort((a, b) => (num(b.data.updated_at) ?? 0) - (num(a.data.updated_at) ?? 0));
+            S.runs = runs;
+            S.runsLoaded = true;
+            S.fromCache = Boolean(snap.metadata && snap.metadata.fromCache);
+            S.errors.runs = "";
+            if (!S.runs.some((r) => r.docId === S.selected)) {
+                S.selected = S.runs.length ? S.runs[0].docId : null;
+            }
+            subscribeDecisions();
+            render();
+        }, (e) => onSubError("runs", e, subscribeRuns));
+    }
+
+    function selectedRun() {
+        return S.runs.find((r) => r.docId === S.selected) || null;
+    }
+
+    // One decisions subscription, for the selected run only.
+    function subscribeDecisions() {
+        const run = selectedRun();
+        const key = run ? run.docId : null;
+        if (key === S.decisionsFor) {
+            return;
+        }
+        if (S.unsubDecisions) {
+            S.unsubDecisions();
+            S.unsubDecisions = null;
+        }
+        S.decisionsFor = key;
+        S.decisions = new Map();
+        S.errors.decisions = "";
+        if (!run || !S.db) {
+            return;
+        }
+        const prefix = key + "__";
+        const runId = typeof run.data.run_id === "string" ? run.data.run_id : null;
+        try {
+            // A run without a run id (state-<sha1> doc) has only the doc-id prefix to match on.
+            const col = S.db.collection("decisions");
+            const q = runId != null ? col.where("run_id", "==", runId) : col;
+            S.unsubDecisions = q.onSnapshot((snap) => {
+                if (S.decisionsFor !== key) {
+                    return;
+                }
+                const m = new Map();
+                for (const d of snap.docs) {
+                    if (!d.exists || !d.id.startsWith(prefix)) {
+                        continue;
+                    }
+                    const data = obj(d.data());
+                    const item = str(data.item);
+                    if (item) {
+                        m.set(item, data);
+                    }
+                }
+                S.decisions = m;
+                S.errors.decisions = "";
+                render();
+            }, (e) => onSubError("decisions", e, () => {
+                if (S.decisionsFor === key) {
+                    S.decisionsFor = null;
+                    subscribeDecisions();
+                }
+            }));
+        } catch (e) {
+            S.errors.decisions = "承認の判断を読み込めませんでした。";
+        }
+    }
+
+    function select(docId) {
+        if (docId === S.selected) {
+            return;
+        }
+        S.selected = docId;
+        lsSet(docId);
+        subscribeDecisions();
+        render();
+        if (window.matchMedia("(max-width: 899px)").matches) {
+            const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            document.getElementById("detail").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+        }
+    }
+
+    function sleep(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    async function decide(run, item, decision) {
+        if (S.writing.has(item) || S.canWrite === false) {
+            return;
+        }
+        const body = {
+            run_id: typeof run.data.run_id === "string" ? run.data.run_id : null,
+            item: item,
+            decision: decision,
+            reason: clip((S.reasons.get(item) || "").trim(), REASON_MAX),
+            at: Math.floor(nowS()),
+            status: "pending",
+        };
+        S.writing.add(item);
+        S.errors.write = "";
+        render();
+        try {
+            const ref = S.db.collection("decisions").doc(run.docId + "__" + safeKey(item));
+            try {
+                await ref.set(body);
+            } catch (e) {
+                const code = str(obj(e).code);
+                if (code !== "unavailable" && code !== "") {
+                    throw e;
+                }
+                await sleep(500 + Math.random() * 1000);
+                await ref.set(body);
+            }
+            S.reasons.delete(item);
+        } catch (e) {
+            const code = str(obj(e).code);
+            if (code === "invalid_argument") {
+                S.canWrite = false;
+            } else if (e instanceof TypeError) {
+                S.errors.write = "この承認項目の ID が長すぎるため、ここからは判断できません。agent-exec approvals で対応してください。";
+            } else {
+                S.errors.write = "判断を書き込めませんでした: " + errMessage(e);
+            }
+        } finally {
+            S.writing.delete(item);
+            render();
+        }
+    }
+
+    // ---- render ----
+    function render() {
+        const ae = document.activeElement;
+        const focusId = ae && ae.id ? ae.id : null;
+        let range = null;
+        if (ae && ae.tagName === "INPUT") {
+            range = [ae.selectionStart, ae.selectionEnd];
+        }
+
+        renderConn();
+        renderNotice();
+        renderRuns();
+        renderDetail();
+        tick();
+
+        if (focusId) {
+            const el = document.getElementById(focusId);
+            if (el && el !== ae && !el.disabled) {
+                el.focus({ preventScroll: true });
+                if (range && el.setSelectionRange) {
+                    try {
+                        el.setSelectionRange(range[0], range[1]);
+                    } catch (e) {
+                        // not a text input
+                    }
+                }
+            }
+        }
+    }
+
+    function renderConn() {
+        const el = document.getElementById("conn");
+        if (S.dbState === "loading") {
+            el.textContent = "接続を準備しています…";
+        } else if (S.dbState === "none" || S.revoked) {
+            el.textContent = "未接続";
+        } else if (!S.runsLoaded) {
+            el.textContent = "読み込み中…";
+        } else if (S.fromCache || S.errors.runs) {
+            el.textContent = "同期待ち";
+        } else {
+            el.textContent = "ライブ";
+        }
+    }
+
+    function renderNotice() {
+        const el = document.getElementById("notice");
+        const lines = [];
+        let crit = false;
+        if (S.dbState === "none") {
+            lines.push("このページはデータベースに接続できません。claude.ai にサインインした状態で、このページを開いてください。");
+            crit = true;
+        } else {
+            if (S.errors.runs) {
+                lines.push(S.errors.runs);
+                crit = S.revoked;
+            }
+        }
+        el.replaceChildren(...lines.map((t) => h("p", { text: t })));
+        el.className = crit ? "notice crit" : "notice";
+        el.hidden = lines.length === 0;
+    }
+
+    function progressBar(done, total, extra) {
+        const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+        return h("div", {
+            class: "bar" + (extra ? " " + extra : ""),
+            role: "progressbar",
+            "aria-valuemin": "0",
+            "aria-valuemax": String(total),
+            "aria-valuenow": String(done),
+        }, h("span", { style: "width:" + pct + "%" }));
+    }
+
+    function renderRuns() {
+        const root = document.getElementById("runs");
+        if (S.dbState !== "ok" || !S.runsLoaded) {
+            if (S.dbState === "none") {
+                root.replaceChildren(h("div", { class: "placeholder" },
+                    h("p", { text: "サインインしていないため、実行を表示できません。" })));
+            }
+            return;
+        }
+        if (S.runs.length === 0) {
+            root.replaceChildren(h("div", { class: "placeholder" },
+                h("p", { text: "まだ実行がありません。" }),
+                h("p", { text: "ダッシュボードを設定（dashboard.artifact_url）した状態で orchestra の wave を始めると、その実行がここに表示されます。" })));
+            return;
+        }
+        const list = h("div", { class: "run-list" });
+        for (const run of S.runs) {
+            const d = run.data;
+            const p = obj(d.progress);
+            const st = statusOf(d);
+            const total = num(p.total) ?? 0;
+            const integrated = num(p.integrated) ?? 0;
+            const eta = num(p.eta_s);
+            const cost = num(p.cost_usd);
+            const runId = str(d.run_id) || run.docId;
+            list.append(h("button", {
+                type: "button",
+                id: "run-" + run.docId,
+                class: "run-item s-" + (st.cls || "other"),
+                "aria-pressed": run.docId === S.selected ? "true" : "false",
+                onclick: () => select(run.docId),
+            },
+            h("div", { class: "row between" },
+                h("span", { class: "run-id mono ellipsis", text: runId }),
+                h("span", { class: "pill " + st.cls, text: st.label })),
+            h("div", { class: "meta num" },
+                h("span", { text: integrated + "/" + total + " 統合" }),
+                eta != null && isLive(d) ? h("span", { text: "残り ~" + fmtETA(eta) }) : null,
+                cost != null ? h("span", { text: fmtCost(cost) }) : null,
+                agoEl(num(d.updated_at), "更新 ", isLive(d))),
+            progressBar(integrated, total, st.cls === "done" ? "good" : st.cls === "crashed" ? "crit" : "")));
+        }
+        root.replaceChildren(list);
+    }
+
+    function renderDetail() {
+        const root = document.getElementById("detail");
+        if (S.dbState !== "ok" || !S.runsLoaded) {
+            if (S.dbState === "none") {
+                root.replaceChildren(h("div", { class: "placeholder" },
+                    h("p", { text: "claude.ai にサインインして開くと、実行の詳細がここに表示されます。" })));
+            }
+            return;
+        }
+        const run = selectedRun();
+        if (!run) {
+            root.replaceChildren(h("div", { class: "placeholder" },
+                h("p", { text: "実行が始まると、その詳細がここに表示されます。" })));
+            return;
+        }
+        const d = run.data;
+        const p = obj(d.progress);
+        const st = statusOf(d);
+        const live = isLive(d);
+        const updated = num(d.updated_at);
+        const total = num(p.total) ?? 0;
+        const integrated = num(p.integrated) ?? 0;
+        const eta = num(p.eta_s);
+        const cost = num(p.cost_usd);
+        const elapsed = num(p.elapsed_s);
+
+        const head = h("div", { class: "card head" },
+            h("div", { class: "row between" },
+                h("h2", { class: "mono", text: str(d.run_id) || run.docId }),
+                h("span", { class: "pill " + st.cls, text: st.label })),
+            h("p", { class: "line mono", text: str(d.line) || "（概要はまだありません）" }),
+            h("div", { class: "meta" },
+                agoEl(updated, "更新 ", live),
+                d.state ? h("span", { class: "mono ellipsis", text: str(d.state) }) : null),
+            live && updated != null ? h("div", {
+                class: "stale-banner",
+                hidden: true,
+                dataset: { staleAt: String(updated) },
+                text: "3分以上更新がありません。watcher（orchestra-wave）が止まっている可能性があります。",
+            }) : null,
+            h("div", { class: "prog" },
+                h("div", { class: "row between prog-top num" },
+                    h("span", null, h("strong", { text: integrated + "/" + total }), " 統合済み"),
+                    h("span", { class: "sub", text: total > 0 ? Math.round((integrated / total) * 100) + "%" : "" })),
+                progressBar(integrated, total, st.cls === "done" ? "good" : st.cls === "crashed" ? "crit" : "")),
+            h("dl", { class: "stats num" },
+                stat("実行中", String(arr(p.running).length)),
+                stat("待ち", String(num(p.pending) ?? 0)),
+                stat("ブロック", String(num(p.blocked) ?? 0)),
+                stat("経過", elapsed != null ? fmtDur(elapsed) : "—"),
+                stat("残り", eta != null && live ? "~" + fmtETA(eta) : "—"),
+                stat("費用", cost != null ? fmtCost(cost) : "—")));
+
+        const cards = h("div", { class: "cards" },
+            approvalsCard(run),
+            needsCard(p),
+            runningCard(p),
+            nextCard(p),
+            recentCard(p),
+            pcCard(obj(d.machine), d.machine != null));
+
+        root.replaceChildren(head, cards);
+    }
+
+    function stat(label, value) {
+        return h("div", null, h("dt", { text: label }), h("dd", { text: value }));
+    }
+
+    function cardHead(title, n, warnWhenAny) {
+        return h("h3", null, title,
+            n != null ? h("span", { class: "count num" + (warnWhenAny && n > 0 ? " warn" : ""), text: String(n) }) : null);
+    }
+
+    function runningCard(p) {
+        const rows = arr(p.running).map(obj);
+        const card = h("section", { class: "card wide" }, cardHead("実行中のパッケージ", rows.length));
+        if (rows.length === 0) {
+            card.append(h("p", { class: "empty", text: "実行中のパッケージはありません。" }));
+            return card;
+        }
+        const tbody = h("tbody");
+        for (const r of rows) {
+            const el = num(r.elapsed_s) ?? 0;
+            const est = num(r.est_seconds);
+            const over = est != null && est > 0 && el > est;
+            const model = str(r.model) || str(r.executor) || "?";
+            tbody.append(h("tr", null,
+                h("td", { class: "mono", text: str(r.id) }),
+                h("td", { class: "mono", text: (str(r.cls) || "?") + " → " + model }),
+                h("td", { text: PHASE[str(r.phase)] || str(r.phase) }),
+                h("td", { class: "num" + (over ? " over" : "") },
+                    fmtDur(el) + " / " + (est != null ? fmtDur(est) : "—"),
+                    over ? h("span", { class: "mark", text: "▲超過" }) : null)));
+        }
+        card.append(h("div", { class: "table-wrap" }, h("table", null,
+            h("thead", null, h("tr", null,
+                h("th", { text: "ID" }),
+                h("th", { text: "クラス → モデル" }),
+                h("th", { text: "フェーズ" }),
+                h("th", { text: "経過 / 見積" }))),
+            tbody)));
+        return card;
+    }
+
+    function needsCard(p) {
+        const needs = arr(p.needs).map(obj);
+        const card = h("section", { class: "card" }, cardHead("要対応", needs.length, true));
+        if (needs.length === 0) {
+            card.append(h("p", { class: "empty", text: "要対応の項目はありません。" }));
+            return card;
+        }
+        const ul = h("ul", { class: "items" });
+        for (const n of needs) {
+            ul.append(h("li", null,
+                h("div", { class: "row" },
+                    h("span", { class: "mono ellipsis", text: str(n.id) || "wave 全体" }),
+                    h("span", { class: "pill warn", text: str(n.kind) || "?" })),
+                h("div", { class: "detail-text mono", text: str(n.detail) })));
+        }
+        card.append(ul);
+        return card;
+    }
+
+    function decisionStatus(dec) {
+        const ds = DEC_STATUS[str(dec.status)] || { label: str(dec.status) || "?", cls: "" };
+        return h("div", { class: "dec-status" },
+            h("span", { text: (DECISION[str(dec.decision)] || str(dec.decision)) + "：" }),
+            h("span", { class: "pill " + ds.cls, text: ds.label }),
+            num(dec.at) != null ? agoEl(num(dec.at), "", false) : null,
+            str(dec.reason) ? h("span", { class: "sub", text: "理由: " + str(dec.reason) }) : null,
+            str(dec.result) ? h("span", { class: "sub mono", text: str(dec.result) }) : null);
+    }
+
+    function approvalsCard(run) {
+        const aps = arr(run.data.approvals).map(obj).filter((a) => str(a.id));
+        const listed = new Set(aps.map((a) => str(a.id)));
+        const card = h("section", { class: "card wide" }, cardHead("承認待ち", aps.length, true));
+        if (S.canWrite === false && aps.length > 0) {
+            card.append(h("p", { class: "note", text: "このアカウントには書き込み権限がないため、許可・拒否はできません。所有者か編集者に依頼してください。" }));
+        }
+        if (aps.length === 0) {
+            card.append(h("p", { class: "empty", text: "承認待ちの項目はありません。" }));
+        } else {
+            const ul = h("ul", { class: "items" });
+            for (const a of aps) {
+                const item = str(a.id);
+                const key = safeKey(item);
+                const dec = S.decisions.get(item);
+                const busy = S.writing.has(item) || (dec != null && str(dec.status) === "pending");
+                const li = h("li", null,
+                    h("div", { class: "row" },
+                        h("span", { class: "pill warn", text: KIND[str(a.kind)] || str(a.kind) || "?" }),
+                        h("span", { class: "mono ellipsis", text: str(a.pkg) || "wave 全体" })),
+                    h("div", { class: "detail-text mono", text: str(a.detail) }),
+                    h("div", { class: "sub mono", text: item }));
+                if (S.canWrite !== false) {
+                    const input = h("input", {
+                        id: "reason-" + key,
+                        type: "text",
+                        maxLength: REASON_MAX,
+                        placeholder: "例: 必要な取得先",
+                        value: S.reasons.get(item) || "",
+                        disabled: busy,
+                        oninput: (ev) => S.reasons.set(item, ev.target.value),
+                    });
+                    li.append(h("div", { class: "decide" },
+                        h("div", { class: "field" },
+                            h("label", { htmlFor: "reason-" + key, text: "理由（任意）" }),
+                            input),
+                        h("button", {
+                            type: "button",
+                            id: "allow-" + key,
+                            class: "btn allow",
+                            disabled: busy,
+                            text: "許可",
+                            onclick: () => decide(run, item, "allow"),
+                        }),
+                        h("button", {
+                            type: "button",
+                            id: "deny-" + key,
+                            class: "btn deny",
+                            disabled: busy,
+                            text: "拒否",
+                            onclick: () => decide(run, item, "deny"),
+                        })));
+                }
+                if (S.writing.has(item)) {
+                    li.append(h("div", { class: "dec-status" }, h("span", { class: "pill running", text: "送信中…" })));
+                } else if (dec) {
+                    li.append(decisionStatus(dec));
+                }
+                ul.append(li);
+            }
+            card.append(ul);
+        }
+        if (S.errors.write) {
+            card.append(h("p", { class: "err", text: S.errors.write }));
+        }
+        if (S.errors.decisions) {
+            card.append(h("p", { class: "err", text: S.errors.decisions }));
+        }
+        // Decisions whose item has left the pending list: their outcome.
+        const done = [...S.decisions.values()]
+            .filter((dec) => !listed.has(str(dec.item)))
+            .sort((x, y) => (num(y.at) ?? 0) - (num(x.at) ?? 0))
+            .slice(0, 10);
+        if (done.length > 0) {
+            const ul = h("ul", { class: "items" });
+            for (const dec of done) {
+                ul.append(h("li", null,
+                    h("div", { class: "sub mono", text: str(dec.item) }),
+                    decisionStatus(dec)));
+            }
+            card.append(h("h3", { style: "margin-top:12px" }, "これまでの判断"), ul);
+        }
+        return card;
+    }
+
+    function nextCard(p) {
+        const next = arr(p.next).map(str).filter(Boolean);
+        const card = h("section", { class: "card" }, cardHead("次に開始", next.length));
+        if (next.length === 0) {
+            card.append(h("p", { class: "empty", text: "次に始まる予定のパッケージはありません。" }));
+            return card;
+        }
+        card.append(h("div", { class: "chips" }, next.map((id) => h("span", { class: "chip mono", text: id }))));
+        return card;
+    }
+
+    function recentCard(p) {
+        const recent = arr(p.recent).map(obj);
+        const card = h("section", { class: "card" }, cardHead("最近の統合", recent.length));
+        if (recent.length === 0) {
+            card.append(h("p", { class: "empty", text: "まだ統合されたパッケージはありません。" }));
+            return card;
+        }
+        const ul = h("ul", { class: "items" });
+        for (const r of recent) {
+            ul.append(h("li", { class: "row between" },
+                h("span", { class: "mono ellipsis", text: str(r.id) }),
+                num(r.at) != null ? h("span", { class: "sub" }, agoEl(num(r.at), "", false)) : null));
+        }
+        card.append(ul);
+        return card;
+    }
+
+    function pcItem(label, value, level, bar) {
+        return h("div", { class: level || "" },
+            h("div", { class: "k", text: label }),
+            h("div", { class: "v num", text: value }),
+            bar || null);
+    }
+
+    function slotItem(label, slot) {
+        const s = obj(slot);
+        const used = num(s.used);
+        const size = num(s.size);
+        if (used == null || size == null) {
+            return pcItem(label, "不明", "");
+        }
+        const level = size <= 0 ? "" : used >= size ? "warn" : "good";
+        return pcItem(label, used + " / " + size + (size > 0 && used >= size ? " 満杯" : ""), level,
+            size > 0 ? progressBar(Math.min(used, size), size, level) : null);
+    }
+
+    function pcCard(m, present) {
+        const card = h("section", { class: "card wide" }, cardHead("PC", null));
+        if (!present) {
+            card.append(h("p", { class: "empty", text: "PC の情報はまだありません。" }));
+            return card;
+        }
+        const load1 = num(m.load1);
+        const load5 = num(m.load5);
+        const cpus = num(m.cpus);
+        let loadItem;
+        if (load1 == null || cpus == null || cpus <= 0) {
+            loadItem = pcItem("負荷 (1分)", load1 != null ? load1.toFixed(2) : "不明", "");
+        } else {
+            const ratio = load1 / cpus;
+            const level = ratio < 0.8 ? "good" : ratio < 1.2 ? "warn" : "crit";
+            loadItem = pcItem("負荷 (1分 / 5分) ÷ CPU",
+                load1.toFixed(2) + (load5 != null ? " / " + load5.toFixed(2) : "") + " ÷ " + cpus,
+                level, progressBar(Math.min(load1, cpus), cpus, level));
+        }
+        const mem = MEM[str(m.mem_pressure)] || MEM.unknown;
+        const git = num(m.git_procs);
+        const gitLevel = git == null || git < 0 ? "" : git > 24 ? "crit" : git > 8 ? "warn" : "good";
+        card.append(h("div", { class: "pc" },
+            loadItem,
+            pcItem("メモリ圧迫", mem.label, mem.cls),
+            slotItem("heavy 枠", m.heavy),
+            slotItem("test 枠", m.test),
+            pcItem("git プロセス", git == null || git < 0 ? "不明" : String(git), gitLevel)));
+        return card;
+    }
+
+    // ---- 1 s ticker: relative times and the stale warning, no queries ----
+    function tick() {
+        const now = nowS();
+        for (const el of document.querySelectorAll("[data-at]")) {
+            const at = Number(el.dataset.at);
+            el.textContent = (el.dataset.prefix || "") + fmtAgo(at);
+            el.classList.toggle("is-stale", el.dataset.live === "1" && now - at > STALE_S);
+        }
+        for (const el of document.querySelectorAll("[data-stale-at]")) {
+            el.hidden = !(now - Number(el.dataset.staleAt) > STALE_S);
+        }
+    }
+
+    // ---- start ----
+    render();
+    window.setInterval(tick, 1000);
+
+    (async () => {
+        const c = window.claude;
+        if (!c || typeof c.use !== "function") {
+            S.dbState = "none";
+            render();
+            return;
+        }
+        let db = null;
+        try {
+            db = await c.use("db");
+        } catch (e) {
+            db = null;
+        }
+        if (!db) {
+            S.dbState = "none";
+            render();
+            return;
+        }
+        S.db = db;
+        S.dbState = "ok";
+        subscribeRuns();
+        render();
+        try {
+            const user = await c.use("user");
+            if (user) {
+                const can = await user.can("data.write");
+                if (S.canWrite !== false) {
+                    S.canWrite = can;
+                }
+                render();
+            }
+        } catch (e) {
+            // the platform said nothing: keep the controls, a refused write decides
+        }
+    })();
+})();
+</script>
