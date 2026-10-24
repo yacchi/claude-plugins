@@ -246,30 +246,3 @@ func RenderStatus(st *State, now float64, o RenderOptions) string {
 	}
 	return strings.Join(lines, "\n")
 }
-
-// StatusLine is one line of compact JSON: wave, counts (non-zero), needs,
-// stopped, updated_ago, in_flight (and live_changes with live).
-func StatusLine(st *State, now float64, live bool) string {
-	counts := map[string]any{}
-	inflight := 0
-	for _, p := range st.Packages {
-		n, _ := counts[p.Status].(int)
-		counts[p.Status] = n + 1
-		if InFlight(p.Status) {
-			inflight++
-		}
-	}
-	updated := st.Updated
-	if updated == 0 {
-		updated = now
-	}
-	payload := map[string]any{
-		"wave": st.Wave, "counts": counts, "needs": len(st.Needs), "stopped": st.Stopped != nil,
-		"updated_ago": int(now - updated), "in_flight": inflight,
-	}
-	if live {
-		payload["live_changes"] = LiveChanges(st)
-	}
-	b, _ := fsutil.MarshalJSON(payload)
-	return string(b)
-}
