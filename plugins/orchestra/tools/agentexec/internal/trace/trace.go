@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sysload"
 )
 
 // Kinds of operation. A record's Kind is one of these.
@@ -126,6 +127,12 @@ func build(kind, op string, a Attrs, start, end time.Time, exit int) Record {
 		Load1:  load1(),
 		Detail: detail,
 	}
+}
+
+// load1 is the one-minute load average (0 when unreadable).
+func load1() float64 {
+	l, _, _ := sysload.Load()
+	return l
 }
 
 func epoch(t time.Time) float64 {

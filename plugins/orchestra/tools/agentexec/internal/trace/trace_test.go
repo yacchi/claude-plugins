@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -104,15 +103,6 @@ func TestPruneKeepsRecentDays(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
 			t.Fatalf("%s was removed", n)
 		}
-	}
-}
-
-func TestLoad1IsReadOnDarwin(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("sysctl layout is darwin's")
-	}
-	if v := load1(); v <= 0 || v > 10000 {
-		t.Fatalf("load1 = %v", v)
 	}
 }
 

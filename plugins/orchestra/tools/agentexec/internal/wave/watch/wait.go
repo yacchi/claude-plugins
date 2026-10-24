@@ -20,10 +20,12 @@ const readLockTimeout = 5 * time.Second
 
 // Answer is what `wave wait` prints.
 type Answer struct {
-	Status   string   `json:"status"`
-	Seq      int      `json:"seq"`
-	Line     string   `json:"line"`
-	Progress Progress `json:"progress"`
+	Status    string     `json:"status"`
+	Seq       int        `json:"seq"`
+	Line      string     `json:"line"`
+	Progress  Progress   `json:"progress"`
+	Approvals []Approval `json:"approvals"`
+	Machine   Machine    `json:"machine"`
 }
 
 // WaitOptions are `wave wait`'s inputs.
@@ -35,14 +37,22 @@ type WaitOptions struct {
 	MaxWait time.Duration
 	// Poll is the re-check interval (0 = 1 s).
 	Poll time.Duration
-	Cost CostFunc
+	// UntilChange also ends the wait on a viewer-visible event recorded
+	// after event line Since (changed).
+	UntilChange bool
+	Cost        CostFunc
+	// Approvals are the wave's pending approvals (nil: none listed).
+	Approvals func(statePath string) []Approval
+	// Machine probes the machine (nil: nothing probed).
+	Machine func() Machine
 }
 
 // Wait blocks until the runner of o.State is gone (done, stopped or
 // crashed), a need recorded after event line o.Since is on the needs list
-// (needs), or o.MaxWait passed (running). A need wins over the runner being
-// gone: deciding it and starting the runner again is the next step either
-// way.
+// (needs), with o.UntilChange a viewer-visible event was recorded after
+// that line (changed), or o.MaxWait passed (running). A need wins over the
+// runner being gone: deciding it and starting the runner again is the next
+// step either way. Both win over a change: they say more.
 func Wait(o WaitOptions) Answer {
 	poll := o.Poll
 	if poll <= 0 {
@@ -61,15 +71,38 @@ func Wait(o WaitOptions) Answer {
 			status = "needs"
 		case !alive:
 			status = finalStatus(o.State, hasRec, snap)
+		case o.UntilChange && tail.changed:
+			status = "changed"
 		case !time.Now().Before(deadline):
 			status = "running"
 		}
 		if status != "" {
 			pr := Compute(o.State, &snap.st, wallClock(), o.Cost)
-			return Answer{Status: status, Seq: tail.lines, Line: Line(pr), Progress: pr}
+			return Answer{
+				Status: status, Seq: tail.lines, Line: Line(pr), Progress: pr,
+				Approvals: o.approvals(), Machine: o.machine(),
+			}
 		}
 		time.Sleep(min(poll, time.Until(deadline)))
 	}
+}
+
+func (o WaitOptions) approvals() []Approval {
+	var out []Approval
+	if o.Approvals != nil {
+		out = o.Approvals(o.State)
+	}
+	if out == nil {
+		out = []Approval{}
+	}
+	return out
+}
+
+func (o WaitOptions) machine() Machine {
+	if o.Machine == nil {
+		return UnknownMachine()
+	}
+	return o.Machine()
 }
 
 func wallClock() float64 { return float64(time.Now().UnixNano()) / 1e9 }
@@ -98,14 +131,25 @@ func read(statePath string, tail *eventTail) snapshot {
 
 // eventTail follows events.jsonl: lines counts its complete lines, pkgs
 // and wave the packages moved to needs and the wave-level need details
-// recorded at or after line since.
+// recorded at or after line since, changed whether a viewer-visible event
+// was.
 type eventTail struct {
-	path   string
-	since  int
-	offset int64
-	lines  int
-	pkgs   map[string]bool
-	wave   map[string]bool
+	path    string
+	since   int
+	offset  int64
+	lines   int
+	pkgs    map[string]bool
+	wave    map[string]bool
+	changed bool
+}
+
+// viewerEvents are the events that change what a viewer of the wave sees:
+// a package status, a dispatch starting or ending, an integration, a need,
+// a network denial (a new approval) and a stop.
+var viewerEvents = map[string]bool{
+	"status": true, "dispatch-start": true, "dispatch-end": true,
+	"integrate-start": true, "integrate-end": true, "integrate": true,
+	"need": true, "network-denied": true, "stop": true,
 }
 
 func (t *eventTail) advance() {
@@ -145,6 +189,9 @@ func (t *eventTail) note(line []byte) {
 		return
 	}
 	ev, _ := doc.(map[string]any)
+	if kind, _ := ev["event"].(string); viewerEvents[kind] {
+		t.changed = true
+	}
 	switch ev["event"] {
 	case "status":
 		if pkg, ok := ev["pkg"].(string); ok && ev["to"] == "needs" {

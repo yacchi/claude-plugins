@@ -14,9 +14,6 @@ import (
 	"time"
 )
 
-// Load1 is the current one-minute load average (0 when unreadable).
-func Load1() float64 { return load1() }
-
 // bucketLabels are the concurrency buckets, in ascending order. A record's
 // bucket is chosen by the total running at its start, itself included.
 var bucketLabels = []string{"1", "2-3", "4-6", "7-10", "11+"}
