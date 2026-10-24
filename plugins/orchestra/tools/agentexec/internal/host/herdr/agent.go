@@ -12,6 +12,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/hostref"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
@@ -272,6 +273,7 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 	s.Terminal = name
 	s.Set("herdr_session", e.sname)
 	e.save(s)
+	e.record(s, workspace, name)
 
 	startup := e.cfg.Seconds("startup_timeout", 90)
 	ms := strconv.FormatInt(startup.Milliseconds(), 10)
@@ -361,6 +363,19 @@ func (e *Executor) awaitInput(ctx context.Context, name string) error {
 	}
 }
 
+// record writes the workspace opened on the session's tree into the tree,
+// where every removal of it finds and closes it.
+func (e *Executor) record(s *host.Session, workspace, agent string) {
+	home, err := e.homeFor(e.sname)
+	if err == nil {
+		err = isolate.WriteHostSession(s.Worktree, hostref.Ref{Host: hostref.Herdr, Binary: e.binary(),
+			Session: e.sname, Home: home, Workspace: workspace, Agent: agent})
+	}
+	if err != nil {
+		e.warnf("could not record the workspace in %s: %s", s.Worktree, err)
+	}
+}
+
 func (e *Executor) closeAgent(s *host.Session) {
 	workspace := s.Str("workspace")
 	if workspace == "" {
@@ -370,6 +385,8 @@ func (e *Executor) closeAgent(s *host.Session) {
 	handle := s.Terminal
 	if _, _, err := e.call(context.Background(), callTimeout, "", "workspace", "close", workspace); err != nil {
 		e.warnf("%s", err)
+	} else if err := isolate.ClearHostSession(s.Worktree); err != nil && isDir(s.Worktree) {
+		e.warnf("could not clear the hosted session record of %s: %s", s.Worktree, err)
 	}
 	s.Terminal = ""
 	s.Set("workspace", nil)

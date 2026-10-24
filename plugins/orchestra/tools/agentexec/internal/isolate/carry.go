@@ -317,7 +317,7 @@ func pnpmInstallGVS(tree string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), pnpmInstallTimeout)
 		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 		cmd.Dir = tree
-		cmd.Env = config.WithPnpmGVS(os.Environ())
+		cmd.Env = config.WithPnpmGVS(config.WithTreeEnv(false, tree, os.Environ()))
 		var out bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &out
 		end := trace.Begin(trace.KindFS, "pnpm install (gvs)", trace.Attrs{Cwd: tree, Detail: strings.Join(argv, " ")})

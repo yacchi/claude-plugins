@@ -203,7 +203,6 @@ func (e *Executor) ensureServer(ctx context.Context) error {
 		e.closeControl()
 		return host.Need(host.KindError, "could not start the herdr server: "+err.Error())
 	}
-	e.serverStarted = true
 	deadline := e.now().Add(e.cfg.Seconds("startup_timeout", 90))
 	for {
 		if e.statusRunning(ctx) {
@@ -568,24 +567,73 @@ func (e *Executor) setSandboxed(spec *sandbox.Spec, reason string) {
 	fmt.Fprintf(e.Stderr, "agent-exec: herdr not sandboxed: %s\n", reason)
 }
 
-// Shutdown stops the server, but only when this executor started it and
-// no registered session is left to resume (keep_sessions). Warm worktrees
-// are removed either way; warm records alone never keep the server.
+// Shutdown stops the server once no workspace is left open in it, whoever
+// started it (a run that attached to an earlier run's server stops it too).
+// With keep_sessions a registered session left to resume keeps it; without,
+// this run's own package agents are closed first. Warm worktrees are
+// removed either way; warm records alone never keep the server, and a run
+// that never opened an agent still stops an idle server it finds running.
 func (e *Executor) Shutdown() {
 	e.warmCleanup()
 	e.mu.Lock()
-	if !e.serverStarted {
-		e.mu.Unlock()
+	ready := e.serverReady
+	e.mu.Unlock()
+	if !ready && !e.statusRunning(context.Background()) {
 		return
 	}
-	if sd := e.StateDir(); e.cfg.Truthy("keep_sessions") && sd != "" && len(e.packageSessions(sd)) > 0 {
-		e.mu.Unlock()
-		return
+	if sd := e.StateDir(); sd != "" {
+		if e.cfg.Truthy("keep_sessions") {
+			if len(e.packageSessions(sd)) > 0 {
+				return
+			}
+		} else {
+			e.closeOwn(sd)
+		}
 	}
-	e.serverStarted, e.serverReady = false, false
+	if open, err := e.openWorkspaces(); err != nil || len(open) > 0 {
+		return // another run's package is still open in it, or nobody can tell
+	}
+	e.mu.Lock()
+	e.serverReady = false
 	e.mu.Unlock()
 	if _, _, err := e.call(context.Background(), callTimeout, "", "server", "stop"); err != nil {
 		e.warnf("%s", err)
 	}
 	e.closeControl()
+}
+
+// closeOwn closes the agents of the packages of stateDir registered in this
+// herdr session (nothing resumes them without keep_sessions).
+func (e *Executor) closeOwn(stateDir string) {
+	for pkg, v := range e.packageSessions(stateDir) {
+		rec, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		s := host.SessionFromRecord(e.Name(), rec)
+		if hs := s.Str("herdr_session"); hs != "" && hs != e.sname {
+			continue
+		}
+		s.Pkg = pkg
+		s.Set("state_dir", stateDir)
+		e.closeAgent(s)
+	}
+}
+
+// openWorkspaces is the workspace ids open in the session's server.
+func (e *Executor) openWorkspaces() ([]string, error) {
+	payload, _, err := e.call(context.Background(), statusTimeout, "", "workspace", "list")
+	if err != nil {
+		return nil, err
+	}
+	list, ok := Find(payload, "workspaces").([]any)
+	if !ok {
+		return nil, &CallError{Msg: "herdr workspace list returned no workspaces"}
+	}
+	ids := make([]string, 0, len(list))
+	for _, w := range list {
+		id, _ := Find(w, "workspace_id").(string)
+		ids = append(ids, id)
+	}
+	return ids, nil
 }

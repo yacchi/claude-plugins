@@ -24,7 +24,9 @@
 //	prompt_write   object    path -> content, written on every package prompt
 //
 // A warm reader prompt ("Read each of these files ...") always gets
-// {"status": "ok"}. `server` marks the server running and exits.
+// {"status": "ok"}. `server` marks the server running and exits. The open
+// workspaces are remembered: `workspace list` reports them, `workspace
+// close` and `server stop` drop them.
 //
 // orca scenario keys: status_ok (default true), trust (the folder-trust
 // dialog shows first), never_ready, parent_fails (`worktree set` fails),
