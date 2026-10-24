@@ -185,9 +185,15 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 		carryUncommitted(resolved, path, excluded)
 		// The user's state becomes the baseline, so every later diff shows
 		// the worker's changes and nothing else.
-		_, _ = gitx.Run(path, "add", "-A")
-		_, _ = gitx.Run(path, "-c", "user.email=orchestra@local", "-c", "user.name=orchestra",
-			"commit", "-q", "--allow-empty", "-m", "orchestra baseline for "+task)
+		if err := gitx.CommitAll(path, "orchestra baseline for "+task); err != nil {
+			// A tree without its baseline would show the carried state as
+			// the worker's own changes; it holds only copies, so drop it.
+			reason := "could not commit the baseline for " + branch + ": " + err.Error()
+			if _, why := discard(resolved, path, branch); why != "" {
+				reason += "; " + why
+			}
+			return CreateResult{Status: "error", Reason: reason}, nil
+		}
 	}
 	baseline := ""
 	if out, err := gitx.Run(path, "rev-parse", "HEAD"); err == nil {

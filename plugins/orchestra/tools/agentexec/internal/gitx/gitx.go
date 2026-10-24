@@ -5,21 +5,26 @@ package gitx
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
 // ExitError is git exiting non-zero. Code is -1 when git could not be
-// started at all (missing binary, missing working directory).
+// started at all (missing binary, missing working directory) or was killed
+// at its deadline (TimedOut).
 type ExitError struct {
-	Code   int
-	Stderr string
+	Code     int
+	Stderr   string
+	TimedOut bool
 }
 
 func (e *ExitError) Error() string {
@@ -33,22 +38,33 @@ func (e *ExitError) Error() string {
 // Run runs `git args...` in cwd ("" = the current directory) and returns
 // its stdout.
 func Run(cwd string, args ...string) (string, error) {
-	return run(cwd, nil, nil, args)
+	return run(cwd, nil, nil, 0, args)
 }
 
 // RunEnv is Run with an explicit environment (nil inherits the process's).
 func RunEnv(cwd string, env []string, args ...string) (string, error) {
-	return run(cwd, env, nil, args)
+	return run(cwd, env, nil, 0, args)
 }
 
 // RunInput is Run with stdin fed from input.
 func RunInput(cwd string, input []byte, args ...string) (string, error) {
-	return run(cwd, nil, input, args)
+	return run(cwd, nil, input, 0, args)
 }
 
-func run(cwd string, env []string, input []byte, args []string) (string, error) {
+// run runs git; timeout 0 means no limit, and a timed-out git is killed and
+// reported as Code -1.
+func run(cwd string, env []string, input []byte, timeout time.Duration, args []string) (string, error) {
 	end := trace.Begin(trace.KindGit, gitOp(args), trace.Attrs{Cwd: cwd, Detail: strings.Join(args, " ")})
-	cmd := exec.Command("git", args...)
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	// A hook's background child holding the pipes open must not outlive
+	// the deadline either.
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Dir = cwd
 	cmd.Env = env
 	if input != nil {
@@ -61,6 +77,11 @@ func run(cwd string, env []string, input []byte, args []string) (string, error) 
 		end(0)
 		return stdout.String(), nil
 	}
+	if ctx.Err() == context.DeadlineExceeded {
+		end(-1)
+		return stdout.String(), &ExitError{Code: -1, TimedOut: true,
+			Stderr: fmt.Sprintf("git %s timed out after %s\n%s", gitOp(args), timeout, stderr.String())}
+	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		end(ee.ExitCode())
@@ -68,6 +89,64 @@ func run(cwd string, env []string, input []byte, args []string) (string, error) 
 	}
 	end(-1)
 	return "", &ExitError{Code: -1, Stderr: err.Error()}
+}
+
+// CommitTimeout bounds each step of CommitAll: a hung hook manager or a
+// stale index lock must never stall an integration. A variable only so
+// tests can shorten it.
+var CommitTimeout = 120 * time.Second
+
+// noHooks turns off the hook managers that still run hooks --no-verify
+// does not cover (prepare-commit-msg, post-commit).
+var noHooks = []string{"LEFTHOOK=0", "HUSKY=0"}
+
+// CommitAll stages everything in cwd (only pathspec when given) and commits
+// it as orchestra with message, --allow-empty, with the repository's hooks
+// off: verifying the result is the caller's business, never a hook's. A
+// failing step's error is *ExitError whose Stderr carries git's stderr and
+// then its stdout (hook managers report on either).
+func CommitAll(cwd, message string, pathspec ...string) error {
+	env := append(os.Environ(), noHooks...)
+	steps := [][]string{
+		append([]string{"add", "-A"}, pathspec...),
+		{"-c", "user.email=orchestra@local", "-c", "user.name=orchestra",
+			"commit", "-q", "--no-verify", "--allow-empty", "-m", message},
+	}
+	for _, args := range steps {
+		started := time.Now()
+		out, err := run(cwd, env, nil, CommitTimeout, args)
+		if err != nil {
+			var ee *ExitError
+			if errors.As(err, &ee) {
+				if ee.TimedOut {
+					removeOwnIndexLock(cwd, started)
+				}
+				return &ExitError{Code: ee.Code, Stderr: ee.Stderr + out, TimedOut: ee.TimedOut}
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// removeOwnIndexLock removes the index.lock a git step killed at its
+// deadline left in cwd's git dir, so the caller's rollback can run. Only a
+// lock no older than the step's start (second granularity, for coarse
+// filesystems) can be the killed git's own; an older one belongs to someone
+// else and is never touched.
+func removeOwnIndexLock(cwd string, started time.Time) {
+	dir, err := GitDir(cwd)
+	if err != nil {
+		return
+	}
+	lock := filepath.Join(dir, "index.lock")
+	st, err := os.Stat(lock)
+	if err != nil || st.ModTime().Before(started.Truncate(time.Second)) {
+		return
+	}
+	if os.Remove(lock) == nil {
+		fmt.Fprintf(os.Stderr, "agent-exec: removed %s left by a timed-out git step\n", lock)
+	}
 }
 
 // subSubcommands are the git subcommands whose first operand names the

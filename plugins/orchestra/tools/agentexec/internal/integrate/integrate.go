@@ -7,6 +7,7 @@
 package integrate
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -64,7 +65,9 @@ type Integration struct {
 
 // TaskResult is one task's outcome. Status is applied | conflicted |
 // missing | empty | skipped | reverted | refused (adds more new files than
-// the filter allows; Reason says how many, and the task was not applied).
+// the filter allows; Reason says how many, and the task was not applied) |
+// commit-failed (its integrate commit failed; Reason is git's output, the
+// apply was rolled back and the source is not collected).
 // Excluded counts the files the filter kept out of an applied change set.
 type TaskResult struct {
 	Task          string             `json:"task"`
@@ -79,9 +82,9 @@ type TaskResult struct {
 }
 
 // Result is `isolate integrate`'s output. Status is ok | conflicted |
-// verify-failed | reverted | refused (otherwise ok, but a task was
-// refused) | error, or locked (then only Into, Holder,
-// LockFile and Note are meaningful).
+// verify-failed | commit-failed | reverted | refused (otherwise ok, but a
+// task was refused) | error, or locked (then only Into, Holder, LockFile
+// and Note are meaningful).
 type Result struct {
 	Status      string
 	Integration Integration
@@ -138,22 +141,60 @@ func ExitCode(r Result) int {
 		return 6
 	case "refused":
 		return 7
+	case "commit-failed":
+		return 8
 	}
 	return 3
 }
 
-const integrateIdentity = "user.email=orchestra@local"
+// commitExcerptLines bounds the git output a commit-failed task carries.
+const commitExcerptLines = 20
 
-func commitAll(wt, message string) {
-	commitAllWith(wt, message, isolate.CurrentFilter())
+func commitAll(wt, message string) error {
+	return commitAllWith(wt, message, isolate.CurrentFilter())
 }
 
-// commitAllWith commits everything but f's excluded paths: a cache dir
-// created in the integration tree never lands in a commit.
-func commitAllWith(wt, message string, f isolate.ChangeFilter) {
-	_, _ = gitx.Run(wt, append([]string{"add", "-A"}, f.Pathspec()...)...)
-	_, _ = gitx.Run(wt, "-c", integrateIdentity, "-c", "user.name=orchestra",
-		"commit", "-q", "--allow-empty", "-m", message)
+// commitAllWith commits everything but f's excluded paths (a cache dir
+// created in the integration tree never lands in a commit), hooks off.
+// With --allow-empty a commit always moves HEAD, so one that exits 0 and
+// does not is a failure too.
+func commitAllWith(wt, message string, f isolate.ChangeFilter) error {
+	pre := headSHA(wt)
+	if err := gitx.CommitAll(wt, message, f.Pathspec()...); err != nil {
+		return err
+	}
+	if headSHA(wt) == pre {
+		return errors.New("git commit exited 0 but HEAD did not move")
+	}
+	return nil
+}
+
+// commitExcerpt is the first lines of a failed commit's output.
+func commitExcerpt(err error) string {
+	lines := nonBlank(strings.Split(err.Error(), "\n"))
+	if len(lines) > commitExcerptLines {
+		lines = lines[:commitExcerptLines]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func nonBlank(lines []string) []string {
+	var out []string
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			out = append(out, strings.TrimRight(l, "\r"))
+		}
+	}
+	return out
+}
+
+// rollback puts the integration tree back at pre with nothing staged or
+// untracked left; false when that did not hold afterwards.
+func rollback(wt, pre string) bool {
+	_, _ = gitx.Run(wt, "reset", "-q", "--hard", pre)
+	_, _ = gitx.Run(wt, "clean", "-fdq")
+	out, err := gitx.Run(wt, "status", "--porcelain")
+	return err == nil && strings.TrimSpace(out) == "" && headSHA(wt) == pre
 }
 
 func headSHA(wt string) string {
@@ -388,7 +429,19 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 		}
 		// Commit whatever resulted, markers included: staging resolves the
 		// index, so the next task still has a real base to merge against.
-		commitAllWith(wt, "orchestra integrate "+task, f)
+		if err := commitAllWith(wt, "orchestra integrate "+task, f); err != nil {
+			// Undone like a skipped conflict, so the next task starts from
+			// a clean pre-task HEAD; the source keeps its work uncollected.
+			// A tree that would not come clean stops the run instead of
+			// letting later tasks pile onto it.
+			clean := rollback(wt, pre)
+			stop = !clean
+			results = append(results, TaskResult{Task: task, Status: "commit-failed",
+				FilesChanged: len(ch.files), Conflicts: []isolate.Conflict{}, Reason: commitExcerpt(err),
+				Excluded: ch.excluded, RolledBack: clean})
+			emit(o.Progress, "integrate-task", task, map[string]any{"status": "commit-failed"})
+			continue
+		}
 		entry := TaskResult{Task: task, Status: "applied", FilesChanged: len(ch.files), Conflicts: conflicts,
 			Excluded: ch.excluded}
 		switch {
@@ -399,10 +452,8 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 			// Undo the apply entirely: later tasks (and verify) must see no
 			// conflict markers, and the source is NOT collected.
 			entry.Status = "conflicted"
-			_, _ = gitx.Run(wt, "reset", "--hard", pre)
-			_, _ = gitx.Run(wt, "clean", "-fdq")
-			entry.RolledBack = true
-			stop = o.OnConflict == OnConflictStop
+			entry.RolledBack = rollback(wt, pre)
+			stop = o.OnConflict == OnConflictStop || !entry.RolledBack
 		default:
 			entry.Status = "conflicted"
 		}
@@ -422,6 +473,8 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 		status = "verify-failed"
 	case conflicted:
 		status = "conflicted"
+	case hasStatus(results, "commit-failed"):
+		status = "commit-failed"
 	case hasStatus(results, "reverted"):
 		status = "reverted"
 	case hasStatus(results, "refused"):
@@ -485,6 +538,9 @@ func runVerifyStage(o Options, root, wt, branch, base string, applied []AppliedC
 		if results[i].Task == b.RevertConflicted {
 			results[i].Revert = "conflicted"
 		}
+		if results[i].Task == b.RevertCommitFailed {
+			results[i].Revert = "commit-failed"
+		}
 	}
 	return &b.Verify
 }
@@ -519,6 +575,9 @@ func note(results []TaskResult, intoTask, wt string) string {
 	}
 	if n := counts["refused"]; n > 0 {
 		tail = append(tail, fmt.Sprintf("%d refused", n))
+	}
+	if n := counts["commit-failed"]; n > 0 {
+		tail = append(tail, fmt.Sprintf("%d failed to commit", n))
 	}
 	suffix := ""
 	if len(tail) > 0 {

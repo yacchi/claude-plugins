@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -144,6 +146,9 @@ func (r *runner) revParse(dir, ref string) string {
 func (r *runner) intHead() string { return r.revParse(r.intPath, "HEAD") }
 
 // cleanIntegration resets whatever a command left in the integration tree.
+// The changes are saved as a rescue patch first: what looks like a
+// command's litter may be a package's work, and a reset must never be the
+// only copy of it.
 func (r *runner) cleanIntegration(after string) int {
 	out, err := gitRun(r.intPath, "status", "--porcelain")
 	files := 0
@@ -151,11 +156,40 @@ func (r *runner) cleanIntegration(after string) int {
 		files = len(splitLines(out))
 	}
 	if files > 0 {
+		detail := map[string]any{"files": files, "after": after}
+		if patch, err := r.rescuePatch(); err != nil {
+			detail["patch_error"] = err.Error()
+		} else if patch != "" {
+			detail["patch"] = patch
+		}
 		_, _ = gitRun(r.intPath, "reset", "-q", "--hard", "HEAD")
 		_, _ = gitRun(r.intPath, "clean", "-fdq")
-		r.emit("integration-dirty", "", map[string]any{"files": files, "after": after})
+		r.emit("integration-dirty", "", detail)
 	}
 	return files
+}
+
+// rescuePatch writes the integration tree's staged, unstaged and untracked
+// changes against HEAD, minus the filter's excluded paths (caches no
+// package owns), to <state dir>/rescue/<timestamp>.patch; "" when nothing
+// is left to save.
+func (r *runner) rescuePatch() (string, error) {
+	if _, err := gitRun(r.intPath, append([]string{"add", "-A"}, isolate.CurrentFilter().Pathspec()...)...); err != nil {
+		return "", err
+	}
+	diff, err := gitRun(r.intPath, "diff", "--cached", "--binary", "HEAD")
+	if err != nil || diff == "" {
+		return "", err
+	}
+	dir := filepath.Join(r.stateDir, "rescue")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, time.Now().UTC().Format("20060102T150405.000000000Z")+".patch")
+	if err := os.WriteFile(path, []byte(diff), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // --- text helpers ------------------------------------------------------------
