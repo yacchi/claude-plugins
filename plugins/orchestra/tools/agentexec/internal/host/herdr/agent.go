@@ -388,7 +388,7 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	dirs := host.SortedDirs(addDirs)
 	warm := e.warmFor(ctx, pkgID, repo, baseRef, model, stateDir, dirs)
 	created, err := isolate.Create(repo, "pkg-"+pkgID, isolate.CreateOptions{
-		Backend: isolate.BackendGit, Onto: baseSHA, Carry: true,
+		Backend: isolate.BackendGit, Onto: baseSHA, BaseBranch: baseRef, Carry: true,
 		CarryExtra: e.isolation("carry_extra"), CarryFiles: e.carryFiles(),
 	})
 	if err != nil || (created.Status != "created" && created.Status != "exists") || !isDir(created.Path) {

@@ -19,6 +19,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/orcanest"
 )
 
 var fakeOrca string
@@ -228,6 +229,7 @@ func TestClaudePackageRunsInOrcaAndIsAdopted(t *testing.T) {
 }
 
 func TestAFailedNestingStillStarts(t *testing.T) {
+	orcanest.ResetWarning(t)
 	e := newEnv(t, map[string]any{"parent_fails": true})
 	x := e.executor("")
 	s, err := e.start(x)
