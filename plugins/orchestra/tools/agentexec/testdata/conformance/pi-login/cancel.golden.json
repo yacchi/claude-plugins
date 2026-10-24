@@ -1,5 +1,5 @@
 {
-  "scenario": "ui/pilogin-cancel",
+  "scenario": "pi-login/cancel",
   "steps": [
     {
       "argv": [

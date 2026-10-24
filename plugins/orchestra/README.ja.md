@@ -42,7 +42,7 @@ flowchart TD
 /plugin install orchestra@yacchi-plugins
 ```
 
-`agent-exec` CLI(pi への振り分け、ワークツリー隔離、`wave run`、ダッシュボード、フックが使います)は Go で書かれており、初回の実行時にソースからビルドします。[mise](https://mise.jdx.dev/)(`tools/agentexec/.go-version` で固定した Go の版を使います)か、`PATH` 上の Go が必要です。初回の呼び出しで数秒かけてビルドし、バイナリを `~/.cache/claude-orchestra/agent-exec/` に保存します(ソースのハッシュ、OS、CPU アーキテクチャごとに分けます)。`agent-exec doctor`(`/orchestra:setup` が実行します)で事前にビルドできます。
+`agent-exec` CLI(pi への振り分け、ワークツリー隔離、`wave run`、フックが使います)は Go で書かれており、初回の実行時にソースからビルドします。[mise](https://mise.jdx.dev/)(`tools/agentexec/.go-version` で固定した Go の版を使います)か、`PATH` 上の Go が必要です。初回の呼び出しで数秒かけてビルドし、バイナリを `~/.cache/claude-orchestra/agent-exec/` に保存します(ソースのハッシュ、OS、CPU アーキテクチャごとに分けます)。`agent-exec doctor`(`/orchestra:setup` が実行します)で事前にビルドできます。
 
 Claude Code の中では shim は不要です。プラグインの `bin/` ディレクトリが Bash ツールの `PATH` に `agent-exec` を載せます。`agent-exec install` が引き続き必要なのは、Claude Code の外で `agent-exec` を名前で呼ぶシェル、つまり pi ワーカーのシェル(pi は子プロセスとして動き、プラグインの `bin/` を受け取るとは限りません)とご自身のターミナルです。ランナーは実行中のバイナリを絶対パスで起動し、herdr のペインは Claude Code のセッションを動かすため `bin/` を受け取るので、どちらも shim を必要としません。
 
@@ -79,7 +79,6 @@ claude plugin validate .
 |---|---|
 | `/setup` (`orchestra:setup`) | pi の有無を調べ、対話形式で `orchestra.yaml` を書く |
 | `/cleanup` (`orchestra:cleanup`) | リポジトリに残った orchestra の worktree とブランチを片付ける |
-| `orchestra:ui` | ローカルのダッシュボード(`agent-exec ui --open`)を開く。wave、worktree、dispatch、使用量をリアルタイムに表示し、トークンは消費しない |
 
 ## 設定
 
@@ -99,7 +98,7 @@ claude plugin validate .
 
 ### HUD
 
-orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。ウェーブがあると、ウェーブの表示 `wave 12/40 · 5 running · 2 needs · ~35m`（統合済み/全パッケージ数、実行中のパッケージ数、未解決の needs 数、パッケージに見積もりがあるときの残り時間の見込み）が加わり、run が停止するかランナーが終了するまで `wave status --json` の `progress` から 15 秒ごとに更新されます。複数のウェーブは並べて表示します。ウェーブは、それを起動する `agent-exec wave run --state <path>` から追跡します。起動するのはメインスレッド（通常は `run_in_background`）か、監視役のサブエージェント `orchestra:orchestra-wave`（`wave run --detach` のあと `wave wait --state <path>`）で、それ以外のサブエージェントの呼び出しは無視します。`orchestra` ペインには追跡中の各ウェーブの詳細を表示します。run id、統合済み/全数、経過時間、残り時間、コストに続けて、実行中のパッケージ（`id  cls→model  phase  経過/見積もり`、フェーズは 実装/検証/修正/統合/待機）、needs、次に始まるもの、直近に統合したものです。ペインは頼んだときだけ開きます。`/orchestra:progress` で開閉でき、ペイン内の「閉じる」ボタン（ホットキー `x`）でどの画面からでも閉じられます。モバイルアプリは今のところ mod の画面を描かないので、モバイルでは `orchestra-wave` サブエージェントの進捗の行とプッシュ通知で状況を追ってください。ペインがないときは、プロンプトの上（ターミナルとデスクトップ）に最大 4 行の帯を表示します。run id 付きのステータス行、実行中の先頭のパッケージ、needs、次に始まるものです。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。ダッシュボード全体は既存の `/ui` スキルで開けます。`hud` プラグインオプション（既定はオン）で無効にできます。
+orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。ウェーブがあると、ウェーブの表示 `wave 12/40 · 5 running · 2 needs · ~35m`（統合済み/全パッケージ数、実行中のパッケージ数、未解決の needs 数、パッケージに見積もりがあるときの残り時間の見込み）が加わり、run が停止するかランナーが終了するまで `wave status --json` の `progress` から 15 秒ごとに更新されます。複数のウェーブは並べて表示します。ウェーブは、それを起動する `agent-exec wave run --state <path>` から追跡します。起動するのはメインスレッド（通常は `run_in_background`）か、監視役のサブエージェント `orchestra:orchestra-wave`（`wave run --detach` のあと `wave wait --state <path>`）で、それ以外のサブエージェントの呼び出しは無視します。`orchestra` ペインには追跡中の各ウェーブの詳細を表示します。run id、統合済み/全数、経過時間、残り時間、コストに続けて、実行中のパッケージ（`id  cls→model  phase  経過/見積もり`、フェーズは 実装/検証/修正/統合/待機）、needs、次に始まるもの、直近に統合したものです。ペインは頼んだときだけ開きます。`/orchestra:progress` で開閉でき、ペイン内の「閉じる」ボタン（ホットキー `x`）でどの画面からでも閉じられます。モバイルアプリは今のところ mod の画面を描かないので、モバイルでは `orchestra-wave` サブエージェントの進捗の行とプッシュ通知で状況を追ってください。ペインがないときは、プロンプトの上（ターミナルとデスクトップ）に最大 4 行の帯を表示します。run id 付きのステータス行、実行中の先頭のパッケージ、needs、次に始まるものです。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。全体像は orchestra のダッシュボード Artifact で確認できます。`hud` プラグインオプション（既定はオン）で無効にできます。
 
 ### Copilot CLI / opencode からの移行
 
@@ -116,7 +115,7 @@ Copilotのモデルはpiの`github-copilot/*`、ChatGPTサブスクリプショ�
 | `agents/orchestra-review.md` | 使い捨ての probe で壊しにいくレビュー役。契約を引用した厳格な判定を返す(Sonnet) |
 | `agents/orchestra-delegate.md` | Workflows が使えない環境での中間管理役(Sonnet) |
 | `skills/run/` | 手順書本体と、必要なときに読む参考資料(`authoring`、`gates`、`isolation`、`config`、`programme`、`external-executors`、`poc-findings`) |
-| `skills/setup/`、`skills/cleanup/`、`skills/ui/` | 付属のスキル |
+| `skills/setup/`、`skills/cleanup/` | 付属のスキル |
 | `tools/agent-exec` | `agent-exec` CLI の起動スクリプト。初回に `tools/agentexec/` をビルドし、保存したバイナリを実行します |
 | `tools/agentexec/` | `agent-exec` CLI(Go): route、dispatch、isolate、shelf、wave、ui、telemetry、版を固定して管理する実行役バイナリ(pi と herdr)、herdr と Orca の対話ホストなど |
 | `hooks/` | ルーターの注入、ターン規模の検知、ワーカーの VCS・作業ツリー・lease の防護、Opus 汎用サブエージェントへの通知、worktree の後片付け |

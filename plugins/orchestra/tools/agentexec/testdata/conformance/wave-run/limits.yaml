@@ -47,7 +47,7 @@ setup:
          {"id": "C", "spec": "specs/C.md", "cls": "standard", "files_owned": ["c.txt"]},
          {"id": "D", "spec": "specs/D.md", "cls": "standard", "files_owned": ["d.txt"]}
        ]}
-normalize_keys: [since, updated, at, registered_at]
+normalize_keys: [since, updated, at]
 normalize_text:
   - pattern: '"(seconds|until)": ?[0-9.e+-]+'
     replace: '"$1": <N>'

@@ -181,10 +181,6 @@ func TestStageEvents(t *testing.T) {
 			t.Errorf("detail not sorted-key JSON: %q", e.Detail)
 		}
 	}
-	reg, _ := readFile(os.Getenv("ORCHESTRA_WAVE_REGISTRY"))
-	if !strings.Contains(reg, `"into":"wave-int"`) || !strings.Contains(reg, w.statePath) {
-		t.Errorf("registry %q", reg)
-	}
 }
 
 func TestDirtyIntegrationTreeEmitsIntegrationDirty(t *testing.T) {
@@ -326,37 +322,6 @@ func TestResumeOnResetStopsOnStopFileOrStopAt(t *testing.T) {
 	eq(t, "exit", code, 5)
 	eq(t, "reason", *rep.Reason, "stop-at reached")
 	eq(t, "sleeps", len(c2.sleeps), 0)
-}
-
-func TestUIStartAndFailure(t *testing.T) {
-	w := newWaveRepo(t)
-	w.plan(pkgDef{id: "A"})
-	_, code := w.run(newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}}))
-	eq(t, "exit", code, 0)
-	if !strings.Contains(w.stderr.String(), "ui: http://127.0.0.1:1/") {
-		t.Errorf("stderr %q", w.stderr.String())
-	}
-	eqJSON(t, "ui event", w.details("ui", ""), []any{map[string]any{"url": "http://127.0.0.1:1/"}})
-
-	w2 := newWaveRepo(t)
-	w2.plan(pkgDef{id: "A"})
-	w2.uiErr = fmt.Errorf("boom")
-	_, code = w2.run(newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}}))
-	eq(t, "exit", code, 0)
-	if !strings.Contains(w2.stderr.String(), "warning: could not start ui: boom") {
-		t.Errorf("stderr %q", w2.stderr.String())
-	}
-
-	w3 := newWaveRepo(t)
-	w3.plan(pkgDef{id: "A"})
-	_, code = w3.run(newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}}), func(o *Options) { o.NoUI = true })
-	eq(t, "exit", code, 0)
-	eq(t, "ui calls", w3.uiCalls, 0)
-	w4 := newWaveRepo(t)
-	t.Setenv("ORCHESTRA_WAVE_NO_UI", "1")
-	w4.plan(pkgDef{id: "A"})
-	w4.run(newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}}))
-	eq(t, "ui calls with ORCHESTRA_WAVE_NO_UI", w4.uiCalls, 0)
 }
 
 func TestNotifyCmdReceivesNeedAndDone(t *testing.T) {

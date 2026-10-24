@@ -18,18 +18,9 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/orca"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ui"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/runner"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/watch"
 )
-
-// WaveUIStart starts (or reuses) the dashboard for `wave run` and returns
-// its URL; a dashboard it starts stops after the default idle time. A
-// variable so tests can replace it; nil starts none.
-var WaveUIStart = func() (url string, err error) {
-	info, err := ui.StartOrReuseIdle(false, 0, ui.IdleMinutesDefault)
-	return info.URL, err
-}
 
 const waveMarkUsage = "usage: agent-exec wave mark --state STATE --pkg ID --status ready|pending|failed\n" +
 	"                  or --state STATE --await ID\n" +
@@ -72,7 +63,6 @@ func addWaveRunCommands(parent *cobra.Command) {
 	budgetUSD := fl.Float64("budget-usd", 0, "start nothing new once the run's estimated cost reaches this (needs --run-id)")
 	fl.StringVar(&o.RunID, "run-id", "", "run ledger id")
 	fl.BoolVar(&o.ResumeOnReset, "resume-on-reset", false, "resume packages after a usage-limit reset")
-	fl.BoolVar(&o.NoUI, "no-ui", false, "do not start the dashboard")
 	detach := fl.Bool("detach", false, "start the runner as a detached child and return at once")
 	runFormat := formatFlags(run, "json", "text")
 	for _, name := range []string{"plan", "state", "into"} {
@@ -141,10 +131,9 @@ func runWaveRun(out, errw io.Writer, o runner.Options, text bool) error {
 	var herdrHost, orcaHost host.Host = herdr.New(cfg), orca.New(cfg)
 	report, code := runner.Run(context.Background(), o, runner.Deps{
 		Herdr: herdrHost, Orca: orcaHost,
-		Config:  config.Resolve,
-		Check:   inProcessCheck,
-		StartUI: WaveUIStart,
-		Stderr:  errw,
+		Config: config.Resolve,
+		Check:  inProcessCheck,
+		Stderr: errw,
 	})
 	if text {
 		fmt.Fprintln(out, runner.FormatText(report))

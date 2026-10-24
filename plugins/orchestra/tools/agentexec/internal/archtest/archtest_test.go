@@ -59,8 +59,7 @@ var deps = map[string][]string{
 	"internal/host/herdr":         {"internal/host"},
 	"internal/host/orca":          {"internal/host"},
 	"internal/approvals":          {"internal/wave/state", "internal/wave/plan", "internal/sandbox", "internal/host/herdr", "internal/host/orca"},
-	"internal/wave/runner":        {"internal/wave/plan", "internal/wave/state", "internal/checks", "internal/isolate", "internal/integrate", "internal/host", "internal/host/herdr", "internal/host/orca", "internal/approvals", "internal/ui", "internal/cooldown", "internal/ledger", "internal/dispatch"},
-	"internal/ui":                 {"internal/wave/state", "internal/isolate", "internal/dispatch", "internal/cooldown", "internal/usage", "internal/config"},
+	"internal/wave/runner":        {"internal/wave/plan", "internal/wave/state", "internal/checks", "internal/isolate", "internal/integrate", "internal/host", "internal/host/herdr", "internal/host/orca", "internal/approvals", "internal/cooldown", "internal/ledger", "internal/dispatch"},
 	"internal/pilogin":            {"internal/host/herdr", "internal/tools", "internal/sandbox"},
 	"internal/doctor":             {"internal/readiness", "internal/route", "internal/cooldown", "internal/sandbox", "internal/srt", "internal/tools", "internal/host/herdr"},
 	"internal/install":            {"internal/paths"},
@@ -81,7 +80,6 @@ var thirdParty = []string{"github.com/spf13/cobra", "go.yaml.in/yaml/v3", "golan
 // forbidden pins edges the plan rules out explicitly, whatever the table
 // says.
 var forbidden = [][2]string{
-	{"internal/ui", "internal/wave/runner"},
 	// A removal closes hosted sessions through hostref, never the hosts.
 	{"internal/isolate", "internal/host"},
 	{"internal/hostref", "internal/host"},

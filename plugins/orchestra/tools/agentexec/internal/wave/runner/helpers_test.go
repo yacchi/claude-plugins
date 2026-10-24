@@ -271,9 +271,6 @@ type waveRepo struct {
 	tmp, repo, home, waveDir string
 	statePath, planPath      string
 	verifyMode               string
-	uiURL                    string
-	uiErr                    error
-	uiCalls                  int
 	stderr                   strings.Builder
 	stderrMu                 sync.Mutex
 	clock                    func() float64
@@ -293,7 +290,7 @@ func newWaveRepo(t *testing.T) *waveRepo {
 		t.Fatal(err)
 	}
 	w := &waveRepo{t: t, tmp: tmp, repo: filepath.Join(tmp, "repo"), home: filepath.Join(tmp, "home"),
-		waveDir: filepath.Join(tmp, "wave"), verifyMode: "gated", uiURL: "http://127.0.0.1:1/"}
+		waveDir: filepath.Join(tmp, "wave"), verifyMode: "gated"}
 	w.statePath = filepath.Join(w.waveDir, "state.json")
 	w.planPath = filepath.Join(w.waveDir, "plan.json")
 	gitconfig := filepath.Join(tmp, "gitconfig")
@@ -302,10 +299,8 @@ func newWaveRepo(t *testing.T) *waveRepo {
 		"HOME": w.home, "GIT_CONFIG_GLOBAL": gitconfig, "GIT_CONFIG_SYSTEM": "/dev/null",
 		"XDG_CONFIG_HOME": filepath.Join(w.home, ".config"), "XDG_STATE_HOME": filepath.Join(w.home, ".local", "state"),
 		"XDG_CACHE_HOME": filepath.Join(w.home, ".cache"), "CLAUDE_CONFIG_DIR": filepath.Join(w.home, ".claude"),
-		"ORCHESTRA_ALIVE_DIR":     filepath.Join(tmp, "alive"),
-		"ORCHESTRA_WAVE_REGISTRY": filepath.Join(tmp, "registry", "waves.jsonl"),
-		"ORCHESTRA_UI_STATE":      filepath.Join(tmp, "ui.json"),
-		"CLAUDE_CODE_SESSION_ID":  "", "ORCHESTRA_WAVE_NO_UI": "", "ORCHESTRA_CONFIG_ROOT": "",
+		"ORCHESTRA_ALIVE_DIR":    filepath.Join(tmp, "alive"),
+		"CLAUDE_CODE_SESSION_ID": "", "ORCHESTRA_CONFIG_ROOT": "",
 		"ORCHESTRA_USAGE_ROUTING": "0", "ORCHESTRA_USAGE_SNAPSHOT": "",
 	} {
 		t.Setenv(k, v)
@@ -374,8 +369,7 @@ func (w *waveRepo) opts(mod ...func(*Options)) Options {
 func (w *waveRepo) run(ex Executor, mod ...func(*Options)) (Report, int) {
 	w.t.Helper()
 	d := Deps{Executor: ex, AgentExec: []string{agentExecBinOrSkip(w.t)}, Stderr: w,
-		StartUI: func() (string, error) { w.uiCalls++; return w.uiURL, w.uiErr },
-		Clock:   w.clock, Sleep: w.sleep}
+		Clock: w.clock, Sleep: w.sleep}
 	return Run(context.Background(), w.opts(mod...), d)
 }
 
