@@ -73,6 +73,11 @@ func (e *Executor) Session(pkg, stateDir string) (*host.Session, bool) {
 	if st, err := os.Stat(s.Worktree); err != nil || !st.IsDir() {
 		s.Pkg = pkg
 		s.Set("state_dir", stateDir)
+		// A tree removed behind the host's back leaves its workspace and the
+		// Claude in it running, and the agent name taken for the next start.
+		if ws := s.Str("workspace"); ws != "" {
+			_, _, _ = e.call(context.Background(), callTimeout, s.Str("herdr_session"), "workspace", "close", ws)
+		}
 		e.forget(s)
 		return nil, false
 	}
@@ -251,6 +256,7 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 				"put the state dir on a shorter path)", len(line), maxStartLine))
 	}
 	name := AgentName(s.Pkg)
+	e.dropStaleAgent(ctx, name)
 	env, err := e.workspaceEnv(s.Worktree)
 	if err != nil {
 		return "", err
@@ -359,6 +365,22 @@ func (e *Executor) awaitInput(ctx context.Context, name string) error {
 		}
 		if err := e.sleep(ctx, e.pollShort()); err != nil {
 			return host.AsNeed(err)
+		}
+	}
+}
+
+// dropStaleAgent closes the workspace of an agent already named name in this
+// herdr session. openAgent runs only when the package has no live agent of
+// its own, so one found here is a leftover (its tree removed while it ran, a
+// crashed run) and would make `agent start` fail on the taken name.
+func (e *Executor) dropStaleAgent(ctx context.Context, name string) {
+	payload, _, err := e.call(ctx, callTimeout, "", "agent", "get", name)
+	if err != nil {
+		return
+	}
+	if ws, _ := Find(payload, "workspace_id").(string); ws != "" {
+		if _, _, err := e.call(ctx, callTimeout, "", "workspace", "close", ws); err != nil {
+			e.warnf("could not close the leftover agent %s: %s", name, err)
 		}
 	}
 }
