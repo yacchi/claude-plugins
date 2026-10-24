@@ -16,8 +16,10 @@ import { basename, hasEscape, redirections, segments, stripData, words } from '.
 // has an orchestra worktree (branch `orchestra/<session8>/*` in `git worktree
 // list`, session8 = first 8 chars of the session id) -- with none there is
 // nowhere else to write and the express lane is untouched; the target's
-// realpath lies inside the main tree (git's first entry) and inside no
-// orchestra worktree.
+// realpath lies inside the main tree (git's first entry) and inside no linked
+// worktree. Any linked worktree counts, whatever its branch: Claude Code's
+// Agent isolation puts a worker's own tree at <main>/.claude/worktrees/agent-*
+// on a `worktree-*` branch, and that is the worker's tree, not the user's.
 //
 // Target coverage is deliberately asymmetric. Edit/Write/MultiEdit/
 // NotebookEdit: full (`file_path`, `notebook_path`; relative against cwd).
@@ -134,19 +136,17 @@ export const checkWorkerTree = async (io: Io, call: WorkerCall): Promise<string 
     if (!linked.some(t => t.branch.startsWith(prefix))) {
         return undefined
     }
-    // Any orchestra worktree shields a path, not just this session's: one
-    // nested under the main tree must never read as a main-tree write.
+    // Every linked worktree shields a path, not just this session's orchestra
+    // ones: one nested under the main tree must never read as a main-tree write.
     const mainReal = await realpath(io, main.path)
     if (mainReal === undefined) {
         return undefined
     }
     const shields: string[] = []
     for (const t of linked) {
-        if (t.branch.startsWith('refs/heads/orchestra/')) {
-            const real = await realpath(io, t.path)
-            if (real !== undefined) {
-                shields.push(real)
-            }
+        const real = await realpath(io, t.path)
+        if (real !== undefined) {
+            shields.push(real)
         }
     }
     let offender: string | undefined
