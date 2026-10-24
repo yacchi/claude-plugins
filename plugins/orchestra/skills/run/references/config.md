@@ -195,14 +195,17 @@ isolation:
   # (task status "refused" with a reason, exit 7; the other tasks still land)
   # and becomes an `oversized` need in a wave run. 0 disables the limit.
   max_added_files: 500
-  # pnpm repos only, opt-in per repository (set it in the repo's
-  # .claude/orchestra.yaml): a fresh tree whose root holds pnpm-lock.yaml gets
-  # `pnpm install --frozen-lockfile --offline` against pnpm's global virtual
-  # store instead of a clone of node_modules (online retry, then the clone
-  # as fallback), and every process orchestra starts in such a tree carries
-  # pnpm_config_enable_global_virtual_store=true. Caveats (phantom deps, CI,
-  # shared links): references/isolation.md "pnpm global virtual store".
-  pnpm_global_virtual_store: false
+  # pnpm repos only. `"auto"` (the default) turns it on where the pnpm that
+  # runs in the project is 12 or later (corepack and packageManager pins
+  # honoured, probed once per process); `true` and `false` force it. Set it
+  # per repository in the repo's .claude/orchestra.yaml. A fresh tree whose
+  # root holds pnpm-lock.yaml gets `pnpm install --frozen-lockfile --offline`
+  # against pnpm's global virtual store instead of a clone of node_modules
+  # (online retry, then the clone as fallback), and every process orchestra
+  # starts in such a tree carries pnpm_config_enable_global_virtual_store=true.
+  # Caveats (phantom deps, CI, shared links): references/isolation.md "pnpm
+  # global virtual store".
+  pnpm_global_virtual_store: "auto"
 
 # Nudges and guards, never hard walls - see the `enforcement` paragraphs below
 # for the escape hatches. NOTE: quote "off" - YAML 1.1 parses a bareword `off`

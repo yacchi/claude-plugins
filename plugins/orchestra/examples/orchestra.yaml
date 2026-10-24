@@ -229,10 +229,11 @@ watchdog:
 isolation:
   carry_extra: []
   # carry_extra: [pkg]   # e.g. packages/core-wasm/pkg, a generated wasm package
-  # pnpm repos, opt-in in the repo's .claude/orchestra.yaml: install worktree
-  # node_modules against pnpm's global virtual store instead of cloning them
-  # (see references/isolation.md "pnpm global virtual store").
-  # pnpm_global_virtual_store: false
+  # pnpm repos: install worktree node_modules against pnpm's global virtual
+  # store instead of cloning them (see references/isolation.md "pnpm global
+  # virtual store"). "auto" (the default) turns it on for pnpm 12 or later;
+  # true or false forces it, per repo in its .claude/orchestra.yaml.
+  # pnpm_global_virtual_store: "auto"
 
 # Heavy local commands (installs, tests, typechecks, lints, builds) are
 # admitted machine-wide a few at a time: a worker's Bash command waits in the
