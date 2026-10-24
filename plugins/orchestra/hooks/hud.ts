@@ -1,23 +1,32 @@
 import type { EngineInterface, Register, Timer } from 'claude-code'
 import { agentExec } from './lib/config.ts'
 import type { Io } from './lib/io.ts'
+import { type Progress, progressOf, redraw, registerProgress, type Snapshot, statusPart } from './progress.tsx'
 
 // Live orchestra visibility: a status-line entry while orchestra agents run
-// or a wave the main thread started is in progress, a toast only on notable
-// failures and on each new wave need. Never blocks or rewrites anything.
+// or a tracked wave is in progress, the wave's detail pane and band
+// (progress.tsx), a toast only on notable failures and on each new wave
+// need. Never blocks or rewrites anything.
 
 type Tracked = { bucket: string, description: string }
 
 const tracked = new Map<string, Tracked>()
 let failures = 0
 
-// A wave the main thread started with `agent-exec wave run --state <path>`,
-// keyed by that path. `part` is unset until a status read succeeds.
+// The agent type that runs and watches a wave on the main thread's behalf.
+const WATCHER = 'orchestra:orchestra-wave'
+
+// The watcher subagents spawned this session, by agent id.
+const watchers = new Set<string>()
+
+// A wave the main thread or a watcher started with `agent-exec wave run
+// --state <path>` (or watches with `wave wait --state <path>`), keyed by
+// that path. `progress` is unset until a status read succeeds.
 type Wave = {
     statePath: string,
     startedMs: number,
     timer?: Timer,
-    part?: string,
+    progress?: Progress,
     seen: boolean,
     misses: number,
     busy: boolean,
@@ -29,7 +38,6 @@ const waves = new Map<string, Wave>()
 const POLL_MS = 15_000
 const MAX_MISSES = 3
 const LOCATE_MS = 2000
-const IN_FLIGHT = new Set(['implementing', 'verifying', 'fixing', 'ready'])
 
 const familyOf = (model: string | undefined): string => {
     const m = (model ?? '').toLowerCase()
@@ -76,13 +84,14 @@ const flagOf = (args: string, flag: string): string | undefined => {
     return m ? (m[1] ?? m[2] ?? m[3]) || undefined : undefined
 }
 
-// An `agent-exec wave run` anywhere in a command line: its --state as typed,
-// the text after it, and whether a `cd` before it moved the directory a
-// relative path is read against. Undefined without one or without --state.
-type WaveRun = { state: string, args: string, cd: boolean }
+// An `agent-exec wave run` or `wave wait` anywhere in a command line: which,
+// its --state as typed, the text after it, whether a `cd` before it moved the
+// directory a relative path is read against, and whether a run detaches its
+// runner. Undefined without one or without --state.
+type WaveRun = { verb: 'run' | 'wait', state: string, args: string, cd: boolean, detach: boolean }
 
 const waveRunOf = (command: string): WaveRun | undefined => {
-    const run = command.match(/agent-exec\s+wave\s+run\b/)
+    const run = command.match(/agent-exec\s+wave\s+(run|wait)\b/)
     if (!run || run.index === undefined) {
         return undefined
     }
@@ -91,7 +100,13 @@ const waveRunOf = (command: string): WaveRun | undefined => {
 
     return state === undefined
         ? undefined
-        : { state, args, cd: /(?:^|[\s;&|(])cd\s/.test(command.slice(0, run.index)) }
+        : {
+            verb: run[1] === 'wait' ? 'wait' : 'run',
+            state,
+            args,
+            cd: /(?:^|[\s;&|(])cd\s/.test(command.slice(0, run.index)),
+            detach: run[1] === 'run' && /(?:^|\s)--detach(?=\s|=|$|[;&|)])/.test(args),
+        }
 }
 
 // The flags that tell this call's runner from another one in the process table.
@@ -157,7 +172,7 @@ const runnerStatePath = async ($: EngineInterface, run: WaveRun): Promise<string
     for (const line of r.stdout.split('\n')) {
         const m = line.match(/^\s*(\d+)\s+(\S+)\s+(.*)$/)
         const theirs = m ? waveRunOf(m[3] ?? '') : undefined
-        if (!m || !theirs || !wanted.every(([flag, value]) => flagOf(theirs.args, flag) === value)) {
+        if (!m || !theirs || theirs.verb !== 'run' || !wanted.every(([flag, value]) => flagOf(theirs.args, flag) === value)) {
             continue
         }
         let state: string | undefined = theirs.state
@@ -193,20 +208,45 @@ const agentPart = (): string | undefined => {
     return parts.join(' · ')
 }
 
+const snapshot = (): Snapshot => ({
+    agentPart: agentPart(),
+    waves: [...waves.values()].map(w => w.progress).filter(p => p !== undefined),
+})
+
 // The one status line: the agent part and every wave's part side by side,
-// cleared only when there is neither.
+// cleared only when there is neither; the pane and the band drawn again.
 const render = ($: EngineInterface): void => {
-    const parts = [agentPart(), ...[...waves.values()].map(w => w.part)].filter(p => p !== undefined)
+    const now = snapshot()
+    const parts = [now.agentPart, ...now.waves.map(statusPart)].filter(p => p !== undefined)
     $.ui.status(parts.length > 0 ? `orch ▸ ${parts.join(' │ ')}` : undefined)
+    redraw($, now)
 }
 
 const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+// The pid a detached runner recorded beside its state (`runner.pid`).
+const recordedPid = async ($: EngineInterface, statePath: string): Promise<number | undefined> => {
+    try {
+        const value: unknown = JSON.parse(await $.fs.read(`${statePath.slice(0, statePath.lastIndexOf('/'))}/runner.pid`))
+
+        return isRecord(value) && typeof value.pid === 'number' && value.pid > 0 ? value.pid : undefined
+    } catch {
+        return undefined
+    }
+}
+
 // state.json records a stop but not a run that ended done, so whether the
-// runner still runs is asked of the process table; undefined when that
-// cannot be told (no pgrep, a failure).
+// runner still runs is asked of the process table: by the pid a detached
+// runner recorded, else by its argv; undefined when that cannot be told (no
+// pgrep, a failure).
 const runnerAlive = async ($: EngineInterface, statePath: string): Promise<boolean | undefined> => {
     try {
+        const pid = await recordedPid($, statePath)
+        if (pid !== undefined) {
+            const r = await $.process.run(['ps', '-p', String(pid)], { timeoutMs: 5000 })
+
+            return r.exitCode === 0 ? true : r.exitCode === 1 ? false : undefined
+        }
         const pattern = `wave run .*--state[= ]${escapeRegex(statePath)}( |$)`
         const r = await $.process.run(['pgrep', '-f', pattern], { timeoutMs: 5000 })
         if (r.exitCode === 0) {
@@ -262,7 +302,8 @@ const poll = async ($: EngineInterface, wave: Wave): Promise<void> => {
         } catch {
             st = undefined
         }
-        if (!st) {
+        const progress = progressOf(st?.progress)
+        if (!st || !progress) {
             if (++wave.misses >= MAX_MISSES) {
                 untrack($, wave)
             }
@@ -272,23 +313,14 @@ const poll = async ($: EngineInterface, wave: Wave): Promise<void> => {
         wave.seen = true
         wave.misses = 0
 
-        const packages = isRecord(st.packages) ? Object.values(st.packages).filter(isRecord) : []
-        const integrated = packages.filter(p => p.status === 'integrated').length
-        const running = packages.filter(p => IN_FLIGHT.has(String(p.status))).length
-        const needs = Array.isArray(st.needs) ? st.needs.filter(isRecord) : []
-        for (const need of needs) {
-            const id = typeof need.id === 'string' ? need.id : ''
-            const key = `${id}:${String(need.kind)}`
+        for (const need of progress.needs) {
+            const key = `${need.id ?? ''}:${need.kind}`
             if (!wave.toasted.has(key)) {
                 wave.toasted.add(key)
-                $.ui.toast(`orchestra: wave needs ${String(need.kind)}${id ? ` — ${id}` : ''}`)
+                $.ui.toast(`orchestra: wave needs ${need.kind}${need.id ? ` — ${need.id}` : ''}`)
             }
         }
-        const parts = [`wave ${integrated}/${packages.length}`, `${running} running`]
-        if (needs.length > 0) {
-            parts.push(`${needs.length} needs`)
-        }
-        wave.part = parts.join(' · ')
+        wave.progress = progress
 
         // A stop recorded before this run started is an earlier run's.
         const stoppedAt = isRecord(st.stopped) && typeof st.stopped.at === 'number' ? st.stopped.at * 1000 : undefined
@@ -335,6 +367,21 @@ const locate = async ($: EngineInterface, run: WaveRun, attempt: number): Promis
     }
 }
 
+// What a `wave wait` answers once the runner is gone.
+const ENDED = new Set(['done', 'stopped', 'crashed'])
+
+const isWatcher = async ($: EngineInterface, agentId: string): Promise<boolean> =>
+    watchers.has(agentId) || (await $.agent.list().catch(() => [])).some(a => a.id === agentId && a.type === WATCHER)
+
+// Stops tracking a wave that ended, after one last read when `read`.
+const finish = async ($: EngineInterface, wave: Wave, read: boolean): Promise<void> => {
+    wave.timer?.cancel()
+    if (read) {
+        await poll($, wave)
+    }
+    untrack($, wave)
+}
+
 export const register: Register = (on, options) => {
     if (options.hud === false) {
         return
@@ -343,6 +390,9 @@ export const register: Register = (on, options) => {
     on('agent.spawn', async ($, e, next) => {
         const result = await next(e)
         try {
+            if (result.agentId && e.subagentType === WATCHER) {
+                watchers.add(result.agentId)
+            }
             if (result.agentId && (e.subagentType.startsWith('orchestra:') || e.workflow)) {
                 const bucket = e.subagentType === 'orchestra:orchestra-relay'
                     ? 'relay'
@@ -357,20 +407,26 @@ export const register: Register = (on, options) => {
         return result
     }).catch(($, e, next) => next(e))
 
-    // A wave run is tracked from the main thread's Bash call that starts it.
-    // A backgrounded call returns at once and the polls watch the runner; a
-    // call that returns without a background task has run (or failed to
-    // start) to its end, so one last read toasts its needs and it is dropped.
-    // A state path only the shell could expand is taken from the runner's
-    // argv once the backgrounded call returned.
+    // A wave is tracked from the Bash call that starts it, the main thread's
+    // or a watcher subagent's (any other subagent's is left alone), and from
+    // a watcher's `wave wait` on it. A backgrounded or detached run returns
+    // at once and the polls watch the runner; a run call that returns with
+    // neither has run (or failed to start) to its end, so one last read
+    // toasts its needs and it is dropped, as is a wave a `wave wait` reports
+    // ended. A state path only the shell could expand is taken from a
+    // detached run's answer, else from the runner's argv once the call
+    // returned; a `wave wait` on such a path adds nothing.
     on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
         let run: WaveRun | undefined
         let wave: Wave | undefined
         try {
-            run = e.agentId ? undefined : waveRunOf(String(e.command ?? ''))
+            run = waveRunOf(String(e.command ?? ''))
+            if (run && e.agentId && !await isWatcher($, e.agentId)) {
+                run = undefined
+            }
             const statePath = run && await typedStatePath($, run)
-            if (statePath !== undefined) {
-                wave = await startTracking($, statePath)
+            if (run && statePath !== undefined) {
+                wave = run.verb === 'wait' && waves.get(statePath) || await startTracking($, statePath)
             }
         } catch {
             // the HUD must never break a tool call
@@ -378,16 +434,26 @@ export const register: Register = (on, options) => {
         const result = await next(e)
         try {
             const output: unknown = result.result
+            const answer = run && result.deny === undefined && isRecord(output)
+                ? parseVerdict(String(output.stdout ?? ''))
+                : undefined
             const background = result.deny === undefined
                 && ((isRecord(output) && typeof output.backgroundTaskId === 'string') || e.run_in_background === true)
-            if (wave && !background) {
-                wave.timer?.cancel()
-                if (result.deny === undefined) {
-                    await poll($, wave)
+            if (run?.verb === 'wait') {
+                if (wave && ENDED.has(String(answer?.status))) {
+                    await finish($, wave, true)
                 }
-                untrack($, wave)
-            } else if (run && !wave && background) {
-                void locate($, run, 1).catch(() => undefined)
+            } else if (run && wave && !background && !run.detach) {
+                await finish($, wave, result.deny === undefined)
+            } else if (run && !wave && (background || run.detach)) {
+                const state = run.detach && typeof answer?.state === 'string' && answer.state.startsWith('/')
+                    ? answer.state
+                    : undefined
+                if (state === undefined) {
+                    void locate($, run, 1).catch(() => undefined)
+                } else if (!waves.has(state)) {
+                    await startTracking($, state)
+                }
             }
         } catch {
             // the HUD must never break a tool call
@@ -398,6 +464,9 @@ export const register: Register = (on, options) => {
 
     on('turn.complete', async ($, e, next) => {
         try {
+            if (e.agentId) {
+                watchers.delete(e.agentId)
+            }
             const agent = e.agentId ? tracked.get(e.agentId) : undefined
             if (e.agentId && agent) {
                 tracked.delete(e.agentId)
@@ -426,4 +495,6 @@ export const register: Register = (on, options) => {
 
         return next(e)
     }).catch(($, e, next) => next(e))
+
+    registerProgress(on, snapshot)
 }
