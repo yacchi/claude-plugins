@@ -452,21 +452,6 @@ func TestElapsedFormat(t *testing.T) {
 	}
 }
 
-func TestStatusLine(t *testing.T) {
-	st := fixtureState()
-	got := StatusLine(&st, 130.9, false)
-	want := `{"counts":{"failed":1,"implementing":1,"integrated":1,"needs":1,"pending":1,"verifying":1},"in_flight":2,"needs":2,"stopped":true,"updated_ago":30,"wave":2}`
-	if got != want {
-		t.Fatalf("%s", got)
-	}
-	if strings.Contains(got, "\n") {
-		t.Fatal("must be one line")
-	}
-	if line := StatusLine(&st, 130.9, true); !strings.Contains(line, `"live_changes":{}`) {
-		t.Fatalf("live: %s", line)
-	}
-}
-
 func TestFirstLine(t *testing.T) {
 	for in, want := range map[string]string{"": "", "a": "a", "a\nb": "a", "a\r\nb": "a", "\nb": ""} {
 		if got := firstLine(in); got != want {

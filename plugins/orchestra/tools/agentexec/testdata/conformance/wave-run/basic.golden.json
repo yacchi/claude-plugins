@@ -433,6 +433,34 @@
           }
         },
         "plan": "<HOME>/wave/plan.json",
+        "progress": {
+          "blocked": 0,
+          "cost_usd": null,
+          "elapsed_s": "<ELAPSED_S>",
+          "eta_basis": "none",
+          "eta_s": null,
+          "integrated": 3,
+          "needs": [],
+          "next": [],
+          "pending": 0,
+          "recent": [
+            {
+              "at": "<AT>",
+              "id": "C"
+            },
+            {
+              "at": "<AT>",
+              "id": "B"
+            },
+            {
+              "at": "<AT>",
+              "id": "A"
+            }
+          ],
+          "run_id": null,
+          "running": [],
+          "total": 3
+        },
         "stopped": null,
         "updated": "<UPDATED>",
         "version": 1,
