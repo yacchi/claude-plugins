@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sysload"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
@@ -58,7 +59,7 @@ func runTraceRecord(cmd *cobra.Command, raw string) error {
 		r.MS = int64((r.End - r.At) * 1000)
 	}
 	if r.Load1 == 0 {
-		r.Load1 = trace.Load1()
+		r.Load1, _, _ = sysload.Load()
 	}
 	trace.Write(r)
 	return nil
