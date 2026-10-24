@@ -319,9 +319,6 @@ func TestForeignPIDIsNotAlive(t *testing.T) {
 	if out := Detach(cfg, "dsp-000000000001", nil); get(out, "status") != "done" {
 		t.Fatalf("detach: %v", out)
 	}
-	if d := ListDetached(cfg); len(d) != 1 || d[0].Alive || !d[0].ResultPresent {
-		t.Fatalf("list: %+v", d)
-	}
 	out, _ := Wait(cfg, "dsp-000000000001", time.Second, false)
 	if get(out, "status") != "ok" || get(out, "answer") != "x" || get(out, "answer_path") == nil {
 		t.Fatalf("wait: %v", out)
@@ -378,34 +375,6 @@ func TestDetachIsIdempotentPerToken(t *testing.T) {
 	}
 	if _, err := os.Stat(detachFile(cfg, "dsp-000000000002", ".out")); err != nil {
 		t.Error("done must keep the output for wait")
-	}
-}
-
-func TestListDetached(t *testing.T) {
-	cfg := testConfig(t)
-	wd := t.TempDir()
-	token, _ := Prepare(cfg, PrepareSpec{Class: "deep", Workdir: wd, PromptFiles: []string{"p"}, Task: ptr("t-9")})
-	putState(t, cfg, token, `{"pid": 999999999, "token": "`+token+`", "started": 1.5, "wait_calls": 2}`)
-	mustWrite(t, detachFile(cfg, token, ".out"), `{"status": "ok"}`)
-	putState(t, cfg, "dsp-000000000002", `{"pid": `+strconv.Itoa(os.Getpid())+`, "collected": true}`)
-	mustWrite(t, detachFile(cfg, "dsp-000000000002", ".result.json"), `{}`)
-	putState(t, cfg, "dsp-000000000003", `not json`)
-
-	list := ListDetached(cfg)
-	byToken := map[string]Detached{}
-	for _, d := range list {
-		byToken[d.Token] = d
-	}
-	if len(list) != 2 {
-		t.Fatalf("list %+v", list)
-	}
-	d := byToken[token]
-	if d.Alive || !d.ResultPresent || d.Collected || d.WaitCalls != 2 || d.Class != "deep" || d.Task != "t-9" {
-		t.Errorf("finished uncollected: %+v", d)
-	}
-	d = byToken["dsp-000000000002"]
-	if !d.Alive || !d.ResultPresent || !d.Collected {
-		t.Errorf("collected: %+v", d)
 	}
 }
 

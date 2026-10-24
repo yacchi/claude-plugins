@@ -1,0 +1,10 @@
+description: >
+  the local dashboard is gone: ui, with or without its old options, is exit 2
+  with an error pointing at the dashboard Artifact
+steps:
+  - argv: [ui]
+    stderr_contains: ["agent-exec: agent-exec ui was removed: wave progress is shown in the orchestra dashboard Artifact (dashboard.artifact_url; see skills/run/references/programme.md §6)"]
+  - argv: [ui, --open, --json]
+    stderr_contains: ["agent-exec ui was removed: "]
+  - argv: [ui, --stop]
+    stderr_contains: ["agent-exec ui was removed: "]

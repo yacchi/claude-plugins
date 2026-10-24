@@ -42,7 +42,7 @@ This plugin is distributed as part of the `yacchi-plugins` marketplace:
 /plugin install orchestra@yacchi-plugins
 ```
 
-The `agent-exec` CLI (used by pi dispatch, worktree isolation, `wave run`, the dashboard, and the hooks) is written in Go and built from source on first use: it needs [mise](https://mise.jdx.dev/) (agent-exec then uses the Go version pinned in `tools/agentexec/.go-version`) or Go on `PATH`. The first call builds it in a few seconds and caches the binary under `~/.cache/claude-orchestra/agent-exec/`, keyed by the source hash, OS and CPU arch; `agent-exec doctor` (run by `/orchestra:setup`) builds it ahead of time.
+The `agent-exec` CLI (used by pi dispatch, worktree isolation, `wave run`, and the hooks) is written in Go and built from source on first use: it needs [mise](https://mise.jdx.dev/) (agent-exec then uses the Go version pinned in `tools/agentexec/.go-version`) or Go on `PATH`. The first call builds it in a few seconds and caches the binary under `~/.cache/claude-orchestra/agent-exec/`, keyed by the source hash, OS and CPU arch; `agent-exec doctor` (run by `/orchestra:setup`) builds it ahead of time.
 
 Inside Claude Code no shim is needed: the plugin's `bin/` directory puts `agent-exec` on the Bash tool's `PATH`. `agent-exec install` is still needed for a shell outside Claude Code that must run `agent-exec` by name: a pi worker's shell (pi is a child process and does not necessarily get the plugin's `bin/`) and your own terminal. The runner starts the binary it is running from by absolute path, and herdr panes host Claude Code sessions, which get `bin/`; neither needs the shim.
 

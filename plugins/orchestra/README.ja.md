@@ -42,7 +42,7 @@ flowchart TD
 /plugin install orchestra@yacchi-plugins
 ```
 
-`agent-exec` CLI(pi への振り分け、ワークツリー隔離、`wave run`、ダッシュボード、フックが使います)は Go で書かれており、初回の実行時にソースからビルドします。[mise](https://mise.jdx.dev/)(`tools/agentexec/.go-version` で固定した Go の版を使います)か、`PATH` 上の Go が必要です。初回の呼び出しで数秒かけてビルドし、バイナリを `~/.cache/claude-orchestra/agent-exec/` に保存します(ソースのハッシュ、OS、CPU アーキテクチャごとに分けます)。`agent-exec doctor`(`/orchestra:setup` が実行します)で事前にビルドできます。
+`agent-exec` CLI(pi への振り分け、ワークツリー隔離、`wave run`、フックが使います)は Go で書かれており、初回の実行時にソースからビルドします。[mise](https://mise.jdx.dev/)(`tools/agentexec/.go-version` で固定した Go の版を使います)か、`PATH` 上の Go が必要です。初回の呼び出しで数秒かけてビルドし、バイナリを `~/.cache/claude-orchestra/agent-exec/` に保存します(ソースのハッシュ、OS、CPU アーキテクチャごとに分けます)。`agent-exec doctor`(`/orchestra:setup` が実行します)で事前にビルドできます。
 
 Claude Code の中では shim は不要です。プラグインの `bin/` ディレクトリが Bash ツールの `PATH` に `agent-exec` を載せます。`agent-exec install` が引き続き必要なのは、Claude Code の外で `agent-exec` を名前で呼ぶシェル、つまり pi ワーカーのシェル(pi は子プロセスとして動き、プラグインの `bin/` を受け取るとは限りません)とご自身のターミナルです。ランナーは実行中のバイナリを絶対パスで起動し、herdr のペインは Claude Code のセッションを動かすため `bin/` を受け取るので、どちらも shim を必要としません。
 
