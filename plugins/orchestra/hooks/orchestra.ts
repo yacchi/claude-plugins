@@ -1,4 +1,5 @@
 import type { EngineInterface, Register } from 'claude-code'
+import { checkLaunch } from './guards/launch.ts'
 import { checkLightClass } from './guards/light-class.ts'
 import { checkOpusGeneralist } from './guards/opus-generalist.ts'
 import { checkWorkerTests } from './guards/worker-tests.ts'
@@ -34,6 +35,7 @@ const ioOf = ($: EngineInterface): Io => ({
         switch (name) {
             case 'HOME': return $.env.get('HOME')
             case 'ORCHESTRA_ENFORCEMENT': return $.env.get('ORCHESTRA_ENFORCEMENT')
+            case 'ORCHESTRA_LAUNCH_GUARD': return $.env.get('ORCHESTRA_LAUNCH_GUARD')
             case 'ORCHESTRA_LEASE_GUARD': return $.env.get('ORCHESTRA_LEASE_GUARD')
             case 'ORCHESTRA_LEASE_WINDOW': return $.env.get('ORCHESTRA_LEASE_WINDOW')
             case 'ORCHESTRA_OPUS_NUDGE': return $.env.get('ORCHESTRA_OPUS_NUDGE')
@@ -78,8 +80,17 @@ export const register: Register = (on, options) => {
         if (WRITE_TOOLS.has(tool)) {
             // Only subagent calls are guarded; the main thread is never denied
             // (except a wave-hosted worker session's, for dependency edits and
-            // full test suites).
+            // full test suites, and anyone's shell launch of long-running
+            // orchestra work).
             call = await workerCall(io, e)
+            if (tool === 'Bash') {
+                // Long-running launches are denied from every shell, the
+                // main thread's included.
+                const deny = await checkLaunch(io, e as unknown as Readonly<Record<string, unknown>>, call?.agentType ?? '')
+                if (deny) {
+                    return { deny }
+                }
+            }
             if (tool !== 'Bash' && (call || verdictOf(await io.sessionId().catch(() => '')) === 'worker')) {
                 const cwd = call?.cwd ?? await io.sessionCwd().catch(() => '')
                 const deny = checkDependencyEdit(tool, e as unknown as Readonly<Record<string, unknown>>, cwd)
