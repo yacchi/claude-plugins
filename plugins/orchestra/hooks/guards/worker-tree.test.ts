@@ -5,13 +5,15 @@ import { callTool, fakeHost, freshSession, startAgent, type HostOptions } from '
 // A worker with its own orchestra worktree writing into the user's MAIN tree
 // anyway (observed: a Sonnet worker told "cd there FIRST" edited the main
 // tree's files). Pinned: structured tools are caught airtight, the main
-// thread is never touched, a worker writes freely in its own worktree, the
+// thread is never touched, a worker writes freely in its own worktree (one
+// nested under the main tree, as Agent isolation places it, included), the
 // path traps (symlink, `..`, sibling prefix) resolve, and doubt fails open.
 
 const BASE = '/w'
 const MAIN = `${BASE}/repo`
 const ISO = `${BASE}/iso`
 const SIBLING = `${BASE}/repo-worktrees/x`
+const NESTED = `${MAIN}/.claude/worktrees/agent-x`
 const SOLO = `${BASE}/solo`
 const NON_REPO = `${BASE}/plain`
 
@@ -21,7 +23,10 @@ const host = (on: On, extra: Partial<HostOptions> = {}) => fakeHost(on, {
     files: { [`${MAIN}/src/app.ts`]: 'one', [`${ISO}/src/app.ts`]: 'one', [`${ISO}/a.ts`]: 'a' },
     links: { [`${BASE}/link`]: MAIN },
     repos: [
-        { main: MAIN, linked: [{ path: ISO, branch: 'orchestra/abcdefgh/t1' }] },
+        { main: MAIN, linked: [
+            { path: ISO, branch: 'orchestra/abcdefgh/t1' },
+            { path: NESTED, branch: 'worktree-agent-x' },
+        ] },
         { main: SOLO },
     ],
     ...extra,
@@ -61,6 +66,15 @@ describe('worker-tree', () => {
         expect((await edit($, ISO, `${SIBLING}/notes.md`)).deny, '/repo-worktrees/x is not inside /repo').toBeUndefined()
         expect((await edit($, ISO, 'src/app.ts')).deny, 'relative inside its own worktree').toBeUndefined()
         expect((await edit($, ISO, `${ISO}/src/app.ts`)).deny, 'its own worktree').toBeUndefined()
+    })
+
+    test('a worktree nested under the main tree is the worker\'s, whatever its branch', async ($, on) => {
+        host(on)
+        expect((await edit($, NESTED, `${NESTED}/file.ts`, 'Write')).deny, 'its own nested worktree').toBeUndefined()
+        expect((await edit($, NESTED, 'file.ts', 'Write')).deny, 'relative inside it').toBeUndefined()
+        expect((await callTool($, 'ag_1', { tool: 'Bash', command: `echo x > ${NESTED}/file.ts`, description: 'do work' })).deny, 'Bash redirect').toBeUndefined()
+        expect((await edit($, NESTED, `${MAIN}/src/app.ts`, 'Write')).deny, 'the main checkout itself').toBeDefined()
+        expect((await edit($, NESTED, '../../../src/app.ts', 'Write')).deny, '.. out of it into the main tree').toBeDefined()
     })
 
     test('scope: main thread, express lane, other sessions, supervisor', async ($, on) => {

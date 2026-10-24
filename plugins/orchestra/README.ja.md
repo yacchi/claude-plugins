@@ -85,12 +85,12 @@ claude plugin validate .
 
 設定は 4 つの層を後勝ちで深くマージします: 組み込みの既定値 ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`。プロジェクトの設定ファイルには変えたいキーだけを書けば足ります。マージ結果は `agent-exec config` で確認できます。
 
-- **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。
+- **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。加えて `planner`(既定は opus/max)は振り分けを通さず直接起動されます。
 - **`external_executors`** — pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、CLI が入っていなければすべて `claude` に振り分けられます。Claude Code の中では同梱の `agent-exec` ラッパーが既に `PATH` に載っており、`agent-exec install` は Claude Code の外のシェル向けです。推奨は `Bash(agent-exec:*)` の許可ルール 1 つを加えることです。
 - **`tools`** — 実行役のバイナリ(pi、herdr)を決まった版で orchestra 専用の状態ディレクトリに入れます(`agent-exec tools install`)。pi は既定で専用のエージェントディレクトリを使うため、個人の pi の設定はワーカーに届きません。
 - **`sandbox.network`** — herdr ホストの外向き通信を sandbox-runtime(srt)でドメイン許可リストに絞ります。遮断した接続は記録してパッケージごとに表示し、`agent-exec sandbox allow-domain` で動いたまま許可できます(既定は `api.anthropic.com` のみ)。
 - **`interactive_host`** — `wave run` で Claude 系のパッケージを動かすホストを選びます: `herdr`、`orca`、`none`(既定は `auto`)。
-- **`wave.verify_mode`** — `final`(既定): 途中のテストでパッケージを止めません。パッケージごとには `fast` 指定の検査だけを記録として流し、テスト一式は最後に一度回して、失敗は緑になるまで修正パッケージとして並列に投入します。`gated` は従来どおり赤で止めます。`wave.max_in_flight: auto` では、始められるパッケージ(依存先が統合済みで、`files_owned` が動いている作業と重ならないもの)をすべて始め、依存の連鎖が長いものを優先します。機械は、重いコマンド(install、テスト、型チェック、lint、ビルド)を機械全体で数本ずつしか走らせないこと(`throttle.heavy_slots`)と、OS がメモリ不足を示している間は新しい起動を待つことで守ります。実行は `wave stop` か、指定した場合は `--budget-usd` に届くまで続き、使用量は定期的に通知します。
+- **`wave.verify_mode`** — `final`(既定): 途中のテストでパッケージを止めません。パッケージごとには `fast` 指定の検査だけを記録として流し、テスト一式は最後に一度回して、失敗は緑になるまで修正パッケージとして並列に投入します。`gated` は従来どおり赤で止めます。`wave.max_in_flight: auto` では、始められるパッケージ(依存先が統合済みで、`files_owned` が動いている作業と重ならないもの)をすべて始め、依存の連鎖が長いものを優先します。機械は、重いコマンドを機械全体で数本ずつしか走らせないこと(install とビルドは `throttle.heavy_slots`、テスト・lint・型チェックは専用の `throttle.test_slots`)と、OS がメモリ不足を示している間は新しい起動を待つことで守ります。実行は `wave stop` か、指定した場合は `--budget-usd` に届くまで続き、使用量は定期的に通知します。
 - **`priority`** — クラス/役割ごとの実行系の優先順。順に候補をたどる処理は `agent-exec route` / `agent-exec dispatch` が行い、指示役が手作業でたどることはありません。
 - **`usage_routing`** — サブスクリプションの残量を見たルーティング。候補の背後にあるプラン(`claude` は Claude、`openai-codex/...` のモデルで動く `pi` は ChatGPT)が 5 時間枠の 80% 以上か 7 日枠の 90% 以上を使っていれば、余裕のある次の候補に回します。降格はソフト(全候補が上限近くなら無視)で、照会はキャッシュされ、失敗しても通常どおりルーティングします。`--no-usage` か `ORCHESTRA_USAGE_ROUTING=0` で無効にでき、現在値は `agent-exec doctor` の `usage_limits` で確認できます。
 - **`enforcement.*`** — フックによる防護(`worker_vcs`、`worker_tree`、`worktree_lease`、`session_cleanup`、`turn_edits`、`opus_generalist`、オプトインの `light_class`)。どれにも回避用のマーカーと、環境変数による無効化スイッチがあります。
@@ -99,7 +99,7 @@ claude plugin validate .
 
 ### HUD
 
-orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。メインスレッドが `agent-exec wave run --state <path>` を起動すると（通常は `run_in_background`）、ウェーブの表示 `wave 12/40 · 5 running · 2 needs`（統合済み/全パッケージ数、実行中のパッケージ数、未解決の needs 数）が加わり、run が停止するかランナーが終了するまで `wave status` から 15 秒ごとに更新されます。複数のウェーブは並べて表示します。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。ダッシュボード全体は既存の `/ui` スキルで開けます。`hud` プラグインオプション（既定はオン）で無効にできます。
+orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。ウェーブがあると、ウェーブの表示 `wave 12/40 · 5 running · 2 needs · ~35m`（統合済み/全パッケージ数、実行中のパッケージ数、未解決の needs 数、パッケージに見積もりがあるときの残り時間の見込み）が加わり、run が停止するかランナーが終了するまで `wave status --json` の `progress` から 15 秒ごとに更新されます。複数のウェーブは並べて表示します。ウェーブは、それを起動する `agent-exec wave run --state <path>` から追跡します。起動するのはメインスレッド（通常は `run_in_background`）か、監視役のサブエージェント `orchestra:orchestra-wave`（`wave run --detach` のあと `wave wait --state <path>`）で、それ以外のサブエージェントの呼び出しは無視します。`orchestra` ペインには追跡中の各ウェーブの詳細を表示します。run id、統合済み/全数、経過時間、残り時間、コストに続けて、実行中のパッケージ（`id  cls→model  phase  経過/見積もり`、フェーズは 実装/検証/修正/統合/待機）、needs、次に始まるもの、直近に統合したものです。ペインが自動で開くのは、トランスクリプトの横にドッキングできる画面（フルスクリーンのターミナル）だけで、`/orchestra:progress` でペインを置ける画面ならどこでも開閉できます。ペインがないときは、プロンプトの上（ターミナルとデスクトップ）に最大 4 行の帯を表示します。run id 付きのステータス行、実行中の先頭のパッケージ、needs、次に始まるものです。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。ダッシュボード全体は既存の `/ui` スキルで開けます。`hud` プラグインオプション（既定はオン）で無効にできます。
 
 ### Copilot CLI / opencode からの移行
 

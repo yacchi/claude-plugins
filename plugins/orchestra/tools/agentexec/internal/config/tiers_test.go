@@ -35,6 +35,27 @@ func TestValidateTiersRejectsBadObjects(t *testing.T) {
 	}
 }
 
+func TestValidateTiersRejectsBadPlanner(t *testing.T) {
+	cases := map[string]any{
+		"unlisted model":  map[string]any{"model": "haiku", "effort": "max"},
+		"unlisted string": "gpt-6.1-sol",
+		"no model":        map[string]any{"effort": "max"},
+		"bad effort":      map[string]any{"model": "opus", "effort": "ultra"},
+	}
+	for name, planner := range cases {
+		err := validateTiers(map[string]any{"tiers": map[string]any{"planner": planner}})
+		if err == nil || !strings.Contains(err.Error(), "tiers.planner") {
+			t.Fatalf("%s: err=%v", name, err)
+		}
+	}
+}
+
+func TestDefaultsCarryPlanner(t *testing.T) {
+	if m, e := Tier(&Resolved{Values: Defaults()}, "planner"); m != "opus" || e != "max" {
+		t.Fatalf("planner: %q %q", m, e)
+	}
+}
+
 func TestValidateTiersAcceptsDefaults(t *testing.T) {
 	if err := validateTiers(Defaults()); err != nil {
 		t.Fatalf("defaults rejected: %v", err)

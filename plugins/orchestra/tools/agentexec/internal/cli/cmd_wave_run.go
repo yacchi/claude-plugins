@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ui"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/runner"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/watch"
 )
 
 // WaveUIStart starts (or reuses) the dashboard for `wave run` and returns
@@ -39,6 +42,7 @@ func newWaveCmd() *cobra.Command {
 	wave := groupCommand("wave", "the deterministic outer loop over a plan")
 	addWaveStatusCommands(wave)
 	addWaveRunCommands(wave)
+	wave.AddCommand(newWaveWaitCmd())
 	return wave
 }
 
@@ -69,6 +73,7 @@ func addWaveRunCommands(parent *cobra.Command) {
 	fl.StringVar(&o.RunID, "run-id", "", "run ledger id")
 	fl.BoolVar(&o.ResumeOnReset, "resume-on-reset", false, "resume packages after a usage-limit reset")
 	fl.BoolVar(&o.NoUI, "no-ui", false, "do not start the dashboard")
+	detach := fl.Bool("detach", false, "start the runner as a detached child and return at once")
 	runFormat := formatFlags(run, "json", "text")
 	for _, name := range []string{"plan", "state", "into"} {
 		_ = run.MarkFlagRequired(name)
@@ -122,6 +127,9 @@ func addWaveRunCommands(parent *cobra.Command) {
 			}
 			o.BudgetUSD = budgetUSD
 		}
+		if *detach {
+			return runWaveDetach(cmd.OutOrStdout(), o.State)
+		}
 		return runWaveRun(cmd.OutOrStdout(), cmd.ErrOrStderr(), o, runFormat.is("text"))
 	}
 
@@ -147,6 +155,53 @@ func runWaveRun(out, errw io.Writer, o runner.Options, text bool) error {
 		return &ExitError{Code: code}
 	}
 	return nil
+}
+
+// runWaveDetach re-runs this command line without --detach as a detached
+// runner (its end report goes to runner.log as JSON, where `wave wait`
+// reads it). Exit 2 when one already runs the state.
+func runWaveDetach(out io.Writer, statePath string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return exitf(1, "wave run: %s", err)
+	}
+	abs, err := filepath.Abs(statePath)
+	if err != nil {
+		return exitf(1, "wave run: %s", err)
+	}
+	res, err := watch.Detach(abs, exe, detachedArgs(os.Args[1:], abs))
+	if err != nil {
+		return exitf(1, "wave run: %s", err)
+	}
+	if err := writeJSONLine(out, res); err != nil {
+		return err
+	}
+	if res["status"] == "running" {
+		return &ExitError{Code: 2}
+	}
+	return nil
+}
+
+// detachedArgs is a `wave run --detach` command line as the detached
+// runner gets it: --detach and the output switch dropped, --state absolute.
+func detachedArgs(args []string, statePath string) []string {
+	var out []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		name, _, _ := strings.Cut(a, "=")
+		switch name {
+		case "--detach", "--json", "--text":
+			continue
+		case "--state":
+			if a == name {
+				i++ // the value is the next argument
+			}
+			out = append(out, "--state="+statePath)
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // inProcessCheck is `agent-exec check ARGS` run in this process (gated

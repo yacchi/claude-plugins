@@ -14,6 +14,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
+	wavewatch "github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/watch"
 )
 
 // ApprovalsPending reports how many approvals await a decision for a wave's
@@ -101,10 +102,11 @@ func runWaveStatus(out, errw io.Writer, o waveStatusOptions, watch bool) error {
 			if o.live {
 				m["live_changes"] = state.LiveChanges(&st)
 			}
+			m["progress"] = wavewatch.Compute(o.statePath, &st, now, waveRunCost)
 			b, err := fsutil.MarshalJSON(m)
 			return string(b), err
 		case o.format.is("line"):
-			return state.StatusLine(&st, now, o.live), nil
+			return wavewatch.Line(wavewatch.Compute(o.statePath, &st, now, waveRunCost)), nil
 		}
 		ro := state.RenderOptions{Live: o.live, StatePath: o.statePath, ApprovalsPending: ApprovalsPending(o.statePath)}
 		if o.events != 0 {

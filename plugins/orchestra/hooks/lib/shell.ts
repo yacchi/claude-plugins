@@ -10,8 +10,10 @@ export const stripData = (command: string): string =>
     command.replace(HEREDOC, ' ').replace(QUOTED, ' ')
 
 // One simple command per segment, split on && || ; & | and newlines.
+// The `&` of a redirection (`2>&1`, `>&2`, `<&3`, `&> f`) does not end a
+// command.
 export const segments = (body: string): string[] =>
-    body.split(/(?:\|\||&&|[;&|\n])/)
+    body.split(/(?:\|\||&&|[;|\n]|(?<![<>])&(?!>))/)
 
 export const words = (text: string): string[] =>
     text.trim().split(/\s+/).filter(w => w !== '')
@@ -28,10 +30,11 @@ export const gitCall = (segment: string): GitCall | undefined => {
     return m ? { globals: m[1] ?? '', verb: m[2] ?? '', rest: m[3] ?? '' } : undefined
 }
 
-// Output redirection targets (`> PATH`, `>> PATH`, `2> PATH`), `>&2` excluded.
+// Output redirection targets (`> PATH`, `>> PATH`, `2> PATH`, `&> PATH`),
+// `>&2` excluded.
 export const redirections = (segment: string): string[] => {
     const out: string[] = []
-    for (const m of segment.matchAll(/(?:^|\s)[0-9]*>>?\s*([^\s;&|<>()]+)/g)) {
+    for (const m of segment.matchAll(/(?:^|\s)(?:[0-9]*|&)>>?\s*([^\s;&|<>()]+)/g)) {
         const tok = m[1]
         if (tok && !tok.startsWith('&')) {
             out.push(tok)

@@ -26,11 +26,12 @@
 #     pi:
 #       enabled: false
 
-# Capability/performance classes and verification roles, each mapped to a Claude
-# model alias (or full model ID). The implementation classes (light/standard/deep)
-# describe how hard the work is; the review role names the verification function.
-# Both live here so the whole tier vocabulary is in one place. Used wherever the
-# run skill routes work by class/role.
+# Capability/performance classes, verification roles and the planner, each mapped
+# to a Claude model alias (or full model ID). The implementation classes
+# (light/standard/deep) describe how hard the work is; the review role names the
+# verification function; the planner plans programmes. All live here so the whole
+# tier vocabulary is in one place. Used wherever the run skill routes work by
+# class/role.
 tiers:
   # Each tier is either a model string (effort unset) or an object
   # { model: <alias>, effort: low|medium|high|xhigh|max }. The effort is passed
@@ -49,6 +50,12 @@ tiers:
   review:            # mandatory same-run adversarial review of the work
     model: sonnet
     effort: medium
+  # planning role (never routed): the instructor spawns `orchestra:orchestra-planner`
+  # with this model and effort for anything beyond a handful of tasks. model must
+  # be opus, fable or sonnet.
+  planner:
+    model: opus
+    effort: max
   # `independent-review` has no built-in Claude model on purpose — it exists to
   # add a DIFFERENT provider's eyes; see `priority.independent-review` below.
 
@@ -238,9 +245,11 @@ isolation:
 # Heavy local commands (installs, tests, typechecks, lints, builds) are
 # admitted machine-wide a few at a time: a worker's Bash command waits in the
 # orchestra hook for a slot, and every check command holds one while it runs
-# (see `references/config.md` §10). `agent-exec slot status` shows the pool.
+# (see `references/config.md` §10). Tests, lints and typechecks have their
+# own pool. `agent-exec slot status` shows both.
 # throttle:
 #   heavy_slots: auto     # max(2, (cpus + 1) / 3); a positive integer; 0 = off
+#   test_slots: auto      # half of heavy_slots' auto size, at least 1; 0 = off
 #   heavy_extra: []       # extra regexes, unioned across layers,
 #                         # e.g. ['^make (check|test)\b']
 

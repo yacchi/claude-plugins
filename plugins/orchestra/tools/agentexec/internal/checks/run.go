@@ -303,13 +303,14 @@ type shellResult struct {
 
 // runShell runs command via /bin/sh -c in its own session (env nil: the
 // process's own), killing the whole process group on timeout. It holds one
-// of the maxParallel check slots and one slot of the machine-wide heavy
-// pool while it runs. A command that cannot be started is reported as
-// output of a failed run rather than raised.
+// of the maxParallel check slots and one slot of a machine-wide pool (the
+// test pool for a test, lint or typecheck, else the heavy pool) while it
+// runs. A command that cannot be started is reported as output of a failed
+// run rather than raised.
 func runShell(command, cwd string, env []string, timeout time.Duration, slotDir string, maxParallel int) shellResult {
 	release := acquireSlot(slotDir, maxParallel)
 	defer release()
-	defer holdHeavy(command, timeout)()
+	defer holdMachineSlot(command, timeout)()
 	start := time.Now()
 	cmd := exec.Command("/bin/sh", "-c", command)
 	cmd.Dir = cwd
@@ -372,21 +373,22 @@ func acquireSlot(dir string, maxParallel int) func() {
 	}
 }
 
-// holdHeavy takes one heavy slot for command and returns its release. Any
-// failure runs the command unadmitted: admission must never fail a check.
-func holdHeavy(command string, timeout time.Duration) func() {
+// holdMachineSlot takes one slot of command's machine-wide pool and returns
+// its release. Any failure runs the command unadmitted: admission must
+// never fail a check.
+func holdMachineSlot(command string, timeout time.Duration) func() {
 	ttl := 24 * time.Hour // no timeout: the owner's death still frees it
 	if timeout > 0 {
 		ttl = timeout + time.Minute
 	}
-	op, _ := slot.Classify(command, nil)
-	return slot.HoldHeavy(op, ttl)
+	c := slot.Classify(command, nil)
+	return slot.Hold(c.Pool(), c.Op, ttl)
 }
 
 // RerunFailedAlone re-runs the failing files output names with template
 // ({failed} = the shell-quoted files) while holding every check slot, so
 // the retry is not disturbed by other checks; like any check command it
-// takes only one slot of the machine-wide heavy pool. status is pass,
+// takes only one slot of a machine-wide pool. status is pass,
 // fail, or skipped (no file named); timeout <= 0 means no limit.
 func RerunFailedAlone(output, template, cwd, slotDir string, maxParallel int, timeout time.Duration) (status string, failed []string) {
 	failed = ParseFailedFiles(output)
