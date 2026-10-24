@@ -361,6 +361,7 @@ func Defaults() map[string]any {
 				"quiet_domains", strs(DefaultQuietDomains...),
 			),
 		),
+		"dashboard", obj("artifact_url", ""),
 		"telemetry", obj("enabled", false, "dir", "~/.claude/orchestra/telemetry"),
 		"ledger", obj("enabled", true, "dir", "~/.claude/orchestra/runs", "retention_days", int64(30)),
 		"isolation", obj(

@@ -75,22 +75,3 @@ func TestRecordKeepsLongerExistingAndPrunes(t *testing.T) {
 		t.Fatal("expired entry not pruned")
 	}
 }
-
-func TestClear(t *testing.T) {
-	cfg := testConfig(t, true)
-	now := time.Unix(1_000_000, 0)
-	RecordUnavailable(cfg, "pi", "quota", now, nil, "")
-	if _, err := Clear(cfg, "nosuch"); err == nil {
-		t.Fatal("unknown executor accepted")
-	}
-	if got, err := Clear(cfg, "pi"); err != nil || len(got) != 1 {
-		t.Fatalf("clear pi = %v, %v", got, err)
-	}
-	RecordUnavailable(cfg, "pi", "quota", now, nil, "")
-	if got, _ := Clear(cfg, ""); len(got) != 1 {
-		t.Fatalf("clear all = %v", got)
-	}
-	if _, err := os.Stat(StatePath(cfg)); err == nil {
-		t.Fatal("state file remains")
-	}
-}

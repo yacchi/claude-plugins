@@ -1,16 +1,13 @@
 package runner
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"strconv"
-	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sysload"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 )
 
@@ -23,10 +20,13 @@ import (
 // memoryRecheck is how often held starts look at the memory pressure again.
 var memoryRecheck = 30 * time.Second
 
-// memoryPressure reports whether the OS is under memory pressure and why;
-// an unsupported platform or a probe that fails is never pressure. A
-// variable so tests can inject one.
-var memoryPressure = probeMemoryPressure
+// memoryPressure reports whether the OS is under memory pressure (warn or
+// worse) and why; an unsupported platform or a probe that fails is never
+// pressure. A variable so tests can inject one.
+var memoryPressure = func() (bool, string) {
+	p := sysload.MemoryPressure()
+	return p.High(), p.Reason
+}
 
 const (
 	// costRefreshSeconds is how long one estimate of the run's cost is
@@ -34,67 +34,6 @@ const (
 	costRefreshSeconds = 60
 	costTimeout        = 60 * time.Second
 )
-
-// darwinPressure reads kern.memorystatus_vm_pressure_level: 1 normal, 2
-// warn, 4 critical; warn or worse holds.
-func darwinPressure(level uint32) (bool, string) {
-	switch {
-	case level >= 4:
-		return true, "memory pressure critical (kern.memorystatus_vm_pressure_level 4)"
-	case level >= 2:
-		return true, fmt.Sprintf("memory pressure warn (kern.memorystatus_vm_pressure_level %d)", level)
-	}
-	return false, ""
-}
-
-// linuxPressure holds when /proc/pressure/memory's `some avg10` is 20 or
-// more; without PSI it falls back to MemAvailable below 10 % of MemTotal.
-// A nil input is a file that could not be read.
-func linuxPressure(psi, meminfo []byte) (bool, string) {
-	if psi != nil {
-		for _, line := range splitLines(string(psi)) {
-			fields := strings.Fields(line)
-			if len(fields) == 0 || fields[0] != "some" {
-				continue
-			}
-			for _, f := range fields[1:] {
-				if v, ok := strings.CutPrefix(f, "avg10="); ok {
-					if avg, err := strconv.ParseFloat(v, 64); err == nil {
-						if avg >= 20 {
-							return true, fmt.Sprintf("memory pressure (PSI some avg10 %.1f)", avg)
-						}
-						return false, ""
-					}
-				}
-			}
-		}
-	}
-	if meminfo == nil {
-		return false, ""
-	}
-	kb := map[string]float64{}
-	sc := bufio.NewScanner(bytes.NewReader(meminfo))
-	for sc.Scan() {
-		name, rest, ok := strings.Cut(sc.Text(), ":")
-		if !ok {
-			continue
-		}
-		if fields := strings.Fields(rest); len(fields) > 0 {
-			if v, err := strconv.ParseFloat(fields[0], 64); err == nil {
-				kb[name] = v
-			}
-		}
-	}
-	total, okT := kb["MemTotal"]
-	avail, okA := kb["MemAvailable"]
-	if !okT || !okA || total <= 0 {
-		return false, ""
-	}
-	if avail/total < 0.10 {
-		return true, fmt.Sprintf("low memory (MemAvailable %.0f%% of MemTotal)", 100*avail/total)
-	}
-	return false, ""
-}
 
 // holdStarts reports whether new starts wait for memory pressure to ease
 // (in-flight packages carry on); it records one start-held event when

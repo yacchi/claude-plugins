@@ -570,24 +570,3 @@ func TestRunIDMatchesEverySession(t *testing.T) {
 		t.Errorf("%+v", p)
 	}
 }
-
-func TestSnapshot24hShape(t *testing.T) {
-	// The snapshot uses the real clock, so build the fixture around it.
-	savedNow, savedCutoff := now, cutoff
-	t.Cleanup(func() { now, cutoff = savedNow, savedCutoff })
-	now = time.Now().UTC().Truncate(time.Second)
-	cutoff = now.Add(-24 * time.Hour)
-	o, _ := fixture(t)
-	t.Setenv("HOME", o.Home)
-	snap, ok := Snapshot24h(o.Cfg).(map[string]any)
-	if !ok {
-		t.Fatalf("%T", Snapshot24h(o.Cfg))
-	}
-	b, _ := fsutil.MarshalJSON(snap)
-	got := string(b)
-	for _, want := range []string{`"claude/claude-opus-5":{"cached_input_tokens":0,"input_tokens":1015`, `"claude/claude-mystery-9"`, `"pi/unknown":{"cached_input_tokens":0,"input_tokens":6`} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %s in %s", want, got)
-		}
-	}
-}

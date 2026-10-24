@@ -4,8 +4,11 @@ description: >
   line summary; --events adds recent events (a truncated last line is
   ignored); --live adds live change counts; a missing state file or a
   directory is exit 3. wave wait without a runner answers at once: needs
-  when a need's event line is at or after --since, else the stopped state;
-  seq counts complete event lines
+  when a need's event line is at or after --since, else the stopped state
+  (with --until-change too: a gone runner wins over a change); seq counts
+  complete event lines; approvals and machine ride along (machine's values
+  masked)
+normalize_keys: [machine]
 setup:
   files:
     "wave/state.json": |
@@ -135,4 +138,5 @@ steps:
   - argv: ["wave", "status", "--state", "wave"]
   - argv: ["wave", "wait", "--state", "wave/state.json", "--max-wait", "0"]
   - argv: ["wave", "wait", "--state", "wave/state.json", "--max-wait", "0", "--since", "8"]
+  - argv: ["wave", "wait", "--state", "wave/state.json", "--max-wait", "0", "--since", "6", "--until-change"]
   - argv: ["wave", "wait", "--state", "wave/state.json", "--max-wait", "-1"]

@@ -27,7 +27,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -60,7 +59,6 @@ type Options struct {
 	FullRetry       string
 	OnGreen         string
 	ResumeOnReset   bool
-	NoUI            bool
 	NotifyCmd       string
 	StopAt          *float64
 	MaxWaves        *int
@@ -90,9 +88,6 @@ type Deps struct {
 	// Check runs `agent-exec check ARGS` and returns its stdout and exit
 	// code (gated self-verify); nil runs AgentExec as a child process.
 	Check func(args []string) (stdout string, exit int)
-	// StartUI starts or reuses the dashboard and returns its URL; nil
-	// starts none.
-	StartUI func() (url string, err error)
 	// Cost is the run's estimated cost in USD (budget, usage notices); nil
 	// runs AgentExec `usage --run ID`.
 	Cost func(runID string) (usd float64, ok bool)
@@ -248,14 +243,6 @@ func Run(ctx context.Context, o Options, d Deps) (Report, int) {
 		}
 		rep := errorReport(kind, err)
 		return rep, ExitCode(rep)
-	}
-	if !o.NoUI && os.Getenv("ORCHESTRA_WAVE_NO_UI") != "1" && d.StartUI != nil {
-		if url, err := d.StartUI(); err != nil {
-			fmt.Fprintf(r.stderr, "warning: could not start ui: %s\n", err)
-		} else {
-			fmt.Fprintf(r.stderr, "ui: %s\n", url)
-			r.emit("ui", "", map[string]any{"url": url})
-		}
 	}
 	func() {
 		defer r.shutdownHost()

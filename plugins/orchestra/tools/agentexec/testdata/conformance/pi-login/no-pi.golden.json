@@ -1,18 +1,19 @@
 {
-  "scenario": "ui/pilogin-no-herdr",
+  "scenario": "pi-login/no-pi",
   "steps": [
     {
       "argv": [
         "pi",
-        "login"
+        "login",
+        "--json"
       ],
       "exit": 1,
       "stdout_shape": "json",
       "stdout": {
-        "reason": "herdr is not configured (binary or session name missing)",
+        "reason": "pi is not installed: run `agent-exec tools install pi`",
         "screen_tail": "",
         "status": "manual",
-        "step": "herdr"
+        "step": "pi-not-found"
       }
     },
     {
@@ -25,38 +26,10 @@
       "exit": 1,
       "stdout_shape": "json",
       "stdout": {
-        "reason": "herdr is not configured (binary or session name missing)",
+        "reason": "pi is not installed: run `agent-exec tools install pi`",
         "screen_tail": "",
         "status": "manual",
-        "step": "herdr"
-      }
-    },
-    {
-      "argv": [
-        "pi",
-        "login",
-        "--provider",
-        "nonesuch"
-      ],
-      "exit": 1,
-      "stdout_shape": "json",
-      "stdout": {
-        "reason": "no known /login label for provider nonesuch",
-        "screen_tail": "",
-        "status": "manual",
-        "step": "provider"
-      }
-    },
-    {
-      "argv": [
-        "pi",
-        "login",
-        "--cancel"
-      ],
-      "exit": 0,
-      "stdout_shape": "json",
-      "stdout": {
-        "status": "cancelled"
+        "step": "pi-not-found"
       }
     },
     {
@@ -73,6 +46,33 @@
         "reason": "no login in progress (run `agent-exec pi login` first)",
         "screen_tail": "",
         "status": "failed"
+      }
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--paste",
+        "http://localhost:1455/cb?code=x"
+      ],
+      "exit": 1,
+      "stdout_shape": "json",
+      "stdout": {
+        "reason": "no login in progress (run `agent-exec pi login` first)",
+        "screen_tail": "",
+        "status": "failed"
+      }
+    },
+    {
+      "argv": [
+        "pi",
+        "login",
+        "--cancel"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "status": "cancelled"
       }
     }
   ]

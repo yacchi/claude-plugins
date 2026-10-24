@@ -1,7 +1,7 @@
-// Package state owns a wave's state.json / events.jsonl pair, the STOP flag,
-// the wave registry and the status rendering. The on-disk format is shared
-// with the runner and the UI, and files written by earlier versions stay
-// loadable: state.json is indent=2 with sorted keys.
+// Package state owns a wave's state.json / events.jsonl pair, the STOP flag
+// and the status rendering. The on-disk format is shared with the runner,
+// and files written by earlier versions stay loadable: state.json is
+// indent=2 with sorted keys.
 package state
 
 import ()
