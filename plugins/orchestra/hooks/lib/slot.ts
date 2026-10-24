@@ -4,9 +4,10 @@ import type { Io } from './io.ts'
 // Machine-wide admission for a worker's heavy Bash commands (installs, tests,
 // typechecks, lints, builds): past about five at once they all slow down
 // several times over. agent-exec classifies the command (the one place that
-// knows what is heavy) and, when it is, blocks until one of the machine's
-// heavy slots is free. The wait happens here, before the tool starts, so it
-// never counts against the Bash tool's own timeout.
+// knows what is heavy) and, when it is, blocks until a slot of its pool is
+// free (tests, lints and typechecks on the test pool, the rest on the heavy
+// pool). The wait happens here, before the tool starts, so it never counts
+// against the Bash tool's own timeout.
 //
 // The slot's owner is agent-exec's parent, this Claude Code process: a
 // session that dies frees its slots. Every failure (agent-exec missing, an
@@ -18,12 +19,40 @@ import type { Io } from './io.ts'
 const ACQUIRE_TIMEOUT_MS = 600_000
 const MAX_WAIT = '540s'
 const RELEASE_TIMEOUT_MS = 5000
+const CLASSIFY_TIMEOUT_MS = 5000
+
+// What agent-exec tells of a command line: the op it names, whether it is
+// heavy, and whether it runs a whole repository's or workspace's suite.
+export type CommandClass = { op: string, heavy: boolean, scope: 'full' | 'targeted' }
+
+// The command's class, or undefined when agent-exec could not tell (missing,
+// failed, or bad output).
+export const classifyCommand = async (io: Io, command: string): Promise<CommandClass | undefined> => {
+    const r = await agentExec(io, ['slot', 'classify', `--command=${command}`], CLASSIFY_TIMEOUT_MS)
+    if (r.kind !== 'ok') {
+        return undefined
+    }
+    try {
+        const data: unknown = JSON.parse(r.stdout)
+        if (typeof data !== 'object' || data === null) {
+            return undefined
+        }
+        const d = data as Record<string, unknown>
+        if (typeof d.op !== 'string' || typeof d.heavy !== 'boolean' || (d.scope !== 'full' && d.scope !== 'targeted')) {
+            return undefined
+        }
+
+        return { op: d.op, heavy: d.heavy, scope: d.scope }
+    } catch {
+        return undefined
+    }
+}
 
 // The release of a held slot, or undefined when the command runs unadmitted.
 export const acquireHeavy = async (io: Io, command: string): Promise<(() => Promise<void>) | undefined> => {
     const r = await agentExec(
         io,
-        ['slot', 'acquire', '--pool', 'heavy', `--command=${command}`, '--max-wait', MAX_WAIT],
+        ['slot', 'acquire', `--command=${command}`, '--max-wait', MAX_WAIT],
         ACQUIRE_TIMEOUT_MS,
     )
     if (r.kind !== 'ok') {

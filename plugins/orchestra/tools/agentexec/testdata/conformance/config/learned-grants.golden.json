@@ -203,7 +203,8 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": {
@@ -473,7 +474,8 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": {
@@ -740,7 +742,8 @@
         },
         "throttle": {
           "heavy_extra": [],
-          "heavy_slots": "auto"
+          "heavy_slots": "auto",
+          "test_slots": "auto"
         },
         "tiers": {
           "deep": {

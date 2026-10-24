@@ -60,6 +60,8 @@ func TestLoadValidation(t *testing.T) {
 		{"warm type", `{"warm_read":"x","packages":[]}`, "plan warm_read must be a list of repo-relative paths", nil},
 		{"rules shape", `{"rules":[{"if":"x"}],"packages":[]}`, "plan rules entries must be {'if': <glob>, 'require': [<glob>...]}", nil},
 		{"rules type", `{"rules":"x","packages":[]}`, "plan rules must be a list", nil},
+		{"full verification", `{"packages":[{"id":"a","spec":"a.md","cls":"light","verification":"cd tools && go test ./..."}]}`,
+			"a: verification runs the whole suite: cd tools && go test ./...; name the changed packages' tests", []string{"a.md"}},
 	} {
 		if msg := loadErr(t, c.plan, c.specs...); !strings.Contains(msg, c.want) {
 			t.Errorf("%s: %q does not contain %q", c.name, msg, c.want)
