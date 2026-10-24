@@ -85,7 +85,7 @@ claude plugin validate .
 
 設定は 4 つの層を後勝ちで深くマージします: 組み込みの既定値 ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`。プロジェクトの設定ファイルには変えたいキーだけを書けば足ります。マージ結果は `agent-exec config` で確認できます。
 
-- **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。
+- **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。加えて `planner`(既定は opus/max)は振り分けを通さず直接起動されます。
 - **`external_executors`** — pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、CLI が入っていなければすべて `claude` に振り分けられます。Claude Code の中では同梱の `agent-exec` ラッパーが既に `PATH` に載っており、`agent-exec install` は Claude Code の外のシェル向けです。推奨は `Bash(agent-exec:*)` の許可ルール 1 つを加えることです。
 - **`tools`** — 実行役のバイナリ(pi、herdr)を決まった版で orchestra 専用の状態ディレクトリに入れます(`agent-exec tools install`)。pi は既定で専用のエージェントディレクトリを使うため、個人の pi の設定はワーカーに届きません。
 - **`sandbox.network`** — herdr ホストの外向き通信を sandbox-runtime(srt)でドメイン許可リストに絞ります。遮断した接続は記録してパッケージごとに表示し、`agent-exec sandbox allow-domain` で動いたまま許可できます(既定は `api.anthropic.com` のみ)。

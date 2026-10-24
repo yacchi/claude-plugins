@@ -12,7 +12,7 @@
     "hud": {
       "type": "boolean",
       "title": "HUD",
-      "description": "Show orchestra activity in the status line and toasts",
+      "description": "Show orchestra activity in the status line and toasts, plus the progress pane and band",
       "default": true
     }
   }

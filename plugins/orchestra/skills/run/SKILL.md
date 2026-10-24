@@ -1,6 +1,6 @@
 ---
 name: run
-description: Playbook for cost-tiered multi-agent delegation. The instructor (Fable/Opus main session) only decomposes tasks, writes contracts, and runs the Workflow pipeline; implementation goes to the cheap tier `agent-exec route` resolves (a Claude tier first, pi as the fallback), an adversarial review pass checks the result, failures retry with precise feedback, and only structured verdicts flow back. Invoke with /run (cross-plugin: `orchestra:run`), or whenever cost-tiered delegation or large parallel task execution is called for. Also the ORCHESTRATED lane of the <orchestra-router> protocol this plugin injects at SessionStart.
+description: Playbook for cost-tiered multi-agent delegation. The instructor (Fable/Opus main session) decomposes and writes contracts itself only for a handful of tasks (anything larger goes to the orchestra-planner agent), and runs the Workflow pipeline; implementation goes to the cheap tier `agent-exec route` resolves (a Claude tier first, pi as the fallback), an adversarial review pass checks the result, failures retry with precise feedback, and only structured verdicts flow back. Invoke with /run (cross-plugin: `orchestra:run`), or whenever cost-tiered delegation or large parallel task execution is called for. Also the ORCHESTRATED lane of the <orchestra-router> protocol this plugin injects at SessionStart.
 when_to_use: Use when delegating multiple tasks in parallel to cheap models, when building a cheap-implementation + adversarial-review pipeline, or when the instructor must receive only structured verdicts — never logs, diffs, or intermediate artifacts.
 ---
 
@@ -8,7 +8,7 @@ when_to_use: Use when delegating multiple tasks in parallel to cheap models, whe
 
 You are the **instructor** — the main session, on an expensive model. This skill is your code of conduct plus the Workflow pipeline you run.
 
-**The loop:** classify (§2) → decompose into tasks with contracts (§6) → run the shipped Workflow pipeline (§5) → receive only structured verdicts. Nothing else enters your context.
+**The loop:** classify (§2) → decompose into tasks with contracts (§6; for more than a handful of tasks, the orchestra-planner does this, §14) → run the shipped Workflow pipeline (§5) → receive only structured verdicts. Nothing else enters your context.
 
 **Load a reference file only when its question actually comes up:**
 
@@ -25,7 +25,7 @@ You are the **instructor** — the main session, on an expensive model. This ski
 
 ## 1. Instructor code of conduct
 
-**Do:** task decomposition (what parallelizes, where dependencies are) · contract definition (per-task spec, edge cases, verification command, pass criteria) · writing the task list and contracts for the Workflow run · exception judgment on returned verdicts (ambiguity, design decisions, what to do after retry exhaustion).
+**Do:** task decomposition and contract definition (what parallelizes, where dependencies are; per-task spec, edge cases, verification command, pass criteria) for a handful of tasks only — anything larger goes to `orchestra-planner` (§14) · writing the task list and contracts for the Workflow run · exception judgment on returned verdicts (ambiguity, design decisions, what to do after retry exhaustion).
 
 **Do NOT:** read/write/edit implementation files · load test logs, diffs, intermediate artifacts, or raw worker/review responses into your context · run any task's implementation or verification yourself.
 
@@ -55,7 +55,7 @@ The full pipeline on every request is overkill. **Express only when ALL hold:**
 
 | Class | Resolved via | Role |
 |---|---|---|
-| Instructor | Fable / Opus — fixed, never routed | Decomposition, contracts, task-list writing, exception judgment ONLY |
+| Instructor | Fable / Opus — fixed, never routed | Decomposition and contracts for a handful of tasks (larger work goes to `orchestra-planner`, §14), task-list writing, exception judgment ONLY |
 | `deep` | `agent-exec route --class deep` — Opus (`orchestra-deep`) first, then pi `openai-codex/gpt-6.1-sol`/high | Real design latitude: algorithm choice, API shape, tradeoffs |
 | `standard` | `agent-exec route --class standard` — Claude Haiku (high) first, then pi `openai-codex/gpt-5.6-luna`/high | Ordinary implementation; review needing adversarial test design and failure interpretation |
 | `light` | `agent-exec route --class light` — Claude Haiku (medium) first, then pi `openai-codex/gpt-5.6-luna`/medium | Implementation or review whose procedure is 100% prescribed |
