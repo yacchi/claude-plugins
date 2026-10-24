@@ -8,7 +8,28 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 )
+
+// `auto` keeps at least one test slot on any machine: half of a two-slot
+// heavy pool must not round down to an off pool. Only an explicit 0 is off.
+func TestTestPoolAutoIsNeverOff(t *testing.T) {
+	for _, cpus := range []int{1, 2, 3, 4, 14} {
+		if n := TestAutoSize(cpus); n < 1 {
+			t.Errorf("%d cpus: test pool auto size %d", cpus, n)
+		}
+	}
+	throttle := func(v any) *config.Resolved {
+		return &config.Resolved{Values: map[string]any{"throttle": map[string]any{"test_slots": v}}}
+	}
+	if p := Configured(throttle("auto"), Test); p.Size < 1 {
+		t.Errorf("test_slots auto: size %d", p.Size)
+	}
+	if p := Configured(throttle(int64(0)), Test); p.Size != 0 {
+		t.Errorf("test_slots 0: size %d, want off", p.Size)
+	}
+}
 
 func testPool(t *testing.T, size int) Pool {
 	t.Helper()

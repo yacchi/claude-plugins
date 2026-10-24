@@ -1,8 +1,9 @@
-// Package slot is the machine-wide admission pool for heavy local commands
+// Package slot is the machine-wide admission pools for heavy local commands
 // (installs, tests, typechecks, lints, builds). Past about five at once they
 // all slow down several times over, so every worker's heavy command and every
-// check command takes one slot of the pool while it runs, whatever wave or
-// session it belongs to.
+// check command takes one slot of a pool while it runs, whatever wave or
+// session it belongs to: tests, lints and typechecks on the test pool, so
+// they are capped apart from installs and builds on the heavy pool.
 //
 // A held slot is a lease file in <slot dir>/<pool>/ naming its owner pid,
 // start and expiry. Leases are counted and taken under a short flock on the
@@ -20,7 +21,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -31,8 +31,12 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
-// Heavy is the pool of heavy local commands.
-const Heavy = "heavy"
+// The machine-wide pools: Test admits test, lint and typecheck runs, Heavy
+// every other heavy command (installs, builds) and agent-exec's worktree I/O.
+const (
+	Heavy = "heavy"
+	Test  = "test"
+)
 
 // DefaultTTL is how long a lease lives when the acquirer names no TTL.
 const DefaultTTL = 15 * time.Minute
@@ -69,16 +73,22 @@ func Enabled() bool {
 	return !testing.Testing() || os.Getenv("ORCHESTRA_SLOT_DIR") != ""
 }
 
-// AutoSize is the `auto` pool size: a third of the cores, at least 2
+// AutoSize is the heavy pool's `auto` size: a third of the cores, at least 2
 // (14 cores -> 5).
 func AutoSize(cpus int) int {
 	return max(2, (cpus+1)/3)
 }
 
-// SizeOf reads a `throttle.heavy_slots` value: a non-negative integer is
-// used as is (0 = off), "off" or false is 0, anything else (`auto`, unset)
-// is AutoSize of this machine.
-func SizeOf(v any) int {
+// TestAutoSize is the test pool's `auto` size: half the heavy pool's, at
+// least 1 (14 cores -> 2).
+func TestAutoSize(cpus int) int {
+	return max(1, AutoSize(cpus)/2)
+}
+
+// sizeOf reads a `throttle.heavy_slots` / `test_slots` value: a
+// non-negative integer is used as is (0 = off), "off" or false is 0,
+// anything else (`auto`, unset) is auto.
+func sizeOf(v any, auto int) int {
 	switch x := v.(type) {
 	case int:
 		if x >= 0 {
@@ -101,7 +111,7 @@ func SizeOf(v any) int {
 			return 0
 		}
 	}
-	return AutoSize(runtime.NumCPU())
+	return auto
 }
 
 // Pool is one named pool of Size slots (0 = off).
