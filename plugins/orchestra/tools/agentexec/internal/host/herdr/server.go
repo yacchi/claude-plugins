@@ -12,7 +12,6 @@ import (
 	"syscall"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
@@ -178,16 +177,7 @@ func (e *Executor) ensureServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// After ServerEnv's scrub: the worker's CLAUDE_CODE_* switches must reach
-	// the panes the server starts.
-	isoEnv, err := host.IsolationEnv(e.cfg)
-	if err != nil {
-		return err
-	}
-	env := append(sandbox.ChildEnv(spec, procEnv), isoEnv...)
-	if cwd, _ := os.Getwd(); pnpmGVSRepo(e.tools, cwd) {
-		env = config.WithPnpmGVS(env)
-	}
+	env := sandbox.ChildEnv(spec, procEnv)
 	e.setSandboxed(&spec, "")
 	srtPath, why := networkPlan(e.tools, spec, e.srtStatus)
 	stateDir := e.StateDir()
@@ -227,23 +217,6 @@ func (e *Executor) ensureServer(ctx context.Context) error {
 			return host.AsNeed(err)
 		}
 	}
-}
-
-// pnpmGVSRepo reports whether the server's panes get pnpm's global virtual
-// store switch. One server hosts every tree of the repository and its panes
-// inherit its env, so this is decided per repository (dir's): the setting
-// is on and the repository root holds pnpm-lock.yaml. Panes run in
-// orchestra worktrees, never in the user's checkout.
-func pnpmGVSRepo(cfg *config.Resolved, dir string) bool {
-	if !config.PnpmGVS(cfg) {
-		return false
-	}
-	root, ok := gitx.RepoRoot(dir)
-	if !ok {
-		return false
-	}
-	st, err := os.Stat(filepath.Join(root, "pnpm-lock.yaml"))
-	return err == nil && st.Mode().IsRegular()
 }
 
 // command is a detached server process: own session, no stdin.
