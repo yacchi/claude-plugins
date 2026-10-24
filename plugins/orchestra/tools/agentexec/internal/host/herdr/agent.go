@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
@@ -213,6 +214,21 @@ func callErr(err error) *CallError {
 	return nil
 }
 
+// workspaceEnv is the env of the processes of a pane on tree: the worker's
+// isolation switches (host.IsolationEnv) and pnpm's global virtual store
+// switch when tree runs under it (config.PnpmGVSTree). Each workspace gets
+// its own, so a setting change applies from the next package start.
+func (e *Executor) workspaceEnv(tree string) ([]string, error) {
+	env, err := host.IsolationEnv(e.cfg)
+	if err != nil {
+		return nil, err
+	}
+	if config.PnpmGVSTree(config.PnpmGVS(e.tools), tree) {
+		env = append(env, config.PnpmGVSEnv)
+	}
+	return env, nil
+}
+
 // openAgent opens a workspace and an agent on the session's worktree, up
 // to a usable prompt. The trust dialog is a need unless auto_trust applies
 // (a worktree this executor created, under a sandboxed server).
@@ -237,8 +253,15 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 				"put the state dir on a shorter path)", len(line), maxStartLine))
 	}
 	name := AgentName(s.Pkg)
-	payload, _, err := e.call(ctx, callTimeout, "", "workspace", "create", "--cwd", s.Worktree,
-		"--label", "wave "+s.Pkg, "--no-focus")
+	env, err := e.workspaceEnv(s.Worktree)
+	if err != nil {
+		return "", err
+	}
+	args := []string{"workspace", "create", "--cwd", s.Worktree, "--label", "wave " + s.Pkg, "--no-focus"}
+	for _, kv := range env {
+		args = append(args, "--env", kv)
+	}
+	payload, _, err := e.call(ctx, callTimeout, "", args...)
 	if err != nil {
 		return "", host.Need(host.KindError, err.Error())
 	}
