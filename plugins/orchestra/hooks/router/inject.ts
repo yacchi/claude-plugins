@@ -34,6 +34,9 @@ ORCHESTRATED — anything else, and WHENEVER IN DOUBT.
 → Load the \`orchestra:run\` skill and follow it: decompose, write contracts,
   delegate to cheap workers with adversarial verifiers, take back only
   structured verdicts.
+→ Decomposition beyond a handful of tasks: planner first. Do not plan it
+  yourself; spawn \`orchestra:orchestra-planner\` with the \`model\`/\`effort\` of
+  \`tiers.planner\` (\`agent-exec config --json\`), then run the plan it writes.
 
 A lane never persists — re-classify every request and at every phase shift.
 Forced ORCHESTRATED, even mid-conversation: you are about to hand-write

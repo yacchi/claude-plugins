@@ -26,11 +26,12 @@
 #     pi:
 #       enabled: false
 
-# Capability/performance classes and verification roles, each mapped to a Claude
-# model alias (or full model ID). The implementation classes (light/standard/deep)
-# describe how hard the work is; the review role names the verification function.
-# Both live here so the whole tier vocabulary is in one place. Used wherever the
-# run skill routes work by class/role.
+# Capability/performance classes, verification roles and the planner, each mapped
+# to a Claude model alias (or full model ID). The implementation classes
+# (light/standard/deep) describe how hard the work is; the review role names the
+# verification function; the planner plans programmes. All live here so the whole
+# tier vocabulary is in one place. Used wherever the run skill routes work by
+# class/role.
 tiers:
   # Each tier is either a model string (effort unset) or an object
   # { model: <alias>, effort: low|medium|high|xhigh|max }. The effort is passed
@@ -49,6 +50,12 @@ tiers:
   review:            # mandatory same-run adversarial review of the work
     model: sonnet
     effort: medium
+  # planning role (never routed): the instructor spawns `orchestra:orchestra-planner`
+  # with this model and effort for anything beyond a handful of tasks. model must
+  # be opus, fable or sonnet.
+  planner:
+    model: opus
+    effort: max
   # `independent-review` has no built-in Claude model on purpose — it exists to
   # add a DIFFERENT provider's eyes; see `priority.independent-review` below.
 

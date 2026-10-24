@@ -6,45 +6,47 @@ The shapes below have run end to end at programme scale (hundreds of packages, d
 
 ## 1. Budget before anything else
 
-- **Pin every agent.** Implementation goes through `dispatchClass()`/`runTask()` (§5 of the skill, in `workflows/pipeline.js`), review stays on Sonnet, planning roles are pinned per §2's table, relays are Haiku. §4 of the skill applies to every line of every script here.
+- **Pin every agent.** Implementation goes through `dispatchClass()`/`runTask()` (§5 of the skill, in `workflows/pipeline.js`), review stays on Sonnet, planning runs in the one high-effort planner whose spawns are pinned per §2's table, relays are Haiku. §4 of the skill applies to every line of every script here.
 - **Run continuously; fix any budget up front.** Do not chunk the programme. Start it once and let it flow: every package that may start does (`wave run --max-in-flight auto`, the default), and it stops only on `agent-exec wave stop --state ...` or at a budget agreed with the user *before* the start, if they want one (`--budget-usd X` with `--run-id <id>`: once the run's estimated cost, the figure `agent-exec usage --run <id>` prints, reaches X, nothing new starts and the packages in flight finish). Why: in a 123-package run, 8 chunk stops each drained 40-60 min while the slowest in-flight package finished (8.5 h of 18.3 h wall), against 0.9 h of restart gaps in total.
 - **Never manage machine load with the width.** Do not lower `--max-in-flight` or cap packages (`--max-packages`) because the machine is small or busy: heavy commands and agent-exec's own worktree checkouts and deletes are admitted machine-wide (`throttle.heavy_slots`, `config.md` §10), and the runner holds new starts by itself while the OS reports memory pressure (`wave.memory_guard`, `config.md` §9). There is nothing machine-related for you to judge.
 - **Relay usage, never stop for it.** Every `wave.usage_every` integrated packages (default 10) the run emits a `usage` event (packages integrated / in flight / pending, and the estimated cost so far when it has a `--run-id`) and runs `--notify-cmd` with `WAVE_EVENT=usage`; pass the numbers on to the user as they come. The notice never pauses anything; `agent-exec usage --run <id>` gives the full breakdown at any time.
 - **Two gates, not three rounds.** The reference run allowed up to three review rounds per package on Opus. `runTask()`'s two-gate discipline (§11) is the cheaper equivalent and already escalates class on its own.
 
-## 2. Planning workflows (read-only)
+## 2. Planning (read-only, inside the planner)
 
-The plan is too large for the instructor to write by hand and too important to take from one agent. All planning roles are read-only against the repository and write their output to a specs directory on disk; the instructor reads only the returned summaries and package lists (ids, `files_owned`, `depends_on`, `cls`).
+The plan is too large for the instructor to write by hand and too important to take from one cheap agent. The instructor spawns one `orchestra:orchestra-planner` (skill §14) at `tiers.planner`'s model and effort (default Opus/max); the roles below run inside it as its playbook. The planner fans the reading out to pinned Sonnet/Haiku children, and does the synthesis, judging, reconciling and contract writing itself. Everything is read-only against the repository; output goes to a specs directory on disk (one spec per package, a shared preamble, `plan.json`), and the instructor reads only the planner's report.
 
-| Role | Pin | Job |
+| Role | Pin (spawned by the planner) | Job |
 |---|---|---|
 | Scoped auditor / designer | `model: 'sonnet'` | One per area or feature; reads code, cites `file:line` for every claim |
 | Adversarial verifier / critic | `model: 'sonnet'` | Tries to **refute** each finding or design point against the code and the owner's rules; **default verdict when the evidence does not hold up is `refuted`** |
 | Completeness critic | `model: 'sonnet'` | Given only the *titles* of kept findings, finds what nobody covered: cross-module drift, lifecycle gaps, flows that break at the seams |
-| Synthesizer / judge / reconciler | `model: 'opus'` | Turns verified findings or designs into packages; judges competing designs |
-| Reality checker | `model: 'sonnet'` | Right before scheduling, re-checks each spec against the code at the current integration HEAD |
+| Synthesizer / judge / reconciler | the planner itself, never spawned | Turns verified findings or designs into packages; judges competing designs |
+| Reality checker | `model: 'sonnet'` | Before the planner writes the plan, and again right before scheduling a plan that waited, re-checks each spec against the code at the current integration HEAD |
+| File locator | `model: 'haiku'` | Pure lookups: where a symbol is defined, which tests cover a package |
 
-**Audit → verify → critic → synthesize.** Pipeline each auditor straight into its own verifier (no barrier: auditor B is still reading while auditor A's findings are being refuted). Merge verdicts into the findings (a verifier's `corrected_proposal` and severity replace the auditor's), drop `refuted`, then run the critic on the titles of what survived and verify *its* findings the same way. The synthesizer gets every surviving finding plus each auditor's short area map and returns packages. Each package must be self-contained for one engineer session: an implementer gets only its spec plus shared principles.
+**Audit → verify → critic → synthesize.** Pipeline each auditor straight into its own verifier (no barrier: auditor B is still reading while auditor A's findings are being refuted). Merge verdicts into the findings (a verifier's `corrected_proposal` and severity replace the auditor's), drop `refuted`, then run the critic on the titles of what survived and verify *its* findings the same way. The synthesizer (the planner) takes every surviving finding plus each auditor's short area map and writes the packages. Each package must be self-contained for one engineer session: an implementer gets only its spec plus shared principles.
 
-**Design → critique → revise.** For each feature, a designer writes the design and its packages, a critic attacks it against the code and constraints, a reviser answers every valid point (and rejects invalid ones in a "Critique responses" section). For a decision with two defensible architectures, run two designers with opposing briefs in `parallel()` and an Opus judge that scores both and synthesizes one — the disagreement is information about the problem, the same way §12's competing implementations are information about a spec.
+**Design → critique → revise.** For each feature, a designer writes the design and its packages, a critic attacks it against the code and constraints, a reviser answers every valid point (and rejects invalid ones in a "Critique responses" section). For a decision with two defensible architectures, run two designers with opposing briefs in parallel and let the planner score both and synthesize one — the disagreement is information about the problem, the same way §12's competing implementations are information about a spec.
 
-**Reconcile → cross-check.** Independently written designs overlap and disagree. One reconciler per track dedupes into one package list (keeping ids where a package survives, recording `dropped` with `replaced_by`), then one cross-checker looks across tracks for dangling `depends_on`, missing cross-track dependencies (two packages changing the same type, format, or schema in different files), and `files_owned` gaps.
+**Reconcile → cross-check.** Independently written designs overlap and disagree. The planner dedupes each track into one package list (keeping ids where a package survives, recording `dropped` with `replaced_by`), then one Sonnet cross-checker looks across tracks for dangling `depends_on`, missing cross-track dependencies (two packages changing the same type, format, or schema in different files), and `files_owned` gaps.
 
 **Reality check, immediately before scheduling.** `files_owned` is a *prediction*. In the reference run, feature packages were planned while a 7-wave refactor was still landing; by the time they were scheduled, paths had moved and some work had already been done by the refactor. One checker per group of packages re-reads each spec against the current integration HEAD, returns corrected `files_owned` and `depends_on` edits, and appends a "Post-refactor reality check" section to the spec. Skipping this step does not save its cost: every stale spec is paid for later as an ESCALATE, a conflict, or a reviewer rejection.
 
-The package schema the synthesizer and reconcilers return, and the scheduler consumes:
+The package schema the planner works to and the scheduler consumes (in `wave run`'s `plan.json`, `instructions` is the `spec` file's path instead, §6):
 
 ```javascript
 const PACKAGE = {
   type: 'object',
-  required: ['id', 'title', 'instructions', 'files_owned', 'depends_on', 'cls', 'verification'],
+  required: ['id', 'title', 'instructions', 'files_owned', 'depends_on', 'cls', 'est_seconds', 'verification'],
   properties: {
     id: { type: 'string' }, title: { type: 'string' },
     instructions: { type: 'string' },            // self-contained; cites evidence locations
     files_owned: { type: 'array', items: { type: 'string' } },   // tight: over-broad globs serialize the schedule
     depends_on: { type: 'array', items: { type: 'string' } },    // only where one package needs another's CODE
     cls: { type: 'string', enum: ['light', 'standard', 'deep'] },
-    verification: { type: 'string' },            // the exact commands
+    est_seconds: { type: 'number', maximum: 300 }, // larger: split, never allowLarge
+    verification: { type: 'string' },            // the exact commands: the touched packages' tests only
   },
 }
 ```

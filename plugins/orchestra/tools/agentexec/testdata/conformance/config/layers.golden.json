@@ -212,6 +212,10 @@
         "tiers": {
           "deep": "sonnet",
           "light": "sonnet",
+          "planner": {
+            "effort": "max",
+            "model": "opus"
+          },
           "review": "haiku",
           "standard": {
             "effort": "high",

@@ -47,7 +47,7 @@ Do this before asking the user anything, and report the findings plainly (e.g. "
 `agent-exec` does not detect legacy config (no `warnings` entries): neither the pre-YAML `orchestra.json` nor the pre-0.4 role vocabulary (`tiers.worker/hard_worker/verifier`, `external_executors.*.roles` / `model_policy`, `role_priority`, `long_context_escalation.{model,effort}`) is read, so a file still using them silently loses that configuration. Only when the user asks to convert one (or the effective config from step 5 is missing settings they expect):
 
 1. `Read` the specific file the user names.
-2. Show the equivalent current YAML: `tiers.light/standard/deep` + `review`, `external_executors.*.classes`, `external_executors.*.class_policy`, `priority.<class>.<archetype>`, `long_context_escalation.{class}` — use `examples/orchestra.yaml`, shipped alongside the `orchestra:run` skill, as the commented template.
+2. Show the equivalent current YAML: `tiers.light/standard/deep` + `review` + `planner`, `external_executors.*.classes`, `external_executors.*.class_policy`, `priority.<class>.<archetype>`, `long_context_escalation.{class}` — use `examples/orchestra.yaml`, shipped alongside the `orchestra:run` skill, as the commented template.
 3. Ask before writing the new `.yaml` (or converting in place with `Edit`, preserving every other key and comment) and before removing an old `.json`. Never do this silently — the file may be untracked or mid-edit.
 
 ## 5. Interactive flow

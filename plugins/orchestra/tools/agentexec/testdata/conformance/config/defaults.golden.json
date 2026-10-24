@@ -207,6 +207,10 @@
             "effort": "medium",
             "model": "haiku"
           },
+          "planner": {
+            "effort": "max",
+            "model": "opus"
+          },
           "review": {
             "effort": "medium",
             "model": "sonnet"
@@ -472,6 +476,10 @@
           "light": {
             "effort": "medium",
             "model": "haiku"
+          },
+          "planner": {
+            "effort": "max",
+            "model": "opus"
           },
           "review": {
             "effort": "medium",

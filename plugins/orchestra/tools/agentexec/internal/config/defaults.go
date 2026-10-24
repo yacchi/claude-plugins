@@ -307,6 +307,7 @@ func Defaults() map[string]any {
 			"standard", modelEffort("haiku", "high"),
 			"deep", modelEffort("opus", "medium"),
 			"review", modelEffort("sonnet", "medium"),
+			"planner", modelEffort("opus", "max"),
 		),
 		"external_executors", obj(
 			"pi", obj(
