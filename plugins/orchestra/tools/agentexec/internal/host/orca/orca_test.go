@@ -252,7 +252,7 @@ func TestAddDirsAndPermissionModeAreRendered(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := opt(e.callsOf("terminal create")[0], "--command")
-	if cmd != "claude --model opus --permission-mode acceptEdits --add-dir "+e.state+` --settings '{"disableRemoteControl":true}'` {
+	if cmd != "claude --model opus --permission-mode acceptEdits --add-dir "+e.state+` --settings '{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}'` {
 		t.Errorf("%q", cmd)
 	}
 }
