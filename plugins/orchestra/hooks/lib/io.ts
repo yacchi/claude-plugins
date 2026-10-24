@@ -7,6 +7,7 @@ import type { FsStat, ProcessRunInit, ProcessRunResult } from 'claude-code'
 export type EnvName =
     | 'HOME'
     | 'ORCHESTRA_ENFORCEMENT'
+    | 'ORCHESTRA_LAUNCH_GUARD'
     | 'ORCHESTRA_LEASE_GUARD'
     | 'ORCHESTRA_LEASE_WINDOW'
     | 'ORCHESTRA_OPUS_NUDGE'
