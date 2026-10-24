@@ -99,7 +99,7 @@ claude plugin validate .
 
 ### HUD
 
-orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときだけです。ダッシュボード全体は既存の `/ui` スキルで開けます。`hud` プラグインオプション（既定はオン）で無効にできます。
+orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。メインスレッドが `agent-exec wave run --state <path>` を起動すると（通常は `run_in_background`）、ウェーブの表示 `wave 12/40 · 5 running · 2 needs`（統合済み/全パッケージ数、実行中のパッケージ数、未解決の needs 数）が加わり、run が停止するかランナーが終了するまで `wave status` から 15 秒ごとに更新されます。複数のウェーブは並べて表示します。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。ダッシュボード全体は既存の `/ui` スキルで開けます。`hud` プラグインオプション（既定はオン）で無効にできます。
 
 ### Copilot CLI / opencode からの移行
 
