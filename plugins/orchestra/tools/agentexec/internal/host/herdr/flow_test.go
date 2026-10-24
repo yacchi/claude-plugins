@@ -478,3 +478,23 @@ func TestHostReportWithoutSrt(t *testing.T) {
 		t.Errorf("%v\n%s", err, b)
 	}
 }
+
+// A leftover agent of the same name (its tree removed while it ran) used to
+// make `agent start` fail on the taken name; its workspace is closed first.
+func TestStartClosesALeftoverAgentOfTheSameName(t *testing.T) {
+	e := newEnv(t)
+	e.scenario(map[string]any{"running": true, "stale_agents": map[string]any{"p-a": "w-old"}}, true)
+	x := e.executor("")
+	if _, err := x.Start(context.Background(), "a", e.repo, "main", "standard", "haiku", "run-1", e.state, []string{e.state}); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	closed := false
+	for _, c := range e.callsOf("workspace close") {
+		if hasArg(c.Argv, "w-old") {
+			closed = true
+		}
+	}
+	if !closed {
+		t.Errorf("leftover workspace w-old not closed: %v", e.callsOf("workspace close"))
+	}
+}

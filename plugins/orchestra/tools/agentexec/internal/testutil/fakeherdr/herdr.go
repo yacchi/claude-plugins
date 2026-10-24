@@ -79,6 +79,9 @@ func (c *call) herdr() int {
 		}
 		return c.herdrOK(map[string]any{"result": map[string]any{"type": "workspace_list", "workspaces": list}})
 	case verb == "workspace close":
+		if len(args) > 2 {
+			st["closed_workspaces"] = append(strList(st["closed_workspaces"]), args[2])
+		}
 		var kept []any
 		for _, ws := range strList(st["workspaces"]) {
 			if len(args) < 3 || ws != args[2] {
@@ -90,6 +93,9 @@ func (c *call) herdr() int {
 	case verb == "agent wait":
 		return c.herdrOK(map[string]any{})
 	case verb == "agent start":
+		if ws := c.staleAgent(st, args); ws != "" {
+			return c.herdrErrMsg("agent_name_taken", "an agent named "+args[2]+" already exists", 1)
+		}
 		if truthy(c.scenario["fail_warm"]) && len(args) > 2 && strings.HasPrefix(args[2], "p-warm") {
 			return c.herdrErr("boom", 1)
 		}
@@ -121,6 +127,10 @@ func (c *call) herdr() int {
 		st["not_ready"] = false
 		return c.herdrOK(map[string]any{})
 	case verb == "agent get":
+		if ws := c.staleAgent(st, args); ws != "" {
+			return c.herdrOK(map[string]any{"result": map[string]any{"agent": map[string]any{
+				"agent_status": "idle", "workspace_id": ws}}})
+		}
 		if code := str(c.scenario["get_error"]); code != "" {
 			return c.herdrErr(code, 1)
 		}
@@ -162,4 +172,20 @@ func (c *call) herdr() int {
 func itoa(n int) string {
 	b, _ := json.Marshal(n)
 	return string(b)
+}
+
+// staleAgent is the workspace of a leftover agent named args[2]
+// (scenario "stale_agents": {name: workspace}) until that workspace is closed.
+func (c *call) staleAgent(st map[string]any, args []string) string {
+	stale, _ := c.scenario["stale_agents"].(map[string]any)
+	if len(args) < 3 || stale == nil {
+		return ""
+	}
+	ws := str(stale[args[2]])
+	for _, closed := range strList(st["closed_workspaces"]) {
+		if closed == ws {
+			return ""
+		}
+	}
+	return ws
 }
