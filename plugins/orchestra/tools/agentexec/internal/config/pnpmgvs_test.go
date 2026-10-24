@@ -82,3 +82,117 @@ func TestWithPnpmGVSWarnsOnceUnderCI(t *testing.T) {
 		t.Errorf("warnings = %q, want one line naming CI=true", buf.String())
 	}
 }
+
+// probePnpm lets the auto probe run the real `pnpm --version` (the test
+// binary's guard otherwise keeps it off) for the rest of t.
+func probePnpm(t *testing.T) {
+	t.Helper()
+	pnpmVersionSeam = runPnpmVersion
+	t.Cleanup(func() { pnpmVersionSeam = nil })
+}
+
+// fakePnpm puts a pnpm running body on PATH, in a directory of its own, and
+// lets the probe run it.
+func fakePnpm(t *testing.T, body string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pnpm"), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	probePnpm(t)
+}
+
+// Inside a test binary "auto" is off without a probe seam, whatever pnpm is
+// on PATH, and the probe is not run at all.
+func TestPnpmGVSAutoIsOffInTestsWithoutAProbe(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "probes")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pnpm"), []byte("#!/bin/sh\necho probe >> '"+log+"'\necho 12.0.0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	if PnpmGVS(gvsConfig(t.TempDir(), "auto")) {
+		t.Error("auto is on in a test binary without a probe seam")
+	}
+	if _, err := os.Stat(log); err == nil {
+		t.Error("pnpm ran without a probe seam")
+	}
+}
+
+func gvsConfig(root string, setting any) *Resolved {
+	values := Defaults()
+	ObjectAt(values, "isolation")["pnpm_global_virtual_store"] = setting
+	return &Resolved{Values: values, Root: root}
+}
+
+// "auto" follows the pnpm that runs in the config root: 12 and later turn the
+// global virtual store on, older, unparsable or missing pnpm leave it off.
+func TestPnpmGVSAutoFollowsThePnpmVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		body string // fake pnpm body ("" = no pnpm on PATH)
+		want bool
+	}{
+		{name: "pnpm 12", body: "echo 12.0.0", want: true},
+		{name: "pnpm 11", body: "echo 11.9.0"},
+		{name: "pnpm 10.12.1", body: "echo 10.12.1"},
+		{name: "garbage", body: "echo nonsense"},
+		{name: "missing", body: ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.body == "" {
+				t.Setenv("PATH", t.TempDir())
+				probePnpm(t)
+			} else {
+				fakePnpm(t, c.body)
+			}
+			if got := PnpmGVS(gvsConfig(t.TempDir(), "auto")); got != c.want {
+				t.Errorf("PnpmGVS = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// The probe runs in the config root, not in the process's directory (the
+// package directory, which holds no marker).
+func TestPnpmGVSAutoProbesInTheConfigRoot(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "marker"), "")
+	fakePnpm(t, "if [ -e marker ]; then echo 12.0.0; else echo 11.0.0; fi")
+	if !PnpmGVS(gvsConfig(root, "auto")) {
+		t.Errorf("PnpmGVS in %s = false, want true", root)
+	}
+}
+
+// Every lookup of one root reuses the first probe.
+func TestPnpmGVSAutoProbesOncePerRoot(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "probes")
+	fakePnpm(t, "echo probe >> '"+log+"'\necho 12.0.0")
+	root := t.TempDir()
+	for range 3 {
+		PnpmGVS(gvsConfig(root, "auto"))
+	}
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(raw), "probe"); n != 1 {
+		t.Errorf("pnpm ran %d times for one root, want 1", n)
+	}
+}
+
+// The setting is true, false or "auto"; anything else is a config error.
+func TestPnpmGVSSettingAcceptsOnlyBoolOrAuto(t *testing.T) {
+	values := Defaults()
+	if err := validatePnpmGVS(values); err != nil {
+		t.Errorf("default: %v", err)
+	}
+	for _, bad := range []any{"yes", "true", "", nil, int64(1)} {
+		ObjectAt(values, "isolation")["pnpm_global_virtual_store"] = bad
+		if err := validatePnpmGVS(values); err == nil {
+			t.Errorf("%#v accepted, want an error", bad)
+		}
+	}
+}
