@@ -27,6 +27,9 @@
             "sandbox": 0
           }
         },
+        "dashboard": {
+          "artifact_url": ""
+        },
         "enforcement": {
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -297,6 +300,9 @@
             "rate-limit": 900,
             "sandbox": 0
           }
+        },
+        "dashboard": {
+          "artifact_url": ""
         },
         "enforcement": {
           "light_class": "off",

@@ -625,3 +625,12 @@ throttle:
 - **Seeing it.** Each wait is a trace record (kind `lock`, op `slot heavy` or `slot test`, detail the command's op): `agent-exec trace report --kind lock`. `agent-exec slot status [--json]` lists each pool's size and held leases (pid, age, op); the JSON is `{"pools":[{"pool","size","off","dir","held"}, …]}`.
 
 CLI (used by the hooks): **`agent-exec slot classify --command CMD`** prints `{"op":"…","heavy":bool,"kind":"test"|"build"|null,"pool":"test"|"heavy","scope":"full"|"targeted"}`. **`agent-exec slot acquire --command CMD [--owner-pid N] [--ttl 15m] [--max-wait D]`** prints `{"admitted":false}` at once for a command that is not heavy (or with its pool off), else blocks until a slot of the command's pool is held and prints `{"admitted":true,"token":"…","waited_ms":N,"op":"…","pool":"…"}` (`admitted:false` with a `reason` when `--max-wait` passed or the owner died first). `--owner-pid` defaults to the parent process. **`agent-exec slot release TOKEN`** frees it (an unknown or released token is fine, exit 0). **`agent-exec slot status [--json]`**.
+
+## 11. Wave dashboard (`dashboard`)
+
+```yaml
+dashboard:
+  artifact_url: ""         # "" (default) | https://claude.ai/...artifact... ; set it in the user scope
+```
+
+`dashboard.artifact_url` is the claude.ai Artifact page the `orchestra-wave` watcher writes each `wave wait` answer to and reads the page's approve/deny decisions from. The instructor passes it to every watcher spawn; when it is empty, the `run` skill publishes the page before the first wave of a session and records its URL in `~/.claude/orchestra.yaml` (`programme.md` §6). Any value other than "" or an `https://claude.ai/` URL whose path names an artifact is a config error.

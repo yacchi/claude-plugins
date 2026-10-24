@@ -58,6 +58,9 @@
                 "sandbox": 0
               }
             },
+            "dashboard": {
+              "artifact_url": ""
+            },
             "enforcement": {
               "light_class": "off",
               "opus_generalist": "nudge",
