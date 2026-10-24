@@ -372,7 +372,7 @@ func Defaults() map[string]any {
 			"max_added_files", int64(DefaultMaxAddedFiles),
 			"pnpm_global_virtual_store", "auto",
 		),
-		"throttle", obj("heavy_slots", "auto", "heavy_extra", []any{}),
+		"throttle", obj("heavy_slots", "auto", "test_slots", "auto", "heavy_extra", []any{}),
 		"wave", obj(
 			"max_in_flight", "auto",
 			"memory_guard", true,

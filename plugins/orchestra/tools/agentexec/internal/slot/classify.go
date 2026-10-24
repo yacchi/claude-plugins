@@ -2,11 +2,28 @@ package slot
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
 // Heavy commands are told apart here and nowhere else: the worker hook asks
-// `agent-exec slot acquire --command`, which asks Classify.
+// `agent-exec slot classify` and `slot acquire`, which ask Classify.
+
+// Kinds of heavy command; each kind is admitted on its own machine-wide pool.
+const (
+	// KindTest is a test, lint or typecheck run (the test pool).
+	KindTest = "test"
+	// KindBuild is an install, a build or a heavy_extra match (the heavy pool).
+	KindBuild = "build"
+)
+
+// Scopes of a command line: a full one runs the test suite of a whole
+// repository or workspace, which a worker leaves to the run after
+// integration.
+const (
+	ScopeFull     = "full"
+	ScopeTargeted = "targeted"
+)
 
 var (
 	quotedRE   = regexp.MustCompile(`'[^']*'|"(?:[^"\\]|\\.)*"`)
@@ -17,27 +34,30 @@ var (
 	versionArg = map[string]bool{"--version": true, "-v": true, "-V": true, "--help": true, "-h": true}
 )
 
-// Programs that are heavy whatever follows them.
-var heavyPrograms = map[string]bool{
-	"tsc": true, "vue-tsc": true, "vitest": true, "jest": true, "mocha": true, "pytest": true,
-	"tox": true, "mypy": true, "pyright": true, "eslint": true, "biome": true, "ruff": true,
-	"golangci-lint": true, "esbuild": true,
+// Programs that are heavy whatever follows them, and their kind.
+var heavyPrograms = map[string]string{
+	"tsc": KindTest, "vue-tsc": KindTest, "vitest": KindTest, "jest": KindTest, "mocha": KindTest,
+	"pytest": KindTest, "tox": KindTest, "mypy": KindTest, "pyright": KindTest, "eslint": KindTest,
+	"biome": KindTest, "ruff": KindTest, "golangci-lint": KindTest, "esbuild": KindBuild,
 }
 
 // Programs heavy only with one of these subcommands (first word that is not
-// a flag).
-var heavySubcommands = map[string]map[string]bool{
-	"next":       {"build": true},
-	"vite":       {"build": true},
-	"cdk":        {"synth": true},
-	"playwright": {"test": true},
-	"go":         {"test": true, "build": true},
-	"cargo":      {"fetch": true, "build": true, "test": true, "check": true, "clippy": true},
-	"pip":        {"install": true},
-	"pip3":       {"install": true},
-	"uv":         {"sync": true},
-	"bundle":     {"install": true},
-	"poetry":     {"install": true},
+// a flag), and the subcommand's kind.
+var heavySubcommands = map[string]map[string]string{
+	"next":       {"build": KindBuild},
+	"vite":       {"build": KindBuild},
+	"cdk":        {"synth": KindBuild},
+	"playwright": {"test": KindTest},
+	"go":         {"test": KindTest, "vet": KindTest, "build": KindBuild},
+	"cargo": {
+		"fetch": KindBuild, "build": KindBuild, "test": KindTest, "check": KindTest, "clippy": KindTest,
+	},
+	"make":   {"test": KindTest},
+	"pip":    {"install": KindBuild},
+	"pip3":   {"install": KindBuild},
+	"uv":     {"sync": KindBuild},
+	"bundle": {"install": KindBuild},
+	"poetry": {"install": KindBuild},
 }
 
 // Package managers: install verbs, `test`, and the heavy scripts (run
@@ -52,9 +72,11 @@ var packageManagers = map[string]map[string]bool{
 
 var installVerbs = map[string]bool{"install": true, "i": true, "add": true, "ci": true}
 
-// Script names (before any `:suffix`) that typecheck, lint, test or build.
-var heavyScripts = map[string]bool{
-	"test": true, "lint": true, "typecheck": true, "type-check": true, "tsc": true, "build": true,
+// Script names (before any `:suffix`) that typecheck, lint, test or build,
+// and their kind.
+var heavyScripts = map[string]string{
+	"test": KindTest, "lint": KindTest, "typecheck": KindTest, "type-check": KindTest, "tsc": KindTest,
+	"build": KindBuild,
 }
 
 // Wrapper value flags: `nice -n 5`, `timeout -s KILL 300`, `sudo -u root`.
@@ -71,30 +93,99 @@ var runnerFlags = map[string]bool{
 	"--python": true, "--env-file": true, "-C": true, "--filter": true, "-F": true, "--dir": true,
 }
 
-// Classify reports whether command, a Bash command line, runs a heavy local
-// workload. A compound line is heavy when any simple command in it is;
-// quoted strings and heredoc bodies are data, never commands. extra are the
+// Value flags of the test runners, so that a flag's value is not read as a
+// path or name argument.
+var (
+	pytestFlags = map[string]bool{
+		"-m": true, "-c": true, "-p": true, "-n": true, "-o": true, "-W": true, "--rootdir": true,
+		"--ignore": true, "--deselect": true, "--confcutdir": true, "--basetemp": true, "--maxfail": true,
+		"--durations": true, "--junitxml": true, "--tb": true,
+	}
+	jsRunnerFlags = map[string]bool{
+		"-c": true, "--config": true, "--reporter": true, "--root": true, "--environment": true,
+		"--pool": true, "--maxWorkers": true, "--outputFile": true, "--workers": true, "-j": true,
+	}
+	toxFlags = map[string]bool{"-e": true, "-c": true, "-p": true, "--workdir": true}
+)
+
+// Flags that pick tests by name or path, or a package by name or directory:
+// the run is targeted however wide its directory.
+var (
+	jsFilterFlags = []string{
+		"-t", "--testNamePattern", "--grep", "-g", "--project", "--selectProjects", "--testPathPattern",
+		"--changed", "--related", "--findRelatedTests", "--onlyChanged", "-o",
+	}
+	pmScopeFlags = []string{"--filter", "-F", "-C", "--dir", "-w", "--workspace", "--prefix", "--cwd"}
+)
+
+// Class is what Classify tells of a command line.
+type Class struct {
+	// Op names the first heavy command ("pnpm test", "tsc"), or the first
+	// command when none is heavy.
+	Op    string
+	Heavy bool
+	// Kind is KindBuild when any heavy command of the line is one, else
+	// KindTest; "" when none is heavy.
+	Kind string
+	// Scope is ScopeFull when any test run of the line covers a whole
+	// repository or workspace, else ScopeTargeted.
+	Scope string
+}
+
+// Pool is the name of the machine-wide pool the line is admitted on: the
+// test pool for a line of tests, lints and typechecks only, else the heavy
+// pool (also for what is not heavy at all: a check command of unknown kind).
+func (c Class) Pool() string {
+	if c.Kind == KindTest {
+		return Test
+	}
+	return Heavy
+}
+
+// Classify tells what command, a Bash command line, runs: whether it is a
+// heavy local workload, of which kind, and whether it runs a whole suite. A
+// compound line is heavy when any simple command in it is; quoted strings
+// and heredoc bodies are data, never commands. extra are the
 // `throttle.heavy_extra` patterns, matched against each simple command with
-// its env assignments and wrappers removed. op names the first heavy command
-// ("pnpm test", "tsc"), or the first command when none is heavy.
-func Classify(command string, extra []*regexp.Regexp) (op string, heavy bool) {
+// its env assignments and wrappers removed; a command only they match is of
+// KindBuild and never full.
+func Classify(command string, extra []*regexp.Regexp) Class {
+	c := Class{Scope: ScopeTargeted}
+	movedIn := false // a relative `cd` earlier in the line
 	for _, seg := range segments(command) {
 		words := unwrap(strings.Fields(seg))
 		if len(words) == 0 {
 			continue
 		}
 		o := opOf(words)
-		if op == "" {
-			op = o
+		if c.Op == "" {
+			c.Op = o
 		}
-		if isHeavy(words) || matchesAny(extra, strings.Join(words, " ")) {
-			return o, true
+		if base(words[0]) == "cd" {
+			movedIn = intoSubdir(words)
+			continue
+		}
+		kind := kindOf(words)
+		if kind == "" && matchesAny(extra, strings.Join(words, " ")) {
+			kind = KindBuild
+		}
+		if kind == "" {
+			continue
+		}
+		if !c.Heavy {
+			c.Op, c.Heavy, c.Kind = o, true, kind
+		}
+		if kind == KindBuild {
+			c.Kind = KindBuild
+		}
+		if kind == KindTest && fullRun(words, movedIn) {
+			c.Scope = ScopeFull
 		}
 	}
-	if op == "" {
-		op = "bash"
+	if c.Op == "" {
+		c.Op = "bash"
 	}
-	return op, false
+	return c
 }
 
 // CompileExtra compiles `throttle.heavy_extra`; an invalid pattern is
@@ -232,54 +323,187 @@ func arg(w []string, i int, valued map[string]bool) (string, int) {
 	return w[i], i
 }
 
-func isHeavy(w []string) bool {
+// kindOf is the kind of a simple command, "" when it is not heavy.
+func kindOf(w []string) string {
 	program := base(w[0])
 	if len(w) == 2 && versionArg[w[1]] {
-		return false
+		return ""
 	}
-	if heavyPrograms[program] {
-		return true
+	if kind := heavyPrograms[program]; kind != "" {
+		return kind
 	}
 	if subs := heavySubcommands[program]; subs != nil {
 		sub, i := arg(w, 1, nil)
 		if program == "go" && sub == "mod" {
-			next, _ := arg(w, i+1, nil)
-			return next == "download"
+			if next, _ := arg(w, i+1, nil); next == "download" {
+				return KindBuild
+			}
+			return ""
 		}
 		if program == "uv" && sub == "pip" {
-			next, _ := arg(w, i+1, nil)
-			return next == "install"
+			if next, _ := arg(w, i+1, nil); next == "install" {
+				return KindBuild
+			}
+			return ""
 		}
 		return subs[sub]
 	}
 	if program == "turbo" {
-		task, i := arg(w, 1, nil)
-		if task == "run" {
-			task, _ = arg(w, i+1, nil)
-		}
-		return heavyScript(task)
+		return scriptKind(turboTask(w))
 	}
 	if valued, ok := packageManagers[program]; ok {
 		sub, i := arg(w, 1, valued)
 		switch {
 		case sub == "":
-			return program == "yarn" // bare `yarn` installs
-		case installVerbs[sub] || sub == "t":
-			return true
+			if program == "yarn" {
+				return KindBuild // bare `yarn` installs
+			}
+			return ""
+		case installVerbs[sub]:
+			return KindBuild
+		case sub == "t":
+			return KindTest
 		case sub == "run" || sub == "run-script":
 			script, _ := arg(w, i+1, valued)
-			return heavyScript(script)
+			return scriptKind(script)
 		case program == "npm":
-			return sub == "test" // npm runs other scripts only through `run`
+			if sub == "test" { // npm runs other scripts only through `run`
+				return KindTest
+			}
+			return ""
 		}
-		return heavyScript(sub) || heavyPrograms[sub] // `pnpm vitest` runs the bin
+		if kind := scriptKind(sub); kind != "" {
+			return kind
+		}
+		return heavyPrograms[sub] // `pnpm vitest` runs the bin
+	}
+	return ""
+}
+
+func scriptKind(name string) string {
+	name, _, _ = strings.Cut(name, ":")
+	return heavyScripts[name]
+}
+
+// isTestScript: `test`, its `test:suffix` variants, or the `t` alias.
+func isTestScript(name string) bool {
+	name, _, _ = strings.Cut(name, ":")
+	return name == "test" || name == "t"
+}
+
+// turboTask is the task of `turbo run <task>` or `turbo <task>`.
+func turboTask(w []string) string {
+	task, i := arg(w, 1, nil)
+	if task == "run" {
+		task, _ = arg(w, i+1, nil)
+	}
+	return task
+}
+
+// intoSubdir reports whether `cd` words move below the directory the line
+// started in: a relative target other than `.`, `-` or one going up (an
+// unreadable target, such as a quoted one, counts as below).
+func intoSubdir(w []string) bool {
+	if len(w) < 2 {
+		return false
+	}
+	to := w[1]
+	switch {
+	case to == "." || to == ".." || to == "-" || to == "--":
+		return false
+	case strings.HasPrefix(to, "/") || strings.HasPrefix(to, "~") || strings.HasPrefix(to, "../"):
+		return false
+	}
+	return true
+}
+
+// hasFlag reports whether a word is one of flags, alone or as `flag=value`.
+func hasFlag(w []string, flags ...string) bool {
+	return slices.ContainsFunc(w, func(word string) bool {
+		name, _, _ := strings.Cut(word, "=")
+		return slices.Contains(flags, name)
+	})
+}
+
+// positional reports whether a word from i on is an argument rather than a
+// flag or the value of one of valued's flags (`--` passes arguments on, so
+// the words after it count too).
+func positional(w []string, i int, valued map[string]bool) bool {
+	for ; i < len(w); i++ {
+		switch {
+		case w[i] == "--":
+		case valued[w[i]]:
+			i++
+		case strings.HasPrefix(w[i], "-"):
+		default:
+			return true
+		}
 	}
 	return false
 }
 
-func heavyScript(name string) bool {
-	name, _, _ = strings.Cut(name, ":")
-	return heavyScripts[name]
+// fullRun reports whether a KindTest simple command runs the whole suite of
+// a repository or workspace. It errs toward targeted, since a false full
+// blocks real work: a path, package or test-name argument scopes the run,
+// and so does a relative `cd` earlier in the line for a command whose reach
+// is the directory it runs in. go's `./...` is read as is: it names every
+// package below, conventionally from the module root a worker cds into.
+// Lints and typechecks (tsc, eslint, cargo check) are never full: most have
+// no narrower form to point a worker to.
+func fullRun(w []string, movedIn bool) bool {
+	program := base(w[0])
+	sub, i := arg(w, 1, nil)
+	switch {
+	case program == "go":
+		if hasFlag(w, "-run", "--run") {
+			return false
+		}
+		return slices.ContainsFunc(w[1:], func(a string) bool { return a == "./..." || a == "..." || a == "all" })
+	case movedIn:
+		return false
+	case program == "make":
+		return !hasFlag(w, "-C", "--directory", "-f", "--file", "--makefile") &&
+			!slices.ContainsFunc(w[1:], assignRE.MatchString)
+	case program == "cargo":
+		if sub != "test" {
+			return false
+		}
+		if hasFlag(w, "--workspace", "--all") {
+			return true
+		}
+		return !hasFlag(w, "-p", "--package", "--manifest-path") && !positional(w[:dashes(w)], i+1, nil)
+	case program == "pytest":
+		return !hasFlag(w, "-k") && !positional(w, 1, pytestFlags)
+	case program == "tox":
+		return !positional(w, 1, toxFlags)
+	case program == "vitest" || program == "jest" || program == "mocha":
+		from := 1
+		if program == "vitest" && (sub == "run" || sub == "watch") {
+			from = i + 1
+		}
+		return !hasFlag(w, jsFilterFlags...) && !positional(w, from, jsRunnerFlags)
+	case program == "playwright":
+		return !hasFlag(w, jsFilterFlags...) && !positional(w, i+1, jsRunnerFlags)
+	case program == "turbo":
+		return isTestScript(turboTask(w)) && !hasFlag(w, "--filter", "-F")
+	}
+	valued, ok := packageManagers[program]
+	if !ok {
+		return false
+	}
+	sub, i = arg(w, 1, valued)
+	if sub == "run" || sub == "run-script" {
+		sub, i = arg(w, i+1, valued)
+	}
+	return isTestScript(sub) && !hasFlag(w, pmScopeFlags...) && !positional(w, i+1, nil)
+}
+
+// dashes is the index of the first `--`, or len(w).
+func dashes(w []string) int {
+	if i := slices.Index(w, "--"); i >= 0 {
+		return i
+	}
+	return len(w)
 }
 
 // opOf names a simple command the way the trace does: the program, plus the

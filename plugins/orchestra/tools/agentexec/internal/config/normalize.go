@@ -226,31 +226,33 @@ func normalizeIsolation(values map[string]any, u *union) {
 	}
 }
 
-// normalizeThrottle writes heavy_slots as "auto" or a non-negative integer
-// ("off" and false are 0; anything else is "auto") and heavy_extra as the
-// union of every layer's patterns.
+// normalizeThrottle writes heavy_slots and test_slots as "auto" or a
+// non-negative integer ("off" and false are 0; anything else is "auto") and
+// heavy_extra as the union of every layer's patterns.
 func normalizeThrottle(values map[string]any, u *union) {
 	th := ObjectAt(values, "throttle")
 	if th == nil {
 		th = map[string]any{}
 		values["throttle"] = th
 	}
-	slots := any("auto")
-	switch x := th["heavy_slots"].(type) {
-	case int64:
-		if x >= 0 {
-			slots = x
+	for _, key := range []string{"heavy_slots", "test_slots"} {
+		slots := any("auto")
+		switch x := th[key].(type) {
+		case int64:
+			if x >= 0 {
+				slots = x
+			}
+		case float64:
+			if x >= 0 && x == float64(int64(x)) {
+				slots = int64(x)
+			}
+		default:
+			if isOff(x) {
+				slots = int64(0)
+			}
 		}
-	case float64:
-		if x >= 0 && x == float64(int64(x)) {
-			slots = int64(x)
-		}
-	default:
-		if isOff(x) {
-			slots = int64(0)
-		}
+		th[key] = slots
 	}
-	th["heavy_slots"] = slots
 	th["heavy_extra"] = dedupe(u.heavyExtra)
 }
 

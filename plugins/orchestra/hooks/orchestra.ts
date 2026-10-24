@@ -1,6 +1,7 @@
 import type { EngineInterface, Register } from 'claude-code'
 import { checkLightClass } from './guards/light-class.ts'
 import { checkOpusGeneralist } from './guards/opus-generalist.ts'
+import { checkWorkerTests } from './guards/worker-tests.ts'
 import { checkWorkerTree } from './guards/worker-tree.ts'
 import { checkWorkerVcs } from './guards/worker-vcs.ts'
 import { checkWorktreeLease, recordActivity, releaseLeases } from './guards/worktree-lease.ts'
@@ -9,7 +10,7 @@ import { cleanupWorktrees } from './lifecycle/cleanup-worktrees.ts'
 import { forgetAgent, noteAgent, type WorkerCall, workerCall } from './lib/agents.ts'
 import { checkDependencyEdit } from './lib/dependency-edit.ts'
 import type { EnvName, Io } from './lib/io.ts'
-import { withHeavySlot } from './lib/slot.ts'
+import { type CommandClass, classifyCommand, withHeavySlot } from './lib/slot.ts'
 import { recordWorkerBash } from './lib/trace.ts'
 import { routerContext } from './router/inject.ts'
 import { turnEditsNudge } from './router/turn-edits.ts'
@@ -37,6 +38,7 @@ const ioOf = ($: EngineInterface): Io => ({
             case 'ORCHESTRA_LEASE_WINDOW': return $.env.get('ORCHESTRA_LEASE_WINDOW')
             case 'ORCHESTRA_OPUS_NUDGE': return $.env.get('ORCHESTRA_OPUS_NUDGE')
             case 'ORCHESTRA_SESSION_CLEANUP': return $.env.get('ORCHESTRA_SESSION_CLEANUP')
+            case 'ORCHESTRA_TEST_GUARD': return $.env.get('ORCHESTRA_TEST_GUARD')
             case 'ORCHESTRA_TREE_GUARD': return $.env.get('ORCHESTRA_TREE_GUARD')
             case 'ORCHESTRA_TURN_GUARD': return $.env.get('ORCHESTRA_TURN_GUARD')
             case 'ORCHESTRA_VCS_GUARD': return $.env.get('ORCHESTRA_VCS_GUARD')
@@ -68,9 +70,15 @@ export const register: Register = (on, options) => {
         const tool = String(e.tool)
         const io = ioOf($)
         let call: WorkerCall | undefined
+        // A worker's Bash call: a subagent's, or the main thread of a session
+        // a wave hosts. Its command is classified once, for the full-suite
+        // guard and for slot admission.
+        let isWorker = false
+        let commandClass: CommandClass | undefined
         if (WRITE_TOOLS.has(tool)) {
             // Only subagent calls are guarded; the main thread is never denied
-            // (except a wave-hosted worker session's, for dependency edits).
+            // (except a wave-hosted worker session's, for dependency edits and
+            // full test suites).
             call = await workerCall(io, e)
             if (tool !== 'Bash' && (call || verdictOf(await io.sessionId().catch(() => '')) === 'worker')) {
                 const cwd = call?.cwd ?? await io.sessionCwd().catch(() => '')
@@ -88,6 +96,16 @@ export const register: Register = (on, options) => {
                 }
             }
             if (tool === 'Bash') {
+                const input = e as unknown as Readonly<Record<string, unknown>>
+                const command = String(input.command ?? '')
+                isWorker = call !== undefined || verdictOf(await io.sessionId().catch(() => '')) === 'worker'
+                if (isWorker) {
+                    commandClass = await classifyCommand(io, command).catch(() => undefined)
+                    const deny = await checkWorkerTests(io, input, call?.agentType ?? '', commandClass)
+                    if (deny) {
+                        return { deny }
+                    }
+                }
                 // Every Bash call, the main thread's included, marks the
                 // linked worktree it runs in as in use.
                 const by = call ?? {
@@ -96,7 +114,6 @@ export const register: Register = (on, options) => {
                     cwd: await io.sessionCwd().catch(() => ''),
                     sessionId: await io.sessionId().catch(() => ''),
                 }
-                const command = String((e as unknown as Readonly<Record<string, unknown>>).command ?? '')
                 await recordActivity(io, { ...by, command }).catch(() => undefined)
             }
         } else if (AGENT_TOOLS.has(tool)) {
@@ -129,14 +146,14 @@ export const register: Register = (on, options) => {
 
             return result
         }
-        // A worker's heavy command (a subagent's, or the main thread of a
-        // session a wave hosts) waits for a machine-wide heavy slot before
-        // it starts. The instructor's own main thread never waits, and a
-        // background command is not admitted: it would release at once while
-        // it runs on.
-        const isWorker = call !== undefined || verdictOf(sessionId) === 'worker'
+        // A worker's heavy command waits for a slot of its machine-wide pool
+        // before it starts; one agent-exec classified as not heavy skips the
+        // acquire (an unclassified one still asks). The instructor's own main
+        // thread never waits, and a background command is not admitted: it
+        // would release at once while it runs on.
+        const admit = isWorker && input.run_in_background !== true && commandClass?.heavy !== false
 
-        return isWorker && input.run_in_background !== true ? withHeavySlot(io, command, run) : run()
+        return admit ? withHeavySlot(io, command, run) : run()
     }).catch(($, e, next) => next(e))
 
     on('classic.SubagentStart', ($, e, next) => {

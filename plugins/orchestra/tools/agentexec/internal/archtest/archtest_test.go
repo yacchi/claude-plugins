@@ -30,7 +30,7 @@ var deps = map[string][]string{
 	"internal/paths":              {},
 	"internal/trace":              {"internal/paths"},
 	"internal/watchdog":           {},
-	"internal/wave/plan":          {},
+	"internal/wave/plan":          {"internal/slot"},
 	"internal/config":             {"internal/paths", "internal/fsutil"},
 	"internal/tools":              {"internal/config"},
 	"internal/gitx":               {"internal/fsutil"},
