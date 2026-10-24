@@ -584,6 +584,38 @@ ul.items > li:last-child {
 .runs #plans {
     margin-bottom: 16px;
 }
+.filter {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 14px;
+}
+.filter label {
+    font-size: 11px;
+    color: var(--muted);
+}
+.filter select {
+    font: inherit;
+    font-size: 14px;
+    color: var(--fg);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    min-width: 0;
+}
+.title {
+    font-weight: 600;
+    font-size: 14px;
+}
+.proj {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--fg);
+}
 .stepper {
     display: flex;
     flex-wrap: wrap;
@@ -642,6 +674,7 @@ ul.items > li:last-child {
     <div id="notice" class="notice" hidden></div>
     <div class="grid">
         <section class="runs" aria-labelledby="runs-h">
+            <div id="filter" class="filter" hidden></div>
             <h2 id="plans-h" class="sec">計画</h2>
             <div id="plans"></div>
             <h2 id="runs-h" class="sec">実行一覧</h2>
@@ -685,6 +718,7 @@ ul.items > li:last-child {
         ["lint", "lint"],
     ];
     const LS_KEY = "orchestra-dashboard.selected-run";
+    const LS_PROJECT = "orchestra-dashboard.project";
     const REASON_MAX = 200;
 
     const STATUS = {
@@ -734,7 +768,8 @@ ul.items > li:last-child {
         plansLoaded: false,
         unsubPlans: null,
         fromCache: false,
-        selected: lsGet(),
+        selected: lsGet(LS_KEY),
+        project: lsGet(LS_PROJECT) || "",
         unsubRuns: null,
         decisionsFor: null,
         unsubDecisions: null,
@@ -755,16 +790,16 @@ ul.items > li:last-child {
     const nowS = () => Date.now() / 1000;
     const safeKey = (s) => s.replace(/[^a-zA-Z0-9-]/g, "_");
 
-    function lsGet() {
+    function lsGet(key) {
         try {
-            return window.localStorage.getItem(LS_KEY);
+            return window.localStorage.getItem(key);
         } catch (e) {
             return null;
         }
     }
-    function lsSet(v) {
+    function lsSet(key, v) {
         try {
-            window.localStorage.setItem(LS_KEY, v);
+            window.localStorage.setItem(key, v);
         } catch (e) {
             // a convenience only
         }
@@ -1017,7 +1052,7 @@ ul.items > li:last-child {
             return;
         }
         S.selected = docId;
-        lsSet(docId);
+        lsSet(LS_KEY, docId);
         subscribeDecisions();
         render();
         if (window.matchMedia("(max-width: 899px)").matches) {
@@ -1084,6 +1119,7 @@ ul.items > li:last-child {
 
         renderConn();
         renderNotice();
+        renderFilter();
         renderPlans();
         renderRuns();
         renderDetail();
@@ -1167,8 +1203,13 @@ ul.items > li:last-child {
                 h("p", { text: "ダッシュボードを設定（dashboard.artifact_url）した状態で orchestra の wave を始めると、その実行がここに表示されます。" })));
             return;
         }
+        const shown = visible(S.runs);
+        if (shown.length === 0) {
+            root.replaceChildren(h("p", { class: "empty", text: "このプロジェクトの実行はありません。" }));
+            return;
+        }
         const list = h("div", { class: "run-list" });
-        for (const run of S.runs) {
+        for (const run of shown) {
             const d = run.data;
             const p = obj(d.progress);
             const st = statusOf(d);
@@ -1185,8 +1226,9 @@ ul.items > li:last-child {
                 onclick: () => select(run.docId),
             },
             h("div", { class: "row between" },
-                h("span", { class: "run-id mono ellipsis", text: runId }),
+                h("span", { class: "title ellipsis", text: titleOf(d, runId) }),
                 h("span", { class: "pill " + st.cls, text: st.label })),
+            projectLine(d, runId),
             h("div", { class: "meta num" },
                 h("span", { text: integrated + "/" + total + " 統合" }),
                 eta != null && isLive(d) ? h("span", { text: "残り ~" + fmtETA(eta) }) : null,
@@ -1195,6 +1237,45 @@ ul.items > li:last-child {
             progressBar(integrated, total, st.cls === "done" ? "good" : st.cls === "crashed" ? "crit" : "")));
         }
         root.replaceChildren(list);
+    }
+
+    // Which project a plan or run belongs to ("owner/repo"), and its short
+    // task name; both are written by the planner and the watcher.
+    const projectOf = (data) => str(data.project);
+    const titleOf = (data, fallback) => str(data.title) || fallback;
+    const visible = (items) => (S.project ? items.filter((it) => projectOf(it.data) === S.project) : items);
+
+    function projectLine(data, id) {
+        return h("span", { class: "row" },
+            projectOf(data) ? h("span", { class: "proj mono", text: projectOf(data) }) : null,
+            h("span", { class: "sub mono ellipsis", text: id }));
+    }
+
+    // A project picker, shown once plans and runs span two or more projects.
+    function renderFilter() {
+        const root = document.getElementById("filter");
+        const names = [...new Set([...S.plans, ...S.runs].map((it) => projectOf(it.data)).filter(Boolean))].sort();
+        if (S.project && !names.includes(S.project)) {
+            S.project = "";
+        }
+        if (names.length < 2) {
+            root.hidden = true;
+            root.replaceChildren();
+            return;
+        }
+        const sel = h("select", {
+            id: "project-filter",
+            onchange: (ev) => {
+                S.project = ev.target.value;
+                lsSet(LS_PROJECT, S.project);
+                render();
+            },
+        },
+        h("option", { value: "", text: "すべてのプロジェクト" }),
+        names.map((n) => h("option", { value: n, text: n })));
+        sel.value = S.project;
+        root.replaceChildren(h("label", { htmlFor: "project-filter", text: "プロジェクト" }), sel);
+        root.hidden = false;
     }
 
     const planStatusOf = (data) => PLAN_STATUS[str(data.status)] || { label: str(data.status) || "不明", cls: "" };
@@ -1209,12 +1290,18 @@ ul.items > li:last-child {
             root.replaceChildren(h("p", { class: "empty", text: "計画はまだありません。planner が計画を始めるとここに表示されます。" }));
             return;
         }
+        const shown = visible(S.plans);
+        if (shown.length === 0) {
+            root.replaceChildren(h("p", { class: "empty", text: "このプロジェクトの計画はありません。" }));
+            return;
+        }
         const list = h("div", { class: "run-list" });
-        for (const plan of S.plans) {
+        for (const plan of shown) {
             const d = plan.data;
             const st = planStatusOf(d);
             const phase = PLAN_PHASES.find(([k]) => k === str(d.phase));
             const children = arr(d.children).map(obj).filter((c) => str(c.status) === "running").length;
+            const id = str(d.plan_id) || plan.docId;
             list.append(h("button", {
                 type: "button",
                 id: "plan-" + plan.docId,
@@ -1223,8 +1310,9 @@ ul.items > li:last-child {
                 onclick: () => select(PLAN_PREFIX + plan.docId),
             },
             h("div", { class: "row between" },
-                h("span", { class: "run-id mono ellipsis", text: str(d.plan_id) || plan.docId }),
+                h("span", { class: "title ellipsis", text: titleOf(d, id) }),
                 h("span", { class: "pill " + st.cls, text: st.label })),
+            projectLine(d, id),
             h("div", { class: "meta num" },
                 phase && planIsLive(d) ? h("span", { text: phase[1] }) : null,
                 num(d.packages) != null ? h("span", { text: num(d.packages) + " パッケージ" }) : null,
@@ -1264,8 +1352,9 @@ ul.items > li:last-child {
         const crit = num(d.est_critical_s);
         const head = h("div", { class: "card head" },
             h("div", { class: "row between" },
-                h("h2", { class: "mono", text: str(d.plan_id) || plan.docId }),
+                h("h2", { text: titleOf(d, str(d.plan_id) || plan.docId) }),
                 h("span", { class: "pill " + st.cls, text: st.label })),
+            projectLine(d, str(d.plan_id) || plan.docId),
             h("p", { class: "line", text: str(d.goal) || "（目的はまだ書かれていません）" }),
             h("div", { class: "meta" }, planAgoEl(updated, live)),
             live && updated != null ? h("div", {
@@ -1355,8 +1444,9 @@ ul.items > li:last-child {
 
         const head = h("div", { class: "card head" },
             h("div", { class: "row between" },
-                h("h2", { class: "mono", text: str(d.run_id) || run.docId }),
+                h("h2", { text: titleOf(d, str(d.run_id) || run.docId) }),
                 h("span", { class: "pill " + st.cls, text: st.label })),
+            projectLine(d, str(d.run_id) || run.docId),
             h("p", { class: "line mono", text: str(d.line) || "（概要はまだありません）" }),
             h("div", { class: "meta" },
                 agoEl(updated, "更新 ", live),
