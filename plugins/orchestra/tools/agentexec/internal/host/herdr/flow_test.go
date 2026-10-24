@@ -2,6 +2,7 @@ package herdr
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -268,7 +269,7 @@ func (e *env) trustStart(cfg string, precreate, sandboxed bool) (*Executor, erro
 	x.sandboxed = sandboxed
 	if sandboxed {
 		// stand-in for a server started under Seatbelt/bwrap
-		x.serverReady, x.serverStarted = true, true
+		x.serverReady = true
 	}
 	_, err := e.start(x, "a")
 	return x, err
@@ -399,7 +400,8 @@ func TestNativeArgsAndIsolationFlags(t *testing.T) {
 	s := &host.Session{Extra: map[string]any{"model": "opus", "add_dirs": []any{"/x/state"}}}
 	args, _ := e.executor("").nativeArgs(s, false)
 	want := []string{"--model", "opus", "--permission-mode", "auto", "--add-dir", "/x/state",
-		"--strict-mcp-config", "--setting-sources", "project,local", "--plugin-dir", e.pluginRoot()}
+		"--strict-mcp-config", "--setting-sources", "project,local", "--plugin-dir", e.pluginRoot(),
+		"--settings", `{"autoMemoryEnabled":false,"disableClaudeAiConnectors":true,"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}`, "--no-chrome"}
 	if !reflect.DeepEqual(args, want) {
 		t.Errorf("%v", args)
 	}
@@ -407,7 +409,7 @@ func TestNativeArgsAndIsolationFlags(t *testing.T) {
 		t.Error(err)
 	}
 	args, _ = e.executor(`{"herdr": {"user_config": "inherit"}}`).nativeArgs(s, false)
-	if !reflect.DeepEqual(args, want[:6]) {
+	if !reflect.DeepEqual(args, append(want[:6:6], "--settings", `{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}`)) {
 		t.Errorf("inherit %v", args)
 	}
 	args, _ = e.executor(`{"herdr": {"args": "--model {model} --strict-mcp-config --setting-sources=user --plugin-dir /mine"}}`).
@@ -418,19 +420,48 @@ func TestNativeArgsAndIsolationFlags(t *testing.T) {
 	}
 }
 
+// The worker's --settings reaches the pane intact: the start line, split the
+// way the pane's shell splits it, gives back the same argv, and the one
+// --settings value is the JSON that turns Remote Control off.
+func TestStartLineRoundTripsTheSettings(t *testing.T) {
+	e := newEnv(t)
+	for _, cfg := range []string{"", `{"herdr": {"user_config": "inherit"}}`} {
+		native, err := e.executor(cfg).nativeArgs(&host.Session{}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		line := startLine(native)
+		split, err := host.ShellSplit(line)
+		if err != nil || !reflect.DeepEqual(split, append([]string{"claude"}, native...)) {
+			t.Fatalf("%q: %v %v", line, split, err)
+		}
+		var settings []string
+		for i, a := range native {
+			if a == "--settings" {
+				settings = append(settings, native[i+1])
+			}
+		}
+		var m map[string]any
+		if len(settings) != 1 || json.Unmarshal([]byte(settings[0]), &m) != nil || m["disableRemoteControl"] != true {
+			t.Errorf("%q: settings %v", cfg, settings)
+		}
+	}
+}
+
 func TestWarmReaderForkAndReopenCarryTheSameFlags(t *testing.T) {
 	e := newEnv(t)
 	e.scenario(map[string]any{"running": true}, true)
 	x := e.warmExecutor("", nil)
 	e.warmStart(x, "a", "opus")
 	e.warmStart(x, "b", "opus")
-	flags := []string{"--strict-mcp-config", "--setting-sources", "project,local", "--plugin-dir", e.pluginRoot()}
+	flags := []string{"--strict-mcp-config", "--setting-sources", "project,local", "--plugin-dir", e.pluginRoot(),
+		"--settings", `{"autoMemoryEnabled":false,"disableClaudeAiConnectors":true,"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}`, "--no-chrome"}
 	starts := e.starts()
 	if len(starts) != 3 {
 		t.Fatal(starts)
 	}
 	for _, s := range starts {
-		if !reflect.DeepEqual(s[len(s)-5:], flags) {
+		if !reflect.DeepEqual(s[len(s)-len(flags):], flags) {
 			t.Error(s)
 		}
 	}

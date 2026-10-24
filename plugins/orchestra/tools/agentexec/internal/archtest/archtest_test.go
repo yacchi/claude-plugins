@@ -34,7 +34,9 @@ var deps = map[string][]string{
 	"internal/config":             {"internal/paths", "internal/fsutil"},
 	"internal/tools":              {"internal/config"},
 	"internal/gitx":               {"internal/fsutil"},
-	"internal/isolate":            {"internal/gitx", "internal/config", "internal/paths"},
+	"internal/orcanest":           {"internal/gitx"},
+	"internal/hostref":            {},
+	"internal/isolate":            {"internal/gitx", "internal/config", "internal/paths", "internal/slot", "internal/orcanest", "internal/hostref"},
 	"internal/integrate":          {"internal/checks", "internal/isolate"},
 	"internal/shelf":              {"internal/gitx"},
 	"internal/sandbox":            {"internal/config", "internal/paths", "internal/gitx"},
@@ -49,7 +51,7 @@ var deps = map[string][]string{
 	"internal/telemetry":          {"internal/config"},
 	"internal/usage":              {"internal/ledger", "internal/telemetry", "internal/config"},
 	"internal/dispatch":           {"internal/route", "internal/readiness", "internal/cooldown", "internal/isolate", "internal/capture", "internal/ledger", "internal/telemetry", "internal/sandbox"},
-	"internal/slot":               {},
+	"internal/slot":               {"internal/config"},
 	"internal/checks":             {"internal/config", "internal/fsutil", "internal/slot"},
 	"internal/wave/state":         {"internal/gitx", "internal/paths"},
 	"internal/host":               {"internal/config", "internal/tools", "internal/sandbox", "internal/srt", "internal/isolate", "internal/checks"},
@@ -79,6 +81,9 @@ var thirdParty = []string{"github.com/spf13/cobra", "go.yaml.in/yaml/v3", "golan
 // says.
 var forbidden = [][2]string{
 	{"internal/ui", "internal/wave/runner"},
+	// A removal closes hosted sessions through hostref, never the hosts.
+	{"internal/isolate", "internal/host"},
+	{"internal/hostref", "internal/host"},
 }
 
 func closure(pkg string, seen map[string]bool) {

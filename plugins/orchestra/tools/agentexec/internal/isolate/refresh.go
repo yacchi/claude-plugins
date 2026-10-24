@@ -96,7 +96,8 @@ type RefreshResult struct {
 	Conflicts   []Conflict
 	PatchFile   string
 	Note        string
-	InPlace     bool // adopted tree refreshed without recreation
+	Warning     string // the hosted session in the replaced tree was left open
+	InPlace     bool   // adopted tree refreshed without recreation
 }
 
 func (r RefreshResult) MarshalJSON() ([]byte, error) {
@@ -118,6 +119,9 @@ func (r RefreshResult) MarshalJSON() ([]byte, error) {
 	}
 	if r.InPlace {
 		o["in_place"] = true
+	}
+	if r.Warning != "" {
+		o["warning"] = r.Warning
 	}
 	return fsutil.MarshalJSON(o)
 }
@@ -194,8 +198,13 @@ func Refresh(root, task, onto, session string) (RefreshResult, error) {
 	}
 
 	// The patch is the safety net now: bypass the collected gate and remove
-	// the old worktree and branch outright.
-	if _, err := gitx.Run(resolved, "worktree", "remove", wt.Path, "--force"); err != nil {
+	// the old worktree and branch outright, closing a hosted session in it
+	// first. The slot is released before Create takes its own.
+	res.Warning = closeHostSession(wt.Path)
+	release := HoldHeavy("git worktree remove")
+	_, err = gitx.Run(resolved, "worktree", "remove", wt.Path, "--force")
+	release()
+	if err != nil {
 		return fail("could not remove the old worktree for " + task)
 	}
 	_, _ = gitx.Run(resolved, "branch", "-D", wt.Branch)
@@ -210,7 +219,8 @@ func Refresh(root, task, onto, session string) (RefreshResult, error) {
 	created, err := Create(resolved, task, CreateOptions{
 		Backend: BackendGit, Onto: ontoSHA, Session: sess, Carry: false, CarryDeps: &carryDeps,
 	})
-	lost := RefreshResult{Status: "error", Task: task, OldBaseline: res.OldBaseline, PatchFile: res.PatchFile}
+	lost := RefreshResult{Status: "error", Task: task, OldBaseline: res.OldBaseline, PatchFile: res.PatchFile,
+		Warning: res.Warning}
 	if err != nil {
 		lost.Note = fmt.Sprintf("isolate_create raised recreating %s: %s; recover from patch_file", task, err)
 		return lost, nil

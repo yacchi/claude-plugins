@@ -80,8 +80,8 @@ func TestMain(m *testing.M) {
 // --- fake executor -----------------------------------------------------------
 
 type spec struct {
-	PromptFiles               []string
-	Class, Workdir, Task, Run string
+	PromptFiles                        []string
+	Class, Workdir, Isolate, Task, Run string
 }
 
 type call struct {
@@ -109,11 +109,11 @@ func newFake(t *testing.T, rounds map[string][]round) *fakeExecutor {
 
 func (f *fakeExecutor) SetStartLock(l sync.Locker) { f.lock = l }
 
-func (f *fakeExecutor) Prepare(promptFiles []string, cls, workdir, task, runID string) (string, error) {
+func (f *fakeExecutor) Prepare(promptFiles []string, cls, workdir, isolate, task, runID string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	token := fmt.Sprintf("tok-%d", len(f.tokens))
-	f.tokens[token] = spec{append([]string{}, promptFiles...), cls, workdir, task, runID}
+	f.tokens[token] = spec{append([]string{}, promptFiles...), cls, workdir, isolate, task, runID}
 	return token, nil
 }
 

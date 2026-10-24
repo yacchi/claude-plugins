@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -457,5 +458,35 @@ func TestChildEnvCarriesThePnpmGVSSwitchOnlyInActiveTrees(t *testing.T) {
 	}
 	if env := ChildEnv(Prepare("pi", main, cfg, "", ""), nil); has(env) {
 		t.Errorf("main checkout got the switch: %v", env)
+	}
+}
+
+// A child in a linked worktree with a mise config gets mise's trust of the
+// tree, appended to the value it already has; a main checkout never does.
+func TestChildEnvCarriesTheMiseTrustOfActiveTrees(t *testing.T) {
+	was := config.MiseShowSeam
+	config.MiseShowSeam = func(dir string) ([]byte, error) { return []byte(dir + "/mise.toml: trusted\n"), nil }
+	t.Cleanup(func() { config.MiseShowSeam = was })
+
+	cfg := &config.Resolved{Values: map[string]any{"sandbox": map[string]any{"mode": "off"}}}
+	main, linked := t.TempDir(), t.TempDir()
+	for f, body := range map[string]string{
+		filepath.Join(main, ".git", "HEAD"): "ref: refs/heads/main\n",
+		filepath.Join(linked, ".git"):       "gitdir: " + filepath.Join(main, ".git", "worktrees", "l") + "\n",
+		filepath.Join(linked, "mise.toml"):  "[env]\n",
+	} {
+		_ = os.MkdirAll(filepath.Dir(f), 0o755)
+		if err := os.WriteFile(f, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := "MISE_TRUSTED_CONFIG_PATHS=/keep:" + linked
+	if env := ChildEnv(Prepare("pi", linked, cfg, "", ""), []string{"MISE_TRUSTED_CONFIG_PATHS=/keep"}); !contains(env, want) {
+		t.Errorf("linked tree: env %v lacks %q", env, want)
+	}
+	if env := ChildEnv(Prepare("pi", main, cfg, "", ""), nil); slices.ContainsFunc(env, func(kv string) bool {
+		return strings.HasPrefix(kv, config.MiseTrustedEnv+"=")
+	}) {
+		t.Errorf("main checkout got mise trust: %v", env)
 	}
 }

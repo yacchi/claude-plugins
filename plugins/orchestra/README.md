@@ -99,7 +99,7 @@ See [`examples/orchestra.yaml`](examples/orchestra.yaml) for the full commented 
 
 ### HUD
 
-While orchestra agents run (`orchestra:*` subagents and Workflow agents), the Claude Code status line shows `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` (`ext` = external pi dispatches, `✗N` = failed reviews), and clears itself when they finish. A toast appears only on notable failures (review FAIL, `needs-permission`, `runaway`, `unavailable`, `ESCALATE`, agent error). Open the full dashboard with the existing `/ui` skill. Turn the HUD off with the `hud` plugin option (default on).
+While orchestra agents run (`orchestra:*` subagents and Workflow agents), the Claude Code status line shows `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` (`ext` = external pi dispatches, `✗N` = failed reviews), and clears itself when they finish. An `agent-exec wave run --state <path>` the main thread starts (usually with `run_in_background`) adds a wave part, `wave 12/40 · 5 running · 2 needs` (integrated/total packages, packages in flight, open needs), refreshed every 15 s from `wave status` until the run stops or its runner exits; several waves show side by side. A toast appears only on notable failures (review FAIL, `needs-permission`, `runaway`, `unavailable`, `ESCALATE`, agent error) and once for each new wave need. Open the full dashboard with the existing `/ui` skill. Turn the HUD off with the `hud` plugin option (default on).
 
 ### Migrating from Copilot CLI / opencode
 

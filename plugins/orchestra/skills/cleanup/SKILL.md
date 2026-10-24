@@ -47,7 +47,7 @@ agent-exec isolate sweep --branches --text         # ...and delete orphan orches
 agent-exec isolate sweep --older-than 7 --text     # only what is at least 7 days old
 ```
 
-The sweep runs `git worktree prune` first, so worktrees whose directory was deleted by hand stop being reported. It applies exactly the same review gate as `isolate remove`, so nothing dirty is destroyed without `--force`.
+The sweep runs `git worktree prune` first, so worktrees whose directory was deleted by hand stop being reported. It applies exactly the same review gate as `isolate remove`, so nothing dirty is destroyed without `--force`. A tree it removes first gets its hosted worker session (a herdr workspace or Orca terminal a wave left open in it) closed; a bracketed note on its row (`warning` in JSON) says that close failed — the tree is removed anyway. Kept trees keep their sessions.
 
 Flags worth knowing:
 

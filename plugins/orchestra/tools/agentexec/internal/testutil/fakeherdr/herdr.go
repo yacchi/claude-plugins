@@ -20,7 +20,7 @@ func initHerdr(sc map[string]any) map[string]any {
 	return map[string]any{
 		"running": truthy(sc["running"]), "not_ready": truthy(sc["not_ready"]),
 		"screen": str(sc["screen"]), "screens": strList(sc["screens"]), "statuses": statuses, "stalls": stalls,
-		"after_keys": strList(sc["after_keys"]), "keys_sent": false, "workspaces": 0.0,
+		"after_keys": strList(sc["after_keys"]), "keys_sent": false, "next_workspace": 0.0, "workspaces": []any{},
 	}
 }
 
@@ -61,16 +61,33 @@ func (c *call) herdr() int {
 		return c.herdrOK(map[string]any{"result": map[string]any{"server": map[string]any{"running": st["running"]}}})
 	case verb == "server stop":
 		st["running"] = false
+		st["workspaces"] = []any{}
 		return c.herdrOK(map[string]any{})
 	case verb == "workspace create":
-		n, _ := st["workspaces"].(float64)
+		n, _ := st["next_workspace"].(float64)
 		n++
-		st["workspaces"] = n
+		st["next_workspace"] = n
 		ws := "w" + itoa(int(n))
+		st["workspaces"] = append(strList(st["workspaces"]), ws)
 		return c.herdrOK(map[string]any{"result": map[string]any{
 			"workspace": map[string]any{"workspace_id": ws},
 			"root_pane": map[string]any{"pane_id": ws + ":p1"}}})
-	case verb == "workspace close", verb == "agent wait":
+	case verb == "workspace list":
+		list := []any{}
+		for _, ws := range strList(st["workspaces"]) {
+			list = append(list, map[string]any{"workspace_id": ws})
+		}
+		return c.herdrOK(map[string]any{"result": map[string]any{"type": "workspace_list", "workspaces": list}})
+	case verb == "workspace close":
+		var kept []any
+		for _, ws := range strList(st["workspaces"]) {
+			if len(args) < 3 || ws != args[2] {
+				kept = append(kept, ws)
+			}
+		}
+		st["workspaces"] = append([]any{}, kept...)
+		return c.herdrOK(map[string]any{})
+	case verb == "agent wait":
 		return c.herdrOK(map[string]any{})
 	case verb == "agent start":
 		if truthy(c.scenario["fail_warm"]) && len(args) > 2 && strings.HasPrefix(args[2], "p-warm") {

@@ -4,6 +4,8 @@ description: Adversarial reviewer. Trusts nothing the worker claims — re-runs 
 model: sonnet
 effort: medium
 tools: Read, Bash, Write, Grep, Glob
+experimental:
+  cacheTtl: 1h
 ---
 
 You are an adversarial reviewer in a cost-tiered orchestration pipeline. A cheap worker (running on a weaker model) just claimed to have completed a task. Your job is to find out whether that claim is actually true. Assume nothing the worker wrote in its report is correct until you have independently confirmed it.

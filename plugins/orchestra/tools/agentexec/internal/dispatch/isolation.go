@@ -53,13 +53,20 @@ func shouldIsolate(path, mode string) (bool, map[string]any) {
 	if !ok {
 		return verdict(false, "not a git repository, cannot isolate", "")
 	}
-	if mode == IsolateAlways {
-		return verdict(true, "isolation forced (--isolate always)", root)
+	if mode == IsolateAlways || mode == IsolateCli {
+		return verdict(true, "isolation forced (--isolate "+mode+")", root)
 	}
 	if gitx.IsDirty(root) {
 		return verdict(true, "working tree is dirty; the user's uncommitted work must not be reachable by a worker", root)
 	}
 	return verdict(false, "working tree is clean; nothing for a worker to destroy", root)
+}
+
+// callerIsolates is a `cli` dispatch's decision for a delegate route: no
+// tree, the caller (a wave runner's interactive host) makes its own.
+func callerIsolates() isolation {
+	return isolation{obj: map[string]any{"isolate": false, "mode": IsolateCli,
+		"reason": "delegate route under --isolate cli; the caller isolates delegate routes"}}
 }
 
 // isolateFor resolves isolation for a dispatch into workdir. Failing to

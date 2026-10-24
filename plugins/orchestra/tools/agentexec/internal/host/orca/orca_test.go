@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/orcanest"
 )
 
 var fakeOrca string
@@ -227,6 +229,7 @@ func TestClaudePackageRunsInOrcaAndIsAdopted(t *testing.T) {
 }
 
 func TestAFailedNestingStillStarts(t *testing.T) {
+	orcanest.ResetWarning(t)
 	e := newEnv(t, map[string]any{"parent_fails": true})
 	x := e.executor("")
 	s, err := e.start(x)
@@ -249,7 +252,7 @@ func TestAddDirsAndPermissionModeAreRendered(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := opt(e.callsOf("terminal create")[0], "--command")
-	if cmd != "claude --model opus --permission-mode acceptEdits --add-dir "+e.state {
+	if cmd != "claude --model opus --permission-mode acceptEdits --add-dir "+e.state+` --settings '{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}'` {
 		t.Errorf("%q", cmd)
 	}
 }
@@ -452,5 +455,69 @@ func TestCommandCarriesThePnpmGVSSwitchOnlyInActiveTrees(t *testing.T) {
 		if got := strings.HasPrefix(cmd, "env ") && strings.Contains(cmd, config.PnpmGVSEnv+" claude "); got != want {
 			t.Errorf("%s: %q, switch wanted %v", tree, cmd, want)
 		}
+	}
+}
+
+// An isolated worker on pnpm's global virtual store gets one env prefix that
+// carries both the isolate switches and the pnpm switch.
+func TestCommandMergesIsolateEnvWithThePnpmGVSSwitch(t *testing.T) {
+	x := New(&config.Resolved{Values: config.DeepMerge(config.Defaults(), map[string]any{
+		"isolation": map[string]any{"pnpm_global_virtual_store": true},
+	})})
+	linked, main := t.TempDir(), t.TempDir()
+	for _, f := range []string{filepath.Join(linked, ".git"), filepath.Join(linked, "pnpm-lock.yaml"),
+		filepath.Join(main, ".git", "HEAD"), filepath.Join(main, "pnpm-lock.yaml")} {
+		_ = os.MkdirAll(filepath.Dir(f), 0o755)
+		_ = os.WriteFile(f, []byte("x\n"), 0o644)
+	}
+	cmd, err := x.command(&host.Session{Worktree: linked, Extra: map[string]any{"model": "opus"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	words, err := host.ShellSplit(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envs := 0
+	for _, w := range words {
+		if w == "env" {
+			envs++
+		}
+	}
+	if envs != 1 || words[0] != "env" || !slices.Contains(words, config.PnpmGVSEnv) ||
+		!slices.Contains(words, "CLAUDE_CODE_AUTO_CONNECT_IDE=false") {
+		t.Errorf("%q", cmd)
+	}
+}
+
+// The Orca command's env prefix carries mise's trust of a linked worktree with
+// a mise config, appended to the value the process already has.
+func TestCommandCarriesTheMiseTrustOfItsTree(t *testing.T) {
+	t.Setenv("MISE_TRUSTED_CONFIG_PATHS", "/keep")
+	was := config.MiseShowSeam
+	config.MiseShowSeam = func(dir string) ([]byte, error) { return []byte(dir + "/mise.toml: trusted\n"), nil }
+	t.Cleanup(func() { config.MiseShowSeam = was })
+
+	main, linked := t.TempDir(), t.TempDir()
+	gitdir := filepath.Join(main, ".git", "worktrees", "l")
+	for f, body := range map[string]string{
+		filepath.Join(main, ".git", "HEAD"): "ref: refs/heads/main\n",
+		filepath.Join(linked, ".git"):       "gitdir: " + gitdir + "\n",
+		filepath.Join(linked, "mise.toml"):  "[env]\n",
+	} {
+		_ = os.MkdirAll(filepath.Dir(f), 0o755)
+		_ = os.WriteFile(f, []byte(body), 0o644)
+	}
+	x := New(&config.Resolved{Values: config.Defaults()})
+	cmd, err := x.command(&host.Session{Worktree: linked, Extra: map[string]any{"model": "opus"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	words, err := host.ShellSplit(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "MISE_TRUSTED_CONFIG_PATHS=/keep:" + linked; !slices.Contains(words, want) {
+		t.Errorf("%q lacks %q", cmd, want)
 	}
 }

@@ -34,7 +34,10 @@ func gtrConfigPairs(root string) [][2]string {
 // createViaGtr returns the new worktree's path, or "" when gtr refused.
 func createViaGtr(root, branch string, pairs [][2]string) string {
 	env := gitx.ConfigEnv(pairs, nil)
-	if _, err := gitx.RunEnv(root, env, "gtr", "new", branch, "--from-current", "--yes", "--no-fetch"); err != nil {
+	release := HoldHeavy("git gtr new")
+	_, err := gitx.RunEnv(root, env, "gtr", "new", branch, "--from-current", "--yes", "--no-fetch")
+	release()
+	if err != nil {
 		return ""
 	}
 	out, err := gitx.RunEnv(root, env, "gtr", "go", branch)

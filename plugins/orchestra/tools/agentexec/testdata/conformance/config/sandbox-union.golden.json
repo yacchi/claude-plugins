@@ -113,7 +113,7 @@
           ],
           "keep_paths": [],
           "max_added_files": 500,
-          "pnpm_global_virtual_store": false
+          "pnpm_global_virtual_store": "auto"
         },
         "ledger": {
           "dir": "~/.claude/orchestra/runs",
