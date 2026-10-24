@@ -178,7 +178,13 @@ func (e *Executor) ensureServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	env := sandbox.ChildEnv(spec, procEnv)
+	// After ServerEnv's scrub: the worker's CLAUDE_CODE_* switches must reach
+	// the panes the server starts.
+	isoEnv, err := host.IsolationEnv(e.cfg)
+	if err != nil {
+		return err
+	}
+	env := append(sandbox.ChildEnv(spec, procEnv), isoEnv...)
 	if cwd, _ := os.Getwd(); pnpmGVSRepo(e.tools, cwd) {
 		env = config.WithPnpmGVS(env)
 	}

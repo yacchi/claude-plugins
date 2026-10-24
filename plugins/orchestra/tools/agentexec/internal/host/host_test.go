@@ -167,20 +167,43 @@ func TestIsolationFlags(t *testing.T) {
 	t.Setenv("AGENT_EXEC_BOOTSTRAP", filepath.Join(root, "tools", "agent-exec"))
 	c := MergeConfig(nil, "orca")
 	flags, err := IsolationFlags(c, []string{"claude"})
-	if err != nil || !reflect.DeepEqual(flags, []string{"--strict-mcp-config", "--setting-sources", "project,local", "--plugin-dir", root}) {
+	want := []string{"--strict-mcp-config", "--setting-sources", "project,local", "--plugin-dir", root,
+		"--settings", isolateSettings, "--no-chrome"}
+	if err != nil || !reflect.DeepEqual(flags, want) {
 		t.Errorf("%v %v", flags, err)
 	}
-	flags, _ = IsolationFlags(c, []string{"claude", "--strict-mcp-config", "--setting-sources=user", "--plugin-dir", "/p"})
-	if len(flags) != 0 {
+	flags, _ = IsolationFlags(c, []string{"claude", "--strict-mcp-config", "--setting-sources=user", "--plugin-dir", "/p", "--no-chrome"})
+	if !reflect.DeepEqual(flags, []string{"--settings", isolateSettings}) {
 		t.Error(flags)
 	}
 	inherit := MergeConfig(resolved(t, `{"orca": {"user_config": "inherit"}}`), "orca")
-	if flags, _ := IsolationFlags(inherit, []string{"claude"}); len(flags) != 0 {
+	if flags, _ := IsolationFlags(inherit, []string{"claude"}); !reflect.DeepEqual(flags, []string{"--settings", remoteControlOffSettings}) {
 		t.Error(flags)
 	}
 	bad := MergeConfig(resolved(t, `{"orca": {"user_config": "mine"}}`), "orca")
 	if _, err := IsolationFlags(bad, nil); AsNeed(err).Kind != KindError || !strings.Contains(err.Error(), "invalid user_config: mine") {
 		t.Error(err)
+	}
+}
+
+// A user --settings must set disableRemoteControl itself, in both modes; a
+// valid one is kept as the only --settings.
+func TestUserSettingsMustDisableRemoteControl(t *testing.T) {
+	for _, mode := range []string{"isolate", "inherit"} {
+		c := MergeConfig(resolved(t, `{"orca": {"user_config": "`+mode+`"}}`), "orca")
+		for _, tokens := range [][]string{
+			{"claude", "--settings", `{"model":"opus"}`},
+			{"claude", "--settings=/path/settings.json"},
+			{"claude", "--settings"},
+		} {
+			if _, err := IsolationFlags(c, tokens); AsNeed(err).Kind != KindError {
+				t.Errorf("%s %v: %v", mode, tokens, err)
+			}
+		}
+		flags, err := IsolationFlags(c, []string{"claude", "--settings", `{"disableRemoteControl": true}`})
+		if err != nil || strings.Count(strings.Join(flags, " "), "--settings") != 0 {
+			t.Errorf("%s: %v %v", mode, flags, err)
+		}
 	}
 }
 
