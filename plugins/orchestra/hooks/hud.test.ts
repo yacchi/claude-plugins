@@ -324,29 +324,25 @@ test('band: shown while a wave is tracked and no pane is up, gone once tracking 
     await ui.unmount()
 })
 
-test('pane: opened unasked only where the surface docks it, and the band then yields', async ($, on) => {
+test('pane: never opened unasked, even where it would dock; its own button closes it on every surface', async ($, on) => {
     setup(on)
     const { host, clock } = waveHost(on)
     host.state = { progress: prog(['implementing']), stopped: null }
     await bash($, 'agent-exec wave run --state /w/pane.json')
     await clock.advance(15_000)
-    for (const viewport of [undefined, { columns: 200, rows: 50 }, { columns: 200, rows: 50, isFullscreen: false }]) {
-        const ui = await $.ui.mount({ ...BAND, surface: 'desktop', ...(viewport ? { viewport } : {}) })
-        expect(await hasBand(ui)).toBe(true)
-        await ui.unmount()
-    }
+    const docked = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: { columns: 200, rows: 50, isFullscreen: true } })
+    expect(await hasBand(docked)).toBe(true)
+    await docked.unmount()
     expect(host.opened).toEqual([])
 
-    const ui = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: { columns: 200, rows: 50, isFullscreen: true } })
-    expect(host.opened).toEqual(['orchestra'])
-    await ui.redraw()
-    expect(await hasBand(ui)).toBe(false)
-    await ui.unmount()
-
-    // Closed again once nothing is tracked.
-    host.alive = false
-    await clock.advance(15_000)
-    expect(host.panes).toEqual([])
+    for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
+        await toggle($)
+        expect(host.panes.map(p => p.id)).toEqual(['orchestra'])
+        const ui = await $.ui.mount({ ...PANE, surface })
+        await ui.press({ key: 'orchestra-close' })
+        expect(host.panes, surface).toEqual([])
+        await ui.unmount()
+    }
 })
 
 test('pane: running rows fit bodyColumns, the rest as … +k', async ($, on) => {
