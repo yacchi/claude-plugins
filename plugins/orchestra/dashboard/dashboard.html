@@ -581,6 +581,43 @@ ul.items > li:last-child {
     margin-top: 4px;
     height: 4px;
 }
+.runs #plans {
+    margin-bottom: 16px;
+}
+.stepper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 12px;
+    padding: 0;
+    list-style: none;
+}
+.stepper li {
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    color: var(--muted);
+}
+.stepper li.is-done {
+    background: var(--good-bg);
+    color: var(--good);
+}
+.stepper li.is-now {
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-weight: 600;
+}
+.linkbtn {
+    font: inherit;
+    font-size: 13px;
+    color: var(--accent);
+    background: none;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 5px 10px;
+    cursor: pointer;
+}
 :focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 2px;
@@ -605,6 +642,8 @@ ul.items > li:last-child {
     <div id="notice" class="notice" hidden></div>
     <div class="grid">
         <section class="runs" aria-labelledby="runs-h">
+            <h2 id="plans-h" class="sec">計画</h2>
+            <div id="plans"></div>
             <h2 id="runs-h" class="sec">実行一覧</h2>
             <div id="runs">
                 <div class="placeholder">
@@ -627,6 +666,24 @@ ul.items > li:last-child {
     "use strict";
 
     const STALE_S = 180;
+    // A planner writes at phase boundaries only, and a phase can take long.
+    const PLAN_STALE_S = 1200;
+    const PLAN_PREFIX = "plan:";
+    const PLAN_STATUS = {
+        planning: { label: "計画中", cls: "running" },
+        "needs-user": { label: "質問あり", cls: "needs" },
+        done: { label: "完了", cls: "done" },
+        failed: { label: "失敗", cls: "crashed" },
+    };
+    const PLAN_PHASES = [
+        ["explore", "調査"],
+        ["verify", "反証"],
+        ["critique", "抜け漏れ確認"],
+        ["design", "設計"],
+        ["synthesize", "統合"],
+        ["reality-check", "現状確認"],
+        ["lint", "lint"],
+    ];
     const LS_KEY = "orchestra-dashboard.selected-run";
     const REASON_MAX = 200;
 
@@ -673,6 +730,9 @@ ul.items > li:last-child {
         dbState: "loading", // loading | none | ok
         runs: [],
         runsLoaded: false,
+        plans: [],
+        plansLoaded: false,
+        unsubPlans: null,
         fromCache: false,
         selected: lsGet(),
         unsubRuns: null,
@@ -682,7 +742,7 @@ ul.items > li:last-child {
         canWrite: null, // true | false | null (platform said nothing)
         writing: new Set(),
         reasons: new Map(),
-        errors: { runs: "", decisions: "", write: "" },
+        errors: { runs: "", plans: "", decisions: "", write: "" },
         revoked: false,
     };
 
@@ -845,16 +905,59 @@ ul.items > li:last-child {
             S.runsLoaded = true;
             S.fromCache = Boolean(snap.metadata && snap.metadata.fromCache);
             S.errors.runs = "";
-            if (!S.runs.some((r) => r.docId === S.selected)) {
-                S.selected = S.runs.length ? S.runs[0].docId : null;
-            }
+            fixSelection();
             subscribeDecisions();
             render();
         }, (e) => onSubError("runs", e, subscribeRuns));
     }
 
+    function subscribePlans() {
+        if (S.unsubPlans) {
+            S.unsubPlans();
+            S.unsubPlans = null;
+        }
+        S.unsubPlans = S.db.collection("plans").onSnapshot((snap) => {
+            const plans = [];
+            for (const d of snap.docs) {
+                if (d.exists) {
+                    plans.push({ docId: d.id, data: obj(d.data()) });
+                }
+            }
+            plans.sort((a, b) => (num(b.data.updated_at) ?? 0) - (num(a.data.updated_at) ?? 0));
+            S.plans = plans;
+            S.plansLoaded = true;
+            S.errors.plans = "";
+            fixSelection();
+            render();
+        }, (e) => onSubError("plans", e, subscribePlans));
+    }
+
+    // Keeps the selection on something that exists: a plan ("plan:<id>") or a
+    // run, else the newest run, else the newest plan.
+    function fixSelection() {
+        const sel = S.selected || "";
+        if (sel.startsWith(PLAN_PREFIX)) {
+            if (!S.plansLoaded || S.plans.some((p) => PLAN_PREFIX + p.docId === sel)) {
+                return;
+            }
+        } else if (S.runs.some((r) => r.docId === sel)) {
+            return;
+        }
+        if (S.runs.length) {
+            S.selected = S.runs[0].docId;
+        } else if (S.plans.length) {
+            S.selected = PLAN_PREFIX + S.plans[0].docId;
+        } else {
+            S.selected = null;
+        }
+    }
+
     function selectedRun() {
         return S.runs.find((r) => r.docId === S.selected) || null;
+    }
+
+    function selectedPlan() {
+        return S.plans.find((p) => PLAN_PREFIX + p.docId === S.selected) || null;
     }
 
     // One decisions subscription, for the selected run only.
@@ -981,6 +1084,7 @@ ul.items > li:last-child {
 
         renderConn();
         renderNotice();
+        renderPlans();
         renderRuns();
         renderDetail();
         tick();
@@ -1026,6 +1130,10 @@ ul.items > li:last-child {
             if (S.errors.runs) {
                 lines.push(S.errors.runs);
                 crit = S.revoked;
+            }
+            if (S.errors.plans && S.errors.plans !== S.errors.runs) {
+                lines.push(S.errors.plans);
+                crit = crit || S.revoked;
             }
         }
         el.replaceChildren(...lines.map((t) => h("p", { text: t })));
@@ -1089,6 +1197,131 @@ ul.items > li:last-child {
         root.replaceChildren(list);
     }
 
+    const planStatusOf = (data) => PLAN_STATUS[str(data.status)] || { label: str(data.status) || "不明", cls: "" };
+    const planIsLive = (data) => str(data.status) === "planning";
+
+    function renderPlans() {
+        const root = document.getElementById("plans");
+        if (S.dbState !== "ok" || !S.plansLoaded) {
+            return;
+        }
+        if (S.plans.length === 0) {
+            root.replaceChildren(h("p", { class: "empty", text: "計画はまだありません。planner が計画を始めるとここに表示されます。" }));
+            return;
+        }
+        const list = h("div", { class: "run-list" });
+        for (const plan of S.plans) {
+            const d = plan.data;
+            const st = planStatusOf(d);
+            const phase = PLAN_PHASES.find(([k]) => k === str(d.phase));
+            const children = arr(d.children).map(obj).filter((c) => str(c.status) === "running").length;
+            list.append(h("button", {
+                type: "button",
+                id: "plan-" + plan.docId,
+                class: "run-item s-" + (st.cls || "other"),
+                "aria-pressed": PLAN_PREFIX + plan.docId === S.selected ? "true" : "false",
+                onclick: () => select(PLAN_PREFIX + plan.docId),
+            },
+            h("div", { class: "row between" },
+                h("span", { class: "run-id mono ellipsis", text: str(d.plan_id) || plan.docId }),
+                h("span", { class: "pill " + st.cls, text: st.label })),
+            h("div", { class: "meta num" },
+                phase && planIsLive(d) ? h("span", { text: phase[1] }) : null,
+                num(d.packages) != null ? h("span", { text: num(d.packages) + " パッケージ" }) : null,
+                children > 0 ? h("span", { text: "子 " + children + " 本" }) : null,
+                arr(d.questions).length > 0 ? h("span", { text: "質問 " + arr(d.questions).length }) : null,
+                planAgoEl(num(d.updated_at), planIsLive(d)))));
+        }
+        root.replaceChildren(list);
+    }
+
+    // "更新 N秒前" for a plan, stale after PLAN_STALE_S instead of STALE_S.
+    function planAgoEl(at, live) {
+        if (at == null) {
+            return h("span", { class: "ago", text: "更新 不明" });
+        }
+        return h("span", {
+            class: "ago num",
+            dataset: { at: String(at), prefix: "更新 ", live: live ? "1" : "", staleS: String(PLAN_STALE_S) },
+        });
+    }
+
+    function renderPlanDetail(root, plan) {
+        const d = plan.data;
+        const st = planStatusOf(d);
+        const live = planIsLive(d);
+        const updated = num(d.updated_at);
+        const now = str(d.phase);
+        const nowIdx = PLAN_PHASES.findIndex(([k]) => k === now);
+        const doneAll = str(d.status) === "done";
+        const steps = h("ol", { class: "stepper", "aria-label": "計画の段" },
+            PLAN_PHASES.map(([k, label], i) => h("li", {
+                class: doneAll || (nowIdx >= 0 && i < nowIdx) ? "is-done" : i === nowIdx ? "is-now" : "",
+                "aria-current": i === nowIdx && !doneAll ? "step" : null,
+                text: label,
+            })));
+        const est = num(d.est_total_s);
+        const crit = num(d.est_critical_s);
+        const head = h("div", { class: "card head" },
+            h("div", { class: "row between" },
+                h("h2", { class: "mono", text: str(d.plan_id) || plan.docId }),
+                h("span", { class: "pill " + st.cls, text: st.label })),
+            h("p", { class: "line", text: str(d.goal) || "（目的はまだ書かれていません）" }),
+            h("div", { class: "meta" }, planAgoEl(updated, live)),
+            live && updated != null ? h("div", {
+                class: "stale-banner",
+                hidden: true,
+                dataset: { staleAt: String(updated), staleS: String(PLAN_STALE_S) },
+                text: "20分以上更新がありません。planner が止まっている可能性があります。",
+            }) : null,
+            steps,
+            h("dl", { class: "stats num" },
+                stat("パッケージ", num(d.packages) != null ? String(num(d.packages)) : "—"),
+                stat("見積もり合計", est != null ? fmtDur(est) : "—"),
+                stat("最長経路", crit != null ? fmtDur(crit) : "—"),
+                stat("開始", num(d.started_at) != null ? fmtAgo(num(d.started_at)) : "—")));
+
+        const children = arr(d.children).map(obj);
+        const kids = h("section", { class: "card" }, cardHead("子のエージェント", children.filter((c) => str(c.status) === "running").length));
+        if (children.length === 0) {
+            kids.append(h("p", { class: "empty", text: "子のエージェントはいません。" }));
+        } else {
+            const ul = h("ul", { class: "items" });
+            for (const c of children) {
+                ul.append(h("li", { class: "row between" },
+                    h("span", { class: "ellipsis", text: str(c.label) }),
+                    h("span", { class: "row" },
+                        h("span", { class: "sub mono", text: str(c.model) }),
+                        h("span", { class: "pill " + (str(c.status) === "running" ? "running" : "good"),
+                            text: str(c.status) === "running" ? "実行中" : "完了" }))));
+            }
+            kids.append(ul);
+        }
+
+        const questions = arr(d.questions).map(str).filter(Boolean);
+        const qs = h("section", { class: "card" }, cardHead("未解決の質問", questions.length, true));
+        if (questions.length === 0) {
+            qs.append(h("p", { class: "empty", text: "未解決の質問はありません。" }));
+        } else {
+            qs.append(h("p", { class: "note", text: "回答はチャットで指示役に伝えてください。" }));
+            const ul = h("ul", { class: "items" });
+            for (const q of questions) {
+                ul.append(h("li", { class: "detail-text", text: q }));
+            }
+            qs.append(ul);
+        }
+
+        const cards = h("div", { class: "cards" }, qs, kids);
+        const run = S.runs.find((r) => str(r.data.run_id) === (str(d.plan_id) || plan.docId));
+        if (run) {
+            cards.prepend(h("section", { class: "card wide" },
+                cardHead("この計画の実行", null),
+                h("button", { type: "button", id: "goto-" + run.docId, class: "linkbtn",
+                    text: "実行 " + (str(run.data.run_id) || run.docId) + " を開く", onclick: () => select(run.docId) })));
+        }
+        root.replaceChildren(head, cards);
+    }
+
     function renderDetail() {
         const root = document.getElementById("detail");
         if (S.dbState !== "ok" || !S.runsLoaded) {
@@ -1096,6 +1329,11 @@ ul.items > li:last-child {
                 root.replaceChildren(h("div", { class: "placeholder" },
                     h("p", { text: "claude.ai にサインインして開くと、実行の詳細がここに表示されます。" })));
             }
+            return;
+        }
+        const plan = selectedPlan();
+        if (plan) {
+            renderPlanDetail(root, plan);
             return;
         }
         const run = selectedRun();
@@ -1390,11 +1628,13 @@ ul.items > li:last-child {
         const now = nowS();
         for (const el of document.querySelectorAll("[data-at]")) {
             const at = Number(el.dataset.at);
+            const limit = Number(el.dataset.staleS) || STALE_S;
             el.textContent = (el.dataset.prefix || "") + fmtAgo(at);
-            el.classList.toggle("is-stale", el.dataset.live === "1" && now - at > STALE_S);
+            el.classList.toggle("is-stale", el.dataset.live === "1" && now - at > limit);
         }
         for (const el of document.querySelectorAll("[data-stale-at]")) {
-            el.hidden = !(now - Number(el.dataset.staleAt) > STALE_S);
+            const limit = Number(el.dataset.staleS) || STALE_S;
+            el.hidden = !(now - Number(el.dataset.staleAt) > limit);
         }
     }
 
@@ -1423,6 +1663,7 @@ ul.items > li:last-child {
         S.db = db;
         S.dbState = "ok";
         subscribeRuns();
+        subscribePlans();
         render();
         try {
             const user = await c.use("user");
