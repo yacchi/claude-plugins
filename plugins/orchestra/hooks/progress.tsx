@@ -227,21 +227,12 @@ export const bandLines = (snapshot: Snapshot, columns: number): string[] => {
 const PANE = 'orchestra'
 const TITLE = 'orchestra'
 
-// Whether this module opened the pane on its own (it closes it again once
-// no wave is tracked), and whether the person closed it or toggled it off
-// (it is then not opened unasked again this session).
-let openedUnasked = false
-let dismissed = false
-
-// Redraws the pane and the band after the tracked waves changed, and closes
-// a pane opened unasked once nothing is tracked.
+// Redraws the pane and the band after the tracked waves changed. The pane
+// opens only when asked: `$.ui.open` places it on every attached surface, and
+// a surface without a close mark (the mobile app) would be stuck with it.
 // (A function declaration: the engine follows `$` past an import only into one.)
-export function redraw($: EngineInterface, snapshot: Snapshot): void {
+export function redraw($: EngineInterface, _snapshot: Snapshot): void {
     $.ui.invalidate('ui.render')
-    if (openedUnasked && snapshot.waves.length === 0) {
-        openedUnasked = false
-        void $.ui.close({ id: PANE }).catch(() => undefined)
-    }
 }
 
 const paneOf = async ($: EngineInterface) =>
@@ -260,58 +251,47 @@ export const registerProgress = (on: On, snapshot: () => Snapshot): void => {
 
     // `/orchestra:progress` toggles the pane, wherever a surface places one.
     on('command.run', { command: 'progress' }, async $ => {
-        openedUnasked = false
         if (await paneOf($)) {
-            dismissed = true
             await $.ui.close({ id: PANE })
 
             return { text: 'orchestra: progress pane closed.' }
         }
-        dismissed = false
         const opened = await $.ui.open({ id: PANE, title: TITLE })
 
         return { text: opened.isPlaced ? 'orchestra: progress pane opened.' : `orchestra: progress pane waits: ${opened.reason}` }
     }).catch(() => ({ text: 'orchestra: progress pane unavailable.' }))
 
-    on('ui.close', ($, e, next) => {
-        if (e.id === PANE) {
-            openedUnasked = false
-            dismissed = dismissed || e.origin.kind === 'person'
-        }
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
     on('ui.render', { component: 'Pane', requestId: PANE }, ($, e) => {
-        const { Box, Text } = $.ui.resolve(e)
+        const { Box, Text, Button } = $.ui.resolve(e)
         const { waves } = snapshot()
+        // Its own close control: the engine's close mark is not on every surface.
+        const close = <Button key="orchestra-close" label="閉じる" hotkey="x"
+            onPress={() => void $.ui.close({ id: PANE }).catch(() => undefined)} />
         if (waves.length === 0) {
-            return <Text dimColor>no orchestra wave tracked</Text>
+            return (
+                <Box flexDirection="column">
+                    <Text dimColor>no orchestra wave tracked</Text>
+                    {close}
+                </Box>
+            )
         }
 
         return (
             <Box flexDirection="column">
-                {paneLines(waves, e.props.bodyColumns, e.props.scroll.bodyRows)
+                {paneLines(waves, e.props.bodyColumns, e.props.scroll.bodyRows - 1)
                     .map(line => <Text dimColor={line.startsWith('✓')}>{line || ' '}</Text>)}
+                {close}
             </Box>
         )
     }).catch(($, e, next) => next(e))
 
-    // The band shows while a wave is tracked and the pane is not up. Where
-    // the surface docks panes beside the transcript (fullscreen) the pane
-    // is opened unasked instead, a sidebar; elsewhere only when asked.
+    // The band shows while a wave is tracked and the pane is not up.
     on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
         const now = snapshot()
         if (e.props.hasSurvey || now.waves.length === 0) {
             return next(e)
         }
         const pane = await paneOf($)
-        if (!pane && !dismissed && e.viewport?.isFullscreen === true) {
-            openedUnasked = true
-            void $.ui.open({ id: PANE, title: TITLE }).catch(() => undefined)
-
-            return next(e)
-        }
         if (pane?.isPlaced && pane.isShown) {
             return next(e)
         }
