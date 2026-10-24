@@ -36,6 +36,9 @@
         "custom_user_key": {
           "a": 1
         },
+        "dashboard": {
+          "artifact_url": ""
+        },
         "enforcement": {
           "light_class": "off",
           "opus_generalist": "nudge",
