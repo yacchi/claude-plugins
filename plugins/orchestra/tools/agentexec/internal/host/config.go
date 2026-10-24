@@ -245,18 +245,26 @@ func UserConfigMode(c Config) (string, error) {
 	return mode, nil
 }
 
-// IsolationFlags are the Claude flags that keep a hosted worker off the
-// user's own setup. `isolate` adds --strict-mcp-config (no user MCP
-// servers), --setting-sources project,local (no user hooks or enabled
-// plugins) and --plugin-dir <orchestra plugin root>, each unless tokens (the
-// user's own args) already has it; `inherit` adds nothing.
+// Settings JSON of a hosted worker, compact: the herdr start line is capped
+// (maxStartLine). disableRemoteControl stops the worker registering a Remote
+// Control session, which no CLI flag can.
+const (
+	remoteControlOffSettings = `{"disableRemoteControl":true}`
+	isolateSettings          = `{"autoMemoryEnabled":false,"disableClaudeAiConnectors":true,"disableRemoteControl":true}`
+)
+
+// IsolationFlags are the Claude flags a hosted worker is started with. Every
+// mode adds --settings with disableRemoteControl. `isolate` also adds
+// --strict-mcp-config (no user MCP servers), --setting-sources project,local
+// (no user hooks or enabled plugins), --plugin-dir <orchestra plugin root>
+// and --no-chrome, and its settings also turn off the claude.ai connectors
+// and auto memory; each flag unless tokens (the user's own args) already has
+// it. `inherit` adds only the settings. A --settings in tokens is an error
+// unless it sets disableRemoteControl itself: orchestra adds no second one.
 func IsolationFlags(c Config, tokens []string) ([]string, error) {
 	mode, err := UserConfigMode(c)
 	if err != nil {
 		return nil, err
-	}
-	if mode == "inherit" {
-		return []string{}, nil
 	}
 	has := func(flag string) bool {
 		for _, t := range tokens {
@@ -266,7 +274,20 @@ func IsolationFlags(c Config, tokens []string) ([]string, error) {
 		}
 		return false
 	}
+	userVals := userSettings(tokens)
+	for _, v := range userVals {
+		if !disablesRemoteControl(v) {
+			return nil, Need(KindError, `the worker's --settings must set "disableRemoteControl": true `+
+				`(add it to that JSON; orchestra does not add a second --settings)`)
+		}
+	}
 	flags := []string{}
+	if mode == "inherit" {
+		if len(userVals) == 0 {
+			flags = append(flags, "--settings", remoteControlOffSettings)
+		}
+		return flags, nil
+	}
 	if !has("--strict-mcp-config") {
 		flags = append(flags, "--strict-mcp-config")
 	}
@@ -276,7 +297,54 @@ func IsolationFlags(c Config, tokens []string) ([]string, error) {
 	if root := PluginRoot(); !has("--plugin-dir") && root != "" {
 		flags = append(flags, "--plugin-dir", root)
 	}
+	if len(userVals) == 0 {
+		flags = append(flags, "--settings", isolateSettings)
+	}
+	if !has("--no-chrome") {
+		flags = append(flags, "--no-chrome")
+	}
 	return flags, nil
+}
+
+// IsolationEnv is the environment `isolate` adds to a hosted worker process
+// (the bundled skills and the IDE auto-connect off); none for `inherit`.
+func IsolationEnv(c Config) ([]string, error) {
+	mode, err := UserConfigMode(c)
+	if err != nil {
+		return nil, err
+	}
+	if mode == "inherit" {
+		return []string{}, nil
+	}
+	return []string{"CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1", "CLAUDE_CODE_AUTO_CONNECT_IDE=false"}, nil
+}
+
+// userSettings are the values of every --settings (`--settings v` or
+// `--settings=v`) in tokens.
+func userSettings(tokens []string) []string {
+	var values []string
+	for i, t := range tokens {
+		if t == "--settings" {
+			v := ""
+			if i+1 < len(tokens) {
+				v = tokens[i+1]
+			}
+			values = append(values, v)
+		} else if v, ok := strings.CutPrefix(t, "--settings="); ok {
+			values = append(values, v)
+		}
+	}
+	return values
+}
+
+// disablesRemoteControl reports whether a --settings value is JSON that sets
+// disableRemoteControl to true (a file path is not, so it is refused).
+func disablesRemoteControl(v string) bool {
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(v), &settings); err != nil {
+		return false
+	}
+	return settings["disableRemoteControl"] == true
 }
 
 // PluginRoot is the orchestra plugin directory (the one holding

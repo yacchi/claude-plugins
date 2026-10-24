@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -249,7 +250,7 @@ func TestAddDirsAndPermissionModeAreRendered(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := opt(e.callsOf("terminal create")[0], "--command")
-	if cmd != "claude --model opus --permission-mode acceptEdits --add-dir "+e.state {
+	if cmd != "claude --model opus --permission-mode acceptEdits --add-dir "+e.state+` --settings '{"disableRemoteControl":true}'` {
 		t.Errorf("%q", cmd)
 	}
 }
@@ -452,5 +453,37 @@ func TestCommandCarriesThePnpmGVSSwitchOnlyInActiveTrees(t *testing.T) {
 		if got := strings.HasPrefix(cmd, "env ") && strings.Contains(cmd, config.PnpmGVSEnv+" claude "); got != want {
 			t.Errorf("%s: %q, switch wanted %v", tree, cmd, want)
 		}
+	}
+}
+
+// An isolated worker on pnpm's global virtual store gets one env prefix that
+// carries both the isolate switches and the pnpm switch.
+func TestCommandMergesIsolateEnvWithThePnpmGVSSwitch(t *testing.T) {
+	x := New(&config.Resolved{Values: config.DeepMerge(config.Defaults(), map[string]any{
+		"isolation": map[string]any{"pnpm_global_virtual_store": true},
+	})})
+	linked, main := t.TempDir(), t.TempDir()
+	for _, f := range []string{filepath.Join(linked, ".git"), filepath.Join(linked, "pnpm-lock.yaml"),
+		filepath.Join(main, ".git", "HEAD"), filepath.Join(main, "pnpm-lock.yaml")} {
+		_ = os.MkdirAll(filepath.Dir(f), 0o755)
+		_ = os.WriteFile(f, []byte("x\n"), 0o644)
+	}
+	cmd, err := x.command(&host.Session{Worktree: linked, Extra: map[string]any{"model": "opus"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	words, err := host.ShellSplit(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envs := 0
+	for _, w := range words {
+		if w == "env" {
+			envs++
+		}
+	}
+	if envs != 1 || words[0] != "env" || !slices.Contains(words, config.PnpmGVSEnv) ||
+		!slices.Contains(words, "CLAUDE_CODE_AUTO_CONNECT_IDE=false") {
+		t.Errorf("%q", cmd)
 	}
 }
