@@ -33,7 +33,8 @@ const DryRunEnv = "AGENT_EXEC_DRYRUN"
 // and Effort (no route, no session store; Class only picks the watchdog
 // budget and the ledger class). Empty strings are "not given": Archetype
 // "default", Isolate "auto" routed and "never" direct, Task/RunID/Resume
-// none.
+// none. Isolate "cli" isolates only a route agent-exec runs itself; a
+// direct run always is one.
 type Request struct {
 	Class, Archetype, Workdir, Isolate, Task, RunID, Resume, Executor, Model, Effort string
 	PromptFiles, Exhausted                                                           []string
@@ -138,7 +139,13 @@ func routed(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	if !rt.Routable() {
 		return Outcome{Out: map[string]any{"status": "unroutable", "route": rt.Object()}}
 	}
-	iso := isolateFor(cfg, r.Workdir, orDefault(r.Isolate, IsolateAuto), r.Task)
+	mode := orDefault(r.Isolate, IsolateAuto)
+	var iso isolation
+	if mode == IsolateCli && rt.Dispatch != "cli" {
+		iso = callerIsolates()
+	} else {
+		iso = isolateFor(cfg, r.Workdir, mode, r.Task)
+	}
 	workdir := iso.workdir(r.Workdir)
 
 	if rt.Dispatch != "cli" {

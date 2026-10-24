@@ -1,0 +1,36 @@
+description: >
+  --isolate cli survives the token round trip and decides after the route:
+  a delegate route (claude) creates no worktree and reports that the caller
+  isolates it, a pi route isolates even a clean tree like always; only the
+  pi task's worktree exists afterwards
+setup:
+  git: true
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.claude/orchestra.yaml: |
+      sandbox:
+        mode: off
+      interactive_host: none
+      priority:
+        standard:
+          default: [pi, claude]
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "$AGENT_EXEC_UNDER_TEST" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    p.md: |
+      FAKEPI-ANSWER: isolated
+steps:
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-claude, --isolate, cli, --json]
+    save: {TOK: token}
+    snapshot: ["~/.claude/orchestra/tokens/<@TOK>.json"]
+  - argv: [dispatch, --token, "<@TOK>", --capture, --exhausted, pi]
+  - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-pi, --isolate, cli, --json]
+    save: {TOK2: token}
+  - argv: [dispatch, --token, "<@TOK2>", --capture]
+  - argv: [isolate, list, --json]
