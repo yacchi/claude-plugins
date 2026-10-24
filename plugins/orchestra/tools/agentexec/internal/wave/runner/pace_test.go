@@ -55,32 +55,6 @@ func TestAutoWidthStartsEveryStartablePackage(t *testing.T) {
 	eq(t, "peak in flight", peak, len(ids))
 }
 
-func TestMemoryPressureProbes(t *testing.T) {
-	for _, c := range []struct {
-		name         string
-		psi, meminfo []byte
-		want         bool
-	}{
-		{"nothing readable", nil, nil, false},
-		{"garbage", []byte("nope\n"), []byte("junk"), false},
-		{"psi calm", []byte("some avg10=3.10 avg60=0.00 avg300=0.00 total=1\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"), nil, false},
-		{"psi high", []byte("some avg10=25.00 avg60=0.00 avg300=0.00 total=1\n"), nil, true},
-		{"psi wins over meminfo", []byte("some avg10=0.00\n"), []byte("MemTotal: 1000 kB\nMemAvailable: 10 kB\n"), false},
-		{"meminfo low", nil, []byte("MemTotal: 1000 kB\nMemFree: 5 kB\nMemAvailable: 50 kB\n"), true},
-		{"meminfo fine", nil, []byte("MemTotal: 1000 kB\nMemAvailable: 500 kB\n"), false},
-		{"meminfo without total", nil, []byte("MemAvailable: 1 kB\n"), false},
-	} {
-		if got, _ := linuxPressure(c.psi, c.meminfo); got != c.want {
-			t.Errorf("linux %s: got %v want %v", c.name, got, c.want)
-		}
-	}
-	for level, want := range map[uint32]bool{0: false, 1: false, 2: true, 4: true} {
-		if got, _ := darwinPressure(level); got != want {
-			t.Errorf("darwin level %d: got %v want %v", level, got, want)
-		}
-	}
-}
-
 // Memory pressure holds only new starts: the package in flight still
 // integrates, the dependent waits, and starts once the pressure eases.
 func TestMemoryGuardHoldsOnlyNewStarts(t *testing.T) {

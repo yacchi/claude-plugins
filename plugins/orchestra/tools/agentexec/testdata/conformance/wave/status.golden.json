@@ -444,7 +444,23 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
+        "approvals": [],
         "line": "wave 1/6 · 2 running · 2 needs",
+        "machine": {
+          "cpus": "<MACHINE>",
+          "git_procs": "<MACHINE>",
+          "heavy": {
+            "size": "<MACHINE>",
+            "used": "<MACHINE>"
+          },
+          "load1": "<MACHINE>",
+          "load5": "<MACHINE>",
+          "mem_pressure": "<MACHINE>",
+          "test": {
+            "size": "<MACHINE>",
+            "used": "<MACHINE>"
+          }
+        },
         "progress": {
           "blocked": 0,
           "cost_usd": null,
@@ -515,7 +531,111 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
+        "approvals": [],
         "line": "wave 1/6 · 2 running · 2 needs",
+        "machine": {
+          "cpus": "<MACHINE>",
+          "git_procs": "<MACHINE>",
+          "heavy": {
+            "size": "<MACHINE>",
+            "used": "<MACHINE>"
+          },
+          "load1": "<MACHINE>",
+          "load5": "<MACHINE>",
+          "mem_pressure": "<MACHINE>",
+          "test": {
+            "size": "<MACHINE>",
+            "used": "<MACHINE>"
+          }
+        },
+        "progress": {
+          "blocked": 0,
+          "cost_usd": null,
+          "elapsed_s": 8,
+          "eta_basis": "none",
+          "eta_s": null,
+          "integrated": 1,
+          "needs": [
+            {
+              "detail": "needs wider scope",
+              "id": "d",
+              "kind": "scope"
+            },
+            {
+              "detail": "wave level need",
+              "id": null,
+              "kind": "environment"
+            }
+          ],
+          "next": [],
+          "pending": 1,
+          "recent": [
+            {
+              "at": 99999999994.5,
+              "id": "b"
+            }
+          ],
+          "run_id": null,
+          "running": [
+            {
+              "cls": null,
+              "elapsed_s": 0,
+              "est_seconds": null,
+              "executor": "pi",
+              "id": "a",
+              "model": null,
+              "phase": "implementing",
+              "started_at": 99999999993.5
+            },
+            {
+              "cls": null,
+              "elapsed_s": 0,
+              "est_seconds": null,
+              "executor": "pi",
+              "id": "e",
+              "model": null,
+              "phase": "verifying",
+              "started_at": 99999999999.5
+            }
+          ],
+          "total": 6
+        },
+        "seq": 9,
+        "status": "stopped"
+      }
+    },
+    {
+      "argv": [
+        "wave",
+        "wait",
+        "--state",
+        "wave/state.json",
+        "--max-wait",
+        "0",
+        "--since",
+        "6",
+        "--until-change"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "approvals": [],
+        "line": "wave 1/6 · 2 running · 2 needs",
+        "machine": {
+          "cpus": "<MACHINE>",
+          "git_procs": "<MACHINE>",
+          "heavy": {
+            "size": "<MACHINE>",
+            "used": "<MACHINE>"
+          },
+          "load1": "<MACHINE>",
+          "load5": "<MACHINE>",
+          "mem_pressure": "<MACHINE>",
+          "test": {
+            "size": "<MACHINE>",
+            "used": "<MACHINE>"
+          }
+        },
         "progress": {
           "blocked": 0,
           "cost_usd": null,

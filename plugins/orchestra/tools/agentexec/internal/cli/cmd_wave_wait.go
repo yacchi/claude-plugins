@@ -5,7 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/approvals"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/slot"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/usage"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/watch"
 )
@@ -13,13 +15,14 @@ import (
 func newWaveWaitCmd() *cobra.Command {
 	wait := &cobra.Command{
 		Use:   "wait",
-		Short: "block until a wave's runner ends, a new need appears, or a timeout",
+		Short: "block until a wave's runner ends, a new need appears, a change (--until-change), or a timeout",
 		Args:  cobra.NoArgs,
 	}
 	fl := wait.Flags()
 	statePath := fl.String("state", "", "state.json path")
 	maxWait := fl.Float64("max-wait", watch.DefaultMaxWait.Seconds(), "seconds to wait at most")
-	since := fl.Int("since", 0, "seq of the previous answer: needs recorded before it are not new")
+	since := fl.Int("since", 0, "seq of the previous answer: needs and changes recorded before it are not new")
+	untilChange := fl.Bool("until-change", false, "also answer \"changed\" on any event a viewer sees (status, dispatch, integrate, need, stop) after --since")
 	_ = wait.MarkFlagRequired("state")
 	wait.RunE = func(cmd *cobra.Command, _ []string) error {
 		if !finiteNonNegative(*maxWait) {
@@ -29,11 +32,23 @@ func newWaveWaitCmd() *cobra.Command {
 			return exitf(2, "wave wait: --since must not be negative")
 		}
 		answer := watch.Wait(watch.WaitOptions{
-			State: *statePath, Since: *since, MaxWait: duration(*maxWait, time.Second), Cost: waveRunCost,
+			State: *statePath, Since: *since, MaxWait: duration(*maxWait, time.Second),
+			UntilChange: *untilChange, Cost: waveRunCost, Approvals: waveApprovals,
+			Machine: func() watch.Machine { return watch.ProbeMachine(slot.HeavyPool(), slot.TestPool()) },
 		})
 		return writeJSONLine(cmd.OutOrStdout(), answer)
 	}
 	return wait
+}
+
+// waveApprovals are the items `agent-exec approvals --state` lists; none
+// when the state cannot be read.
+func waveApprovals(statePath string) []watch.Approval {
+	items, err := approvals.PendingIn(statePath, configOrDefaults())
+	if err != nil {
+		return nil
+	}
+	return watch.ApprovalsOf(items)
 }
 
 // waveRunCost is a run's estimated cost in USD, the figure `agent-exec
