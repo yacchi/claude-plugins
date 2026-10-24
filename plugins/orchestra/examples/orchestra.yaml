@@ -161,6 +161,15 @@ telemetry:
   enabled: false
   dir: ~/.claude/orchestra/telemetry
 
+# Wave dashboard: the claude.ai Artifact page the orchestra-wave watcher writes
+# each wave's progress to and reads approve/deny decisions from. Set it in the
+# user scope (~/.claude/orchestra.yaml). Empty (the default) makes the `run`
+# skill publish the page before the first wave of a session and record its URL
+# here. Only "" or an https://claude.ai/...artifact... URL is accepted. Who may
+# approve on the page follows the Artifact's own sharing (private by default).
+dashboard:
+  artifact_url: ""
+
 # Persisted, time-decaying executor cooldown. Entries are written automatically
 # when `agent-exec dispatch` parses
 # `status: unavailable`; routing loads active entries as an additional candidate

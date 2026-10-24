@@ -24,14 +24,6 @@ func expandUser(p string) string {
 	return p
 }
 
-func absExpanded(p string) string {
-	abs, err := filepath.Abs(expandUser(p))
-	if err != nil {
-		return expandUser(p)
-	}
-	return abs
-}
-
 // OrchestraHome is ~/.claude/orchestra.
 func OrchestraHome() string {
 	return filepath.Join(Home(), ".claude", "orchestra")
@@ -55,24 +47,6 @@ func AliveDir() string {
 		return expandUser(v)
 	}
 	return filepath.Join(OrchestraHome(), "alive")
-}
-
-// UIStatePath is the dashboard's ui.json: $ORCHESTRA_UI_STATE, else
-// ~/.claude/orchestra/ui.json.
-func UIStatePath() string {
-	if v := os.Getenv("ORCHESTRA_UI_STATE"); v != "" {
-		return absExpanded(v)
-	}
-	return filepath.Join(OrchestraHome(), "ui.json")
-}
-
-// WaveRegistryPath is $ORCHESTRA_WAVE_REGISTRY, else
-// ~/.claude/orchestra/waves.jsonl.
-func WaveRegistryPath() string {
-	if v := os.Getenv("ORCHESTRA_WAVE_REGISTRY"); v != "" {
-		return absExpanded(v)
-	}
-	return filepath.Join(OrchestraHome(), "waves.jsonl")
 }
 
 // ClaudeConfigDir is $CLAUDE_CONFIG_DIR, else ~/.claude.

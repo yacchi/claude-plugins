@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
-
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 )
 
 func tokensLine(t Tokens) string {
@@ -117,41 +114,4 @@ func FormatRunsText(runs []Run) string {
 		fmt.Fprintf(&b, "%s %s %d %s %s\n", label, r.RunID, r.Files, r.FirstTS, r.LastTS)
 	}
 	return b.String()
-}
-
-// Snapshot24h is the UI's usage panel: the last 24 hours of every project
-// and source as {"<source>/<model>": tokens (+ cost_micro_usd when the source
-// reports one)}. A failure is reported as {"error": ...} rather than raised.
-func Snapshot24h(cfg *config.Resolved) any {
-	now := time.Now().UTC()
-	rep := BuildReport(ReportOptions{
-		Since: now.Add(-24 * time.Hour), Now: now,
-		Sources: Sources, AllProjects: true, Cfg: cfg,
-	})
-	out := map[string]any{}
-	for _, name := range rep.Sources.Names {
-		e := rep.Sources.Entries[name]
-		if e.NotAttributable {
-			continue
-		}
-		emit := func(model string, t Tokens) {
-			o := map[string]any{
-				"input_tokens":        t.InputTokens,
-				"output_tokens":       t.OutputTokens,
-				"cached_input_tokens": t.CachedInputTokens,
-			}
-			if e.HasCostMicroUSD {
-				o["cost_micro_usd"] = e.CostMicroUSD
-			}
-			out[name+"/"+model] = o
-		}
-		if len(e.ByModel) > 0 {
-			for _, model := range sortedKeys(e.ByModel) {
-				emit(model, e.ByModel[model])
-			}
-		} else {
-			emit("unknown", e.Tokens)
-		}
-	}
-	return out
 }

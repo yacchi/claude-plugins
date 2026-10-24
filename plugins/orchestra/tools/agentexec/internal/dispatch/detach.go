@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -316,75 +315,4 @@ func ExtractJSONObject(raw string) (map[string]any, bool) {
 		return nil, false
 	}
 	return m, true
-}
-
-// Detached is one detached dispatch as the UI lists it.
-type Detached struct {
-	Token         string `json:"token"`
-	PID           any    `json:"pid"`
-	Alive         bool   `json:"alive"`
-	Started       any    `json:"started"`
-	ResultPresent bool   `json:"result_present"`
-	Collected     bool   `json:"collected"`
-	Finished      any    `json:"finished"`
-	WaitCalls     int64  `json:"wait_calls"`
-	Executor      any    `json:"executor"`
-	Model         any    `json:"model"`
-	Class         any    `json:"class"`
-	Task          any    `json:"task"`
-}
-
-// ListDetached reports every detached dispatch with a state file: whether
-// its child is alive, whether a result is there (collected, or output left
-// by a finished child), and the token's class and task.
-func ListDetached(cfg *config.Resolved) []Detached {
-	dir := DetachDir(cfg)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		n := e.Name()
-		if strings.HasSuffix(n, ".json") && !strings.HasSuffix(n, ".result.json") {
-			names = append(names, n)
-		}
-	}
-	sort.Strings(names)
-	var out []Detached
-	for _, name := range names {
-		state := readObject(filepath.Join(dir, name))
-		if state == nil {
-			continue
-		}
-		get := func(k string) any { return state[k] }
-		token, _ := get("token").(string)
-		if token == "" {
-			token = strings.TrimSuffix(name, ".json")
-		}
-		d := Detached{
-			Token: token, PID: get("pid"), Started: get("started"), Finished: get("finished"),
-			Executor: get("executor"), Model: get("model"), Class: get("class"), Task: get("task"),
-		}
-		d.Alive = pidAlive(pidOf(d.PID))
-		d.Collected = get("collected") == true
-		d.WaitCalls, _ = get("wait_calls").(int64)
-		_, err := os.Stat(detachFile(cfg, token, ".result.json"))
-		d.ResultPresent = err == nil
-		if !d.ResultPresent && !d.Alive {
-			outPath, _ := get("out").(string)
-			if outPath == "" {
-				outPath = detachFile(cfg, token, ".out")
-			}
-			if fi, err := os.Stat(outPath); err == nil && fi.Size() > 0 {
-				d.ResultPresent = true
-			}
-		}
-		if spec, err := LoadToken(cfg, token); err == nil {
-			d.Class = spec.Class
-			d.Task = optString(spec.Task)
-		}
-		out = append(out, d)
-	}
-	return out
 }

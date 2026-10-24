@@ -14,8 +14,7 @@
         "--repo",
         "../work",
         "--max-in-flight",
-        "1",
-        "--no-ui"
+        "1"
       ],
       "exit": 1,
       "stdout_shape": "json",
