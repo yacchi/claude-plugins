@@ -231,9 +231,6 @@ func (r *runner) init() error {
 		r.emit("plan-warning", pkg, map[string]any{"message": w.Message})
 		fmt.Fprintf(r.stderr, "plan-warning: %s: %s\n", derefOr(w.Pkg, "-"), w.Message)
 	}
-	_ = state.Register(state.Registration{
-		State: r.statePath, Plan: r.opts.Plan, Repo: r.root, Into: r.into, RegisteredAt: r.clock(),
-	})
 
 	// Integration worktree: the same create path integrate takes, so a
 	// later `isolate integrate --into` reuses it as is.

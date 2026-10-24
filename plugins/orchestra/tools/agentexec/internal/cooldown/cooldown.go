@@ -5,12 +5,10 @@
 package cooldown
 
 import (
-	"errors"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -160,30 +158,4 @@ func RecordUnavailable(cfg *config.Resolved, executor, reason string, now time.T
 	}
 	state[executor] = map[string]any{"reason": reason, "until": until}
 	save(path, state, nowS)
-}
-
-// Clear drops one executor's cooldown, or all of them when executor is
-// empty. It returns the executors whose cooldown was dropped.
-func Clear(cfg *config.Resolved, executor string) ([]string, error) {
-	path := StatePath(cfg)
-	state := loadState(path)
-	if executor != "" {
-		known := map[string]bool{"claude": true, "pi": true}
-		for _, k := range slices.Sorted(maps.Keys(cfg.Section("external_executors"))) {
-			known[k] = true
-		}
-		if !known[executor] {
-			return nil, errors.New("unknown executor: " + executor)
-		}
-		if _, ok := state[executor]; !ok {
-			return []string{}, nil
-		}
-		delete(state, executor)
-		save(path, state, seconds(time.Now()))
-		return []string{executor}, nil
-	}
-	cleared := slices.Sorted(maps.Keys(state))
-	sort.Strings(cleared)
-	_ = os.Remove(path)
-	return cleared, nil
 }

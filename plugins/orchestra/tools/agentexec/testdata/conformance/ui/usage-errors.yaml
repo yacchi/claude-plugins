@@ -1,9 +1,0 @@
-description: >
-  ui parses its own arguments: an unknown option or a bad --port is exit 2;
-  --help prints the usage (exit 0)
-setup:
-  git: true
-steps:
-  - argv: [ui, --bogus]
-  - argv: [ui, --port, abc]
-  - argv: [ui, --help]

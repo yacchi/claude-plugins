@@ -3,7 +3,6 @@ package state
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -336,48 +335,6 @@ func TestStopFlag(t *testing.T) {
 	}
 	if err := ClearStop(statePath); err != nil {
 		t.Fatalf("clearing a missing STOP: %v", err)
-	}
-}
-
-func TestRegistry(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("ORCHESTRA_WAVE_REGISTRY", filepath.Join(dir, "reg", "waves.jsonl"))
-	if got := ListWaves(); got != nil {
-		t.Fatalf("no registry file: %v", got)
-	}
-	mkState := func(name string) string {
-		p := filepath.Join(dir, name)
-		if err := os.WriteFile(p, []byte("{}"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-	s1, s2, s3 := mkState("s1.json"), mkState("s2.json"), mkState("s3.json")
-	reg := func(state string, at float64) {
-		if err := Register(Registration{State: state, Plan: "plan.json", Repo: dir, Into: "int", RegisteredAt: at}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	reg(s1, 1)
-	reg(s2, 2)
-	reg(s1, 3) // moves s1 to the newest
-	reg(s3, 4)
-	os.Remove(s3)
-	f, _ := os.OpenFile(os.Getenv("ORCHESTRA_WAVE_REGISTRY"), os.O_APPEND|os.O_WRONLY, 0o644)
-	f.WriteString("garbage\n{\"state\": \"" + s2 + "\", \"pl")
-	f.Close()
-	var states []string
-	for _, r := range ListWaves() {
-		states = append(states, r.State)
-	}
-	if !reflect.DeepEqual(states, []string{s1, s2}) {
-		t.Fatalf("got %v", states)
-	}
-	planAbs, _ := filepath.Abs("plan.json")
-	raw, _ := os.ReadFile(os.Getenv("ORCHESTRA_WAVE_REGISTRY"))
-	first := strings.SplitN(string(raw), "\n", 2)[0]
-	if !strings.HasPrefix(first, `{"into":"int","plan":"`+planAbs+`","registered_at":1,"repo":"`) {
-		t.Fatalf("line must be sort_keys with absolute paths: %s", first)
 	}
 }
 

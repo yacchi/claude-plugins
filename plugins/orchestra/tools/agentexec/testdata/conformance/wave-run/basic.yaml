@@ -49,14 +49,14 @@ setup:
          {"id": "B", "spec": "specs/B.md", "cls": "standard", "depends_on": ["A"], "files_owned": ["b.txt"]},
          {"id": "C", "spec": "specs/C.md", "cls": "standard", "files_owned": ["c.txt"]}
        ]}
-normalize_keys: [since, updated, at, registered_at, elapsed_s]
+normalize_keys: [since, updated, at, elapsed_s]
 normalize_text:
   - pattern: '"(seconds|until)": ?[0-9.e+-]+'
     replace: '"$1": <N>'
 steps:
   - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1"]
     cwd: "~"
-    snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl", "~/wave/context/B.md", "~/.claude/orchestra/waves.jsonl"]
+    snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl", "~/wave/context/B.md"]
   - argv: [wave, status, --state, wave/state.json, --json]
     cwd: "~"
   - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --text]

@@ -1,13 +1,8 @@
 package state
 
 import (
-	"bufio"
 	"os"
 	"path/filepath"
-	"strings"
-
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 func stopPath(statePath string) string {
@@ -41,99 +36,4 @@ func ClearStop(statePath string) error {
 		return err
 	}
 	return nil
-}
-
-// Registration is one waves.jsonl line: a wave `wave run` has started.
-type Registration struct {
-	State        string  `json:"state"`
-	Plan         string  `json:"plan"`
-	Repo         string  `json:"repo"`
-	Into         string  `json:"into"`
-	RegisteredAt float64 `json:"registered_at"`
-}
-
-func abs(p string) string {
-	if a, err := filepath.Abs(p); err == nil {
-		return a
-	}
-	return p
-}
-
-// Register appends a registry line (paths made absolute; RegisteredAt 0 =
-// now). The line's keys are sorted.
-func Register(r Registration) error {
-	if r.RegisteredAt == 0 {
-		r.RegisteredAt = wallClock()
-	}
-	rec := map[string]any{
-		"state": abs(r.State), "plan": abs(r.Plan), "repo": abs(r.Repo),
-		"into": r.Into, "registered_at": r.RegisteredAt,
-	}
-	line, err := fsutil.MarshalJSON(rec)
-	if err != nil {
-		return err
-	}
-	path := paths.WaveRegistryPath()
-	if err := os.MkdirAll(filepath.Dir(abs(path)), 0o755); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = f.Write(append(line, '\n'))
-	return err
-}
-
-// ListWaves returns the registered waves, most recent registration first,
-// deduplicated by state (the last line wins). Entries whose state file is
-// gone and truncated or malformed lines are skipped.
-func ListWaves() []Registration {
-	f, err := os.Open(paths.WaveRegistryPath())
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	var order []string
-	latest := map[string]Registration{}
-	reader := bufio.NewReader(f)
-	for {
-		line, rerr := reader.ReadString('\n')
-		line = strings.TrimSpace(line)
-		if line != "" {
-			if doc, err := fsutil.DecodeJSON([]byte(line)); err == nil {
-				if o, ok := doc.(map[string]any); ok {
-					g := func(k string) any { return o[k] }
-					if st := str(g("state")); st != "" {
-						reg := Registration{
-							State: st, Plan: str(g("plan")), Repo: str(g("repo")),
-							Into: str(g("into")), RegisteredAt: num(g("registered_at")),
-						}
-						if _, seen := latest[st]; seen {
-							for i, k := range order {
-								if k == st {
-									order = append(order[:i], order[i+1:]...)
-									break
-								}
-							}
-						}
-						order = append(order, st)
-						latest[st] = reg
-					}
-				}
-			}
-		}
-		if rerr != nil {
-			break
-		}
-	}
-	var out []Registration
-	for i := len(order) - 1; i >= 0; i-- {
-		reg := latest[order[i]]
-		if st, err := os.Stat(reg.State); err == nil && st.Mode().IsRegular() {
-			out = append(out, reg)
-		}
-	}
-	return out
 }

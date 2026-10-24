@@ -1,0 +1,32 @@
+{
+  "scenario": "ui/removed",
+  "steps": [
+    {
+      "argv": [
+        "ui"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
+    },
+    {
+      "argv": [
+        "ui",
+        "--open",
+        "--json"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
+    },
+    {
+      "argv": [
+        "ui",
+        "--stop"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
+    }
+  ]
+}

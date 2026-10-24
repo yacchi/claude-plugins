@@ -1,5 +1,5 @@
 {
-  "scenario": "ui/pilogin-device-flow",
+  "scenario": "pi-login/device-flow",
   "steps": [
     {
       "argv": [
