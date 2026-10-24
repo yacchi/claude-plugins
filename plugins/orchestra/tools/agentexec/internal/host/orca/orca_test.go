@@ -489,3 +489,35 @@ func TestCommandMergesIsolateEnvWithThePnpmGVSSwitch(t *testing.T) {
 		t.Errorf("%q", cmd)
 	}
 }
+
+// The Orca command's env prefix carries mise's trust of a linked worktree with
+// a mise config, appended to the value the process already has.
+func TestCommandCarriesTheMiseTrustOfItsTree(t *testing.T) {
+	t.Setenv("MISE_TRUSTED_CONFIG_PATHS", "/keep")
+	was := config.MiseShowSeam
+	config.MiseShowSeam = func(dir string) ([]byte, error) { return []byte(dir + "/mise.toml: trusted\n"), nil }
+	t.Cleanup(func() { config.MiseShowSeam = was })
+
+	main, linked := t.TempDir(), t.TempDir()
+	gitdir := filepath.Join(main, ".git", "worktrees", "l")
+	for f, body := range map[string]string{
+		filepath.Join(main, ".git", "HEAD"): "ref: refs/heads/main\n",
+		filepath.Join(linked, ".git"):       "gitdir: " + gitdir + "\n",
+		filepath.Join(linked, "mise.toml"):  "[env]\n",
+	} {
+		_ = os.MkdirAll(filepath.Dir(f), 0o755)
+		_ = os.WriteFile(f, []byte(body), 0o644)
+	}
+	x := New(&config.Resolved{Values: config.Defaults()})
+	cmd, err := x.command(&host.Session{Worktree: linked, Extra: map[string]any{"model": "opus"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	words, err := host.ShellSplit(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "MISE_TRUSTED_CONFIG_PATHS=/keep:" + linked; !slices.Contains(words, want) {
+		t.Errorf("%q lacks %q", cmd, want)
+	}
+}

@@ -362,16 +362,13 @@ func (e *Executor) command(s *host.Session) (string, error) {
 		command += " " + sandbox.ShellQuote(f)
 	}
 	// The terminal's env is Orca's, not ours: the worker's env goes on the
-	// command line as one `env` prefix (isolate's switches, then pnpm's
-	// global virtual store for a tree on it).
+	// command line as one `env` prefix (isolate's switches, then the
+	// config.TreeEntries of the worktree).
 	isoEnv, err := host.IsolationEnv(e.cfg)
 	if err != nil {
 		return "", err
 	}
-	env := isoEnv
-	if config.PnpmGVSTree(config.PnpmGVS(e.tools), s.Worktree) {
-		env = append(env, config.PnpmGVSEnv)
-	}
+	env := append(isoEnv, config.TreeEntries(config.PnpmGVS(e.tools), s.Worktree, os.Environ())...)
 	if len(env) > 0 {
 		prefix := "env"
 		for _, kv := range env {

@@ -194,19 +194,27 @@ var PnpmGVSOn = sync.OnceValue(func() bool {
 })
 
 // TreeEnv is the env of a command orchestra runs in tree: the process's own
-// plus PnpmGVSEnv when tree runs under the global virtual store
-// (PnpmGVSTree), else nil (inherited as is).
+// with the TreeEntries of tree set, else nil (inherited as is).
 func TreeEnv(tree string) []string {
-	if !PnpmGVSTree(PnpmGVSOn(), tree) {
+	on := PnpmGVSOn()
+	env := os.Environ()
+	entries := TreeEntries(on, tree, env)
+	if len(entries) == 0 {
 		return nil
 	}
-	return WithPnpmGVS(os.Environ())
+	return withEntries(env, entries)
 }
 
-// WithPnpmGVS is env plus PnpmGVSEnv. pnpm ignores the setting under a
-// truthy CI, which is left alone but warned about once per process.
+// WithPnpmGVS is env plus PnpmGVSEnv, for a process in a tree prepared under
+// the global virtual store by another path (isolate's carry install).
 func WithPnpmGVS(env []string) []string {
-	out := append(append([]string(nil), env...), PnpmGVSEnv)
+	warnPnpmCI(env)
+	return append(append([]string(nil), env...), PnpmGVSEnv)
+}
+
+// warnPnpmCI warns once per process when env sets a truthy CI: pnpm ignores
+// the global virtual store under CI. The setting is left alone.
+func warnPnpmCI(env []string) {
 	ci := ""
 	for _, kv := range env {
 		if v, ok := strings.CutPrefix(kv, "CI="); ok {
@@ -221,7 +229,6 @@ func WithPnpmGVS(env []string) []string {
 				"(isolation.pnpm_global_virtual_store), so installs in orchestra trees build the classic layout\n", ci)
 		})
 	}
-	return out
 }
 
 // ToolOrder and ClassOrder are the built-in tools and worker classes in the

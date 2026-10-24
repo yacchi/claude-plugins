@@ -215,18 +215,15 @@ func callErr(err error) *CallError {
 }
 
 // workspaceEnv is the env of the processes of a pane on tree: the worker's
-// isolation switches (host.IsolationEnv) and pnpm's global virtual store
-// switch when tree runs under it (config.PnpmGVSTree). Each workspace gets
-// its own, so a setting change applies from the next package start.
+// isolation switches (host.IsolationEnv) and the config.TreeEntries of tree
+// (pnpm's global virtual store, mise's trust). Each workspace gets its own, so
+// a setting change applies from the next package start.
 func (e *Executor) workspaceEnv(tree string) ([]string, error) {
 	env, err := host.IsolationEnv(e.cfg)
 	if err != nil {
 		return nil, err
 	}
-	if config.PnpmGVSTree(config.PnpmGVS(e.tools), tree) {
-		env = append(env, config.PnpmGVSEnv)
-	}
-	return env, nil
+	return append(env, config.TreeEntries(config.PnpmGVS(e.tools), tree, os.Environ())...), nil
 }
 
 // openAgent opens a workspace and an agent on the session's worktree, up
