@@ -24,6 +24,7 @@ type fakeHost struct {
 	mu       sync.Mutex
 	sessions map[string]*host.Session
 	started  []string
+	creates  []string // isolate.Create status of each Start
 	prompts  []string
 	closed   []string
 	down     bool
@@ -64,6 +65,7 @@ func (h *fakeHost) Start(_ context.Context, pid, repo, baseRef, _, _, _, _ strin
 	h.mu.Lock()
 	h.sessions[pid] = s
 	h.started = append(h.started, pid)
+	h.creates = append(h.creates, res.Status)
 	h.mu.Unlock()
 	return s, nil
 }
@@ -124,6 +126,56 @@ func TestDelegatedPackageRunsInTheInteractiveHost(t *testing.T) {
 	if len(end) != 1 || end[0]["status"] != "ok" || end[0]["executor"] != "herdr" {
 		t.Errorf("dispatch-end %v", end)
 	}
+}
+
+// isolateModes is the --isolate of every token ex prepared.
+func (f *fakeExecutor) isolateModes() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, s := range f.tokens {
+		out = append(out, s.Isolate)
+	}
+	return out
+}
+
+func TestDispatchLeavesDelegateIsolationToAnActiveHostOnly(t *testing.T) {
+	// interactive_host: none (the fixture's config): no active host, the
+	// instructor runs a delegate in the dispatch's tree.
+	w := newWaveRepo(t)
+	w.plan(pkgDef{id: "A"})
+	ex := newFake(t, map[string][]round{"A": {result(delegated, map[string]string{})}})
+	_, code := w.runWithHost(ex, Deps{Herdr: newFakeHost("herdr")})
+	eq(t, "exit", code, 1)
+	eqJSON(t, "no host", ex.isolateModes(), []string{"always"})
+
+	w2 := newWaveRepo(t)
+	w2.verifyMode = "final"
+	w2.plan(pkgDef{id: "A"})
+	h := newFakeHost("herdr")
+	h.work = func(pid, tree string) { writeFile(t, filepath.Join(tree, "a.txt"), "a\n") }
+	ex = newFake(t, map[string][]round{"A": {result(delegated, nil)}})
+	_, code = w2.runWithHost(ex, Deps{Host: h})
+	eq(t, "exit", code, 0)
+	eqJSON(t, "host", ex.isolateModes(), []string{"cli"})
+}
+
+func TestUnavailableCliRouteTreeIsDroppedBeforeTheHostStarts(t *testing.T) {
+	w := newWaveRepo(t)
+	w.verifyMode = "final"
+	w.plan(pkgDef{id: "A"})
+	h := newFakeHost("herdr")
+	h.work = func(pid, tree string) { writeFile(t, filepath.Join(tree, "a.txt"), "by claude\n") }
+	// Attempt 0 routes to pi (a `cli` dispatch makes the tree) and comes
+	// back unavailable; attempt 1 routes to claude, which reports no tree.
+	unavailable := result(map[string]any{"status": "unavailable", "executor": "pi"}, map[string]string{})
+	cliDelegate := map[string]any{"status": "delegate", "executor": "claude", "model": "sonnet",
+		"isolation": map[string]any{"isolate": false, "mode": "cli", "reason": "the caller isolates"}}
+	ex := newFake(t, map[string][]round{"A": {unavailable, result(cliDelegate, nil)}})
+	rep, code := w.runWithHost(ex, Deps{Host: h})
+	eq(t, "exit", code, 0)
+	eqJSON(t, "integrated", rep.Integrated, []string{"A"})
+	eqJSON(t, "host made a fresh tree", h.creates, []string{"created"})
 }
 
 func TestDialogStallIsANeedThenAwaitResumesTheSameSession(t *testing.T) {

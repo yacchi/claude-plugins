@@ -14,11 +14,12 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
-// Executor prepares and runs one package dispatch. Dispatch returns the
-// dispatch result object (status ok | delegate | unavailable | unroutable
-// | needs-permission | runaway | error ...).
+// Executor prepares and runs one package dispatch. isolate is the
+// dispatch's --isolate mode. Dispatch returns the dispatch result object
+// (status ok | delegate | unavailable | unroutable | needs-permission |
+// runaway | error ...).
 type Executor interface {
-	Prepare(promptFiles []string, cls, workdir, task, runID string) (string, error)
+	Prepare(promptFiles []string, cls, workdir, isolate, task, runID string) (string, error)
 	Dispatch(token, cls string, exhausted []string, noResume bool) map[string]any
 }
 
@@ -91,9 +92,9 @@ func (c *CliExecutor) call(args ...string) (map[string]any, string) {
 }
 
 // Prepare implements Executor.
-func (c *CliExecutor) Prepare(promptFiles []string, cls, workdir, task, runID string) (string, error) {
+func (c *CliExecutor) Prepare(promptFiles []string, cls, workdir, isolate, task, runID string) (string, error) {
 	args := []string{"dispatch", "prepare", "--class", cls, "--workdir", workdir,
-		"--isolate", "always", "--task", task, "--json"}
+		"--isolate", isolate, "--task", task, "--json"}
 	for _, p := range promptFiles {
 		args = append(args, "--prompt-file", p)
 	}

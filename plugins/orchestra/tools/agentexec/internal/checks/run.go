@@ -2,7 +2,6 @@ package checks
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -10,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -374,33 +372,15 @@ func acquireSlot(dir string, maxParallel int) func() {
 	}
 }
 
-// heavyPool is the machine-wide pool of heavy commands (`throttle.heavy_slots`),
-// read once per process.
-var heavyPool = sync.OnceValue(func() slot.Pool {
-	var size any
-	if cfg, err := config.Resolve(); err == nil {
-		size, _ = cfg.Lookup("throttle", "heavy_slots")
-	}
-	return slot.New(slot.Heavy, slot.SizeOf(size))
-})
-
 // holdHeavy takes one heavy slot for command and returns its release. Any
 // failure runs the command unadmitted: admission must never fail a check.
 func holdHeavy(command string, timeout time.Duration) func() {
-	p := heavyPool()
-	if p.Off() {
-		return func() {}
-	}
 	ttl := 24 * time.Hour // no timeout: the owner's death still frees it
 	if timeout > 0 {
 		ttl = timeout + time.Minute
 	}
 	op, _ := slot.Classify(command, nil)
-	lease, _, err := p.Acquire(context.Background(), slot.Request{Owner: os.Getpid(), TTL: ttl, Op: op})
-	if err != nil {
-		return func() {}
-	}
-	return func() { _ = p.Release(lease.Token) }
+	return slot.HoldHeavy(op, ttl)
 }
 
 // RerunFailedAlone re-runs the failing files output names with template

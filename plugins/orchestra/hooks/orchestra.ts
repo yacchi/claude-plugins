@@ -15,11 +15,13 @@ import { routerContext } from './router/inject.ts'
 import { turnEditsNudge } from './router/turn-edits.ts'
 import { verdictOf } from './router/verdict.ts'
 
-// The orchestra plugin's one hooks module (a plugin has one): each event is
-// hooked once here and handed to the files that own its rules. Every guard is
-// a nudge or a second layer, never a hard wall: each has its own escape
-// hatches and fails open on anything unexpected (a guard that errors would
-// disrupt every tool call of every session), hence each `.catch` passes on.
+// The orchestra plugin's one hooks module (a plugin has one): each guard and
+// router event is hooked once here and handed to the files that own its
+// rules; the HUD (hud.ts) registers its own hooks, a Bash-only tool.call
+// among them. Every guard is a nudge or a second layer, never a hard wall:
+// each has its own escape hatches and fails open on anything unexpected (a
+// guard that errors would disrupt every tool call of every session), hence
+// each `.catch` passes on.
 
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash'])
 const AGENT_TOOLS = new Set(['Agent', 'Task'])

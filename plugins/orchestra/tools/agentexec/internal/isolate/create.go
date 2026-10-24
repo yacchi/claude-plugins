@@ -7,6 +7,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/orcanest"
 )
 
 // Backends of Create.
@@ -29,8 +30,13 @@ const (
 // Carry=false, CarryDeps=true). Uncommitted work is always reproduced when
 // Onto is empty; without carry the CarryFiles are excluded from it.
 // CarryFiles nil means DefaultCarryFiles. Session "" is the calling session.
+//
+// BaseBranch names the branch Onto was cut from, so the new tree nests in
+// Orca's sidebar under the worktree that has it checked out (orcanest); ""
+// with Onto empty is the branch checked out at root, else root's checkout.
 type CreateOptions struct {
 	Backend, Onto, Session string
+	BaseBranch             string
 	Carry                  bool
 	CarryExtra             []string
 	CarryDeps              *bool
@@ -102,8 +108,12 @@ func nonNil(s []string) []string {
 	return s
 }
 
+// nester nests created trees in Orca's sidebar (a test seam).
+var nester = orcanest.Default
+
 // Create makes (or returns) task's worktree in the repository containing
-// root. Idempotent per task and session.
+// root. Idempotent per task and session. A created tree is nested in Orca's
+// sidebar, best effort; a reused one is left as it is.
 func Create(root, task string, o CreateOptions) (CreateResult, error) {
 	resolved, ok := gitx.RepoRoot(root)
 	if !ok {
@@ -197,6 +207,13 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 	}
 	// The ignored surface exactly as the worker receives it.
 	_ = writeCreatedIgnored(path, ignoredDigest(IgnoredEntries(path)))
+	base := o.BaseBranch
+	if base == "" && o.Onto == "" {
+		if out, err := gitx.Run(root, "symbolic-ref", "--short", "-q", "HEAD"); err == nil {
+			base = strings.TrimSpace(out)
+		}
+	}
+	nester.Nest(resolved, base, path)
 
 	switch res.CarryMethod {
 	case carryCopy:
@@ -214,7 +231,10 @@ func createViaGit(root, branch, start string) string {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return ""
 	}
-	if _, err := gitx.Run(root, "worktree", "add", "-q", "-b", branch, path, start); err != nil {
+	release := HoldHeavy("git worktree add")
+	_, err := gitx.Run(root, "worktree", "add", "-q", "-b", branch, path, start)
+	release()
+	if err != nil {
 		return ""
 	}
 	if !isDir(path) {

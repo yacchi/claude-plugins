@@ -229,10 +229,11 @@ watchdog:
 isolation:
   carry_extra: []
   # carry_extra: [pkg]   # e.g. packages/core-wasm/pkg, a generated wasm package
-  # pnpm repos, opt-in in the repo's .claude/orchestra.yaml: install worktree
-  # node_modules against pnpm's global virtual store instead of cloning them
-  # (see references/isolation.md "pnpm global virtual store").
-  # pnpm_global_virtual_store: false
+  # pnpm repos: install worktree node_modules against pnpm's global virtual
+  # store instead of cloning them (see references/isolation.md "pnpm global
+  # virtual store"). "auto" (the default) turns it on for pnpm 12 or later;
+  # true or false forces it, per repo in its .claude/orchestra.yaml.
+  # pnpm_global_virtual_store: "auto"
 
 # Heavy local commands (installs, tests, typechecks, lints, builds) are
 # admitted machine-wide a few at a time: a worker's Bash command waits in the
@@ -299,7 +300,8 @@ checks:
 #   command: "claude --model {model} --permission-mode acceptEdits"
 #   models: {light: sonnet, standard: opus, deep: opus}   # when the route names no model
 #   user_config: isolate   # isolate (default) = hosted Claude skips your MCP servers, user hooks and
-#                          # user plugins; inherit = loads them
+#                          # user plugins (and claude.ai connectors, auto memory); inherit = loads them.
+#                          # Both turn Remote Control off
 #   auto_trust: false      # true = accept Claude's folder-trust dialog, only for
 #                          # worktrees the executor itself created
 #   startup_timeout: 90    # seconds to reach the prompt box

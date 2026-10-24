@@ -6,9 +6,11 @@
 // user's own herdr session is never touched, and XDG_CONFIG_HOME points it
 // at `<orchestra state dir>/hx` so the user's herdr config is never read.
 // The server is started detached when it is not running and stopped by
-// Shutdown only when this executor started it. Each package gets an
-// orchestra-owned worktree (task `pkg-<id>`), one workspace and one named
-// agent in it; completion is signalled only by the result file.
+// Shutdown once no workspace is left open in it, whoever started it. Each
+// package gets an orchestra-owned worktree (task `pkg-<id>`), one workspace
+// and one named agent in it, recorded in the tree (isolate.WriteHostSession)
+// so a removal that knows nothing about herdr closes it; completion is
+// signalled only by the result file.
 //
 // The server runs under the executor sandbox (Seatbelt / bubblewrap), or
 // under sandbox-runtime (srt) with `sandbox.network.mode: allowlist`: the
@@ -123,13 +125,13 @@ type Executor struct {
 	homeName string
 	homePath string
 
-	sandboxed, serverStarted, serverReady bool
-	unsandboxed                           string
-	netRestricted                         bool
-	netReason                             string
-	netMu                                 sync.Mutex // guards srtRun and every call on it
-	srtRun                                *srt.Run
-	homeMu                                sync.Mutex
+	sandboxed, serverReady bool
+	unsandboxed            string
+	netRestricted          bool
+	netReason              string
+	netMu                  sync.Mutex // guards srtRun and every call on it
+	srtRun                 *srt.Run
+	homeMu                 sync.Mutex
 
 	warmPaths  []string
 	warmCounts map[string]int

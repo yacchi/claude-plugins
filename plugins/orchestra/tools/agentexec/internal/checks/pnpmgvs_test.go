@@ -38,3 +38,33 @@ func TestCommandsInAPnpmGVSTreeCarryTheSwitch(t *testing.T) {
 		t.Errorf("main checkout got the switch: %v", got)
 	}
 }
+
+// Every command a check runs in a linked worktree that mise trusts (ensure,
+// the check) sees the tree on MISE_TRUSTED_CONFIG_PATHS, so mise reads the
+// tree's config. The user's checkout never gets it.
+func TestCommandsInAMiseTrustedTreeSeeTheTree(t *testing.T) {
+	wasOn, wasShow := config.PnpmGVSOn, config.MiseShowSeam
+	config.PnpmGVSOn = func() bool { return false }
+	t.Cleanup(func() { config.PnpmGVSOn = wasOn })
+	t.Setenv("MISE_TRUSTED_CONFIG_PATHS", "")
+
+	main := t.TempDir()
+	write(t, main, ".git/HEAD", "ref: refs/heads/main\n")
+	config.MiseShowSeam = func(dir string) ([]byte, error) { return []byte(dir + "/mise.toml: trusted\n"), nil }
+	t.Cleanup(func() { config.MiseShowSeam = wasShow })
+	linked := t.TempDir()
+	write(t, linked, ".git", "gitdir: "+filepath.Join(main, ".git", "worktrees", "t")+"\n")
+	write(t, linked, "mise.toml", "[env]\n")
+	write(t, linked, "pkg/a.test.ts", "")
+
+	has := `test "$MISE_TRUSTED_CONFIG_PATHS" = "` + linked + `"`
+	o := runOpts(t)
+	o.Ensure = []Ensure{{Exists: "installed", Run: has + " && : > installed"}}
+	items := []Item{{Name: "sub", Cwd: "pkg", Run: has}}
+	if got := statuses(Run(linked, items, o)); !reflect.DeepEqual(got, []string{"sub=pass"}) {
+		t.Errorf("linked tree: %v", got)
+	}
+	if got := statuses(Run(main, []Item{{Name: "main", Run: "! " + has}}, runOpts(t))); !reflect.DeepEqual(got, []string{"main=pass"}) {
+		t.Errorf("main checkout got the tree: %v", got)
+	}
+}

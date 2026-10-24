@@ -4,10 +4,14 @@
 // Each package gets an Orca-created worktree (`orca worktree create`; Orca
 // cannot open a terminal in a tree it did not create), adopted as task
 // `pkg-<id>` (isolate.Adopt) so diff/check/refresh/integrate reach it by
-// task id, and nested under the caller's checkout in Orca's sidebar
-// (`worktree set --parent-worktree`, best effort). Completion is signalled only by the result file: `terminal wait
-// --for tui-idle` can report idle before the TUI started or while a dialog
-// is up. Sessions persist in `<state dir>/orca-sessions.json`.
+// task id, and nested in Orca's sidebar under the tree its base branch is
+// checked out in, else the caller's checkout (orcanest, best effort). The
+// create holds a slot of the machine-wide heavy pool. The terminal is
+// recorded in the tree (isolate.WriteHostSession), so a removal that
+// deletes the tree closes it. Completion is signalled only by the result
+// file: `terminal wait --for tui-idle` can report idle before the TUI
+// started or while a dialog is up. Sessions persist in
+// `<state dir>/orca-sessions.json`.
 package orca
 
 import (
@@ -30,7 +34,9 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/hostref"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/orcanest"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 )
 
@@ -358,10 +364,20 @@ func (e *Executor) command(s *host.Session) (string, error) {
 	for _, f := range flags {
 		command += " " + sandbox.ShellQuote(f)
 	}
-	// The terminal's env is Orca's, not ours: a tree on pnpm's global
-	// virtual store gets the switch on the command line.
-	if config.PnpmGVSTree(config.PnpmGVS(e.tools), s.Worktree) {
-		command = "env " + sandbox.ShellQuote(config.PnpmGVSEnv) + " " + command
+	// The terminal's env is Orca's, not ours: the worker's env goes on the
+	// command line as one `env` prefix (isolate's switches, then the
+	// config.TreeEntries of the worktree).
+	isoEnv, err := host.IsolationEnv(e.cfg)
+	if err != nil {
+		return "", err
+	}
+	env := append(isoEnv, config.TreeEntries(config.PnpmGVS(e.tools), s.Worktree, os.Environ())...)
+	if len(env) > 0 {
+		prefix := "env"
+		for _, kv := range env {
+			prefix += " " + sandbox.ShellQuote(kv)
+		}
+		command = prefix + " " + command
 	}
 	return command, nil
 }
@@ -385,6 +401,7 @@ func (e *Executor) openTerminal(ctx context.Context, s *host.Session) (string, e
 	}
 	s.Terminal = handle
 	e.save(s)
+	e.record(s.Worktree, handle)
 
 	startup := e.cfg.Seconds("startup_timeout", 90)
 	deadline := e.Clock.Now().Add(startup)
@@ -429,6 +446,18 @@ func (e *Executor) openTerminal(ctx context.Context, s *host.Session) (string, e
 	}
 }
 
+// record writes the terminal opened on tree into the tree, where every
+// removal of it finds and closes it.
+func (e *Executor) record(tree, handle string) {
+	bin := e.Binary
+	if p, err := exec.LookPath(bin); err == nil {
+		bin = p
+	}
+	if err := isolate.WriteHostSession(tree, hostref.Ref{Host: hostref.Orca, Binary: bin, Terminal: handle}); err != nil {
+		e.warnf("could not record the terminal in %s: %s", tree, err)
+	}
+}
+
 func (e *Executor) closeTerminal(s *host.Session) {
 	handle := s.Terminal
 	if handle == "" {
@@ -436,6 +465,8 @@ func (e *Executor) closeTerminal(s *host.Session) {
 	}
 	if _, err := e.call(context.Background(), callTimeout, "terminal", "close", "--terminal", handle, "--tab"); err != nil {
 		e.warnf("%s", err)
+	} else {
+		_ = isolate.ClearHostSession(s.Worktree)
 	}
 	s.Terminal = ""
 	e.save(s)
@@ -476,8 +507,10 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	if setup != "skip" && setup != "inherit" && setup != "run" {
 		return nil, host.Need(host.KindError, "invalid orca.setup: "+setup)
 	}
+	release := isolate.HoldHeavy("orca worktree create")
 	result, err := e.call(ctx, worktreeTimeout, "worktree", "create", "--repo", "path:"+repo, "--name", name,
 		"--base-branch", baseRef, "--setup", setup, "--no-parent")
+	release()
 	if err != nil {
 		return nil, host.Need(host.KindError, err.Error())
 	}
@@ -486,13 +519,10 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	if st, err := os.Stat(path); path == "" || err != nil || !st.IsDir() {
 		return nil, host.Need(host.KindError, "orca worktree create returned no usable path")
 	}
-	// Nest the tree under the caller's checkout in Orca's sidebar, which
+	// Nest the tree under the one it was cut from in Orca's sidebar, which
 	// always lists Orca-created trees. Set after create so a checkout Orca
 	// does not know cannot fail the package.
-	if _, err := e.call(ctx, callTimeout, "worktree", "set", "--worktree", "path:"+path,
-		"--parent-worktree", "path:"+repo); err != nil {
-		e.warnf("could not nest %s under %s: %v", path, repo, err)
-	}
+	(&orcanest.Nester{Binary: e.Binary, Stderr: e.Stderr}).Nest(repo, baseRef, path)
 	s := &host.Session{Pkg: pkgID, Name: e.Name(), Worktree: path, Extra: map[string]any{
 		"branch": wt["branch"], "request_ids": []any{}, "repo": repo, "model": model, "cls": cls,
 		"state_dir": stateDir, "add_dirs": host.SortedDirs(addDirs),

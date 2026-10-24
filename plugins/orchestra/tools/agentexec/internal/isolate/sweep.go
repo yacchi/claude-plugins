@@ -41,6 +41,7 @@ type SweepWorktree struct {
 	External           bool // adopted tree: no session_idle_minutes key
 	Status             string
 	Reason             string
+	Warning            string // removed: the hosted session in the tree was left open
 	Files              []string
 	HasFiles           bool // files key present (even when empty)
 }
@@ -60,6 +61,9 @@ func (w SweepWorktree) MarshalJSON() ([]byte, error) {
 	o["status"] = w.Status
 	if w.Reason != "" {
 		o["reason"] = w.Reason
+	}
+	if w.Warning != "" {
+		o["warning"] = w.Warning
 	}
 	if w.HasFiles {
 		o["files"] = nonNil(w.Files)
@@ -262,7 +266,7 @@ func Sweep(root string, o SweepOptions) (SweepResult, error) {
 			if err != nil {
 				return SweepResult{}, err
 			}
-			rec.Status, rec.Reason = out.Status, out.Reason
+			rec.Status, rec.Reason, rec.Warning = out.Status, out.Reason, out.Warning
 			if len(out.Files) > 0 {
 				rec.Files, rec.HasFiles = out.Files, true
 			}
@@ -396,6 +400,9 @@ func FormatSweepText(r SweepResult) string {
 		reason := ""
 		if w.Reason != "" {
 			reason = "  (" + w.Reason + ")"
+		}
+		if w.Warning != "" {
+			reason += "  [" + w.Warning + "]"
 		}
 		lines = append(lines, fmt.Sprintf("  %-12s %-16s %-9s %s%s", w.Status, w.Task, age(w.AgeDays), path, reason))
 	}

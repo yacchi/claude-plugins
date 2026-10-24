@@ -1,14 +1,20 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"testing"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -44,10 +50,94 @@ const DefaultUsageEvery = 10
 // classic layout, and one with it converts a classic layout.
 const PnpmGVSEnv = "pnpm_config_enable_global_virtual_store=true"
 
-// PnpmGVS is isolation.pnpm_global_virtual_store (off for a nil cfg).
+// pnpmGVSMajor is the first pnpm major that turns the global virtual store on
+// by itself, which is what isolation.pnpm_global_virtual_store "auto" follows.
+const pnpmGVSMajor = 12
+
+// pnpmVersionRe takes the major of `pnpm --version` output ("12.0.0").
+var pnpmVersionRe = regexp.MustCompile(`^(\d+)\.\d+`)
+
+var (
+	pnpmProbeMu sync.Mutex
+	pnpmProbes  = map[string]bool{}
+	// pnpmVersionSeam replaces the `pnpm --version` probe (a test seam). Inside
+	// a test binary "auto" is off without one, so no test depends on the pnpm
+	// on PATH.
+	pnpmVersionSeam func(dir string) ([]byte, error)
+)
+
+// PnpmGVS is isolation.pnpm_global_virtual_store of cfg: true or false as
+// written, and "auto" as the pnpm of cfg's root decides (off for a nil cfg).
 func PnpmGVS(cfg *Resolved) bool {
-	on, _ := cfg.Bool("isolation", "pnpm_global_virtual_store")
+	v, _ := cfg.Lookup("isolation", "pnpm_global_virtual_store")
+	switch x := v.(type) {
+	case bool:
+		return x
+	case string:
+		return x == "auto" && pnpmGVSAuto(cfg.Root)
+	}
+	return false
+}
+
+// pnpmGVSAuto probes the pnpm that would run in root, once per root per
+// process.
+func pnpmGVSAuto(root string) bool {
+	pnpmProbeMu.Lock()
+	defer pnpmProbeMu.Unlock()
+	if pnpmVersionSeam == nil && testing.Testing() {
+		return false
+	}
+	on, ok := pnpmProbes[root]
+	if !ok {
+		on = pnpmMajorAtLeast(root, pnpmGVSMajor)
+		pnpmProbes[root] = on
+	}
 	return on
+}
+
+// runPnpmVersion is `pnpm --version` in dir, so corepack and packageManager
+// pins there apply, with a short timeout.
+func runPnpmVersion(dir string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "pnpm", "--version")
+	cmd.Dir = dir
+	cmd.WaitDelay = 2 * time.Second
+	return cmd.Output()
+}
+
+// pnpmMajorAtLeast reads the pnpm version of dir. A missing pnpm, a timeout,
+// or output that is not a version reads as false.
+func pnpmMajorAtLeast(dir string, major int) bool {
+	probe := pnpmVersionSeam
+	if probe == nil {
+		probe = runPnpmVersion
+	}
+	out, err := probe(dir)
+	if err != nil {
+		return false
+	}
+	m := pnpmVersionRe.FindStringSubmatch(strings.TrimSpace(string(out)))
+	if m == nil {
+		return false
+	}
+	n, err := strconv.Atoi(m[1])
+	return err == nil && n >= major
+}
+
+// validatePnpmGVS rejects isolation.pnpm_global_virtual_store unless it is
+// true, false or "auto". It runs once, in Resolve, like validateTiers.
+func validatePnpmGVS(values map[string]any) error {
+	v := ObjectAt(values, "isolation")["pnpm_global_virtual_store"]
+	switch x := v.(type) {
+	case bool:
+		return nil
+	case string:
+		if x == "auto" {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid isolation.pnpm_global_virtual_store %v: must be true, false or \"auto\"", v)
 }
 
 // PnpmGVSTree reports whether processes in tree run under the global
@@ -104,19 +194,27 @@ var PnpmGVSOn = sync.OnceValue(func() bool {
 })
 
 // TreeEnv is the env of a command orchestra runs in tree: the process's own
-// plus PnpmGVSEnv when tree runs under the global virtual store
-// (PnpmGVSTree), else nil (inherited as is).
+// with the TreeEntries of tree set, else nil (inherited as is).
 func TreeEnv(tree string) []string {
-	if !PnpmGVSTree(PnpmGVSOn(), tree) {
+	on := PnpmGVSOn()
+	env := os.Environ()
+	entries := TreeEntries(on, tree, env)
+	if len(entries) == 0 {
 		return nil
 	}
-	return WithPnpmGVS(os.Environ())
+	return withEntries(env, entries)
 }
 
-// WithPnpmGVS is env plus PnpmGVSEnv. pnpm ignores the setting under a
-// truthy CI, which is left alone but warned about once per process.
+// WithPnpmGVS is env plus PnpmGVSEnv, for a process in a tree prepared under
+// the global virtual store by another path (isolate's carry install).
 func WithPnpmGVS(env []string) []string {
-	out := append(append([]string(nil), env...), PnpmGVSEnv)
+	warnPnpmCI(env)
+	return append(append([]string(nil), env...), PnpmGVSEnv)
+}
+
+// warnPnpmCI warns once per process when env sets a truthy CI: pnpm ignores
+// the global virtual store under CI. The setting is left alone.
+func warnPnpmCI(env []string) {
 	ci := ""
 	for _, kv := range env {
 		if v, ok := strings.CutPrefix(kv, "CI="); ok {
@@ -131,7 +229,6 @@ func WithPnpmGVS(env []string) []string {
 				"(isolation.pnpm_global_virtual_store), so installs in orchestra trees build the classic layout\n", ci)
 		})
 	}
-	return out
 }
 
 // ToolOrder and ClassOrder are the built-in tools and worker classes in the
@@ -272,7 +369,7 @@ func Defaults() map[string]any {
 			"exclude_paths", strs(DefaultExcludePaths...),
 			"keep_paths", []any{},
 			"max_added_files", int64(DefaultMaxAddedFiles),
-			"pnpm_global_virtual_store", false,
+			"pnpm_global_virtual_store", "auto",
 		),
 		"throttle", obj("heavy_slots", "auto", "heavy_extra", []any{}),
 		"wave", obj(

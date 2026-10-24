@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/hostref"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
@@ -213,6 +215,18 @@ func callErr(err error) *CallError {
 	return nil
 }
 
+// workspaceEnv is the env of the processes of a pane on tree: the worker's
+// isolation switches (host.IsolationEnv) and the config.TreeEntries of tree
+// (pnpm's global virtual store, mise's trust). Each workspace gets its own, so
+// a setting change applies from the next package start.
+func (e *Executor) workspaceEnv(tree string) ([]string, error) {
+	env, err := host.IsolationEnv(e.cfg)
+	if err != nil {
+		return nil, err
+	}
+	return append(env, config.TreeEntries(config.PnpmGVS(e.tools), tree, os.Environ())...), nil
+}
+
 // openAgent opens a workspace and an agent on the session's worktree, up
 // to a usable prompt. The trust dialog is a need unless auto_trust applies
 // (a worktree this executor created, under a sandboxed server).
@@ -237,8 +251,15 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 				"put the state dir on a shorter path)", len(line), maxStartLine))
 	}
 	name := AgentName(s.Pkg)
-	payload, _, err := e.call(ctx, callTimeout, "", "workspace", "create", "--cwd", s.Worktree,
-		"--label", "wave "+s.Pkg, "--no-focus")
+	env, err := e.workspaceEnv(s.Worktree)
+	if err != nil {
+		return "", err
+	}
+	args := []string{"workspace", "create", "--cwd", s.Worktree, "--label", "wave " + s.Pkg, "--no-focus"}
+	for _, kv := range env {
+		args = append(args, "--env", kv)
+	}
+	payload, _, err := e.call(ctx, callTimeout, "", args...)
 	if err != nil {
 		return "", host.Need(host.KindError, err.Error())
 	}
@@ -252,6 +273,7 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 	s.Terminal = name
 	s.Set("herdr_session", e.sname)
 	e.save(s)
+	e.record(s, workspace, name)
 
 	startup := e.cfg.Seconds("startup_timeout", 90)
 	ms := strconv.FormatInt(startup.Milliseconds(), 10)
@@ -341,6 +363,19 @@ func (e *Executor) awaitInput(ctx context.Context, name string) error {
 	}
 }
 
+// record writes the workspace opened on the session's tree into the tree,
+// where every removal of it finds and closes it.
+func (e *Executor) record(s *host.Session, workspace, agent string) {
+	home, err := e.homeFor(e.sname)
+	if err == nil {
+		err = isolate.WriteHostSession(s.Worktree, hostref.Ref{Host: hostref.Herdr, Binary: e.binary(),
+			Session: e.sname, Home: home, Workspace: workspace, Agent: agent})
+	}
+	if err != nil {
+		e.warnf("could not record the workspace in %s: %s", s.Worktree, err)
+	}
+}
+
 func (e *Executor) closeAgent(s *host.Session) {
 	workspace := s.Str("workspace")
 	if workspace == "" {
@@ -350,6 +385,8 @@ func (e *Executor) closeAgent(s *host.Session) {
 	handle := s.Terminal
 	if _, _, err := e.call(context.Background(), callTimeout, "", "workspace", "close", workspace); err != nil {
 		e.warnf("%s", err)
+	} else if err := isolate.ClearHostSession(s.Worktree); err != nil && isDir(s.Worktree) {
+		e.warnf("could not clear the hosted session record of %s: %s", s.Worktree, err)
 	}
 	s.Terminal = ""
 	s.Set("workspace", nil)
@@ -388,7 +425,7 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	dirs := host.SortedDirs(addDirs)
 	warm := e.warmFor(ctx, pkgID, repo, baseRef, model, stateDir, dirs)
 	created, err := isolate.Create(repo, "pkg-"+pkgID, isolate.CreateOptions{
-		Backend: isolate.BackendGit, Onto: baseSHA, Carry: true,
+		Backend: isolate.BackendGit, Onto: baseSHA, BaseBranch: baseRef, Carry: true,
 		CarryExtra: e.isolation("carry_extra"), CarryFiles: e.carryFiles(),
 	})
 	if err != nil || (created.Status != "created" && created.Status != "exists") || !isDir(created.Path) {

@@ -1,0 +1,219 @@
+{
+  "scenario": "dispatch/isolate-cli",
+  "steps": [
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-claude",
+        "--isolate",
+        "cli",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "config_layers": [
+          "<HOME>/.claude/orchestra.yaml"
+        ],
+        "token": "<TOKEN#1>"
+      },
+      "files": {
+        "~/.claude/orchestra/tokens/<@TOK>.json": {
+          "content": {
+            "archetype": "default",
+            "class": "standard",
+            "config_root": "<WORK>",
+            "isolate": "cli",
+            "prompt_files": [
+              "<WORK>/p.md"
+            ],
+            "run_id": null,
+            "task": "t-claude",
+            "workdir": "<WORK>"
+          },
+          "shape": "json"
+        }
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "<@TOK>",
+        "--capture",
+        "--exhausted",
+        "pi"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "agent_type": "orchestra:orchestra-light",
+        "effort": "high",
+        "executor": "claude",
+        "isolation": {
+          "isolate": false,
+          "mode": "cli",
+          "reason": "delegate route under --isolate cli; the caller isolates delegate routes"
+        },
+        "model": "haiku",
+        "route": {
+          "agent_type": "orchestra:orchestra-light",
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "claude",
+          "effort": "high",
+          "executor": "claude",
+          "model": "haiku",
+          "remaining": [],
+          "skipped": [
+            {
+              "executor": "pi",
+              "reason": "exhausted"
+            }
+          ],
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "delegated to an agent; agent-exec spawns no child to sandbox",
+          "writable": []
+        },
+        "status": "delegate"
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "prepare",
+        "--class",
+        "standard",
+        "--prompt-file",
+        "p.md",
+        "--workdir",
+        ".",
+        "--task",
+        "t-pi",
+        "--isolate",
+        "cli",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "config_layers": [
+          "<HOME>/.claude/orchestra.yaml"
+        ],
+        "token": "<TOKEN#2>"
+      }
+    },
+    {
+      "argv": [
+        "dispatch",
+        "--token",
+        "<@TOK2>",
+        "--capture"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "answer": "isolated",
+        "effort": "high",
+        "executor": "pi",
+        "exit_code": 0,
+        "isolation": {
+          "backend": "git",
+          "branch": "orchestra/00000000/t-pi",
+          "carried": [],
+          "created": true,
+          "isolate": true,
+          "mode": "cli",
+          "path": "<WORK>-orchestra/00000000-t-pi",
+          "reason": "isolation forced (--isolate cli)",
+          "workdir": "<WORK>-orchestra/00000000-t-pi"
+        },
+        "model": "openai-codex/gpt-5.6-luna",
+        "reason": null,
+        "resumed": false,
+        "route": {
+          "agent_type": null,
+          "archetype": "default",
+          "candidates": [
+            "pi",
+            "claude"
+          ],
+          "class": "standard",
+          "cooldown_bypassed": false,
+          "cooldowns_applied": [],
+          "dispatch": "cli",
+          "effort": "high",
+          "executor": "pi",
+          "model": "openai-codex/gpt-5.6-luna",
+          "remaining": [
+            "claude"
+          ],
+          "skipped": [],
+          "source": "priority",
+          "usage_applied": [],
+          "usage_bypassed": false
+        },
+        "sandbox": {
+          "backend": "none",
+          "enforced": false,
+          "limits": [],
+          "reason": "sandbox.mode is off",
+          "writable": []
+        },
+        "session_id": "<UUID#1>",
+        "status": "ok",
+        "usage": {
+          "cost_micro_usd": 0,
+          "tokens": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "list",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/t-pi",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-t-pi",
+            "session": "00000000",
+            "task": "t-pi"
+          }
+        ]
+      }
+    }
+  ]
+}
