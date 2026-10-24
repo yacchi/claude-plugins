@@ -36,12 +36,14 @@ type RevertedTask struct {
 }
 
 // BisectResult is the final verify (Baseline "pass" or "fail" at BaseSHA),
-// the culprits reverted in order, and the task whose revert conflicted and
-// was aborted ("" if none).
+// the culprits reverted in order, the task whose revert conflicted and was
+// aborted, and the task whose revert commit failed and was undone ("" if
+// none).
 type BisectResult struct {
-	Verify           VerifyResult
-	Reverted         []RevertedTask
-	RevertConflicted string
+	Verify             VerifyResult
+	Reverted           []RevertedTask
+	RevertConflicted   string
+	RevertCommitFailed string
 }
 
 // Bisect binary-searches the first applied commit that makes verify fail,
@@ -131,7 +133,16 @@ func Bisect(in BisectInput) (BisectResult, error) {
 			out.Verify = badProbe
 			return out, nil
 		}
-		commitAll(wt, "orchestra revert "+culprit.Task)
+		if err := commitAll(wt, "orchestra revert "+culprit.Task); err != nil {
+			_ = git("reset", "-q", "--hard", "HEAD")
+			_ = git("clean", "-fdq")
+			out.RevertCommitFailed = culprit.Task
+			emit(in.Progress, "revert", culprit.Task,
+				map[string]any{"result": "commit-failed", "excerpt": commitExcerpt(err)})
+			badProbe.Baseline = "pass"
+			out.Verify = badProbe
+			return out, nil
+		}
 		out.Reverted = append(out.Reverted, RevertedTask{Task: culprit.Task, Excerpt: badProbe.Excerpt})
 		emit(in.Progress, "revert", culprit.Task, map[string]any{"result": "reverted"})
 		clearSourceCollected(in.Root, culprit.Task)
