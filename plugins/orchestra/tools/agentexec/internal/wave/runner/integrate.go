@@ -174,10 +174,16 @@ func (r *runner) integrateReady() int {
 			if entry.Excluded > 0 {
 				r.emit("integrate-excluded", pid, map[string]any{"files": entry.Excluded})
 			}
-			commit := r.commitFor(r.task(pid), since)
+			commit := r.commitFor(r.sanitized(pid), since)
+			if commit == nil {
+				r.integrateNeed(pid, "integrate reported applied, but no `orchestra integrate` commit landed")
+				continue
+			}
 			_ = r.store.SetStatus(pid, "integrated", note, func(p *state.Package) { p.Commit = commit })
 			integrated++
 			r.hostClose(pid)
+		case "commit-failed":
+			r.integrateNeed(pid, entry.Reason)
 		case "empty":
 			_ = r.store.SetStatus(pid, "integrated", "changed nothing", nil)
 			r.hostClose(pid)
@@ -217,6 +223,17 @@ func (r *runner) integrateReady() int {
 	r.integratedSinceFull += integrated
 	r.mu.Unlock()
 	return integrated
+}
+
+// integrateNeed: pid's work never became an integration commit. Its tree is
+// kept for the retry (not collected, its session left open) and the need
+// names it.
+func (r *runner) integrateNeed(pid, excerpt string) {
+	tree, _, ok := isolate.ResolveWorktree(r.root, r.task(pid), "")
+	if ok {
+		_ = isolate.ClearCollected(tree)
+	}
+	r.need(pid, "integrate", sortedJSON(map[string]any{"excerpt": excerpt, "tree": nullable(tree)}))
 }
 
 // --- green ---------------------------------------------------------------------------
