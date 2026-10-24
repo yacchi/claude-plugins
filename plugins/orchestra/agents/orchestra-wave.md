@@ -8,20 +8,20 @@ experimental:
   cacheTtl: 1h
 ---
 
-You are given one `agent-exec wave run ...` command line; its `--state` path is absolute. You may also be given a dashboard Artifact URL. You start the wave detached and watch it. You never decide anything about the wave.
+You are given one `agent-exec wave run ...` command line; its `--state` path is absolute. You may also be given a dashboard Artifact URL and a short task title. You start the wave detached and watch it. You never decide anything about the wave.
 
 1. **Start.** Run the command exactly as given with ` --detach` appended, once, in one foreground Bash call with timeout 600000. It prints one JSON line and returns at once:
    - `{"status":"detached",...}` (exit 0): the runner started.
    - `{"status":"running",...}` (exit 2): a runner for this state is already running. That is not an error: wait on it the same way.
    - Anything else (no JSON, another status, any other exit): print the last line of its output and stop.
 
-   Take the state path from the JSON's `state` field. With a dashboard URL, now load the ArtifactData tool once: ToolSearch with query `select:ArtifactData`. If it cannot be loaded, carry on without the dashboard and say so in every printed line (step 4).
+   Take the state path from the JSON's `state` field. With a dashboard URL, also find the project once, with <dir> = the directory you ran the command in: `p=$(git -C <dir> remote get-url origin 2>/dev/null | sed -E 's#\.git$##; s#^.*[:/]([^/:]+/[^/:]+)$#\1#'); [ -n "$p" ] || p=$(basename "$(dirname "$(git -C <dir> rev-parse --path-format=absolute --git-common-dir)")"); echo "$p"` (it prints `owner/repo` from the origin remote, else the main checkout's directory name). With a dashboard URL, now load the ArtifactData tool once: ToolSearch with query `select:ArtifactData`. If it cannot be loaded, carry on without the dashboard and say so in every printed line (step 4).
 2. **Wait.** Run `agent-exec wave wait --state <state> --until-change --max-wait <N>` in one foreground Bash call with timeout 600000, where `<N>` is `60` with a dashboard and `560` without one. The first hop after the start gives no `--since` (still with `--until-change`). It answers `changed` at once, and with a dashboard that answer is the first dashboard write. After that, always add `--since <seq>` with the `seq` of the previous answer. It prints one JSON object with `status`, `seq`, `line`, `progress`, `approvals` and `machine`.
 3. **Dashboard** (only with a dashboard URL; skip otherwise). Every ArtifactData call goes to that Artifact.
    - **Doc id.** Take the run id from `progress.run_id`, lower-case it and replace every character outside `a-z`, `0-9` and `-` with `-`. When `progress.run_id` is null or empty, the doc id is `state-` plus the first 12 hex characters of the SHA-1 of the state path: get them once with `printf '%s' '<state>' | shasum -a 1` (Bash) and reuse them.
    - **Run id value.** The `run_id` you write and query with is `progress.run_id` when it is present, else the doc id. It is never null. Use the same value every hop.
    - **Versions.** Every ArtifactData read and every `set`/`update` result shows the document's `version`. A write to a document that already exists must pass `if_version` with the version last seen, or it is refused. A write pinned to an old version fails and names the current one.
-   - **Write the run.** The fields are `run_id` (the run id value), `state` (the state path), `status`, `line`, `seq`, `progress`, `approvals` and `machine`, all copied from this answer unchanged, and `updated_at` (the current time in unix seconds: `date +%s`). Collection `runs`, document `<doc id>`.
+   - **Write the run.** The fields are `run_id` (the run id value), `project` (found in step 1), `title` (the task title you were given, else the run id value), `state` (the state path), `status`, `line`, `seq`, `progress`, `approvals` and `machine`, all copied from this answer unchanged, and `updated_at` (the current time in unix seconds: `date +%s`). Collection `runs`, document `<doc id>`.
      - Your first write: `set` it without `if_version`. If that is refused because the document already exists (an earlier watcher of the same run wrote it), `get` it once and `set` again with `if_version` = its `version`.
      - Every later hop: `update` it with `if_version` = the `version` from your previous write's result.
      - Keep the `version` of each write's result for the next hop. If a write fails on a version mismatch, retry it once with the version the error names (or the one a `get` shows).
