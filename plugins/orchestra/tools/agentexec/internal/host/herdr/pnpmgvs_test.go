@@ -111,3 +111,21 @@ func TestServerEnvCarriesNoWorkspaceEnv(t *testing.T) {
 		}
 	}
 }
+
+// A workspace on a linked worktree with a mise config carries mise's trust of
+// the tree, appended to the value the agent-exec process already has.
+func TestWorkspaceEnvCarriesTheMiseTrustOfItsTree(t *testing.T) {
+	t.Setenv("MISE_TRUSTED_CONFIG_PATHS", "/keep")
+	was := config.MiseShowSeam
+	config.MiseShowSeam = func(dir string) ([]byte, error) { return []byte(dir + "/mise.toml: trusted\n"), nil }
+	t.Cleanup(func() { config.MiseShowSeam = was })
+
+	e := newEnv(t)
+	e.scenario(map[string]any{}, true)
+	tree := e.linkedTree("mise")
+	_ = os.WriteFile(filepath.Join(tree, "mise.toml"), []byte("[env]\n"), 0o644)
+	want := "MISE_TRUSTED_CONFIG_PATHS=/keep:" + tree
+	if got := e.workspaceEnvOf(e.executor("{}"), tree); !slices.Contains(got, want) {
+		t.Errorf("workspace --env = %v, want %q", got, want)
+	}
+}

@@ -26,8 +26,8 @@ type Spec struct {
 	// Cwd is the directory relative paths in denial messages resolve
 	// against (the run's workdir); Tree when empty.
 	Cwd string
-	// PnpmGVS: Tree runs under pnpm's global virtual store
-	// (config.PnpmGVSTree), so ChildEnv passes the switch on.
+	// PnpmGVS: pnpm's global virtual store is on for the run's config
+	// (config.PnpmGVS); ChildEnv applies it to Tree (config.TreeEntries).
 	PnpmGVS bool
 }
 
@@ -106,7 +106,7 @@ func Prepare(executor, tree string, cfg *config.Resolved, model, task string) Sp
 	}
 	s := prepare(executor, tree, sc, nil, o, network)
 	s.Tree = tree
-	s.PnpmGVS = config.PnpmGVSTree(config.PnpmGVS(cfg), tree)
+	s.PnpmGVS = config.PnpmGVS(cfg)
 	return s
 }
 
@@ -314,7 +314,8 @@ func bwrapLimits(policy *Policy, exists func(string) bool) []string {
 // the seeded store (else it silently moves its store into the tree; an
 // explicit store dir, under either name, is kept), and under srt a Node child (pi) is told to honor srt's
 // HTTP(S)_PROXY. Sandboxed or not, a child in a tree on pnpm's global
-// virtual store gets its switch (Spec.PnpmGVS).
+// virtual store gets its switch (Spec.PnpmGVS), and a child in a tree mise
+// trusts gets it in MISE_TRUSTED_CONFIG_PATHS (config.TreeEntries).
 func ChildEnv(s Spec, env []string) []string {
 	out := append([]string(nil), env...)
 	m := envMap(env)
@@ -336,10 +337,7 @@ func ChildEnv(s Spec, env []string) []string {
 			out = append(out, "NODE_USE_ENV_PROXY=1")
 		}
 	}
-	if s.PnpmGVS {
-		out = config.WithPnpmGVS(out)
-	}
-	return out
+	return config.WithTreeEnv(s.PnpmGVS, s.Tree, out)
 }
 
 // pnpmPin is pnpmStorePin when env lacks it: set to an explicit store dir
