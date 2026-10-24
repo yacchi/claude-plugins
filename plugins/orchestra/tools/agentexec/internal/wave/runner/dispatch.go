@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/approvals"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/dispatch"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
@@ -234,7 +235,7 @@ func (r *runner) dispatchOnce(pid string, promptFiles []string, noResume bool) (
 	pkg := r.pkg(pid)
 	trace.Lock(&r.intLock, "wave integration", trace.Attrs{Pkg: pid})
 	r.cleanIntegration("pre-dispatch")
-	token, err := r.exec.Prepare(promptFiles, pkg.Cls, r.intPath, r.task(pid), r.opts.RunID)
+	token, err := r.exec.Prepare(promptFiles, pkg.Cls, r.intPath, r.isolateMode(), r.task(pid), r.opts.RunID)
 	r.intLock.Unlock()
 	if err != nil {
 		panic(runnerError{"RuntimeError", err.Error()})
@@ -268,6 +269,17 @@ func (r *runner) dispatchOnce(pid string, promptFiles []string, noResume bool) (
 		return token, result
 	}
 	return token, result
+}
+
+// isolateMode is every package dispatch's --isolate: with an interactive
+// host a delegate route runs in the host's own tree, so the dispatch makes
+// one only for a CLI route; without one the instructor runs it in the
+// dispatch's tree.
+func (r *runner) isolateMode() string {
+	if r.host != nil {
+		return dispatch.IsolateCli
+	}
+	return dispatch.IsolateAlways
 }
 
 func (r *runner) exhaustedList() []string {
@@ -338,10 +350,11 @@ func capitalize(s string) string {
 // hostStart runs a `delegate` package in a new host session instead of
 // handing it to the instructor; the result is dispatch-shaped.
 func (r *runner) hostStart(pid, token string, delegated map[string]any, promptFiles []string) map[string]any {
-	// The CLI dispatch already made a tree for the task; drop it (it holds
+	// No orchestra tree may hold the task id into Start: a `cli` dispatch
+	// makes none for this route, but an attempt that routed to a CLI
+	// executor first (and came back unavailable) did. Drop it (it holds
 	// nothing yet) so the task id resolves to the host's tree.
-	isolation := asMap(delegated["isolation"])
-	if stray := str(isolation["path"]); truthy(isolation["isolate"]) && stray != "" {
+	if stray, _, ok := isolate.ResolveWorktree(r.root, r.task(pid), ""); ok {
 		if _, adopted := isolate.ReadAdopted(stray); !adopted {
 			res, err := isolate.Remove(r.root, r.task(pid), false, "")
 			if err != nil || (res.Status != "removed" && res.Status != "absent") {

@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -30,16 +29,22 @@ var TokenPattern = regexp.MustCompile(`^dsp-[0-9a-f]{12}$`)
 // spec does not validate.
 var ErrInvalidToken = errors.New("invalid token")
 
-// Isolation modes.
+// Isolation modes. IsolateCli is always for a route agent-exec runs itself
+// (a `dispatch: cli` executor, or any direct run) and no tree for a
+// delegate route, whose caller isolates it.
 const (
 	IsolateAuto   = "auto"
 	IsolateAlways = "always"
 	IsolateNever  = "never"
+	IsolateCli    = "cli"
 )
 
-// ValidIsolate reports whether mode is auto, always or never.
+// IsolateModes is the --isolate values as usage text.
+const IsolateModes = "auto|always|never|cli"
+
+// ValidIsolate reports whether mode is auto, always, never or cli.
 func ValidIsolate(mode string) bool {
-	return mode == IsolateAuto || mode == IsolateAlways || mode == IsolateNever
+	return mode == IsolateAuto || mode == IsolateAlways || mode == IsolateNever || mode == IsolateCli
 }
 
 // PrepareSpec is what a token stands for. RunID and Task nil are "not
@@ -125,7 +130,7 @@ func Prepare(cfg *config.Resolved, s PrepareSpec) (string, error) {
 		s.Isolate = IsolateAuto
 	}
 	if !ValidIsolate(s.Isolate) {
-		return "", fmt.Errorf("--isolate must be auto|always|never")
+		return "", errors.New("--isolate must be " + IsolateModes)
 	}
 	if s.ConfigRoot == "" {
 		s.ConfigRoot = cfg.Root

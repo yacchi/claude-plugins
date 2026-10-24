@@ -38,7 +38,7 @@ func newDispatchCmd() *cobra.Command {
 	fl.StringVar(&f.exhausted, "exhausted", "", "comma-separated executors already tried")
 	fl.StringArrayVar(&f.promptFiles, "prompt-file", nil, "prompt file (repeatable)")
 	fl.StringVar(&f.workdir, "workdir", "", "working directory of the worker")
-	fl.StringVar(&f.isolate, "isolate", "", "auto|always|never (default auto; never with --executor)")
+	fl.StringVar(&f.isolate, "isolate", "", dispatch.IsolateModes+" (default auto; never with --executor)")
 	fl.StringVar(&f.task, "task", "", "task id (names the worktree and the resumable session)")
 	fl.StringVar(&f.runID, "run-id", "", "run ledger id")
 	fl.StringVar(&f.resume, "resume", "", "session id to resume")
@@ -60,7 +60,7 @@ func newDispatchCmd() *cobra.Command {
 // checkIsolateRunID validates --isolate and --run-id when they are given.
 func checkIsolateRunID(cmd *cobra.Command, isolate, runID string) error {
 	if cmd.Flags().Changed("isolate") && !dispatch.ValidIsolate(isolate) {
-		return exitf(2, "dispatch: --isolate must be auto|always|never")
+		return exitf(2, "dispatch: --isolate must be "+dispatch.IsolateModes)
 	}
 	if cmd.Flags().Changed("run-id") && !ledger.RunIDPattern.MatchString(runID) {
 		return exitf(2, "dispatch: invalid --run-id: %s", runID)
@@ -287,7 +287,7 @@ func newDispatchPrepareCmd() *cobra.Command {
 	promptFiles := fl.StringArray("prompt-file", nil, "prompt file (repeatable; may not exist yet)")
 	workdir := fl.String("workdir", "", "working directory of the worker")
 	archetype := fl.String("archetype", "default", "task archetype")
-	isolate := fl.String("isolate", dispatch.IsolateAuto, "auto|always|never")
+	isolate := fl.String("isolate", dispatch.IsolateAuto, dispatch.IsolateModes)
 	task := fl.String("task", "", "task id")
 	runID := fl.String("run-id", "", "run ledger id")
 	fl.Bool("json", false, "JSON output (the default and only format)")

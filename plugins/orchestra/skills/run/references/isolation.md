@@ -31,6 +31,8 @@ agent-exec dispatch --token <token> --capture --detach
 agent-exec dispatch wait --token <token> --summary                                               # repeat until final
 # --isolate always  : isolate even a clean tree (parallel/competing variants)
 # --isolate never   : opt out, e.g. a strictly sequential phase on one tree
+# --isolate cli     : always for a route dispatch runs itself (pi, any --executor run); no tree
+#                     for a delegate route, whose caller isolates it (wave run with an interactive host)
 ```
 
 Every dispatch result carries an `isolation` object saying which tree was used and why, so a run always knows where to collect from. `isolation.path` is always the worktree ROOT — the argument `isolate diff`/`remove` below expect. `isolation.workdir` is the directory the dispatch actually ran in: normally the same as `path`, but when `--workdir` named a subdirectory of the repo, `workdir` preserves that depth inside the fresh worktree while `path` still names the root.
