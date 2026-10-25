@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -380,6 +381,11 @@ func (r *runner) converge() {
 		if !ok {
 			return
 		}
+		// A `wave mark` during the checks handed a package back: process it
+		// and check again, without spending a round or stopping.
+		if r.pickUpHandedBack() {
+			continue
+		}
 		if len(failures) == 0 {
 			r.fullGreen()
 			return
@@ -397,4 +403,49 @@ func (r *runner) converge() {
 		r.makeFixups(failures, r.fixups.rounds+1)
 		r.runWaves()
 	}
+}
+
+// pickUpHandedBack runs the scheduler again when the store (re-read now)
+// holds a package it would act on, one a `wave mark` handed back while the
+// final checks ran. True when that changed a package's status or stopped
+// the run; false (fall through to the checks' result) when nothing could
+// be done with it.
+func (r *runner) pickUpHandedBack() bool {
+	if r.stopped() || !r.hasHandedBack() {
+		return false
+	}
+	before := r.statusView()
+	r.runWaves()
+	// A stop raised meanwhile ends the loop, as after any other runWaves.
+	return r.stopped() || !maps.Equal(before, r.statusView())
+}
+
+// statusView is every package's stored status, read from the store now.
+func (r *runner) statusView() plan.Status {
+	view := plan.Status{}
+	for id, ps := range r.store.Snapshot().Packages {
+		view[id] = ps.Status
+	}
+	return view
+}
+
+// hasHandedBack is whether schedule() would pick up a package now: one to
+// verify (or integrate), one awaiting its interactive session, or a
+// pending one whose dependencies are integrated. Packages in needs are not.
+func (r *runner) hasHandedBack() bool {
+	st := r.store.Snapshot()
+	view := r.statusView()
+	for _, pkg := range r.plan.Packages {
+		ps := st.Packages[pkg.ID]
+		if ps == nil {
+			continue
+		}
+		if ps.Status == "verifying" || ps.Status == "ready" {
+			return true
+		}
+		if ps.Status == "implementing" && ps.Detail == "await-orca" && r.hostSession(pkg.ID) != nil {
+			return true
+		}
+	}
+	return len(plan.Select(r.plan, view, unboundedWidth)) > 0
 }

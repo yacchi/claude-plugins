@@ -525,6 +525,25 @@ ul.items > li:last-child {
     color: var(--crit);
     border-color: var(--crit);
 }
+.btn.delbtn {
+    background: var(--surface);
+    color: var(--crit);
+    border-color: var(--crit);
+    font-size: 13px;
+    padding: 4px 10px;
+}
+.btn.delbtn.armed {
+    background: var(--crit);
+    color: var(--surface);
+}
+.del-row {
+    margin-top: 8px;
+    gap: 10px;
+    align-items: center;
+}
+.sec-bulk {
+    margin: 0 0 8px;
+}
 .btn:hover:not(:disabled) {
     filter: brightness(1.08);
 }
@@ -678,6 +697,7 @@ ul.items > li:last-child {
             <h2 id="plans-h" class="sec">計画</h2>
             <div id="plans"></div>
             <h2 id="runs-h" class="sec">実行一覧</h2>
+            <div id="runs-bulk" class="sec-bulk" hidden></div>
             <div id="runs">
                 <div class="placeholder">
                     <p>実行を読み込んでいます…</p>
@@ -776,6 +796,9 @@ ul.items > li:last-child {
         decisions: new Map(), // approval id -> decision doc body
         canWrite: null, // true | false | null (platform said nothing)
         writing: new Set(),
+        confirm: null, // { key, timer }: the item whose delete awaits a second click
+        deleting: new Set(),
+        writeFrom: "",
         reasons: new Map(),
         errors: { runs: "", plans: "", decisions: "", write: "" },
         revoked: false,
@@ -963,6 +986,7 @@ ul.items > li:last-child {
             S.plansLoaded = true;
             S.errors.plans = "";
             fixSelection();
+            subscribeDecisions();
             render();
         }, (e) => onSubError("plans", e, subscribePlans));
     }
@@ -1108,6 +1132,138 @@ ul.items > li:last-child {
         }
     }
 
+    // ---- delete ----
+    const CONFIRM_MS = 5000;
+    const BULK_KEY = "bulk";
+    const ENDED_RUN = new Set(["done", "stopped", "crashed"]);
+    const ENDED_PLAN = new Set(["done", "failed"]);
+
+    async function deleteRunDocs(run) {
+        await S.db.collection("runs").doc(run.docId).delete();
+        const runId = str(run.data.run_id) || run.docId;
+        try {
+            const snap = await S.db.collection("decisions").where("run_id", "==", runId).get();
+            for (const d of snap.docs) {
+                if (!d.exists || str(obj(d.data()).run_id) !== runId) {
+                    continue;
+                }
+                try {
+                    await S.db.collection("decisions").doc(d.id).delete();
+                } catch (e) {
+                    // best effort: the run is already gone
+                }
+            }
+        } catch (e) {
+            // best effort
+        }
+    }
+
+    async function deletePlanDocs(plan) {
+        await S.db.collection("plans").doc(plan.docId).delete();
+    }
+
+    function endedItems() {
+        return {
+            runs: visible(S.runs).filter((r) => ENDED_RUN.has(str(r.data.status))),
+            plans: visible(S.plans).filter((p) => ENDED_PLAN.has(str(p.data.status))),
+        };
+    }
+
+    function clearConfirm() {
+        if (S.confirm) {
+            window.clearTimeout(S.confirm.timer);
+            S.confirm = null;
+        }
+    }
+
+    // Two-step delete: the first click arms the key for CONFIRM_MS, a click while armed runs it.
+    function onDeleteClick(key, action) {
+        if (S.canWrite === false || S.deleting.has(key)) {
+            return;
+        }
+        if (S.confirm && S.confirm.key === key) {
+            clearConfirm();
+            runDelete(key, action);
+            return;
+        }
+        clearConfirm();
+        const timer = window.setTimeout(() => {
+            if (S.confirm && S.confirm.timer === timer) {
+                S.confirm = null;
+                render();
+            }
+        }, CONFIRM_MS);
+        S.confirm = { key: key, timer: timer };
+        render();
+    }
+
+    async function runDelete(key, action) {
+        S.deleting.add(key);
+        S.errors.write = "";
+        S.writeFrom = key === BULK_KEY ? "bulk" : "";
+        render();
+        try {
+            await action();
+        } catch (e) {
+            if (str(obj(e).code) === "invalid_argument") {
+                S.canWrite = false;
+            } else {
+                S.errors.write = "削除できませんでした: " + errMessage(e);
+            }
+        } finally {
+            S.deleting.delete(key);
+            render();
+        }
+    }
+
+    function deleteBulk() {
+        return async () => {
+            const items = endedItems();
+            for (const run of items.runs) {
+                await deleteRunDocs(run);
+            }
+            for (const plan of items.plans) {
+                await deletePlanDocs(plan);
+            }
+        };
+    }
+
+    function deleteButton(key, label, action) {
+        const armed = S.confirm != null && S.confirm.key === key;
+        return h("button", {
+            type: "button",
+            id: "del-" + safeKey(key),
+            class: "btn delbtn" + (armed ? " armed" : ""),
+            disabled: S.deleting.has(key),
+            text: armed ? "本当に削除" : label,
+            onclick: () => onDeleteClick(key, action),
+        });
+    }
+
+    function deleteRow(key, action, note) {
+        if (S.canWrite === false) {
+            return null;
+        }
+        return h("div", { class: "row del-row" },
+            deleteButton(key, "削除", action),
+            note ? h("span", { class: "sub", text: note }) : null);
+    }
+
+    function renderBulk() {
+        const root = document.getElementById("runs-bulk");
+        const items = S.dbState === "ok" && S.runsLoaded && S.canWrite !== false ? endedItems() : { runs: [], plans: [] };
+        const n = items.runs.length + items.plans.length;
+        if (n === 0 && !S.deleting.has(BULK_KEY)) {
+            root.hidden = true;
+            root.replaceChildren();
+            return;
+        }
+        root.replaceChildren(
+            deleteButton(BULK_KEY, "終わった実行を削除（" + n + "）", deleteBulk()),
+            S.errors.write && S.writeFrom === "bulk" ? h("p", { class: "err", text: S.errors.write }) : null);
+        root.hidden = false;
+    }
+
     // ---- render ----
     function render() {
         const ae = document.activeElement;
@@ -1122,6 +1278,7 @@ ul.items > li:last-child {
         renderFilter();
         renderPlans();
         renderRuns();
+        renderBulk();
         renderDetail();
         tick();
 
@@ -1368,7 +1525,9 @@ ul.items > li:last-child {
                 stat("パッケージ", num(d.packages) != null ? String(num(d.packages)) : "—"),
                 stat("見積もり合計", est != null ? fmtDur(est) : "—"),
                 stat("最長経路", crit != null ? fmtDur(crit) : "—"),
-                stat("開始", num(d.started_at) != null ? fmtAgo(num(d.started_at)) : "—")));
+                stat("開始", num(d.started_at) != null ? fmtAgo(num(d.started_at)) : "—")),
+            deleteRow(PLAN_PREFIX + plan.docId, () => deletePlanDocs(plan)),
+            S.errors.write && !S.writeFrom ? h("p", { class: "err", text: S.errors.write }) : null);
 
         const children = arr(d.children).map(obj);
         const kids = h("section", { class: "card" }, cardHead("子のエージェント", children.filter((c) => str(c.status) === "running").length));
@@ -1441,6 +1600,7 @@ ul.items > li:last-child {
         const eta = num(p.eta_s);
         const cost = num(p.cost_usd);
         const elapsed = num(p.elapsed_s);
+        const interrupted = arr(p.interrupted).map(obj).filter((x) => str(x.id));
 
         const head = h("div", { class: "card head" },
             h("div", { class: "row between" },
@@ -1451,7 +1611,7 @@ ul.items > li:last-child {
             h("div", { class: "meta" },
                 agoEl(updated, "更新 ", live),
                 d.state ? h("span", { class: "mono ellipsis", text: str(d.state) }) : null),
-            live && updated != null ? h("div", {
+            live && updated != null && str(d.status) !== "needs" ? h("div", {
                 class: "stale-banner",
                 hidden: true,
                 dataset: { staleAt: String(updated) },
@@ -1468,11 +1628,15 @@ ul.items > li:last-child {
                 stat("ブロック", String(num(p.blocked) ?? 0)),
                 stat("経過", elapsed != null ? fmtDur(elapsed) : "—"),
                 stat("残り", eta != null && live ? "~" + fmtETA(eta) : "—"),
-                stat("費用", cost != null ? fmtCost(cost) : "—")));
+                stat("費用", cost != null ? fmtCost(cost) : "—"),
+                interrupted.length > 0 ? stat("中断", String(interrupted.length)) : null),
+            deleteRow(run.docId, () => deleteRunDocs(run),
+                live ? "watcher が動いている間は、次の更新で再び表示されます。" : ""));
 
         const cards = h("div", { class: "cards" },
             approvalsCard(run),
             needsCard(p),
+            interrupted.length > 0 ? interruptedCard(interrupted) : null,
             runningCard(p),
             nextCard(p),
             recentCard(p),
@@ -1537,6 +1701,21 @@ ul.items > li:last-child {
                 h("div", { class: "detail-text mono", text: str(n.detail) })));
         }
         card.append(ul);
+        return card;
+    }
+
+    function interruptedCard(rows) {
+        const card = h("section", { class: "card wide" }, cardHead("中断したパッケージ", rows.length, true));
+        const ul = h("ul", { class: "items" });
+        for (const r of rows) {
+            const since = num(r.since);
+            ul.append(h("li", { class: "row between" },
+                h("span", { class: "mono ellipsis", text: str(r.id) }),
+                h("span", { class: "row" },
+                    h("span", { class: "pill warn", text: PHASE[str(r.phase)] || str(r.phase) || "?" }),
+                    since != null ? h("span", { class: "sub num", text: fmtDur(nowS() - since) }) : null)));
+        }
+        card.append(h("p", { class: "note" }, "runner は終了しています。同じ ", h("code", { text: "wave run" }), " コマンドで再開すると続きから実行されます。"), ul);
         return card;
     }
 

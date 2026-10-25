@@ -130,6 +130,7 @@
           "eta_basis": "none",
           "eta_s": null,
           "integrated": 1,
+          "interrupted": [],
           "needs": [
             {
               "detail": "needs wider scope",
