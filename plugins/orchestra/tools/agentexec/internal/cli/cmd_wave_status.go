@@ -109,6 +109,9 @@ func runWaveStatus(out, errw io.Writer, o waveStatusOptions, watch bool) error {
 			return wavewatch.Line(wavewatch.Compute(o.statePath, &st, now, waveRunCost)), nil
 		}
 		ro := state.RenderOptions{Live: o.live, StatePath: o.statePath, ApprovalsPending: ApprovalsPending(o.statePath)}
+		if rec, ok := wavewatch.ReadRecord(o.statePath); ok && !rec.Alive(o.statePath) {
+			ro.RunnerGone = true
+		}
 		if o.events != 0 {
 			ro.Events = state.ReadEvents(o.statePath, o.events)
 		}

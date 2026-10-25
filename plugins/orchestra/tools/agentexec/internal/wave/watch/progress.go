@@ -31,13 +31,15 @@ type Progress struct {
 	Pending    int       `json:"pending"`
 	Blocked    int       `json:"blocked"`
 	Running    []Running `json:"running"`
-	Needs      []Need    `json:"needs"`
-	Next       []string  `json:"next"`
-	Recent     []Recent  `json:"recent"`
-	ElapsedS   int       `json:"elapsed_s"`
-	EtaS       *int      `json:"eta_s"`
-	EtaBasis   string    `json:"eta_basis"`
-	CostUSD    *float64  `json:"cost_usd"`
+	// Interrupted are the in-flight packages whose runner is gone.
+	Interrupted []Interrupted `json:"interrupted"`
+	Needs       []Need        `json:"needs"`
+	Next        []string      `json:"next"`
+	Recent      []Recent      `json:"recent"`
+	ElapsedS    int           `json:"elapsed_s"`
+	EtaS        *int          `json:"eta_s"`
+	EtaBasis    string        `json:"eta_basis"`
+	CostUSD     *float64      `json:"cost_usd"`
 }
 
 // Running is one package in flight.
@@ -50,6 +52,13 @@ type Running struct {
 	StartedAt  float64  `json:"started_at"`
 	ElapsedS   int      `json:"elapsed_s"`
 	EstSeconds *float64 `json:"est_seconds"`
+}
+
+// Interrupted is a package left in flight by a runner that no longer runs.
+type Interrupted struct {
+	ID    string  `json:"id"`
+	Phase string  `json:"phase"`
+	Since float64 `json:"since"`
 }
 
 // Need is one entry of the needs list; ID is nil for a wave-level need.
@@ -188,7 +197,7 @@ func build(in inputs) Progress {
 	st, now := in.state, in.now
 	log := readLog(in.events)
 	pr := Progress{
-		Running: []Running{}, Needs: []Need{}, Next: []string{}, Recent: []Recent{},
+		Running: []Running{}, Interrupted: []Interrupted{}, Needs: []Need{}, Next: []string{}, Recent: []Recent{},
 		EtaBasis: "none",
 	}
 	if in.record != nil {
@@ -212,6 +221,10 @@ func build(in inputs) Progress {
 		blocked = plan.Blocked(in.plan, statuses)
 	}
 
+	// gone: a runner record exists for this state and its process is not
+	// running. Without a record (foreground run) liveness is unknown.
+	gone := in.record != nil && !in.alive
+
 	ids := slices.Sorted(maps.Keys(st.Packages))
 	pr.Total = len(ids)
 	var recent []Recent
@@ -229,6 +242,8 @@ func build(in inputs) Progress {
 			} else {
 				pr.Pending++
 			}
+		case state.InFlight(ps.Status) && gone:
+			pr.Interrupted = append(pr.Interrupted, Interrupted{ID: id, Phase: phase(id, ps, log), Since: ps.Since})
 		case state.InFlight(ps.Status):
 			r := Running{ID: id, Executor: ps.Executor, Phase: phase(id, ps, log)}
 			if pkg, ok := pkgOf(id); ok {
@@ -275,7 +290,7 @@ func build(in inputs) Progress {
 		if width <= 0 {
 			width = unbounded
 		}
-		f := forecast(in.plan, st, log.started, now, width)
+		f := forecast(in.plan, st, log.started, now, width, gone)
 		pr.Next = append(pr.Next, f.next...)
 		if f.estimated {
 			eta := int(math.Round(f.makespan * ratio(in.plan, st, log.started)))
@@ -341,7 +356,7 @@ type forecastResult struct {
 // it has none). makespan is when the last one finishes; next is the first
 // packages it starts, in that order. A package in needs or blocked is
 // assumed to be resolved, one depending on a failed package never starts.
-func forecast(p *plan.Plan, st *state.State, started map[string]float64, now float64, width int) forecastResult {
+func forecast(p *plan.Plan, st *state.State, started map[string]float64, now float64, width int, runnerGone bool) forecastResult {
 	var res forecastResult
 	sim := plan.Status{}
 	finish := map[string]float64{}
@@ -356,7 +371,7 @@ func forecast(p *plan.Plan, st *state.State, started map[string]float64, now flo
 		case status == "integrated" || status == "failed":
 			sim[pkg.ID] = status
 			continue
-		case state.InFlight(status):
+		case state.InFlight(status) && !runnerGone:
 			sim[pkg.ID] = "implementing"
 			left := pkg.EstSeconds
 			if at, ok := started[pkg.ID]; ok {
@@ -418,8 +433,11 @@ func Line(p Progress) string {
 	parts := []string{
 		fmt.Sprintf("wave %d/%d", p.Integrated, p.Total),
 		fmt.Sprintf("%d running", len(p.Running)),
-		fmt.Sprintf("%d needs", len(p.Needs)),
 	}
+	if n := len(p.Interrupted); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d interrupted", n))
+	}
+	parts = append(parts, fmt.Sprintf("%d needs", len(p.Needs)))
 	if p.EtaS != nil {
 		parts = append(parts, "~"+formatETA(*p.EtaS)+" left")
 	}

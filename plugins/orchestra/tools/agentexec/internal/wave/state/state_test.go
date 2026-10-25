@@ -416,3 +416,11 @@ func TestFirstLine(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderStatusRunnerGone(t *testing.T) {
+	st := fixtureState()
+	got := RenderStatus(&st, 1000, RenderOptions{RunnerGone: true})
+	if !strings.Contains(got, "interrupted: 2 (runner gone)") || strings.Contains(got, "in flight") {
+		t.Fatalf("header: %s", got)
+	}
+}

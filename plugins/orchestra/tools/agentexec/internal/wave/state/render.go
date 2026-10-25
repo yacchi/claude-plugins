@@ -127,6 +127,9 @@ type RenderOptions struct {
 	// ApprovalsPending > 0 adds the "approvals: N pending" line.
 	ApprovalsPending int
 	StatePath        string
+	// RunnerGone: the runner is known to have ended, so in-flight packages
+	// are interrupted, not running. False also when liveness is unknown.
+	RunnerGone bool
 }
 
 func statusIndex(status string) int {
@@ -160,7 +163,11 @@ func RenderStatus(st *State, now float64, o RenderOptions) string {
 	if len(countParts) > 0 {
 		header += "  " + strings.Join(countParts, " ")
 	}
-	header += "  running: " + strconv.Itoa(running) + " in flight"
+	if o.RunnerGone && running > 0 {
+		header += "  interrupted: " + strconv.Itoa(running) + " (runner gone)"
+	} else {
+		header += "  running: " + strconv.Itoa(running) + " in flight"
+	}
 	if st.Stopped != nil {
 		header += "  stopped: " + st.Stopped.Reason
 	}
@@ -201,6 +208,9 @@ func RenderStatus(st *State, now float64, o RenderOptions) string {
 			files = strconv.Itoa(c.(int)) + "*"
 		}
 		row := fmt.Sprintf("  %s  %s  %s  %s  %s  %d", id, p.Status, formatElapsed(now-since), executor, files, p.Attempts)
+		if o.RunnerGone && InFlight(p.Status) {
+			row += "  (interrupted)"
+		}
 		if title, ok := o.PlanTitles[id]; ok {
 			row += "  " + title
 		}

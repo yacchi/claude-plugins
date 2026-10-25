@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -239,5 +240,52 @@ func TestETAIsNullWithoutAnEstimateLeft(t *testing.T) {
 	}
 	if len(p.Next) != 1 || p.Next[0] != "c" {
 		t.Fatalf("next = %v", p.Next)
+	}
+}
+
+// progressFor is the progress of a one-package wave whose package is
+// implementing.
+func progressFor(t *testing.T, store *state.Store) Progress {
+	t.Helper()
+	st, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Packages["a"] = &state.Package{Status: "implementing", Since: 500}
+	return Compute(store.Path, &st, 1000, nil)
+}
+
+func TestProgressMovesInFlightToInterruptedWhenTheRunnerIsGone(t *testing.T) {
+	store := newStore(t, "a")
+	dead := exec.Command("/bin/sh", "-c", "exit 0", "wave", "run", "--state="+store.Path)
+	if err := dead.Run(); err != nil {
+		t.Fatal(err)
+	}
+	writeRecord(t, store.Path, Record{PID: dead.Process.Pid, StartedAt: time.Now().Unix(), Argv: dead.Args})
+
+	p := progressFor(t, store)
+	if len(p.Running) != 0 || len(p.Interrupted) != 1 {
+		t.Fatalf("running=%v interrupted=%v", p.Running, p.Interrupted)
+	}
+	if i := p.Interrupted[0]; i.ID != "a" || i.Phase != "implementing" || i.Since != 500 {
+		t.Fatalf("interrupted: %+v", i)
+	}
+	if l := Line(p); !strings.Contains(l, "0 running · 1 interrupted · 0 needs") {
+		t.Fatalf("line: %s", l)
+	}
+}
+
+func TestProgressKeepsInFlightRunningWhileTheRunnerLivesOrIsUnknown(t *testing.T) {
+	alive := newStore(t, "a")
+	liveRunner(t, alive.Path)
+	unknown := newStore(t, "a")
+	for name, store := range map[string]*state.Store{"alive": alive, "no record": unknown} {
+		p := progressFor(t, store)
+		if len(p.Running) != 1 || len(p.Interrupted) != 0 {
+			t.Fatalf("%s: running=%v interrupted=%v", name, p.Running, p.Interrupted)
+		}
+		if strings.Contains(Line(p), "interrupted") {
+			t.Fatalf("%s: line %s", name, Line(p))
+		}
 	}
 }

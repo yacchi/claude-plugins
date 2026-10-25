@@ -430,6 +430,7 @@
           "eta_basis": "none",
           "eta_s": null,
           "integrated": 3,
+          "interrupted": [],
           "needs": [],
           "next": [],
           "pending": 0,
