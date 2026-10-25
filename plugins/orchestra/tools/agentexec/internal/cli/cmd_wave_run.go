@@ -271,7 +271,19 @@ func newWaveMarkCmd() *cobra.Command {
 		if code != 0 {
 			return exitf(code, "wave mark: %s", res["error"])
 		}
+		noteGoneRunner(o.State, res)
 		return writeJSONLine(cmd.OutOrStdout(), res)
 	}
 	return mark
+}
+
+// noteGoneRunner adds "runner": "gone" and a hint to a successful mark's
+// result when the state's runner record (runner.pid) shows its runner has
+// ended: nothing will pick the handed-back package up. Without a record
+// liveness is unknown and nothing is added.
+func noteGoneRunner(statePath string, res map[string]any) {
+	if rec, ok := watch.ReadRecord(statePath); ok && !rec.Alive(statePath) {
+		res["runner"] = "gone"
+		res["hint"] = "no runner is running this state; start the same wave run command again to pick it up"
+	}
 }
