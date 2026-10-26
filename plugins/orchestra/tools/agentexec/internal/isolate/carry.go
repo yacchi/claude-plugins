@@ -376,10 +376,11 @@ func carryLocalFiles(root, path string, files []string) []string {
 // worktree: tracked edits as a binary patch, untracked (not ignored) files
 // copied, except those named in excluded and those under the
 // ChangeFilter's excluded directories (an unignored .pnpm-store stays in
-// the user's tree). Without it a worker would work against stale code
+// the user's tree). Tracked edits under excluded directories are not
+// carried either. Without it a worker would work against stale code
 // whenever the user has work in progress.
 func carryUncommitted(root, worktree string, excluded []string) {
-	if patch, err := gitx.Run(root, "diff", "HEAD", "--binary"); err == nil && strings.TrimSpace(patch) != "" {
+	if patch, err := gitx.Run(root, append([]string{"diff", "HEAD", "--binary"}, CurrentFilter().Pathspec()...)...); err == nil && strings.TrimSpace(patch) != "" {
 		_, _ = gitx.RunInput(worktree, []byte(patch), "apply", "--binary", "--whitespace=nowarn", "-")
 	}
 	out, err := gitx.Run(root, append([]string{"ls-files", "--others", "--exclude-standard"}, CurrentFilter().Pathspec()...)...)

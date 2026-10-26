@@ -45,6 +45,17 @@ func TestMain(m *testing.M) {
 		os.RemoveAll(dir)
 		os.Exit(1)
 	}
+	// The first exec of a freshly built binary can stall for hundreds of
+	// milliseconds (macOS scans it; a loaded machine adds more), longer than
+	// the hang-idle and wall fixtures' sub-second watchdogs, which then kill
+	// fakepi before it emits its session event. Pay that cost once here.
+	warm := exec.Command(fakepiBin)
+	warm.Env = append(os.Environ(), "HOME="+dir)
+	if out, err := warm.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "warm fakepi: %v\n%s", err, out)
+		os.RemoveAll(dir)
+		os.Exit(1)
+	}
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)

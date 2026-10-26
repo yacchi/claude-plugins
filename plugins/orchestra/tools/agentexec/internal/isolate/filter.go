@@ -10,9 +10,10 @@ import (
 
 // ChangeFilter keeps dependency and cache directories out of a task's change
 // set (isolation.exclude_paths) and bounds how many new files one task may
-// add (isolation.max_added_files; 0 = no limit). An Exclude entry without an
-// inner "/" ("node_modules/") matches that directory name at any depth; one
-// with an inner "/" ("packages/a/.cache/") is relative to the repo root.
+// add (isolation.max_added_files; 0 = no limit). An Exclude entry names a
+// directory and also a file or symlink of that name: one without an inner "/"
+// ("node_modules/") matches that name at any depth; one with an inner "/"
+// ("packages/a/.cache/") is relative to the repo root.
 type ChangeFilter struct {
 	Exclude  []string
 	MaxAdded int
@@ -73,15 +74,15 @@ func (f ChangeFilter) entries() []string {
 	return out
 }
 
-// globs are the git glob patterns matching every file under each entry.
+// globs are the git glob patterns for each entry: the entry itself (a file or
+// symlink of that name) and everything under it.
 func (f ChangeFilter) globs() []string {
-	entries := f.entries()
-	out := make([]string, len(entries))
-	for i, e := range entries {
+	var out []string
+	for _, e := range f.entries() {
 		if strings.Contains(e, "/") {
-			out[i] = e + "/**"
+			out = append(out, e, e+"/**")
 		} else {
-			out[i] = "**/" + e + "/**"
+			out = append(out, "**/"+e, "**/"+e+"/**")
 		}
 	}
 	return out
@@ -95,6 +96,13 @@ func (f ChangeFilter) Pathspec() []string {
 		out = append(out, ":(exclude,glob)"+g)
 	}
 	return out
+}
+
+// ExcludedPathspec is the git pathspec of the excluded paths only ("--" first,
+// ":(glob)" entries, both forms per entry); nil when nothing is excluded.
+// Callers unstage or list exactly what the filter keeps out.
+func (f ChangeFilter) ExcludedPathspec() []string {
+	return f.includeSpec()
 }
 
 // includeSpec is the pathspec of the excluded directories only; nil when
@@ -112,32 +120,33 @@ func (f ChangeFilter) includeSpec() []string {
 }
 
 // Excluded reports whether the repo-relative path lies under an excluded
-// directory.
+// directory, or is one.
 func (f ChangeFilter) Excluded(p string) bool {
 	_, ok := f.match(p)
 	return ok
 }
 
-// match returns the entry (with its trailing "/") that excludes p.
+// match returns the entry (with its trailing "/") that excludes p. The last
+// segment counts too: it is the file itself, or a symlink or file named like
+// an entry.
 func (f ChangeFilter) match(p string) (string, bool) {
 	parts := strings.Split(p, "/")
-	dirs := parts[:len(parts)-1] // the last part is the file itself
 	for _, e := range f.entries() {
 		pat := strings.Split(e, "/")
 		if len(pat) == 1 {
-			for _, d := range dirs {
-				if ok, _ := path.Match(e, d); ok {
+			for _, seg := range parts {
+				if ok, _ := path.Match(e, seg); ok {
 					return e + "/", true
 				}
 			}
 			continue
 		}
-		if len(dirs) < len(pat) {
+		if len(parts) < len(pat) {
 			continue
 		}
 		matched := true
 		for i, seg := range pat {
-			if ok, _ := path.Match(seg, dirs[i]); !ok {
+			if ok, _ := path.Match(seg, parts[i]); !ok {
 				matched = false
 				break
 			}

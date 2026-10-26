@@ -155,11 +155,17 @@ func commitAll(wt, message string) error {
 }
 
 // commitAllWith commits everything but f's excluded paths (a cache dir
-// created in the integration tree never lands in a commit), hooks off.
-// With --allow-empty a commit always moves HEAD, so one that exits 0 and
-// does not is a failure too.
+// created in the integration tree never lands in a commit), hooks off. A
+// path under an excluded entry staged earlier is unstaged first, since git
+// commit takes the whole index. With --allow-empty a commit always moves
+// HEAD, so one that exits 0 and does not is a failure too.
 func commitAllWith(wt, message string, f isolate.ChangeFilter) error {
 	pre := headSHA(wt)
+	// Nothing staged there exits 0; a failure must not block the commit, as
+	// the add below is still filtered.
+	if spec := f.ExcludedPathspec(); spec != nil {
+		_, _ = gitx.Run(wt, append([]string{"reset", "-q"}, spec...)...)
+	}
 	if err := gitx.CommitAll(wt, message, f.Pathspec()...); err != nil {
 		return err
 	}

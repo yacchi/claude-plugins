@@ -187,6 +187,10 @@ isolation:
   # one with an inner "/" (packages/a/.cache/) is repo-root relative. UNIONED
   # across layers (a layer adds entries, never drops a default); entries are
   # normalized ("./x" and "/x" become "x/", entries with ".." are dropped).
+  # An entry also excludes a file or symlink with exactly that name (no inner
+  # "/") or path (inner "/"). Changes under an excluded path are never carried
+  # into a task tree or committed into its baseline, nor into an integrate or
+  # revert commit (anything staged there is unstaged first).
   exclude_paths: [.pnpm-store/, node_modules/, .venv/, __pycache__/, .turbo/, .next/, .gradle/, .terraform/]
   # A start commit that already TRACKS files under an exclude_paths directory is
   # refused by `wave run` and by isolating dispatches (the error names each
@@ -197,7 +201,9 @@ isolation:
   keep_paths: []
   # A task adding more new files than this is refused by `isolate integrate`
   # (task status "refused" with a reason, exit 7; the other tasks still land)
-  # and becomes an `oversized` need in a wave run. 0 disables the limit.
+  # and becomes an `oversized` need in a wave run. `isolate land` refuses a
+  # change adding more new files than this too, for `--task` and `--path`.
+  # 0 disables the limit.
   max_added_files: 500
   # pnpm repos only. `"auto"` (the default) turns it on where the pnpm that
   # runs in the project is 12 or later (corepack and packageManager pins
@@ -220,7 +226,7 @@ isolation:
 # as boolean False, not the string "off".
 enforcement:
   opt_in: "block"       # default ON: workers wait for the user to opt in on an Opus/Fable session
-  orchestra_merge: "block"     # default ON: no git merge/rebase/reset of an orchestra/* branch outside a worktree
+  orchestra_merge: "block"     # default ON: no git merge, rebase, reset, push or branching of orchestra/* outside an orchestra worktree, no merge commit of an Agent worktree-* branch
   light_class: "off"    # opt-in: nudge a generic Haiku spawn toward dispatch
   worker_vcs: "block"   # default ON: no destructive VCS from a subagent
   worker_tree: "block"  # default ON: no worker writes into the main tree
@@ -318,7 +324,7 @@ Ships **`"off"`** — turning it on is a deliberate opt-in via the `setup` skill
 
 **`enforcement.opt_in`** (`"block"` default | `"off"` — quote the value) holds back workers on a main thread that runs on Opus/Fable or on a model the hook cannot name (`hooks/guards/opt-in.ts`). Until the user opts in, the guard denies spawning `orchestra-light`, `-deep`, `-delegate`, `-review`, `-relay`, `-wave` and `-planner`, and `general-purpose` or `claude` (or a call with no type) once `orchestra:run` was loaded with the Skill tool in the current turn. The user opts in by typing `/orchestra:run` or `/run`, or by typing "workflow" or "ultracode" in a prompt; a typed command found in the conversation after a resume counts too. The deny tells the model to ask the user once, for `/orchestra:run <request>`, and then stop; the user's next prompt, whatever it says, unlocks the session. No prompt marker lifts the guard, because the model is the party being constrained. Explore, Plan and other plugins' agents pass, and so do subagents' own spawns and `cheap` or hosted-worker sessions. The guard fails open when it has seen no user prompt in the session. Known gap: "ultracode is on" set as a mode rather than typed as a keyword is invisible to the hook, so such a session gets one ask. `ORCHESTRA_ENFORCEMENT=off` disables it.
 
-**`enforcement.orchestra_merge`** (`"block"` default | `"off"` — quote the value) denies a Bash `git merge`, `rebase`, `reset`, `cherry-pick` or `pull` that names an `orchestra/*` branch, from any caller, unless the command runs inside an orchestra worktree (`hooks/guards/land.ts`). The deny points to `agent-exec isolate land`, which integrates such a branch. Escape marker: `[orchestra:allow-orchestra-merge: <reason>]`. `ORCHESTRA_ENFORCEMENT=off` disables it too.
+**`enforcement.orchestra_merge`** (`"block"` default | `"off"` — quote the value) denies a Bash `git merge`, `rebase`, `reset`, `cherry-pick`, `pull`, `push`, `update-ref`, a creating or forcing `branch`, `checkout -b/-B` or `switch -c/-C` that names an `orchestra/*` branch, from any caller, unless the command runs inside an orchestra worktree (`hooks/guards/land.ts`; `push` is denied even there). It also denies a `git merge` or `pull` of an Agent `worktree-*` branch unless it is `--ff-only` (`--squash` included: the checked route is `agent-exec isolate land --path <worktree>`). Git calls inside shell loops, after `xargs`, and with variable operands are covered too; with a variable operand, any `orchestra/*` or `worktree-*` word in the command counts. The deny points to `agent-exec isolate land --task <into>` (an orchestra task branch) or `--path <worktree>` (an Agent worktree), which integrates such a branch. Escape marker: `[orchestra:allow-orchestra-merge: <reason>]`. `ORCHESTRA_ENFORCEMENT=off` disables it too.
 
 **Hook layout.** The routing protocol, and a hosted worker's notice, is injected by a SessionStart command hook in `hooks/hooks.json` (`agent-exec hook session-start`, for the startup, resume, clear and compact sources). The `hooks/orchestra.ts` module listens only to events that Claude Code does not hold from user-tier mods: `tool.call`, `turn.start`, `turn.complete`, `prompt.submit` and `session.end`. Reason: on Team and Enterprise logins, and on machines with managed settings, Claude Code seats the built-in mod `cc-plugin-sec-default` outermost, and by design it passes every `classic.*` event on past user-tier mods. Plugin command hooks are not affected. `agent-exec doctor --json` reports a session in which the command hook or the module did not run under `hooks: {session, seen, warnings}`.
 

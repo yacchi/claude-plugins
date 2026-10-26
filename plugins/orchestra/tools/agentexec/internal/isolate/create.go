@@ -184,8 +184,9 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 		}
 		carryUncommitted(resolved, path, excluded)
 		// The user's state becomes the baseline, so every later diff shows
-		// the worker's changes and nothing else.
-		if err := gitx.CommitAll(path, "orchestra baseline for "+task); err != nil {
+		// the worker's changes and nothing else. A store a gtr hook or copy
+		// put into the tree must not enter it either.
+		if err := gitx.CommitAll(path, "orchestra baseline for "+task, CurrentFilter().Pathspec()...); err != nil {
 			// A tree without its baseline would show the carried state as
 			// the worker's own changes; it holds only copies, so drop it.
 			reason := "could not commit the baseline for " + branch + ": " + err.Error()
