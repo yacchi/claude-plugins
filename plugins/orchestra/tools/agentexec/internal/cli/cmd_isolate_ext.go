@@ -16,6 +16,7 @@ func addIsolateExtCommands(parent *cobra.Command) {
 	parent.AddCommand(
 		newIsolateIntegrateCmd(),
 		newIsolateRefreshCmd(),
+		newIsolateLandCmd(),
 		newIsolateAdoptCmd("adopt", "register a worktree created outside orchestra as the task's"),
 		newIsolateAdoptCmd("unadopt", "drop an adoption (markers only)"),
 	)

@@ -19,6 +19,9 @@ type isolation struct {
 	obj      map[string]any
 	isolated bool
 	path, wd string
+	// refused is non-empty when the dispatch must not run at all (see
+	// isolateFor): the start commit tracks dependency stores.
+	refused string
 }
 
 // workdir is the directory the executor runs in.
@@ -70,7 +73,10 @@ func callerIsolates() isolation {
 }
 
 // isolateFor resolves isolation for a dispatch into workdir. Failing to
-// isolate degrades to the shared tree with the reason; it never aborts.
+// isolate degrades to the shared tree with the reason, except a refused start
+// commit (HEAD tracks dependency stores), which aborts the dispatch: the
+// refusal runs before Create, so no worktree is made and the worker never
+// lands in the user's checkout.
 func isolateFor(cfg *config.Resolved, workdir, mode, task string) isolation {
 	want, verdict := shouldIsolate(workdir, mode)
 	if !want {
@@ -83,6 +89,13 @@ func isolateFor(cfg *config.Resolved, workdir, mode, task string) isolation {
 	if task == "" {
 		return shared(fmt.Sprintf("isolation wanted (%s) but no --task id was given; "+
 			"an id is what lets retry rounds share one worktree", why))
+	}
+	if dirs, err := isolate.TrackedExcluded(workdir, "HEAD", isolate.CurrentFilter()); err == nil && len(dirs) > 0 {
+		msg := isolate.TrackedRefusal("HEAD", dirs)
+		return isolation{
+			obj:     map[string]any{"isolate": false, "mode": mode, "reason": msg},
+			refused: msg,
+		}
 	}
 	created, err := isolate.Create(workdir, task, isolate.CreateOptions{
 		Carry: true, CarryExtra: cfg.StringList("isolation", "carry_extra"),

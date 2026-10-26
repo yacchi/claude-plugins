@@ -17,7 +17,7 @@ import { verdictOf } from '../router/verdict.ts'
 // than Fable;
 // ORCHESTRA_OPUS_NUDGE=off or enforcement.opus_generalist: off; fail-open.
 //
-// Scope: the main thread of a session the SessionStart gate classified as
+// Scope: the main thread of a session whose verdict (router/verdict.ts) is
 // "instructor". On a Sonnet session an omitted model is not an Opus spawn.
 
 const denied = new Set<string>()
@@ -66,7 +66,7 @@ export const checkOpusGeneralist = async (
     if (await io.env('ORCHESTRA_OPUS_NUDGE') === 'off') {
         return undefined
     }
-    if (verdictOf(sessionId) !== 'instructor' || denied.has(sessionId)) {
+    if (await verdictOf(io, sessionId) !== 'instructor' || denied.has(sessionId)) {
         return undefined
     }
     let off = disabled.get(sessionId)

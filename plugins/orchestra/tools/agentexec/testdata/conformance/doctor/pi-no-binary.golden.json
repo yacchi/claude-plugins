@@ -337,6 +337,14 @@
           "reason": "sandbox.mode is off",
           "sandboxed": false
         },
+        "hooks": {
+          "seen": {},
+          "session": "<UUID#1>",
+          "warnings": [
+            "orchestra's SessionStart hook did not run in this session: the routing protocol (or a hosted worker's notice) was not injected. Check that plugin hooks run here (disableAllHooks, allowManagedHooksOnly) and that agent-exec builds (agent-exec doctor).",
+            "orchestra's hooks module has not run in this session: its guards (opt-in, launch, worker), the turn-size nudge and the HUD are off. Check allowManagedModsOnly and disableAllHooks in managed settings, or a module load error (claude --debug)."
+          ]
+        },
         "permission": {
           "best_effort_note": "best-effort scan of ~/.claude/settings.json and ./.claude/settings.json(.local); does not see enterprise policy or CLI --allowedTools",
           "found": true,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { fakeHost, freshSession, type AgentExecAnswer, type HostOptions } from '../testing/host.ts'
+import { endSession, fakeHost, freshSession, type AgentExecAnswer, type HostOptions } from '../testing/host.ts'
 
 // SessionEnd removes only this session's clean worktrees and surfaces the
 // ones holding uncollected work instead of discarding them; every switch and
@@ -14,8 +14,7 @@ const host = (on: On, answer: (args: readonly string[]) => AgentExecAnswer, extr
 
 const config = (cleanup?: string) => ({ exitCode: 0, stdout: JSON.stringify({ enforcement: cleanup ? { session_cleanup: cleanup } : {} }) })
 
-const end = ($: any, sessionId: string, cwd = '/w/repo') =>
-    $.classic.SessionEnd({ session_id: sessionId, cwd, reason: 'prompt_input_exit' })
+const end = ($: any, sessionId: string, cwd = '/w/repo') => endSession($, sessionId, cwd)
 
 const removals = (runs: string[][]) => runs.filter(argv => argv.includes('isolate'))
 

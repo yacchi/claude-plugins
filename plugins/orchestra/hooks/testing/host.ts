@@ -23,9 +23,16 @@ export type HostOptions = {
     env?: Readonly<Record<string, string>>,
     now?: number,
     agentExec?: (args: readonly string[]) => AgentExecAnswer,
+    model?: string,
+    root?: string,
+    messages?: readonly unknown[],
 }
 
 type Tree = { path: string, branch: string, gitDir: string, common: string, repo: Repo }
+
+// Set around a `tool.call` or `session.end` so the stubs answer for the
+// calling agent (cwd) and for the session being ended (root).
+const during: { agent: string | undefined, root: string | undefined } = { agent: undefined, root: undefined }
 
 const norm = (p: string): string => {
     const out: string[] = []
@@ -46,12 +53,19 @@ const within = (child: string, parent: string): boolean =>
 const ok = (stdout: string) => ({ exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false })
 const fail = (exitCode: number) => ({ exitCode, stdout: '', stderr: 'fatal', isStdoutTruncated: false, isStderrTruncated: false })
 
+// The agents `startAgent` registered on the current host. Each host starts with
+// an empty registry; a test builds its host before it starts agents.
+let registry = new Map<string, { type: string, cwd: string }>()
+
 export const fakeHost = (on: On, options: HostOptions) => {
     const dirs = new Set<string>(['/'])
     const files = new Map<string, string>(Object.entries(options.files ?? {}))
     const links = new Map<string, string>(Object.entries(options.links ?? {}))
     const runs: string[][] = []
     const logs: string[] = []
+    const session = { model: options.model ?? '', root: options.root ?? options.cwd ?? '/' }
+    const agents = new Map<string, { type: string, cwd: string }>()
+    registry = agents
     const addDir = (d: string): void => {
         let p = norm(d)
         while (p !== '/') {
@@ -202,17 +216,52 @@ export const fakeHost = (on: On, options: HostOptions) => {
         return { value: undefined }
     })
     on('session.id', () => ({ value: options.sessionId }))
-    on('session.cwd', () => ({ value: options.cwd ?? '/' }))
-    on('agent.list', () => ({ value: [] }))
+    on('session.cwd', () => {
+        const own = during.agent === undefined ? undefined : agents.get(during.agent)?.cwd
+
+        return { value: own ?? options.cwd ?? '/' }
+    })
+    on('session.model', () => ({ value: session.model }))
+    on('session.root', () => ({ value: during.root ?? session.root }))
+    on('session.messages', () => ({ value: options.messages ?? [] }))
+    on('agent.list', () => ({
+        value: [...agents].map(([id, a]) => ({ id, type: a.type, description: '', status: 'running' })),
+    }))
     on('ui.log', (_$, e) => {
         logs.push(e.text)
 
         return { value: undefined }
     })
     on('tool.call', () => ({ result: 'ran' }))
-    for (const event of ['SessionStart', 'SubagentStart', 'SubagentStop', 'PostToolUse', 'PostToolUseFailure', 'SessionEnd'] as const) {
-        on(`classic.${event}`, () => ({}))
-    }
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('turn.complete', () => ({ text: '' }))
+    on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+    on('session.start', (_$, e) => ({ cwd: e.cwd }))
+    on('prompt.submit', (_$, e) => ({ text: e.text, ...(e.context ? { context: e.context } : {}) }))
+
+    // Emulation of the session and of its agents' directories, fed by the two
+    // classic events the tests fire: `classic.SessionStart` describes the
+    // session (model, root), and `classic.PostToolUse` moves an agent's cwd.
+    // Orchestra itself listens to no classic event; the tests use these only to
+    // describe a session and an agent's moving directory.
+    on('classic.SessionStart', (_$, e) => {
+        if (typeof e.model === 'string' && e.model !== '') {
+            session.model = e.model
+        }
+        if (typeof e.cwd === 'string' && e.cwd !== '') {
+            session.root = e.cwd
+        }
+
+        return {}
+    })
+    on('classic.PostToolUse', (_$, e) => {
+        const agent = e.agent_id === undefined ? undefined : agents.get(e.agent_id)
+        if (agent && typeof e.cwd === 'string' && e.cwd !== '') {
+            agent.cwd = e.cwd
+        }
+
+        return {}
+    })
     const clock = mock.clock(on, { now: options.now ?? 1_000_000 })
     mock.env(on, options.env ?? {})
 
@@ -224,12 +273,45 @@ export const fakeHost = (on: On, options: HostOptions) => {
 export type CallResult = { deny?: string, result?: unknown }
 
 // A tool call made inside subagent `agentId` (the main thread when undefined).
-export const callTool = ($: any, agentId: string | undefined, args: Record<string, unknown>): Promise<CallResult> =>
-    $.tool.call({ ...args, ...(agentId ? { agentId } : {}) })
+// The calling loop is recorded for the session.cwd stub while the call runs.
+export const callTool = async ($: any, agentId: string | undefined, args: Record<string, unknown>): Promise<CallResult> => {
+    during.agent = agentId
+    try {
+        return await $.tool.call({ ...args, ...(agentId ? { agentId } : {}) })
+    } finally {
+        during.agent = undefined
+    }
+}
 
-// What the engine reports as a subagent starts: its type and working directory.
-export const startAgent = ($: any, agentId: string, agentType: string, cwd: string): Promise<unknown> =>
-    $.classic.SubagentStart({ agent_id: agentId, agent_type: agentType, cwd })
+// A subagent starts: its type and working directory are registered for the
+// session, where the host's `agent.list` and `session.cwd` stubs read them.
+export const startAgent = (_$: any, agentId: string, agentType: string, cwd: string): void => {
+    registry.set(agentId, { type: agentType, cwd })
+}
+
+// A subagent's end: the turn it finished.
+export const endAgent = ($: any, agentId: string): Promise<unknown> =>
+    $.turn.complete({ agentId, turnId: 't', answer: '', reason: 'answer', durationMs: 1, isAborted: false })
+
+// The session's end. Its cwd is the session root for this call's handling.
+export const endSession = async ($: any, sessionId: string, cwd: string, reason = 'prompt_input_exit'): Promise<unknown> => {
+    during.root = cwd
+    try {
+        return await $.session.end({ sessionId, reason, resume: { id: sessionId } })
+    } finally {
+        during.root = undefined
+    }
+}
+
+export const beginTurn = ($: any, turnId: string, agentId?: string): Promise<unknown> =>
+    $.turn.start({ text: '', turnId, ...(agentId ? { agentId } : {}) })
+
+// The main loop's turn; its answer is the text the turn produced.
+export const finishTurn = ($: any, turnId: string, answer: string): Promise<unknown> =>
+    $.turn.complete({ turnId, answer, reason: 'answer', durationMs: 1, isAborted: false })
+
+export const submitPrompt = ($: any, text: string, extra: Record<string, unknown> = {}): Promise<{ text?: string, context?: string[] }> =>
+    $.prompt.submit({ text, wait: false, origin: { kind: 'composer' }, ...extra })
 
 // Each test session gets its own id, so module-level per-session state never
 // leaks from one test into the next.

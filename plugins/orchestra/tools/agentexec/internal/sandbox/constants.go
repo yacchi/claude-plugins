@@ -59,7 +59,7 @@ var DefaultDenyRead = []string{
 var hostReadable = []string{"~/Library/Keychains"}
 
 // Package/build caches every toolchain a worker runs writes into, writable
-// from the first run (with pnpm's store, see pnpmStoreDir). Only the cache
+// from the first run (with pnpm's store, see config.PnpmStoreDir). Only the cache
 // dirs and the lock/metadata files a tool must write beside them, never a
 // toolchain home that also holds executables run later outside any
 // sandbox (~/.cargo/bin, ~/Library/pnpm/bin, ~/.bun/bin, ~/.pub-cache/bin,
@@ -89,16 +89,6 @@ var (
 		"~/.terraform.d/plugin-cache",
 	}
 )
-
-// pnpmStorePin pins pnpm's store to the seeded one (pnpm 12 reads only
-// pnpm_config_*). npm_config_store_dir is never set: npm warns about the
-// unknown key on every run and means to reject it in its next major. pnpm
-// <= 10, which reads only that name, may still move its store into the
-// tree; isolation.exclude_paths keeps it out of the change set.
-const pnpmStorePin = "pnpm_config_store_dir"
-
-// pnpmStoreEnv are the names a user's explicit store dir may come in.
-var pnpmStoreEnv = []string{pnpmStorePin, "npm_config_store_dir"}
 
 // cacheRootsRel are the shared package caches a denied write may be
 // AUTO-granted under (root + one more component). An allowlist: each

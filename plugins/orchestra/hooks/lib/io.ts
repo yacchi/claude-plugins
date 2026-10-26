@@ -28,6 +28,12 @@ export type Io = {
     now: () => Promise<number>,
     sessionId: () => Promise<string>,
     sessionCwd: () => Promise<string>,
+    // The main loop's model, as /model shows it.
+    model: () => Promise<string>,
+    // The session's project root (not a subagent's).
+    root: () => Promise<string>,
+    // The main conversation, newest last.
+    messages: () => Promise<readonly unknown[]>,
     agentType: (agentId: string) => Promise<string | undefined>,
     log: (text: string) => void,
 }

@@ -329,7 +329,7 @@ func ChildEnv(s Spec, env []string) []string {
 			out = append(out, "UV_TOOL_DIR="+filepath.Join(realPath(tmp), uvToolDirName))
 		}
 		if s.Policy != nil && s.Policy.PnpmStore != "" {
-			out = append(out, pnpmPin(m, s.Policy.PnpmStore)...)
+			out = append(out, config.PnpmStorePin(out, s.Policy.PnpmStore)...)
 		}
 	}
 	if s.Backend == "srt" {
@@ -338,32 +338,6 @@ func ChildEnv(s Spec, env []string) []string {
 		}
 	}
 	return config.WithTreeEnv(s.PnpmGVS, s.Tree, out)
-}
-
-// pnpmPin is pnpmStorePin when env lacks it: set to an explicit store dir
-// under either name (in any case, as npm reads them), else to store.
-func pnpmPin(env map[string]string, store string) []string {
-	lookup := func(name string) (string, bool) {
-		if v, set := env[name]; set {
-			return v, true
-		}
-		for k, v := range env {
-			if strings.EqualFold(k, name) {
-				return v, true
-			}
-		}
-		return "", false
-	}
-	for _, k := range pnpmStoreEnv {
-		if v, set := lookup(k); set {
-			store = v
-			break
-		}
-	}
-	if _, set := lookup(pnpmStorePin); set {
-		return nil
-	}
-	return []string{pnpmStorePin + "=" + store}
 }
 
 // Unwrapped is the spec of a site that spawns nothing itself.

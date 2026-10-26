@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
@@ -255,26 +256,8 @@ func seeds(platform, home string, getenv func(string) string) ([]string, string)
 	for _, p := range rel {
 		out = append(out, expand(p, home))
 	}
-	store := pnpmStoreDir(platform, home, getenv)
+	store := realPath(config.PnpmStoreDir(platform, home, getenv))
 	return append(out, store), store
-}
-
-// pnpmStoreDir is pnpm's own default store root (pnpm appends /v<N>):
-// $PNPM_HOME/store, else $XDG_DATA_HOME/pnpm/store, else the platform's
-// data dir. Its parent holds pnpm's bin/ and global/, so only the store is
-// seeded; pnpm then moves its store into the tree unless pinned (ChildEnv).
-// Relative values are ignored, as for XDG_STATE_HOME.
-func pnpmStoreDir(platform, home string, getenv func(string) string) string {
-	if h := getenv("PNPM_HOME"); strings.HasPrefix(h, "/") {
-		return realPath(filepath.Join(h, "store"))
-	}
-	if x := getenv("XDG_DATA_HOME"); strings.HasPrefix(x, "/") {
-		return realPath(filepath.Join(x, "pnpm", "store"))
-	}
-	if platform == "darwin" {
-		return expand("~/Library/pnpm/store", home)
-	}
-	return expand("~/.local/share/pnpm/store", home)
 }
 
 func grantPaths(learned []Grant) []string {

@@ -24,7 +24,7 @@ flowchart TD
     V --> I
 ```
 
-- **Two lanes.** A `SessionStart` hook injects a router that makes the instructor classify every request. EXPRESS (one self-contained change, or conversational/read-only) is handled directly; everything else — and anything in doubt — goes through the `orchestra:run` playbook. Lane choices never persist across requests.
+- **Two lanes.** A `SessionStart` command hook injects a router (it works on Team/Enterprise logins where the built-in `cc-plugin-sec-default` mod is seated) that makes the instructor classify every request. EXPRESS (one self-contained change, or conversational/read-only) is handled directly; everything else — and anything in doubt — goes through the `orchestra:run` playbook. Lane choices never persist across requests.
 - **Two execution paths.** Dynamic Workflows (preferred: the instructor runs the shipped `orchestra:pipeline` workflow with a task list, see `skills/run/SKILL.md` §5), or nested subagents via `orchestra-delegate` when Workflows are unavailable.
 - **Two gates.** One review gate plus at most one correction round and an incremental re-gate. A rejection must cite the contract; non-required improvements go to `optional_hardening` and never block.
 - **Isolated workers.** When the working tree holds uncommitted work, `agent-exec dispatch` gives each worker its own git worktree, and hooks keep subagents from running destructive VCS commands or writing into your main tree.
@@ -73,6 +73,8 @@ Or just describe a task that needs cost-tiered delegation — Claude can invoke 
 2. Run the shipped Workflow pipeline (`orchestra:pipeline`) with a task list, which pipelines each task through a light-class implementer → `orchestra-review` → at most one correction round and re-gate. Design-latitude tasks go to `orchestra-deep` (Opus) instead.
 3. Receive only structured verdicts, never raw logs, diffs, or intermediate files.
 
+To bring a run's integration branch into your checked-out branch, ask for it explicitly: `agent-exec isolate land --task <into> -m "<message>"` takes it in as one commit with your identity and the message you give.
+
 Companion skills:
 
 | Skill | Purpose |
@@ -89,10 +91,11 @@ Config is deep-merged from four layers (later wins): built-in defaults ← `~/.c
 - **`tools`** — pins executor binaries (pi, herdr) to a known version in orchestra's own state dir (`agent-exec tools install`). pi runs with its own agent dir by default, so your personal pi settings do not reach workers.
 - **`sandbox.network`** — the herdr host's outbound domain allowlist, enforced by sandbox-runtime (srt); blocked hosts are audited and surfaced per package, `agent-exec sandbox allow-domain` approves one live (default `api.anthropic.com` only).
 - **`interactive_host`** — which host runs Claude-tier packages in `wave run`: `herdr`, `orca`, or `none` (default `auto`).
+- **`isolation.exclude_paths`** — `wave run` and `dispatch` refuse a start commit that tracks dependency or cache directories; `isolation.keep_paths` is the escape for one you need tracked.
 - **`wave.verify_mode`** — `final` (default): packages are not held back by tests; only checks marked `fast` run per package (recorded, never blocking), and the full checks run once at the end, where failures become fix-up packages until green. `gated` keeps the old stop-on-red behavior. `wave.max_in_flight: auto` starts every package that can start (dependencies integrated, no overlapping `files_owned`), longest dependent chain first; the machine is protected instead by admitting heavy local commands a few at a time machine-wide — installs and builds on `throttle.heavy_slots`, tests, lints and typechecks on their own `throttle.test_slots` pool and by holding new starts while the OS reports memory pressure. A run keeps going until `wave stop` or an optional `--budget-usd`, with periodic usage notices.
 - **`priority`** — ordered executors per class/role. `agent-exec route` / `agent-exec dispatch` perform the walk so the instructor never does it by hand.
 - **`usage_routing`** — subscription-aware routing: a candidate whose plan (Claude for `claude`, ChatGPT for `pi` on `openai-codex/...`) has used at least 80% of its 5-hour or 90% of its 7-day window is demoted to the next candidate with room. The demotion is soft (when every candidate is over, the walk ignores it), the lookup is cached and fail-open, and `--no-usage` / `ORCHESTRA_USAGE_ROUTING=0` turn it off. `agent-exec doctor` shows the numbers under `usage_limits`.
-- **`enforcement.*`** — the hook guards (`worker_vcs`, `worker_tree`, `worktree_lease`, `session_cleanup`, `turn_edits`, `opus_generalist`, opt-in `light_class`). Each has an escape marker and an environment kill switch.
+- **`enforcement.*`** — the hook guards (`worker_vcs`, `worker_tree`, `worktree_lease`, `session_cleanup`, `turn_edits`, `opus_generalist`, opt-in `light_class`, `opt_in`, `orchestra_merge`). `opt_in` denies orchestration agents until you opt in with `/orchestra:run` or answer the one ask; `orchestra_merge` denies merging an `orchestra/*` branch into your branch (use `agent-exec isolate land`). The two new guards are on by default. The original guards each have an escape marker and an environment kill switch; `"off"` disables a key, and `ORCHESTRA_ENFORCEMENT=off` disables both new guards.
 
 See [`examples/orchestra.yaml`](examples/orchestra.yaml) for the full commented schema and [`skills/run/references/config.md`](skills/run/references/config.md) for the merge algorithm and every option. `/setup` edits the file for you.
 

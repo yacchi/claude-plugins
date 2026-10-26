@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -237,6 +238,12 @@ func (r *runner) init() error {
 	head := r.revParse(r.root, "HEAD")
 	if head == "" {
 		return fmt.Errorf("could not resolve HEAD in %s", r.root)
+	}
+	// A start commit that tracks excluded dependency stores would check
+	// them out into every package worktree. A scan error fails open: the
+	// Create below reports real git trouble itself.
+	if dirs, err := isolate.TrackedExcluded(r.root, head, isolate.CurrentFilter()); err == nil && len(dirs) > 0 {
+		return errors.New(isolate.TrackedRefusal(head, dirs))
 	}
 	created, err := isolate.Create(r.root, r.into, isolate.CreateOptions{Backend: isolate.BackendGit, Onto: head})
 	if err != nil || created.Status == "error" || created.Path == "" || !isDir(created.Path) {
