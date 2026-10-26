@@ -10,6 +10,7 @@ import { checkResume } from './resume.ts'
 type Options = {
     agents?: AgentInfo[],
     contextTokens?: number | null,
+    limit?: number | null,
     contextStdout?: string,
     contextFails?: boolean,
     enforcement?: Readonly<Record<string, unknown>>,
@@ -30,7 +31,9 @@ const fakeIo = (options: Options = {}) => {
                 return out(1)
             }
 
-            return out(0, options.contextStdout ?? JSON.stringify({ context_tokens: options.contextTokens ?? null, transcript: null }))
+            const limit = options.limit === undefined ? 100000 : options.limit
+
+            return out(0, options.contextStdout ?? JSON.stringify({ context_tokens: options.contextTokens ?? null, model: 'claude-test', limit, transcript: null }))
         }
 
         return out(127)
@@ -62,11 +65,13 @@ describe('resume guard', () => {
         expect(await checkResume(exact.io, { to: id }, session()), 'exactly the limit').toContain('already holds ~100k tokens')
     })
 
-    test('a configured limit replaces the default', async () => {
+    test('the limit returned by agent-exec is the one compared, not the raw config value', async () => {
         const id = 'ag_configured'
-        const { io } = fakeIo({ agents: [agent(id)], contextTokens: 60000, enforcement: { resume_max_tokens: 50000 } })
-
+        const { io } = fakeIo({ agents: [agent(id)], contextTokens: 60000, limit: 50000, enforcement: { resume_max_tokens: 90000 } })
         expect(await checkResume(io, { to: id }, session())).toContain('limit 50k')
+
+        const ignored = fakeIo({ agents: [agent(id)], contextTokens: 60000, limit: 100000, enforcement: { resume_max_tokens: 50000 } })
+        expect(await checkResume(ignored.io, { to: id }, session())).toBeUndefined()
     })
 
     test('a name resolves to its agent id, and the [ref] suffix is stripped', async () => {
@@ -103,11 +108,10 @@ describe('resume guard', () => {
         expect(await checkResume(io, { to: id, message }, session())).toContain('already holds')
     })
 
-    test('resume_max_tokens off or 0, and ORCHESTRA_RESUME_GUARD=off, allow', async () => {
+    test('a null limit (guard off or unknown model) allows, and ORCHESTRA_RESUME_GUARD=off allows', async () => {
         const id = 'ag_switched'
         const huge = { agents: [agent(id)], contextTokens: 500000 }
-        expect(await checkResume(fakeIo({ ...huge, enforcement: { resume_max_tokens: 'off' } }).io, { to: id }, session())).toBeUndefined()
-        expect(await checkResume(fakeIo({ ...huge, enforcement: { resume_max_tokens: 0 } }).io, { to: id }, session())).toBeUndefined()
+        expect(await checkResume(fakeIo({ ...huge, limit: null }).io, { to: id }, session())).toBeUndefined()
         expect(await checkResume(fakeIo({ ...huge, env: { ORCHESTRA_RESUME_GUARD: 'off' } }).io, { to: id }, session())).toBeUndefined()
     })
 })

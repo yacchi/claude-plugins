@@ -3,7 +3,7 @@ import type { Io, RateLimit } from '../lib/io.ts'
 import { checkUsage, usageAdvice } from './usage.ts'
 
 // The plan's five-hour window decides whether new agents start. Pinned: the
-// stop level (95 by default, 90 still in config reads as unset), the advice
+// stop level (95 by default), the advice
 // once per 5-point step, the two main-thread escapes, the exempt control-plane
 // agents, and fail-open on every doubt.
 
@@ -42,10 +42,10 @@ const five = (percentUsed: number, resetsAt?: string): RateLimit[] => [{ kind: '
 const main = (io: Io, sessionId: string, tool = 'Agent', extra: Record<string, unknown> = {}) =>
     checkUsage(io, tool, { description: 'do it', prompt: 'do the thing', subagent_type: 'general-purpose', ...extra }, sessionId, undefined)
 
-test('the stop level is 95 by default; 90 in config reads as unset', async () => {
+test('the stop level is 95 by default; a configured 90 is a real stop level', async () => {
     expect(await main(fakeIo({ windows: five(94.9), config: 'missing' }), freshSession())).toBeUndefined()
     expect(await main(fakeIo({ windows: five(95), config: 'missing' }), freshSession())).toContain('threshold 95%')
-    expect(await main(fakeIo({ windows: five(92), config: { usage_guard: 90 } }), freshSession())).toBeUndefined()
+    expect(await main(fakeIo({ windows: five(92), config: { usage_guard: 90 } }), freshSession())).toContain('threshold 90%')
 })
 
 test('usage_guard lowers the stop level; "off" and false disable it, and so does ORCHESTRA_USAGE_GUARD=off', async () => {

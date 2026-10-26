@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/hookrun"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/transcript"
 )
@@ -58,8 +59,16 @@ func newHookContextCmd() *cobra.Command {
 				path = abs
 			}
 			out.Transcript = &path
-			if tokens, ok := transcript.LastContext(path); ok {
+			if tokens, model, ok := transcript.LastUsage(path); ok {
 				out.ContextTokens = &tokens
+				if model != "" {
+					out.Model = &model
+				}
+				if cfg, err := config.Resolve(); err == nil {
+					if limit := config.ResumeMaxTokensFor(cfg, model); limit > 0 {
+						out.Limit = &limit
+					}
+				}
 			}
 		}
 		return json.NewEncoder(c.OutOrStdout()).Encode(out)
@@ -72,6 +81,8 @@ func newHookContextCmd() *cobra.Command {
 type hookCtxResult struct {
 	ContextTokens *int64  `json:"context_tokens"`
 	Transcript    *string `json:"transcript"`
+	Model         *string `json:"model"`
+	Limit         *int64  `json:"limit"`
 }
 
 // newHookSessionStartCmd always exits 0: a hook's non-zero exit is shown to

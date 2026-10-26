@@ -165,6 +165,12 @@ func (r *runner) writeContext(pid, refreshNote string) (string, error) {
 	if refreshNote != "" {
 		lines = append(lines, "", refreshNote)
 	}
+	r.mu.Lock()
+	widen := r.widenNotes[pid]
+	r.mu.Unlock()
+	if widen != "" {
+		lines = append(lines, "", widen)
+	}
 	path := r.contextPath(pid)
 	return path, os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
 }
@@ -259,17 +265,17 @@ func (r *runner) resumeGateRetire(pid string, s *host.Session, promptFiles []str
 	if cfg == nil {
 		return nil, false
 	}
-	limit := config.ResumeMaxTokens(cfg)
 	sid := s.Str("claude_session_id")
-	if limit <= 0 || sid == "" {
+	if config.ResumeMaxTokens(cfg) <= 0 || sid == "" {
 		return nil, false
 	}
 	path, ok := transcript.Find(transcript.Roots("", ""), sid, "")
 	if !ok {
 		return nil, false
 	}
-	tokens, ok := transcript.LastContext(path)
-	if !ok || tokens < limit {
+	tokens, model, ok := transcript.LastUsage(path)
+	limit := config.ResumeMaxTokensFor(cfg, model)
+	if !ok || limit <= 0 || tokens < limit {
 		return nil, false
 	}
 	_ = r.host.Close(s, false)

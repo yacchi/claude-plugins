@@ -46,7 +46,7 @@ describe('guard wiring', () => {
         fakeHost(on, {
             sessionId: freshSession(),
             agentExec: args => args[0] === 'hook' && args[1] === 'context'
-                ? { exitCode: 0, stdout: JSON.stringify({ context_tokens: 200000, transcript: '/t' }) }
+                ? { exitCode: 0, stdout: JSON.stringify({ context_tokens: 200000, limit: 100000, transcript: '/t' }) }
                 : { exitCode: 0, stdout: '{"enforcement": {}}' },
         })
         startAgent($, 'w1', 'orchestra:orchestra-light', '/w', { name: 'w1' })

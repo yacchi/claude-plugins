@@ -133,7 +133,7 @@ func TestHookCmdContextUnknownAgentIsNull(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if want := `{"context_tokens":null,"transcript":null}` + "\n"; out != want {
+	if want := `{"context_tokens":null,"transcript":null,"model":null,"limit":null}` + "\n"; out != want {
 		t.Errorf("output %q; want %q", out, want)
 	}
 }
@@ -145,5 +145,24 @@ func TestHookCmdContextInvalidIDIsUsageError(t *testing.T) {
 	}
 	if _, code := hookCmdRun(t, "", "hook", "context", "--session", "a/b"); code != 2 {
 		t.Errorf("--session with / : exit %d; want 2", code)
+	}
+}
+
+func TestHookCmdContextReportsModelAndLimit(t *testing.T) {
+	hookCtxTranscript(t, `{"message":{"model":"claude-haiku-5-5","usage":{"input_tokens":5}}}
+`)
+	out, code := hookCmdRun(t, "", "hook", "context", "--session", "s1", "--agent", "a1")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var got struct {
+		Model *string `json:"model"`
+		Limit *int64  `json:"limit"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if got.Model == nil || *got.Model != "claude-haiku-5-5" || got.Limit == nil || *got.Limit != 90000 {
+		t.Errorf("model/limit = %v/%v; want claude-haiku-5-5/90000 (output %q)", got.Model, got.Limit, out)
 	}
 }

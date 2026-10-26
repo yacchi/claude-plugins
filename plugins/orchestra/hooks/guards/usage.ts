@@ -25,8 +25,6 @@ const USAGE_TOOLS = new Set(['Agent', 'Task', 'Workflow'])
 const EXEMPT_SUFFIXES = ['orchestra-wave', 'orchestra-relay']
 
 const STOP_DEFAULT = 95
-// config-keys still writes 90 for usage_guard; that value reads as "not set".
-const STOP_OLD_DEFAULT = 90
 const ADVISE_DEFAULT = 75
 const ADVISE_STEP = 5
 const ESCAPE_LIMIT = 2
@@ -41,7 +39,7 @@ const percentOf = (v: unknown): number | undefined =>
 const stopOf = (enforcement: Enforcement): number => {
     const v = percentOf(enforcement.usage_guard)
 
-    return v === undefined || v === STOP_OLD_DEFAULT ? STOP_DEFAULT : v
+    return v ?? STOP_DEFAULT
 }
 
 // `undefined` means advice is off (`usage_advise: "off"`).

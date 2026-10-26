@@ -96,9 +96,9 @@ claude plugin validate .
 - **`priority`** — クラス/役割ごとの実行系の優先順。順に候補をたどる処理は `agent-exec route` / `agent-exec dispatch` が行い、指示役が手作業でたどることはありません。
 - **`usage_routing`** — サブスクリプションの残量を見たルーティング。候補の背後にあるプラン(`claude` は Claude、`openai-codex/...` のモデルで動く `pi` は ChatGPT)が 5 時間枠の 80% 以上か 7 日枠の 90% 以上を使っていれば、余裕のある次の候補に回します。降格はソフト(全候補が上限近くなら無視)で、照会はキャッシュされ、失敗しても通常どおりルーティングします。`--no-usage` か `ORCHESTRA_USAGE_ROUTING=0` で無効にでき、現在値は `agent-exec doctor` の `usage_limits` で確認できます。
 - **`enforcement.*`** — フックによる防護(`worker_vcs`、`worker_tree`、`worktree_lease`、`session_cleanup`、`turn_edits`、`opus_generalist`、オプトインの `light_class`、`opt_in`、`orchestra_merge`)。`opt_in` は、`/orchestra:run` で利用を開始するか確認に一度答えるまで、オーケストレーション用エージェントの起動を拒否します。`orchestra_merge` は `orchestra/*` ブランチを利用者のブランチへマージすることを拒否するため、`agent-exec isolate land` を使ってください。新しい 2 つの防護は既定で有効です。元からある防護には回避用のマーカーと環境変数による無効化スイッチがあり、`"off"` で個別に、`ORCHESTRA_ENFORCEMENT=off` で新しい 2 つを無効化できます。
-  - `usage_guard`: 5 時間枠が 90% 以上のとき、新しい `Agent`/`Task`/`Workflow` の呼び出しを拒否します（`"off"` または `ORCHESTRA_USAGE_GUARD=off` で無効）。
+  - `usage_guard`: 5 時間枠が 95% 以上のとき、新しい `Agent`/`Task`/`Workflow` の呼び出しを拒否します（`"off"` または `ORCHESTRA_USAGE_GUARD=off` で無効）。
   - `fanout`: planner の子エージェントを合計 6、同時稼働 2 までに制限し、scout と checker のツール呼び出しはそれぞれ 15 回と 8 回までです（`"off"` または `ORCHESTRA_FANOUT_GUARD=off` で無効）。
-  - `resume_max_tokens`（既定 100000）: コンテキストがその値を超えるエージェントへの `SendMessage` による再開を拒否します。代わりに、要点をまとめた引き継ぎを渡して新しいエージェントを起動してください（`"off"`、`0`、または `ORCHESTRA_RESUME_GUARD=off` で無効）。
+  - `resume_max_tokens`（既定 200000、`resume_max_tokens_by_model` で Haiku は 100000）: コンテキストが floor(0.9 × 上限) 以上のエージェントへの `SendMessage` による再開を拒否します（Haiku は 90k、他のモデルは 180k）。代わりに、要点をまとめた引き継ぎを渡して新しいエージェントを起動してください（`"off"`、`0`、または `ORCHESTRA_RESUME_GUARD=off` で無効）。
 
 コメント付きの全項目は [`examples/orchestra.yaml`](examples/orchestra.yaml) を、マージの手順と各オプションは [`skills/run/references/config.md`](skills/run/references/config.md) を参照してください。`/setup` を使えばファイルを代わりに編集してくれます。
 

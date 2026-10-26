@@ -158,3 +158,16 @@ func TestNewSessionIDIsVersion4UUID(t *testing.T) {
 		t.Errorf("NewSessionID returned %q twice", id)
 	}
 }
+
+func TestLastUsageReturnsModelOfLastUsageLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	transcriptWrite(t, path,
+		`{"message":{"model":"claude-opus-5","usage":{"input_tokens":1}}}`+"\n"+
+			`{"message":{"model":"claude-haiku-5-5","usage":{"input_tokens":7,"cache_read_input_tokens":3}}}`+"\n"+
+			`{"type":"user","message":{"content":"hi"}}`+"\n")
+
+	tokens, model, ok := LastUsage(path)
+	if !ok || tokens != 10 || model != "claude-haiku-5-5" {
+		t.Fatalf("LastUsage = %d, %q, %v; want 10, claude-haiku-5-5, true", tokens, model, ok)
+	}
+}

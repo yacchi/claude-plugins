@@ -3,13 +3,13 @@ package config
 import "testing"
 
 func TestResumeMaxTokensDefaultAndLayer(t *testing.T) {
-	if got := ResumeMaxTokens(&Resolved{Values: Defaults()}); got != 150000 {
-		t.Errorf("default = %d, want 150000", got)
+	if got := ResumeMaxTokens(&Resolved{Values: Defaults()}); got != 180000 {
+		t.Errorf("default = %d, want 180000", got)
 	}
 	over := map[string]any{"enforcement": map[string]any{"resume_max_tokens": int64(50000)}}
 	cfg := &Resolved{Values: DeepMerge(Defaults(), over)}
-	if got := ResumeMaxTokens(cfg); got != 50000 {
-		t.Errorf("layered = %d, want 50000", got)
+	if got := ResumeMaxTokens(cfg); got != 45000 {
+		t.Errorf("layered = %d, want 45000", got)
 	}
 }
 
@@ -26,9 +26,9 @@ func TestResumeMaxTokensForByModel(t *testing.T) {
 	cfg := &Resolved{Values: Defaults()}
 	for model, want := range map[string]int64{
 		"claude-haiku-5-5":          90000,
-		"claude-sonnet-5-5":         150000,
-		"openai-codex/gpt-5.6-luna": 150000,
-		"":                          150000,
+		"claude-sonnet-5-5":         180000,
+		"openai-codex/gpt-5.6-luna": 180000,
+		"":                          180000,
 	} {
 		if got := ResumeMaxTokensFor(cfg, model); got != want {
 			t.Errorf("model %q = %d, want %d", model, got, want)
@@ -41,8 +41,8 @@ func TestResumeMaxTokensForLongestMatchCaseInsensitive(t *testing.T) {
 	cfg := &Resolved{Values: DeepMerge(Defaults(), map[string]any{
 		"enforcement": map[string]any{"resume_max_tokens_by_model": byModel},
 	})}
-	if got := ResumeMaxTokensFor(cfg, "Claude-HAIKU-5-5"); got != 40000 {
-		t.Errorf("longest match = %d, want 40000", got)
+	if got := ResumeMaxTokensFor(cfg, "Claude-HAIKU-5-5"); got != 36000 {
+		t.Errorf("longest match = %d, want 36000", got)
 	}
 }
 
@@ -62,5 +62,23 @@ func TestResumeMaxTokensForGlobalOffWins(t *testing.T) {
 	})}
 	if got := ResumeMaxTokensFor(cfg, "claude-haiku-5-5"); got != 0 {
 		t.Errorf("global off, haiku = %d, want 0", got)
+	}
+}
+
+func TestResumeMaxTokensForByModelAboveDefaultCap(t *testing.T) {
+	cfg := &Resolved{Values: DeepMerge(Defaults(), map[string]any{
+		"enforcement": map[string]any{"resume_max_tokens_by_model": map[string]any{"local-": int64(400000)}},
+	})}
+	if got := ResumeMaxTokensFor(cfg, "local-qwen"); got != 360000 {
+		t.Errorf("local-qwen = %d, want 360000", got)
+	}
+}
+
+func TestResumeMaxTokensForGlobalOffWithByModel(t *testing.T) {
+	cfg := &Resolved{Values: DeepMerge(Defaults(), map[string]any{
+		"enforcement": map[string]any{"resume_max_tokens": "off", "resume_max_tokens_by_model": map[string]any{"local-": int64(400000)}},
+	})}
+	if got := ResumeMaxTokensFor(cfg, "local-qwen"); got != 0 {
+		t.Errorf("global off, local-qwen = %d, want 0", got)
 	}
 }

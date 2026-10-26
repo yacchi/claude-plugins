@@ -47,6 +47,7 @@ func (r *runner) runPackage(pid, phase, refreshNote string) {
 		r.mu.Lock()
 		r.notes[pid] = refreshNote
 		r.mu.Unlock()
+		r.noteWidening(pid, r.applyOverrides()[pid])
 		if _, err := r.writeContext(pid, refreshNote); err != nil {
 			panic(runnerError{"OSError", err.Error()})
 		}

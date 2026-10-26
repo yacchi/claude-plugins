@@ -88,31 +88,40 @@ func Find(roots []string, sessionID, agentID string) (path string, ok bool) {
 }
 
 // LastContext is the context the last response of the transcript at path
-// carried: of the last line whose message.usage exists,
-// input_tokens + cache_read_input_tokens + cache_creation_input_tokens. The
-// last response alone is the context the next turn resumes from, so earlier
-// responses are not summed. Lines are read whole, however long, because a
-// single tool result can run to megabytes. ok is false when no line has
-// usage or the file cannot be read.
+// carried; see LastUsage. ok is false when no line has usage or the file
+// cannot be read.
 func LastContext(path string) (tokens int64, ok bool) {
+	tokens, _, ok = LastUsage(path)
+	return tokens, ok
+}
+
+// LastUsage is the context and the model of the last line of the transcript
+// at path whose message.usage exists: tokens is input_tokens +
+// cache_read_input_tokens + cache_creation_input_tokens. The last response
+// alone is the context the next turn resumes from, so earlier responses are
+// not summed; its message.model (may be "") picks the model's resume limit.
+// Lines are read whole, however long, because a single tool result can run
+// to megabytes. ok is false when no line has usage or the file cannot be
+// read.
+func LastUsage(path string) (tokens int64, model string, ok bool) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, false
+		return 0, "", false
 	}
 	defer f.Close()
 	r := bufio.NewReader(f)
 	for {
 		line, err := r.ReadBytes('\n')
 		if len(line) > 0 {
-			if t, found := lineContext(line); found {
-				tokens, ok = t, true
+			if t, m, found := lineUsage(line); found {
+				tokens, model, ok = t, m, true
 			}
 		}
 		if err == io.EOF {
-			return tokens, ok
+			return tokens, model, ok
 		}
 		if err != nil {
-			return 0, false
+			return 0, "", false
 		}
 	}
 }
@@ -179,15 +188,16 @@ func hostedPath(runID string) string {
 	return filepath.Join(paths.StateDir(), "hosted", runID+".txt")
 }
 
-// lineContext returns the context sum of one transcript line, if it carries
-// message.usage. Lines without the word "usage" are skipped before decoding,
+// lineUsage returns the context sum and message.model of one transcript line,
+// if it carries message.usage. Lines without the word "usage" are skipped before decoding,
 // since most transcript lines are large and carry no usage at all.
-func lineContext(line []byte) (int64, bool) {
+func lineUsage(line []byte) (int64, string, bool) {
 	if !bytes.Contains(line, []byte(`"usage"`)) {
-		return 0, false
+		return 0, "", false
 	}
 	var entry struct {
 		Message struct {
+			Model string `json:"model"`
 			Usage *struct {
 				Input       int64 `json:"input_tokens"`
 				CacheRead   int64 `json:"cache_read_input_tokens"`
@@ -196,10 +206,10 @@ func lineContext(line []byte) (int64, bool) {
 		} `json:"message"`
 	}
 	if err := json.Unmarshal(line, &entry); err != nil || entry.Message.Usage == nil {
-		return 0, false
+		return 0, "", false
 	}
 	u := entry.Message.Usage
-	return u.Input + u.CacheRead + u.CacheCreate, true
+	return u.Input + u.CacheRead + u.CacheCreate, entry.Message.Model, true
 }
 
 // findAgent is the first file named name below dir, in lexical walk order.

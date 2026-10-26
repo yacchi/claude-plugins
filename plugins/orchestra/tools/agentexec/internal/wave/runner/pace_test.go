@@ -295,9 +295,9 @@ func TestUsageHeldBoundaries(t *testing.T) {
 		{name: "usage_guard off", pct: 99, fetched: fresh, values: map[string]any{"usage_guard": "off"}},
 		{name: "usage_guard false", pct: 99, fetched: fresh, values: map[string]any{"usage_guard": false}},
 		{name: "env off", pct: 99, fetched: fresh, env: "off"},
-		{name: "usage_guard 0 falls back to 90", pct: 94, fetched: fresh, values: map[string]any{"usage_guard": int64(0)}},
-		{name: "usage_guard text falls back to 90", pct: 96, fetched: fresh, values: map[string]any{"usage_guard": "x"}, held: true},
-		{name: "usage_guard 150 falls back to 90", pct: 96, fetched: fresh, values: map[string]any{"usage_guard": int64(150)}, held: true},
+		{name: "usage_guard 0 falls back to 95", pct: 94, fetched: fresh, values: map[string]any{"usage_guard": int64(0)}},
+		{name: "usage_guard text falls back to 95", pct: 96, fetched: fresh, values: map[string]any{"usage_guard": "x"}, held: true},
+		{name: "usage_guard 150 falls back to 95", pct: 96, fetched: fresh, values: map[string]any{"usage_guard": int64(150)}, held: true},
 		{name: "config error fails open at 95", pct: 94, fetched: fresh, cfgErr: true},
 		{name: "config error still holds at 95", pct: 96, fetched: fresh, cfgErr: true, held: true},
 	}

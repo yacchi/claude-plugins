@@ -119,7 +119,7 @@ func TestResumeGateRetiresALongSessionForAFreshOne(t *testing.T) {
 
 	eq(t, "kept-tree closes", resumeGateKeptTree(h), 1)
 	eqJSON(t, "resume-retired", w.details("resume-retired", "A"),
-		[]map[string]any{{"host": "herdr", "context_tokens": 150000.0, "limit": 100000.0}})
+		[]map[string]any{{"host": "herdr", "context_tokens": 150000.0, "limit": 90000.0}})
 	if len(ex.calls) != 2 {
 		t.Fatalf("executor calls %d", len(ex.calls))
 	}

@@ -192,7 +192,7 @@ func routed(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	// the store record for (executor, task) when its workdir matches and its
 	// context is under resume_max_tokens (a longer one is re-read every turn,
 	// so the correction starts fresh); cold.
-	limit := config.ResumeMaxTokens(cfg)
+	limit := config.ResumeMaxTokensFor(cfg, model)
 	resume, resumed := r.Resume, r.Resume != ""
 	if resume == "" && r.Task != "" && !r.NoResume {
 		if rec, ok := ReadSession(cfg, executor, r.Task); ok && sameWorkdir(rec.Workdir, workdir) &&

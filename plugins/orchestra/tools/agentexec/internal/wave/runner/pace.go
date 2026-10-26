@@ -166,7 +166,7 @@ const usageMaxAgeSeconds = 900
 
 const (
 	// usageGuardDefault is enforcement.usage_guard when it is absent or invalid.
-	usageGuardDefault = 90
+	usageGuardDefault = 95
 	// usageAdviseDefault is enforcement.usage_advise when it is absent or invalid.
 	usageAdviseDefault = 75
 	// usageStopFloor is the lowest level new starts are held at, so a low

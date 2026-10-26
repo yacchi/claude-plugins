@@ -87,6 +87,7 @@ type runner struct {
 	stopReason          *string
 	unavailable         bool
 	notes               map[string]string
+	widenNotes          map[string]string
 	refreshInfo         map[string]refreshState
 	answers             map[string]string
 	started             int
@@ -113,7 +114,7 @@ func newRunner(ctx context.Context, o Options, d Deps) *runner {
 	}
 	r := &runner{
 		ctx: ctx, opts: o, deps: d, exec: d.Executor, clock: d.Clock, sleep: d.Sleep, stderr: d.Stderr,
-		exhausted: map[string]bool{}, notes: map[string]string{},
+		exhausted: map[string]bool{}, notes: map[string]string{}, widenNotes: map[string]string{},
 		refreshInfo: map[string]refreshState{}, answers: map[string]string{},
 		verifyMode: "gated", convergeRounds: defaultConvergeRounds,
 	}
@@ -300,16 +301,21 @@ func orUnknown(s string) string {
 	return s
 }
 
-// applyOverrides adds `wave mark --widen` globs (plan-overrides.json).
-func (r *runner) applyOverrides() {
+// applyOverrides adds `wave mark --widen` globs (plan-overrides.json) and
+// returns, per package, the globs this call newly added. The runner calls it
+// again before every dispatch because a mark lands while the run is live.
+func (r *runner) applyOverrides() map[string][]string {
+	added := map[string][]string{}
 	raw, err := os.ReadFile(filepath.Join(r.stateDir, "plan-overrides.json"))
 	if err != nil {
-		return
+		return added
 	}
 	var overrides map[string]any
 	if json.Unmarshal(raw, &overrides) != nil {
-		return
+		return added
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for i := range r.plan.Packages {
 		pkg := &r.plan.Packages[i]
 		entry, _ := overrides[pkg.ID].(map[string]any)
@@ -317,10 +323,29 @@ func (r *runner) applyOverrides() {
 		for _, g := range extra {
 			glob, ok := g.(string)
 			if ok && !containsStr(pkg.FilesOwned, glob) {
-				pkg.FilesOwned = append(pkg.FilesOwned, glob)
+				pkg.FilesOwned = append(append([]string{}, pkg.FilesOwned...), glob)
+				added[pkg.ID] = append(added[pkg.ID], glob)
 			}
 		}
 	}
+	return added
+}
+
+// noteWidening records, for pid's next context files, the paths a mark just
+// widened and the mark's detail, so a reused session (which keeps the old
+// contract in its head) is told what changed. No new paths clears the note.
+func (r *runner) noteWidening(pid string, added []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(added) == 0 {
+		delete(r.widenNotes, pid)
+		return
+	}
+	note := "files_owned was widened by the instructor; you now also own: " + strings.Join(added, ", ") + "."
+	if p := r.store.Snapshot().Packages[pid]; p != nil && p.Detail != "" {
+		note += "\nInstructor note: " + p.Detail
+	}
+	r.widenNotes[pid] = note
 }
 
 func (r *runner) waveCfg(cfg *config.Resolved) map[string]any {
