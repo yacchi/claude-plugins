@@ -1,118 +1,130 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { fakeHost, freshSession, type HostOptions } from '../testing/host.ts'
+import { beginTurn, callTool, fakeHost, freshSession, type HostOptions } from '../testing/host.ts'
 
-// The router costs nothing on cheap sessions and falls back to a self-gated
-// text when the model is unknown; the turn tripwire re-asks for a route at
-// the threshold and, firmer, at twice it, once each per turn.
+// The turn tripwire re-asks for a route at the threshold and, firmer, at
+// twice it, once each per main-loop turn, on the edit's own result. It stays
+// quiet on cheap sessions and in hosted task worktrees.
 
-const host = (on: On, extra: Partial<HostOptions> = {}) => fakeHost(on, { sessionId: freshSession(), ...extra })
+const host = (on: On, extra: Partial<HostOptions> = {}) => {
+    const sessionId = freshSession()
 
-type Context = { additionalContext?: string[] }
-
-const begin = ($: any, sessionId: string, model?: string, source = 'startup'): Promise<Context> =>
-    $.classic.SessionStart({ session_id: sessionId, source, ...(model ? { model } : {}) })
+    return { sessionId, ...fakeHost(on, { sessionId, model: 'claude-opus-5', ...extra }) }
+}
 
 // Every edit names a file of its own unless `file` is given.
 let fileSeq = 0
 
-// The nudges handed back over `n` edits of one turn.
-const edits = async ($: any, n: number, sessionId: string, promptId: string | undefined, tool = 'Edit', agentId?: string, file?: string) => {
+// The nudges handed back over `n` edits.
+const edits = async ($: any, n: number, tool = 'Edit', agentId?: string, file?: string) => {
     const said: string[] = []
     for (let i = 0; i < n; i++) {
-        const r: Context = await $.classic.PostToolUse({
-            session_id: sessionId,
-            ...(promptId ? { prompt_id: promptId } : {}),
-            ...(agentId ? { agent_id: agentId, agent_type: 'orchestra:orchestra-light' } : {}),
-            tool_name: tool, tool_input: { file_path: file ?? `/tmp/f${fileSeq++}.ts` }, tool_response: {}, tool_use_id: `t${i}`,
-        })
-        said.push(...(r.additionalContext ?? []))
+        const path = tool === 'NotebookEdit' ? 'notebook_path' : 'file_path'
+        const r = await callTool($, agentId, { tool, [path]: file ?? `/tmp/f${fileSeq++}.ts`, toolUseId: `t${i}` }) as { context?: string[] }
+        said.push(...(r.context ?? []))
     }
 
     return said
 }
 
-describe('router', () => {
-    test('session start gates on the model', async ($, on) => {
+describe('router: turn edits', () => {
+    test('stage 1 at the threshold, stage 2 at twice it, once each per turn', async ($, on) => {
         host(on)
-        const opus = (await begin($, 's-opus', 'claude-opus-5')).additionalContext ?? []
-        expect(opus.length).toBe(1)
-        expect(opus[0]).toContain('<orchestra-router>\nClassify EACH user request')
-        expect(opus[0]).not.toContain('applies ONLY')
-        expect(opus[0], 'the lane split').toContain('EXPRESS — ALL of')
-        expect(opus[0], 'the lane split').toContain('ORCHESTRATED — anything else')
-        expect(opus[0], 'decomposition goes to the planner').toContain('orchestra:orchestra-planner')
-        expect(opus[0], 'the opt-in signals').toContain('The Workflow tool is usable this turn only when the context shows an opt-in')
-        expect(opus[0], 'the opt-in signals').toContain('A skill the router\nloaded does not count')
-        expect((await begin($, 's-sonnet', 'claude-sonnet-5')).additionalContext ?? [], 'cheap: zero context').toEqual([])
-        expect((await begin($, 's-none')).additionalContext?.[0], 'unknown: self-gated').toContain('applies ONLY when')
-        for (const source of ['resume', 'clear', 'compact']) {
-            expect((await begin($, 's-again', 'claude-fable-5', source)).additionalContext?.length, source).toBe(1)
-        }
-        expect((await begin($, 's-fork', 'claude-opus-5', 'fork')).additionalContext ?? []).toEqual([])
-    })
-
-    test('turn edits: stage 1 at the threshold, stage 2 at twice it, once each per turn', async ($, on) => {
-        host(on)
-        await begin($, 's1', 'claude-opus-5')
-        expect(await edits($, 7, 's1', 'p1'), 'below the threshold').toEqual([])
-        const stage1 = await edits($, 1, 's1', 'p1')
+        await beginTurn($, 't1')
+        expect(await edits($, 7), 'below the threshold').toEqual([])
+        const stage1 = await edits($, 1)
         expect(stage1.length).toBe(1)
         expect(stage1[0]).toContain('hand-edited 8 files')
         expect(stage1[0]).toContain('a firmer request follows')
-        expect(await edits($, 7, 's1', 'p1'), 'between the stages').toEqual([])
-        const stage2 = await edits($, 1, 's1', 'p1')
+        expect(await edits($, 7), 'between the stages').toEqual([])
+        const stage2 = await edits($, 1)
         expect(stage2[0]).toContain('hand-edited 16 files')
         expect(stage2[0]).toContain('exemption stops applying')
-        expect(await edits($, 5, 's1', 'p1'), 'stage 2 once per turn').toEqual([])
-        expect(await edits($, 7, 's1', 'p2'), 'the counter resets on a new turn').toEqual([])
-        expect((await edits($, 9, 's1', 'p2')).length, 'a new turn nudges again').toBe(2)
+        expect(await edits($, 5), 'stage 2 once per turn').toEqual([])
+        await beginTurn($, 't2')
+        expect(await edits($, 7), 'the counter resets on a new turn').toEqual([])
+        expect((await edits($, 9)).length, 'a new turn nudges again').toBe(2)
     })
 
-    test('turn edits: counts distinct files, not calls', async ($, on) => {
+    test('counts distinct files, not calls', async ($, on) => {
         host(on)
-        await begin($, 's1', 'claude-opus-5')
-        expect(await edits($, 20, 's1', 'p1', 'Edit', undefined, '/repo/a.ts'), 'one file, many edits').toEqual([])
-        expect(await edits($, 6, 's1', 'p1'), 'six more files: seven in all').toEqual([])
-        expect((await edits($, 1, 's1', 'p1')).length, 'the eighth file').toBe(1)
-        expect(await edits($, 1, 's1', 'p1', 'Edit', undefined, '/repo/a.ts'), 'a repeat of a counted file').toEqual([])
+        await beginTurn($, 't1')
+        expect(await edits($, 20, 'Edit', undefined, '/repo/a.ts'), 'one file, many edits').toEqual([])
+        expect(await edits($, 6), 'six more files: seven in all').toEqual([])
+        expect((await edits($, 1)).length, 'the eighth file').toBe(1)
+        expect(await edits($, 1, 'Edit', undefined, '/repo/a.ts'), 'a repeat of a counted file').toEqual([])
     })
 
-    test('turn edits: what counts and where', async ($, on) => {
+    test('every edit tool counts; reads and subagent turns do not', async ($, on) => {
         host(on)
-        await begin($, 's1', 'claude-opus-5')
-        await begin($, 's-cheap', 'claude-haiku-5')
-        await edits($, 4, 's1', 'p1')
-        await edits($, 1, 's1', 'p1', 'Write')
-        await edits($, 1, 's1', 'p1', 'MultiEdit')
-        expect((await edits($, 2, 's1', 'p1', 'NotebookEdit')).length, 'every edit tool counts').toBe(1)
-        expect(await edits($, 9, 's1', 'p3', 'Read'), 'reads').toEqual([])
-        expect(await edits($, 9, 's1', 'p4', 'Edit', 'ag_1'), 'a subagent\'s edits').toEqual([])
-        expect(await edits($, 9, 's1', undefined), 'no prompt_id, no turn').toEqual([])
-        expect(await edits($, 9, 's-cheap', 'p1'), 'cheap session').toEqual([])
-        expect((await edits($, 8, 's-unknown', 'p1')).length, 'unknown verdict still nudges').toBe(1)
-        await begin($, 's2', 'claude-opus-5')
-        await begin($, 's3', 'claude-opus-5')
-        await edits($, 5, 's2', 'p1')
-        expect(await edits($, 4, 's3', 'p1'), 'sessions do not share a counter').toEqual([])
+        await beginTurn($, 't1')
+        await beginTurn($, 'sub', 'ag_1')
+        expect(await edits($, 9, 'Read'), 'reads').toEqual([])
+        expect(await edits($, 9, 'Edit', 'ag_1'), 'a subagent\'s edits').toEqual([])
+        await edits($, 4)
+        await edits($, 1, 'Write')
+        await edits($, 1, 'MultiEdit')
+        expect((await edits($, 2, 'NotebookEdit')).length, 'every edit tool counts, in the main turn').toBe(1)
     })
 
-    test('turn edits: enforcement.turn_edits moves the threshold', async ($, on) => {
+    test('no turn.start seen, no turn to count', async ($, on) => {
+        host(on)
+        expect(await edits($, 9)).toEqual([])
+    })
+
+    test('enforcement.turn_edits moves the threshold', async ($, on) => {
         host(on, { agentExec: () => ({ exitCode: 0, stdout: '{"enforcement": {"turn_edits": 3}}' }) })
-        await begin($, 's1', 'claude-opus-5')
-        expect((await edits($, 3, 's1', 'p1')).length).toBe(1)
+        await beginTurn($, 't1')
+        expect((await edits($, 3)).length).toBe(1)
     })
 
-    test('turn edits: enforcement.turn_edits=off', async ($, on) => {
+    test('enforcement.turn_edits=off', async ($, on) => {
         host(on, { agentExec: () => ({ exitCode: 0, stdout: '{"enforcement": {"turn_edits": "off"}}' }) })
-        await begin($, 's1', 'claude-opus-5')
-        expect(await edits($, 10, 's1', 'p1')).toEqual([])
+        await beginTurn($, 't1')
+        expect(await edits($, 10)).toEqual([])
     })
 
-    test('turn edits: kill switch ORCHESTRA_TURN_GUARD=off', async ($, on) => {
+    test('kill switch ORCHESTRA_TURN_GUARD=off', async ($, on) => {
         host(on, { env: { ORCHESTRA_TURN_GUARD: 'off' } })
-        await begin($, 's1', 'claude-opus-5')
-        expect(await edits($, 10, 's1', 'p1')).toEqual([])
+        await beginTurn($, 't1')
+        expect(await edits($, 10)).toEqual([])
+    })
+
+    test('the module heartbeat is stamped once per session', async ($, on) => {
+        const { sessionId, runs } = host(on)
+        await beginTurn($, 't1')
+        await beginTurn($, 'sub', 'ag_1')
+        await beginTurn($, 't2')
+        await edits($, 1)
+        const seen = runs.filter(argv => argv.slice(4, 6).join(' ') === 'hook seen')
+        expect(seen.map(argv => argv.slice(4))).toEqual([['hook', 'seen', '--session', sessionId, '--event', 'module']])
+    })
+})
+
+// Eight edits in one turn: whether the session's verdict lets the nudge out.
+const nudged = async ($: any): Promise<boolean> => {
+    await beginTurn($, 't1')
+
+    return (await edits($, 8)).length === 1
+}
+
+describe('router: verdict', () => {
+    test('a cheap model is not nudged', async ($, on) => {
+        host(on, { model: 'claude-sonnet-5' })
+        expect(await nudged($)).toBe(false)
+    })
+
+    test('an unknown model is nudged', async ($, on) => {
+        host(on, { model: '' })
+        expect(await nudged($)).toBe(true)
+    })
+
+    test('an unknown verdict is asked again once the model is known', async ($, on) => {
+        const { sessionId } = host(on, { model: '' })
+        await beginTurn($, 't1')
+        await edits($, 1)
+        await $.classic.SessionStart({ session_id: sessionId, source: 'startup', model: 'claude-haiku-5' })
+        expect(await edits($, 9), 'cheap once announced').toEqual([])
     })
 })
 
@@ -135,27 +147,22 @@ const tasks = (on: On, extra: Partial<HostOptions> = {}) => host(on, {
     ...extra,
 })
 
-// A SessionStart with an explicit cwd, as the engine always sends one.
-const startIn = ($: any, sessionId: string, cwd: string, model?: string): Promise<Context> =>
-    $.classic.SessionStart({ session_id: sessionId, source: 'startup', cwd, ...(model ? { model } : {}) })
-
 describe('router: hosted workers', () => {
-    test('a worker gets the worker notice on any model, and no nudge', async ($, on) => {
-        tasks(on)
-        for (const [sessionId, model] of [['w-opus', 'claude-opus-5'], ['w-sonnet', 'claude-sonnet-5'], ['w-none', undefined]] as const) {
-            const said = (await startIn($, sessionId, '/work/task-a', model)).additionalContext ?? []
-            expect(said.length, String(model)).toBe(1)
-            expect(said[0]).toContain('<orchestra-worker>')
-            expect(said[0]).toContain('/work/task-a')
-            expect(said[0]).not.toContain('<orchestra-router>')
-            expect(await edits($, 20, sessionId, 'p1'), 'no nudge').toEqual([])
-        }
+    for (const model of ['claude-opus-5', 'claude-sonnet-5', '']) {
+        test(`a task worktree is a worker on any model, and is not nudged: ${model || 'no model'}`, async ($, on) => {
+            tasks(on, { cwd: '/work/task-a', model })
+            expect(await nudged($)).toBe(false)
+        })
+    }
+
+    test('the session root decides, falling back to the session cwd when blank', async ($, on) => {
+        tasks(on, { cwd: '/work/task-a', root: '' })
+        expect(await nudged($), 'blank root: session cwd').toBe(false)
     })
 
-    test('the SessionStart cwd decides, falling back to the session cwd when blank', async ($, on) => {
-        tasks(on, { cwd: '/work/task-a' })
-        expect((await startIn($, 'w-blank', '', 'claude-opus-5')).additionalContext?.[0], 'blank cwd: session cwd').toContain('<orchestra-worker>')
-        expect((await startIn($, 'w-main', '/repo', 'claude-opus-5')).additionalContext?.[0], 'input cwd wins').toContain('<orchestra-router>')
+    test('a main-tree root wins over a task-tree cwd', async ($, on) => {
+        tasks(on, { cwd: '/work/task-a', root: '/repo' })
+        expect(await nudged($)).toBe(true)
     })
 
     test('the main worktree is never a worker, even with a stray marker', async ($, on) => {
@@ -164,30 +171,34 @@ describe('router: hosted workers', () => {
             files: { '/repo/.git/orchestra-baseline': 'base\n' },
             cwd: '/repo',
         })
-        const said = (await startIn($, 'main-opus', '/repo', 'claude-opus-5')).additionalContext ?? []
-        expect(said[0]).toContain('<orchestra-router>\nClassify EACH')
-        expect(said[0]).not.toContain('<orchestra-worker>')
+        expect(await nudged($)).toBe(true)
     })
 
-    test('an integration tree gets the router, not the worker notice', async ($, on) => {
+    test('an integration tree is not a worker', async ($, on) => {
         tasks(on, {
+            cwd: '/work/task-a',
             files: { ...TASKS, '/repo/.git/worktrees/task-a/orchestra-role': 'integration\n' },
         })
-        const said = (await startIn($, 'int-opus', '/work/task-a', 'claude-opus-5')).additionalContext ?? []
-        expect(said[0]).toContain('<orchestra-router>\nClassify EACH')
-        expect((await startIn($, 'int-sonnet', '/work/task-a', 'claude-sonnet-5')).additionalContext ?? [], 'cheap').toEqual([])
+        expect(await nudged($)).toBe(true)
     })
 
-    test('a linked tree is a worker only with a task marker', async ($, on) => {
-        tasks(on)
-        expect((await startIn($, 'no-marker', '/work/task-b', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-router>')
-        expect((await startIn($, 'adopted', '/work/task-c', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-worker>')
-        expect((await startIn($, 'baseline', '/work/task-a', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-worker>')
+    test('a linked tree without a task marker is not a worker', async ($, on) => {
+        tasks(on, { cwd: '/work/task-b' })
+        expect(await nudged($)).toBe(true)
     })
 
-    test('outside any repository, or with git unavailable, the router applies', async ($, on) => {
+    test('a linked tree with the adopted marker is a worker', async ($, on) => {
+        tasks(on, { cwd: '/work/task-c' })
+        expect(await nudged($)).toBe(false)
+    })
+
+    test('outside any repository the session is not a worker', async ($, on) => {
         host(on, { cwd: '/nowhere' })
-        expect((await startIn($, 'no-repo', '/nowhere', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-router>')
-        expect((await startIn($, 'no-tree', '/nowhere/else', 'claude-opus-5')).additionalContext?.[0]).toContain('<orchestra-router>')
+        expect(await nudged($)).toBe(true)
+    })
+
+    test('with git failing the session is not a worker', async ($, on) => {
+        tasks(on, { cwd: '/nowhere/else' })
+        expect(await nudged($)).toBe(true)
     })
 })

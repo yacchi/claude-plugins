@@ -338,6 +338,14 @@
           "reason": "macOS Seatbelt (sandbox-exec)",
           "sandboxed": true
         },
+        "hooks": {
+          "seen": {},
+          "session": "<UUID#1>",
+          "warnings": [
+            "orchestra's SessionStart hook did not run in this session: the routing protocol (or a hosted worker's notice) was not injected. Check that plugin hooks run here (disableAllHooks, allowManagedHooksOnly) and that agent-exec builds (agent-exec doctor).",
+            "orchestra's hooks module has not run in this session: its guards (opt-in, launch, worker), the turn-size nudge and the HUD are off. Check allowManagedModsOnly and disableAllHooks in managed settings, or a module load error (claude --debug)."
+          ]
+        },
         "permission": {
           "best_effort_note": "best-effort scan of ~/.claude/settings.json and ./.claude/settings.json(.local); does not see enterprise policy or CLI --allowedTools",
           "found": true,
@@ -490,7 +498,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: true)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nbuild: <BUILD>\nconfig: resolved (0 layer(s) found)\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=true dispatch=cli binary=pi available=true\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=haiku effort=medium source=priority)\n  - standard: claude (dispatch=claude model=haiku effort=high source=priority)\n  - deep: claude (dispatch=claude model=opus effort=medium source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=medium source=priority)\nusage limits: disabled\nsandbox: mode=auto backend=seatbelt enforced=true (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=true (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=false srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=false backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\n"
+      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: true)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nbuild: <BUILD>\nconfig: resolved (0 layer(s) found)\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=true dispatch=cli binary=pi available=true\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=haiku effort=medium source=priority)\n  - standard: claude (dispatch=claude model=haiku effort=high source=priority)\n  - deep: claude (dispatch=claude model=opus effort=medium source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=medium source=priority)\nusage limits: disabled\nsandbox: mode=auto backend=seatbelt enforced=true (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=true (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=false srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=false backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\nhooks: session <UUID#1>, seen none\n  WARNING: orchestra's SessionStart hook did not run in this session: the routing protocol (or a hosted worker's notice) was not injected. Check that plugin hooks run here (disableAllHooks, allowManagedHooksOnly) and that agent-exec builds (agent-exec doctor).\n  WARNING: orchestra's hooks module has not run in this session: its guards (opt-in, launch, worker), the turn-size nudge and the HUD are off. Check allowManagedModsOnly and disableAllHooks in managed settings, or a module load error (claude --debug).\n"
     }
   ]
 }

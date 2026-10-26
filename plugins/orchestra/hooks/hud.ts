@@ -215,7 +215,7 @@ const snapshot = (): Snapshot => ({
 
 // The one status line: the agent part and every wave's part side by side,
 // cleared only when there is neither; the pane and the band drawn again.
-const render = ($: EngineInterface): void => {
+function render($: EngineInterface): void {
     const now = snapshot()
     const parts = [now.agentPart, ...now.waves.map(statusPart)].filter(p => p !== undefined)
     $.ui.status(parts.length > 0 ? `orch ▸ ${parts.join(' │ ')}` : undefined)
@@ -382,6 +382,40 @@ const finish = async ($: EngineInterface, wave: Wave, read: boolean): Promise<vo
     untrack($, wave)
 }
 
+// The HUD's share of the turn.complete listener (orchestra.ts holds the one
+// registration); never throws.
+export function hudTurnComplete($: EngineInterface, e: { agentId?: string, answer?: string, reason?: string }): void {
+    try {
+        if (e.agentId) {
+            watchers.delete(e.agentId)
+        }
+        const agent = e.agentId ? tracked.get(e.agentId) : undefined
+        if (e.agentId && agent) {
+            tracked.delete(e.agentId)
+            const verdict = parseVerdict(e.answer)
+            const status = verdict?.status
+            if (e.reason === 'aborted') {
+                // an interrupted agent's partial answer is not a verdict
+            } else if (e.reason === 'error') {
+                $.ui.toast(`orchestra: agent error — ${agent.description}`)
+            } else if (verdict?.pass === false) {
+                failures++
+                $.ui.toast(`orchestra: review FAIL — ${agent.description}`)
+            } else if (status === 'needs-permission' || status === 'runaway' || status === 'unavailable') {
+                $.ui.toast(`orchestra: ${status} — ${agent.description}`)
+            } else if (typeof e.answer === 'string' && e.answer.trim().startsWith('ESCALATE')) {
+                $.ui.toast(`orchestra: ESCALATE — ${agent.description}`)
+            }
+            if (tracked.size === 0) {
+                failures = 0
+            }
+            render($)
+        }
+    } catch {
+        // the HUD must never break a turn
+    }
+}
+
 export const register: Register = (on, options) => {
     if (options.hud === false) {
         return
@@ -460,40 +494,6 @@ export const register: Register = (on, options) => {
         }
 
         return result
-    }).catch(($, e, next) => next(e))
-
-    on('turn.complete', async ($, e, next) => {
-        try {
-            if (e.agentId) {
-                watchers.delete(e.agentId)
-            }
-            const agent = e.agentId ? tracked.get(e.agentId) : undefined
-            if (e.agentId && agent) {
-                tracked.delete(e.agentId)
-                const verdict = parseVerdict(e.answer)
-                const status = verdict?.status
-                if (e.reason === 'aborted') {
-                    // an interrupted agent's partial answer is not a verdict
-                } else if (e.reason === 'error') {
-                    $.ui.toast(`orchestra: agent error — ${agent.description}`)
-                } else if (verdict?.pass === false) {
-                    failures++
-                    $.ui.toast(`orchestra: review FAIL — ${agent.description}`)
-                } else if (status === 'needs-permission' || status === 'runaway' || status === 'unavailable') {
-                    $.ui.toast(`orchestra: ${status} — ${agent.description}`)
-                } else if (typeof e.answer === 'string' && e.answer.trim().startsWith('ESCALATE')) {
-                    $.ui.toast(`orchestra: ESCALATE — ${agent.description}`)
-                }
-                if (tracked.size === 0) {
-                    failures = 0
-                }
-                render($)
-            }
-        } catch {
-            // the HUD must never break a turn
-        }
-
-        return next(e)
     }).catch(($, e, next) => next(e))
 
     registerProgress(on, snapshot)

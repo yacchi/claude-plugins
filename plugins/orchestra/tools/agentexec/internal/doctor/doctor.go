@@ -1,7 +1,7 @@
 // Package doctor builds the readiness report behind `agent-exec doctor`: shim,
 // permission rule, build, resolved config, per-executor readiness, a routing
-// preview, cooldowns, subscription usage limits, the sandbox, and the hosts'
-// network view.
+// preview, cooldowns, subscription usage limits, the sandbox, the hosts'
+// network view, and which of orchestra's hooks ran in the current session.
 package doctor
 
 import (
@@ -14,7 +14,9 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/hookrun"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/quota"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/readiness"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/route"
@@ -24,6 +26,14 @@ import (
 
 // previewClasses are the classes the report previews a route for.
 var previewClasses = []string{"light", "standard", "deep", "review"}
+
+// hooksWarnSessionStart and hooksWarnModule are the warnings for a session
+// whose SessionStart command hook or hooks module never stamped it: a held
+// hook injects or runs nothing, and nothing else reports that.
+const (
+	hooksWarnSessionStart = "orchestra's SessionStart hook did not run in this session: the routing protocol (or a hosted worker's notice) was not injected. Check that plugin hooks run here (disableAllHooks, allowManagedHooksOnly) and that agent-exec builds (agent-exec doctor)."
+	hooksWarnModule       = "orchestra's hooks module has not run in this session: its guards (opt-in, launch, worker), the turn-size nudge and the HUD are off. Check allowManagedModsOnly and disableAllHooks in managed settings, or a module load error (claude --debug)."
+)
 
 // Report is the doctor report. Object renders it in `doctor --json` key
 // order.
@@ -41,6 +51,7 @@ type Report struct {
 	HerdrHost  any
 	UserConfig map[string]any
 	CLINetwork any
+	Hooks      map[string]any
 }
 
 // Build gathers the report. cfgErr is the error from config.Resolve; the
@@ -135,6 +146,7 @@ func Build(cfg *config.Resolved, cfgErr error) Report {
 			"orca":  userConfig(dcfg, "orca"),
 		},
 		CLINetwork: srt.CLINetwork(dcfg, cwd),
+		Hooks:      hooksSection(),
 	}
 	if ok {
 		for _, cls := range previewClasses {
@@ -164,7 +176,30 @@ func (r Report) Object() map[string]any {
 		"herdr_host":   r.HerdrHost,
 		"user_config":  r.UserConfig,
 		"cli_network":  r.CLINetwork,
+		"hooks":        r.Hooks,
 	}
+}
+
+// hooksSection is the current session's hook stamps and what is missing from
+// them. Outside Claude Code there is no session to judge, so it warns nothing.
+func hooksSection() map[string]any {
+	session, ok := paths.SessionID()
+	if !ok {
+		return map[string]any{"session": nil, "seen": map[string]any{}, "warnings": []any{}}
+	}
+	stamps := hookrun.Seen(session)
+	seen := map[string]any{}
+	for event, at := range stamps {
+		seen[event] = at
+	}
+	warnings := []any{}
+	if _, ok := stamps[hookrun.EventSessionStart]; !ok {
+		warnings = append(warnings, hooksWarnSessionStart)
+	}
+	if _, ok := stamps[hookrun.EventModule]; !ok {
+		warnings = append(warnings, hooksWarnModule)
+	}
+	return map[string]any{"session": session, "seen": seen, "warnings": warnings}
 }
 
 func userConfig(cfg *config.Resolved, section string) string {

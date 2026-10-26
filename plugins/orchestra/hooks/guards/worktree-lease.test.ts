@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { callTool, fakeHost, freshSession, startAgent, type HostOptions } from '../testing/host.ts'
+import { callTool, endAgent, fakeHost, freshSession, startAgent, type HostOptions } from '../testing/host.ts'
 
 // One writer per worktree: a message to a running workflow agent resumed a
 // COPY of it, and both committed the same files seconds apart. Pinned: the
@@ -30,8 +30,7 @@ const as = async ($: unknown, agentId: string, agentType: string, cwd: string, a
 const light = 'orchestra:orchestra-light'
 const editIn = (path: string) => ({ tool: 'Edit', file_path: path })
 const run = (command: string, description = 'x') => ({ tool: 'Bash', command, description })
-const stop = ($: any, agentId: string) =>
-    $.classic.SubagentStop({ agent_id: agentId, agent_type: 'x', stop_hook_active: false, agent_transcript_path: '' })
+const stop = ($: any, agentId: string) => endAgent($, agentId)
 
 describe('worktree-lease', () => {
     test('a second writer is denied until the holder stops', async ($, on) => {

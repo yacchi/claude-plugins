@@ -3,7 +3,8 @@ import { isOff, loadEnforcement } from '../lib/config.ts'
 import { join, normalize } from '../lib/paths.ts'
 import { verdictOf } from './verdict.ts'
 
-// PostToolUse turn-size tripwire. Classification happens before acting, but
+// Turn-size tripwire, asked after each main-thread edit and handed to the
+// model with the edit's result. Classification happens before acting, but
 // the turns that went wrong were small prompts that turned out large
 // ("作業を続けて", "y" -> 27-55 hand-edited files); the size is only knowable
 // once the work is underway. So count the main thread's distinct files edited
@@ -15,9 +16,10 @@ import { verdictOf } from './verdict.ts'
 // is self-declared. Stage 2, at twice the threshold, says that exemption has
 // expired. Each stage fires once per turn (exact-equality hits).
 //
-// Scope: main thread only (a subagent's edits are the delegation working);
-// not on cheap sessions ("unknown" nudges, like the router's fallback); per
-// turn keyed on `prompt_id`, and no prompt_id means no turn to count.
+// Scope: main thread only (a subagent's edits are the delegation working, so the
+// caller asks only for main-thread edits); not on cheap or worker sessions ("unknown"
+// nudges); per main-loop turn as `turn.start` announced it, and no turn seen
+// means no turn to count.
 // Files, not calls: editing one file many times counts once.
 // Escape hatches: ORCHESTRA_TURN_GUARD=off; enforcement.turn_edits: off or a
 // positive integer threshold (default 8).
@@ -50,8 +52,8 @@ const stage2 = (count: number): string =>
     + 'once more at most.'
 
 // Main-thread turns are sequential, so one counter per session is enough:
-// a new prompt_id starts it over.
-const turns = new Map<string, { promptId: string, files: Set<string> }>()
+// a new turn id starts it over.
+const turns = new Map<string, { turnId: string, files: Set<string> }>()
 const thresholds = new Map<string, number | 'off'>()
 
 const thresholdFor = async (io: Io, sessionId: string): Promise<number | 'off'> => {
@@ -74,40 +76,38 @@ const thresholdFor = async (io: Io, sessionId: string): Promise<number | 'off'> 
     return threshold
 }
 
-type PostToolUse = {
-    tool_name: string,
-    tool_input?: Readonly<Record<string, unknown>>,
-    tool_use_id?: string,
-    agent_id?: string,
-    prompt_id?: string,
-    session_id: string,
-    cwd?: string,
+export type TurnEdit = {
+    sessionId: string,
+    turnId: string | undefined,
+    tool: string,
+    input: Readonly<Record<string, unknown>>,
+    toolUseId?: string,
+    cwd: string,
 }
 
 // The file an edit touches, as a normalized absolute path. NotebookEdit names
 // its file `notebook_path`. An edit that names no path counts as its own file.
-const editedFile = (e: PostToolUse): string => {
-    const input = e.tool_input ?? {}
-    const raw = typeof input.file_path === 'string' && input.file_path !== ''
-        ? input.file_path
-        : typeof input.notebook_path === 'string' ? input.notebook_path : ''
+const editedFile = (e: TurnEdit): string => {
+    const raw = typeof e.input.file_path === 'string' && e.input.file_path !== ''
+        ? e.input.file_path
+        : typeof e.input.notebook_path === 'string' ? e.input.notebook_path : ''
     if (raw === '') {
-        return `\0${e.tool_use_id ?? ''}`
+        return `\0${e.toolUseId ?? ''}`
     }
 
-    return normalize(join(e.cwd ?? '', raw))
+    return normalize(join(e.cwd, raw))
 }
 
 // The re-route request to hand the model after this edit, if any.
-export const turnEditsNudge = async (io: Io, e: PostToolUse): Promise<string | undefined> => {
-    if (!EDIT_TOOLS.has(e.tool_name) || e.agent_id || !e.prompt_id) {
+export const turnEditsNudge = async (io: Io, e: TurnEdit): Promise<string | undefined> => {
+    const { sessionId, turnId } = e
+    if (!EDIT_TOOLS.has(e.tool) || !sessionId || !turnId) {
         return undefined
     }
     if (await io.env('ORCHESTRA_TURN_GUARD') === 'off') {
         return undefined
     }
-    const sessionId = e.session_id
-    const verdict = verdictOf(sessionId)
+    const verdict = await verdictOf(io, sessionId)
     if (verdict === 'cheap' || verdict === 'worker') {
         return undefined
     }
@@ -116,10 +116,10 @@ export const turnEditsNudge = async (io: Io, e: PostToolUse): Promise<string | u
         return undefined
     }
     const was = turns.get(sessionId)
-    const files = was?.promptId === e.prompt_id ? was.files : new Set<string>()
+    const files = was?.turnId === turnId ? was.files : new Set<string>()
     const before = files.size
     files.add(editedFile(e))
-    turns.set(sessionId, { promptId: e.prompt_id, files })
+    turns.set(sessionId, { turnId, files })
     const count = files.size
     if (count === before) {
         return undefined

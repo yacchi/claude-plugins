@@ -61,6 +61,14 @@
           "reason": "macOS Seatbelt (sandbox-exec)",
           "sandboxed": true
         },
+        "hooks": {
+          "seen": {},
+          "session": "<UUID#1>",
+          "warnings": [
+            "orchestra's SessionStart hook did not run in this session: the routing protocol (or a hosted worker's notice) was not injected. Check that plugin hooks run here (disableAllHooks, allowManagedHooksOnly) and that agent-exec builds (agent-exec doctor).",
+            "orchestra's hooks module has not run in this session: its guards (opt-in, launch, worker), the turn-size nudge and the HUD are off. Check allowManagedModsOnly and disableAllHooks in managed settings, or a module load error (claude --debug)."
+          ]
+        },
         "permission": {
           "best_effort_note": "best-effort scan of ~/.claude/settings.json and ./.claude/settings.json(.local); does not see enterprise policy or CLI --allowedTools",
           "found": false,
@@ -120,7 +128,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec doctor\n-----------------\nshim: NOT installed\nbuild: <BUILD>\nconfig: FAILED to resolve: agent-exec: invalid YAML in <WORK>/.claude/orchestra.yaml: yaml: line 1: did not find expected ',' or ']'\npermission rule Bash(agent-exec:*): NOT found\nexecutors: none known\nusage limits: disabled\nsandbox: mode=auto backend=seatbelt enforced=true (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=true (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=false srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=false backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\n"
+      "stdout": "agent-exec doctor\n-----------------\nshim: NOT installed\nbuild: <BUILD>\nconfig: FAILED to resolve: agent-exec: invalid YAML in <WORK>/.claude/orchestra.yaml: yaml: line 1: did not find expected ',' or ']'\npermission rule Bash(agent-exec:*): NOT found\nexecutors: none known\nusage limits: disabled\nsandbox: mode=auto backend=seatbelt enforced=true (macOS Seatbelt (sandbox-exec))\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=true (macOS Seatbelt (sandbox-exec))\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=false srt=-  network not restricted: srt not found (not-installed)\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=false backend=seatbelt domains=chatgpt.com, auth.openai.com  network not restricted: srt not found (not-installed)\nhooks: session <UUID#1>, seen none\n  WARNING: orchestra's SessionStart hook did not run in this session: the routing protocol (or a hosted worker's notice) was not injected. Check that plugin hooks run here (disableAllHooks, allowManagedHooksOnly) and that agent-exec builds (agent-exec doctor).\n  WARNING: orchestra's hooks module has not run in this session: its guards (opt-in, launch, worker), the turn-size nudge and the HUD are off. Check allowManagedModsOnly and disableAllHooks in managed settings, or a module load error (claude --debug).\n"
     }
   ]
 }

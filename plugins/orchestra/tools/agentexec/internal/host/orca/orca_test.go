@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -246,13 +247,15 @@ func TestAFailedNestingStillStarts(t *testing.T) {
 }
 
 func TestAddDirsAndPermissionModeAreRendered(t *testing.T) {
+	unsetPnpmStoreEnv(t)
 	e := newEnv(t, map[string]any{})
+	pin := config.PnpmStorePinName + "=" + config.PnpmStoreDir(runtime.GOOS, os.Getenv("HOME"), os.Getenv)
 	x := e.executor(`{"orca": {"permission_mode": "acceptEdits", "user_config": "inherit"}}`)
 	if _, err := e.start(x); err != nil {
 		t.Fatal(err)
 	}
 	cmd := opt(e.callsOf("terminal create")[0], "--command")
-	if cmd != "claude --model opus --permission-mode acceptEdits --add-dir "+e.state+` --settings '{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}'` {
+	if cmd != "env "+pin+" claude --model opus --permission-mode acceptEdits --add-dir "+e.state+` --settings '{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}'` {
 		t.Errorf("%q", cmd)
 	}
 }
@@ -454,6 +457,51 @@ func TestCommandCarriesThePnpmGVSSwitchOnlyInActiveTrees(t *testing.T) {
 		}
 		if got := strings.HasPrefix(cmd, "env ") && strings.Contains(cmd, config.PnpmGVSEnv+" claude "); got != want {
 			t.Errorf("%s: %q, switch wanted %v", tree, cmd, want)
+		}
+	}
+}
+
+// The command's env prefix pins pnpm's store for a linked worktree, as a herdr
+// workspace does, and leaves the user's main checkout unpinned. The HOME is the
+// test's own, so the pin is the default store under it.
+func TestCommandCarriesThePnpmStorePinOnlyInLinkedTrees(t *testing.T) {
+	unsetPnpmStoreEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	pin := config.PnpmStorePinName + "=" + config.PnpmStoreDir(runtime.GOOS, os.Getenv("HOME"), os.Getenv)
+	linked, main := t.TempDir(), t.TempDir()
+	for _, f := range []string{filepath.Join(linked, ".git"), filepath.Join(main, ".git", "HEAD")} {
+		_ = os.MkdirAll(filepath.Dir(f), 0o755)
+		_ = os.WriteFile(f, []byte("x\n"), 0o644)
+	}
+	x := New(&config.Resolved{Values: config.Defaults()})
+	for tree, want := range map[string]bool{linked: true, main: false} {
+		cmd, err := x.command(&host.Session{Worktree: tree, Extra: map[string]any{"model": "opus"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		words, err := host.ShellSplit(cmd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pinned := slices.ContainsFunc(words, func(w string) bool {
+			return strings.HasPrefix(w, config.PnpmStorePinName+"=")
+		})
+		if pinned != want || (want && !slices.Contains(words, pin)) {
+			t.Errorf("%s: %q, store pin %q wanted %v", tree, cmd, pin, want)
+		}
+	}
+}
+
+// unsetPnpmStoreEnv clears the store variables of the process, whatever their
+// letter case, so a developer's own store choice cannot change the pin the
+// test expects. t restores them afterwards.
+func unsetPnpmStoreEnv(t *testing.T) {
+	t.Helper()
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		if strings.EqualFold(name, config.PnpmStorePinName) || strings.EqualFold(name, "npm_config_store_dir") {
+			t.Setenv(name, "")
+			_ = os.Unsetenv(name)
 		}
 	}
 }

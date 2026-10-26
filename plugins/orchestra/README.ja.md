@@ -24,7 +24,7 @@ flowchart TD
     V --> I
 ```
 
-- **2 つのレーン。** `SessionStart` フックがルーターを注入し、指示役は依頼ごとにレーンを判定します。EXPRESS(自己完結した 1 つの変更、または会話・読み取りのみ)は直接処理し、それ以外と判断に迷うものはすべて `orchestra:run` の手順に従います。判定は依頼をまたいで持ち越しません。
+- **2 つのレーン。** `SessionStart` コマンドフックがルーターを注入し(Team/Enterprise のログインで組み込みの `cc-plugin-sec-default` が載っている環境でも動きます)、指示役は依頼ごとにレーンを判定します。EXPRESS(自己完結した 1 つの変更、または会話・読み取りのみ)は直接処理し、それ以外と判断に迷うものはすべて `orchestra:run` の手順に従います。判定は依頼をまたいで持ち越しません。
 - **2 つの実行経路。** Dynamic Workflows(推奨。指示役が同梱の `orchestra:pipeline` をタスク一覧つきで実行する。`skills/run/SKILL.md` §5 を参照)と、Workflows が使えない環境での `orchestra-delegate` によるサブエージェントの入れ子です。
 - **2 回のゲート。** レビューのゲート 1 回に、修正 1 回と差分だけを見る再ゲートが続きます。差し戻しには契約の該当箇所の引用が必須で、契約が求めていない改善は `optional_hardening` に回り、合否には影響しません。
 - **ワーカーの隔離。** 作業ツリーに未コミットの変更があると、`agent-exec dispatch` はワーカーごとに専用の git worktree を用意します。さらにフックが、サブエージェントによる破壊的な VCS コマンドや、利用者のメインの作業ツリーへの書き込みを止めます。
@@ -73,6 +73,8 @@ claude plugin validate .
 2. 同梱の Workflow パイプライン(`orchestra:pipeline`)にタスク一覧を渡して実行する。各タスクを light クラスの実装役 → `orchestra-review` → 最大 1 回の修正と再ゲート、と流す。設計の裁量があるタスクは `orchestra-deep`(Opus)に回す。
 3. 生のログや差分、途中の成果物は受け取らず、構造化された判定だけを受け取る。
 
+実行の統合ブランチを作業中のブランチに取り込むのは、利用者が明示的に依頼したときだけです。`agent-exec isolate land --task <into> -m "<message>"` は、利用者の identity と渡したメッセージで 1 つのコミットとして取り込みます。
+
 付属のスキル:
 
 | スキル | 用途 |
@@ -89,10 +91,11 @@ claude plugin validate .
 - **`tools`** — 実行役のバイナリ(pi、herdr)を決まった版で orchestra 専用の状態ディレクトリに入れます(`agent-exec tools install`)。pi は既定で専用のエージェントディレクトリを使うため、個人の pi の設定はワーカーに届きません。
 - **`sandbox.network`** — herdr ホストの外向き通信を sandbox-runtime(srt)でドメイン許可リストに絞ります。遮断した接続は記録してパッケージごとに表示し、`agent-exec sandbox allow-domain` で動いたまま許可できます(既定は `api.anthropic.com` のみ)。
 - **`interactive_host`** — `wave run` で Claude 系のパッケージを動かすホストを選びます: `herdr`、`orca`、`none`(既定は `auto`)。
+- **`isolation.exclude_paths`** — 依存関係やキャッシュのディレクトリを追跡しているコミットを開始点にすると、`wave run` と `dispatch` は拒否します。追跡させたままにする必要があるものは `isolation.keep_paths` で例外にします。
 - **`wave.verify_mode`** — `final`(既定): 途中のテストでパッケージを止めません。パッケージごとには `fast` 指定の検査だけを記録として流し、テスト一式は最後に一度回して、失敗は緑になるまで修正パッケージとして並列に投入します。`gated` は従来どおり赤で止めます。`wave.max_in_flight: auto` では、始められるパッケージ(依存先が統合済みで、`files_owned` が動いている作業と重ならないもの)をすべて始め、依存の連鎖が長いものを優先します。機械は、重いコマンドを機械全体で数本ずつしか走らせないこと(install とビルドは `throttle.heavy_slots`、テスト・lint・型チェックは専用の `throttle.test_slots`)と、OS がメモリ不足を示している間は新しい起動を待つことで守ります。実行は `wave stop` か、指定した場合は `--budget-usd` に届くまで続き、使用量は定期的に通知します。
 - **`priority`** — クラス/役割ごとの実行系の優先順。順に候補をたどる処理は `agent-exec route` / `agent-exec dispatch` が行い、指示役が手作業でたどることはありません。
 - **`usage_routing`** — サブスクリプションの残量を見たルーティング。候補の背後にあるプラン(`claude` は Claude、`openai-codex/...` のモデルで動く `pi` は ChatGPT)が 5 時間枠の 80% 以上か 7 日枠の 90% 以上を使っていれば、余裕のある次の候補に回します。降格はソフト(全候補が上限近くなら無視)で、照会はキャッシュされ、失敗しても通常どおりルーティングします。`--no-usage` か `ORCHESTRA_USAGE_ROUTING=0` で無効にでき、現在値は `agent-exec doctor` の `usage_limits` で確認できます。
-- **`enforcement.*`** — フックによる防護(`worker_vcs`、`worker_tree`、`worktree_lease`、`session_cleanup`、`turn_edits`、`opus_generalist`、オプトインの `light_class`)。どれにも回避用のマーカーと、環境変数による無効化スイッチがあります。
+- **`enforcement.*`** — フックによる防護(`worker_vcs`、`worker_tree`、`worktree_lease`、`session_cleanup`、`turn_edits`、`opus_generalist`、オプトインの `light_class`、`opt_in`、`orchestra_merge`)。`opt_in` は、`/orchestra:run` で利用を開始するか確認に一度答えるまで、オーケストレーション用エージェントの起動を拒否します。`orchestra_merge` は `orchestra/*` ブランチを利用者のブランチへマージすることを拒否するため、`agent-exec isolate land` を使ってください。新しい 2 つの防護は既定で有効です。元からある防護には回避用のマーカーと環境変数による無効化スイッチがあり、`"off"` で個別に、`ORCHESTRA_ENFORCEMENT=off` で新しい 2 つを無効化できます。
 
 コメント付きの全項目は [`examples/orchestra.yaml`](examples/orchestra.yaml) を、マージの手順と各オプションは [`skills/run/references/config.md`](skills/run/references/config.md) を参照してください。`/setup` を使えばファイルを代わりに編集してくれます。
 

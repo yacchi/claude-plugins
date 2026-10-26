@@ -1,0 +1,24 @@
+description: >
+  both hook stamps of the current session are listed and nothing is warned
+platforms: [darwin]
+setup:
+  fakes: [pi]
+  env:
+    PATH: "<HOME>/.local/bin:<ROOT>/bin:/usr/bin:/bin"
+  modes:
+    ~/.local/bin/agent-exec: "0755"
+  files:
+    ~/.local/bin/agent-exec: |
+      #!/bin/sh
+      exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
+    ~/.claude/settings.json: |
+      {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
+    ~/.local/state/claude-orchestra/hooks/00000000-0000-4000-8000-0000000c0f0e.json: |
+      {"session": "00000000-0000-4000-8000-0000000c0f0e", "seen": {"session-start": 1790000000, "module": 1790000060}}
+normalize_keys: [build]
+normalize_text:
+  - pattern: '(?m)^build: .*$'
+    replace: 'build: <BUILD>'
+steps:
+  - argv: [doctor]
+  - argv: [doctor, --text]

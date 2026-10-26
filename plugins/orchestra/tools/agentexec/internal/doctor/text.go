@@ -186,6 +186,20 @@ func FormatText(r Report) string {
 			}
 		}
 	}
+
+	session := "none"
+	if s, ok := get(r.Hooks, "session").(string); ok {
+		session = s
+	}
+	seen := slices.Sorted(maps.Keys(obj(get(r.Hooks, "seen"))))
+	seenText := "none"
+	if len(seen) > 0 {
+		seenText = strings.Join(seen, ", ")
+	}
+	p("hooks: session %s, seen %s", session, seenText)
+	for _, w := range list(get(r.Hooks, "warnings")) {
+		p("  WARNING: %s", show(w))
+	}
 	return b.String()
 }
 

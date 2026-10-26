@@ -104,8 +104,16 @@ func landingRefs(path, own string, args ...string) ([]string, error) {
 // with it; "" once they landed on a non-orchestra local branch: its tip
 // (HEAD, so a detached tree works too) is reachable from one, or, for the
 // usual squash landing, one holds exactly the tip's content in every file
-// the tree changed since its baseline.
+// the tree changed since its baseline, or `isolate land` landed this tip.
 func unmergedIntegration(path, branch string) string {
+	// Landed by `isolate land` at its current tip: its squash differs from
+	// the tip's content once the target branch moved on. A later commit in
+	// the tree is unlanded again.
+	if m := readMarker(path, landedFile); m != "" {
+		if head, err := gitx.Run(path, "rev-parse", "HEAD"); err == nil && strings.TrimSpace(head) == m {
+			return ""
+		}
+	}
 	own := ""
 	if branch != "" {
 		own = "refs/heads/" + branch

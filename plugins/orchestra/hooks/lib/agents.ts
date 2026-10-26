@@ -2,30 +2,11 @@ import type { ToolCallInput } from 'claude-code'
 import type { Io } from './io.ts'
 
 // `tool.call` names the loop (`agentId`) but not the agent's type or its
-// working directory, which the guards scope on. The classic events carry both
-// (`agent_type`, `cwd`), so they are recorded here as each subagent starts
-// and after each of its tool calls: the cwd after one call is the cwd the
-// next one starts in, the value the PreToolUse hooks used to read.
-
-type Seen = { type: string, cwd: string }
-
-const seen = new Map<string, Seen>()
+// working directory, which the guards scope on. The type comes from
+// `agent.list`, and the directory from `session.cwd`, which inside a
+// subagent's tool call is the subagent's own directory.
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
-
-// Record what a classic event says about a subagent; ignores the main thread.
-export const noteAgent = (agentId: unknown, type: unknown, cwd: unknown): void => {
-    const id = str(agentId)
-    if (!id) {
-        return
-    }
-    const was = seen.get(id)
-    seen.set(id, { type: str(type) || was?.type || '', cwd: str(cwd) || was?.cwd || '' })
-}
-
-export const forgetAgent = (agentId: string): void => {
-    seen.delete(agentId)
-}
 
 // A tool call made inside a subagent, with what the guards need to scope it.
 export type WorkerCall = {
@@ -44,9 +25,8 @@ export const workerCall = async (io: Io, e: ToolCallInput): Promise<WorkerCall |
     if (!agentId) {
         return undefined
     }
-    const known = seen.get(agentId)
-    const agentType = known?.type || await io.agentType(agentId).catch(() => undefined) || ''
-    const cwd = known?.cwd || await io.sessionCwd().catch(() => '')
+    const agentType = await io.agentType(agentId).catch(() => undefined) || ''
+    const cwd = await io.sessionCwd().catch(() => '')
     const sessionId = await io.sessionId().catch(() => '')
 
     return {

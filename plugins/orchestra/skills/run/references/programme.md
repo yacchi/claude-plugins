@@ -299,13 +299,15 @@ A package that needs a change in a file it does not own is not blocked and is no
 
 ## 5. After the programme
 
-The integration branch holds every merged package as `orchestra integrate <id>` commits plus any resolve/fix commits. Offer it to the user as it is, or build the PR branch from its accepted diff (skill §12); never fast-forward the user's branch without an explicit request. Remove the integration worktree only after the user has taken the branch: `agent-exec isolate remove --task <into> --force`.
+The integration branch holds every merged package as `orchestra integrate <id>` commits plus any resolve/fix commits. Offer the result to the user. When they ask to take it, land it with `agent-exec isolate land --task <into> -m <paragraph>` (`isolation.md` §1a): it squashes the integration branch into one commit under the user's git identity on the checked-out branch. Never `git merge` or fast-forward the integration branch by hand: its commits are authored `orchestra`, and the merge guard denies merging an `orchestra/*` branch outside an orchestra worktree. After landing, the next sweep reclaims the tree. Remove the integration worktree only after the user has taken the branch: `agent-exec isolate remove --task <into> --force`.
 
 ## 6. Deterministic runner (`agent-exec wave run`)
 
 `agent-exec wave run` is §3's scheduler as a plain loop with no agent in it: no Workflow script, no integrator session, no model deciding what to start next. Use it instead of the Workflow scheduler when the plan is settled (§2's packages written as `plan.json`: `packages[]` with `id`, `spec` (path to the spec file), `cls`, `depends_on`, `files_owned`, optional `prio` and `est_seconds`, plus optional top-level `preamble`, `warm_read` (repo-relative paths a herdr warm reader reads once and every package session on the same model forks from; absolute or `..` paths are rejected, missing files only warn; see `config.md` §8), `external_done` ids, and `rules` entries of `{"if": "<glob>", "require": ["<glob>", ...]}`), the packages are implementable by the cheap tier from their spec alone, and conflicts should come back to you instead of being resolved by an agent. Keep the Workflow scheduler when integration needs judgement (an integrator that resolves conflicts from both specs) or packages need a review gate beyond `agent-exec check`.
 
 Run `agent-exec wave lint --plan plan.json` before scheduling to report non-blocking ownership and sizing warnings. It flags deletion specs that own only literal paths, project rules whose required globs are not owned, packages owning more than 3 files and specs longer than 150 lines (see "Package sizing" in §3); `--json` emits structured warnings for automation.
+
+`wave run` refuses to start (an error report of kind `environment`) when the user's HEAD tracks files under any `isolation.exclude_paths` directory. The message names each directory with its file count and size, and the two fixes: take it out of the branch (`git rm -r --cached <dir>`, add it to `.gitignore`, commit) or list it in `isolation.keep_paths`.
 
 ```text
 agent-exec wave run --plan plan.json --state wave/state.json --into prog-<label> \

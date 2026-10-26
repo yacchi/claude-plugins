@@ -1,19 +1,22 @@
 import type { EngineInterface, Register } from 'claude-code'
+import { checkLand } from './guards/land.ts'
 import { checkLaunch } from './guards/launch.ts'
 import { checkLightClass } from './guards/light-class.ts'
 import { checkOpusGeneralist } from './guards/opus-generalist.ts'
+import { checkOptIn, noteAnswer, noteSkill, noteUserPrompt } from './guards/opt-in.ts'
 import { checkWorkerTests } from './guards/worker-tests.ts'
 import { checkWorkerTree } from './guards/worker-tree.ts'
 import { checkWorkerVcs } from './guards/worker-vcs.ts'
 import { checkWorktreeLease, recordActivity, releaseLeases } from './guards/worktree-lease.ts'
-import { register as registerHud } from './hud.ts'
+import { hudTurnComplete, register as registerHud } from './hud.ts'
 import { cleanupWorktrees } from './lifecycle/cleanup-worktrees.ts'
-import { forgetAgent, noteAgent, type WorkerCall, workerCall } from './lib/agents.ts'
+import { type WorkerCall, workerCall } from './lib/agents.ts'
+import { agentExec } from './lib/config.ts'
 import { checkDependencyEdit } from './lib/dependency-edit.ts'
 import type { EnvName, Io } from './lib/io.ts'
 import { type CommandClass, classifyCommand, withHeavySlot } from './lib/slot.ts'
 import { recordWorkerBash } from './lib/trace.ts'
-import { routerContext } from './router/inject.ts'
+import { noteTurn, turnOf } from './router/turns.ts'
 import { turnEditsNudge } from './router/turn-edits.ts'
 import { verdictOf } from './router/verdict.ts'
 
@@ -23,10 +26,17 @@ import { verdictOf } from './router/verdict.ts'
 // among them. Every guard is a nudge or a second layer, never a hard wall:
 // each has its own escape hatches and fails open on anything unexpected (a
 // guard that errors would disrupt every tool call of every session), hence
-// each `.catch` passes on.
+// each `.catch` passes on. No listener depends on a `classic.*` event, so all
+// of them run where cc-plugin-sec-default is seated; the router text itself
+// is a SessionStart command hook (`agent-exec hook session-start`).
 
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash'])
 const AGENT_TOOLS = new Set(['Agent', 'Task'])
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
+// Sessions whose module heartbeat was stamped (once each, on the first
+// main-loop turn), for `agent-exec doctor`.
+const stamped = new Set<string>()
 
 // The host as the rule files see it. Each variable is read by its literal
 // name, as the engine requires of `$.env.get`.
@@ -54,19 +64,36 @@ const ioOf = ($: EngineInterface): Io => ({
     now: () => $.clock.now(),
     sessionId: () => $.session.id(),
     sessionCwd: () => $.session.cwd(),
+    model: () => $.session.model(),
+    root: () => $.session.root(),
+    messages: () => $.session.messages(),
     agentType: async agentId => (await $.agent.list()).find(a => a.id === agentId)?.type,
     log: text => $.ui.log(text),
 })
 
-const withContext = <R extends { additionalContext?: string[] }>(r: R, text: string | undefined): R =>
-    text ? { ...r, additionalContext: [...(r.additionalContext ?? []), text] } : r
-
 export const register: Register = (on, options) => {
-    on('classic.SessionStart', async ($, e, next) => withContext(
-        await next(e),
-        await routerContext(ioOf($), e.source, e.session_id, e.model, e.cwd),
-    ))
-        .catch(($, e, next) => next(e))
+    // The main loop's turns key the turn-size nudge.
+    on('turn.start', async ($, e, next) => {
+        if (!e.agentId) {
+            const io = ioOf($)
+            const sessionId = await io.sessionId().catch(() => '')
+            noteTurn(sessionId, e.turnId)
+            if (sessionId && !stamped.has(sessionId)) {
+                stamped.add(sessionId)
+                void agentExec(io, ['hook', 'seen', '--session', sessionId, '--event', 'module'], 3000)
+            }
+        }
+
+        return next(e)
+    }).catch(($, e, next) => next(e))
+
+    // User prompts are counted and checked for an opt-in; the prompt itself
+    // passes on unchanged.
+    on('prompt.submit', async ($, e, next) => {
+        noteUserPrompt(await ioOf($).sessionId().catch(() => ''), e)
+
+        return next(e)
+    }).catch(($, e, next) => next(e))
 
     on('tool.call', async ($, e, next) => {
         const tool = String(e.tool)
@@ -81,17 +108,20 @@ export const register: Register = (on, options) => {
             // Only subagent calls are guarded; the main thread is never denied
             // (except a wave-hosted worker session's, for dependency edits and
             // full test suites, and anyone's shell launch of long-running
-            // orchestra work).
+            // orchestra work or merge of an orchestra branch).
             call = await workerCall(io, e)
             if (tool === 'Bash') {
-                // Long-running launches are denied from every shell, the
-                // main thread's included.
-                const deny = await checkLaunch(io, e as unknown as Readonly<Record<string, unknown>>, call?.agentType ?? '')
+                // Long-running launches, and merging an orchestra branch
+                // outside an orchestra worktree, are denied from every shell,
+                // the main thread's included.
+                const input = e as unknown as Readonly<Record<string, unknown>>
+                const deny = await checkLaunch(io, input, call?.agentType ?? '')
+                    ?? await checkLand(io, input, call?.cwd ?? await io.sessionCwd().catch(() => ''))
                 if (deny) {
                     return { deny }
                 }
             }
-            if (tool !== 'Bash' && (call || verdictOf(await io.sessionId().catch(() => '')) === 'worker')) {
+            if (tool !== 'Bash' && (call || await verdictOf(io, await io.sessionId().catch(() => '')) === 'worker')) {
                 const cwd = call?.cwd ?? await io.sessionCwd().catch(() => '')
                 const deny = checkDependencyEdit(tool, e as unknown as Readonly<Record<string, unknown>>, cwd)
                 if (deny) {
@@ -109,7 +139,7 @@ export const register: Register = (on, options) => {
             if (tool === 'Bash') {
                 const input = e as unknown as Readonly<Record<string, unknown>>
                 const command = String(input.command ?? '')
-                isWorker = call !== undefined || verdictOf(await io.sessionId().catch(() => '')) === 'worker'
+                isWorker = call !== undefined || await verdictOf(io, await io.sessionId().catch(() => '')) === 'worker'
                 if (isWorker) {
                     commandClass = await classifyCommand(io, command).catch(() => undefined)
                     const deny = await checkWorkerTests(io, input, call?.agentType ?? '', commandClass)
@@ -132,11 +162,34 @@ export const register: Register = (on, options) => {
             const sessionId = await io.sessionId().catch(() => '')
             const deny = await checkLightClass(io, input, sessionId)
                 ?? await checkOpusGeneralist(io, input, sessionId, e.agentId)
+                ?? await checkOptIn(io, input, sessionId, e.agentId, turnOf(sessionId))
             if (deny) {
                 return { deny }
             }
+        } else if (tool === 'Skill' && !e.agentId) {
+            const sessionId = await io.sessionId().catch(() => '')
+            const input = e as unknown as Readonly<Record<string, unknown>>
+            noteSkill(sessionId, String(input.skill ?? ''), turnOf(sessionId))
         }
 
+        if (EDIT_TOOLS.has(tool) && !e.agentId) {
+            // The turn-size nudge rides on the edit's own result.
+            const result = await next(e)
+            if (result.deny !== undefined || result.isError === true) {
+                return result
+            }
+            const sessionId = await io.sessionId().catch(() => '')
+            const nudge = await turnEditsNudge(io, {
+                sessionId,
+                turnId: turnOf(sessionId),
+                tool,
+                input: e as unknown as Readonly<Record<string, unknown>>,
+                toolUseId: e.toolUseId,
+                cwd: await io.sessionCwd().catch(() => ''),
+            }).catch(() => undefined)
+
+            return nudge ? { ...result, context: [...(result.context ?? []), nudge] } : result
+        }
         if (tool !== 'Bash') {
             return next(e)
         }
@@ -167,33 +220,21 @@ export const register: Register = (on, options) => {
         return admit ? withHeavySlot(io, command, run) : run()
     }).catch(($, e, next) => next(e))
 
-    on('classic.SubagentStart', ($, e, next) => {
-        noteAgent(e.agent_id, e.agent_type, e.cwd)
+    // A subagent's every turn ends here; its lease is retaken on its next write.
+    on('turn.complete', async ($, e, next) => {
+        if (e.agentId) {
+            await releaseLeases(ioOf($), e.agentId)
+        } else {
+            noteAnswer(await ioOf($).sessionId().catch(() => ''), String(e.answer ?? ''))
+        }
+        hudTurnComplete($, e)
 
         return next(e)
     }).catch(($, e, next) => next(e))
 
-    on('classic.PostToolUse', async ($, e, next) => {
-        noteAgent(e.agent_id, e.agent_type, e.cwd)
-
-        return withContext(await next(e), await turnEditsNudge(ioOf($), e))
-    }).catch(($, e, next) => next(e))
-
-    on('classic.PostToolUseFailure', ($, e, next) => {
-        noteAgent(e.agent_id, e.agent_type, e.cwd)
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
-    on('classic.SubagentStop', async ($, e, next) => {
-        await releaseLeases(ioOf($), e.agent_id)
-        forgetAgent(e.agent_id)
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
-    on('classic.SessionEnd', async ($, e, next) => {
-        await cleanupWorktrees(ioOf($), e.session_id, e.cwd)
+    on('session.end', async ($, e, next) => {
+        const io = ioOf($)
+        await cleanupWorktrees(io, e.sessionId, await io.root().catch(() => ''))
 
         return next(e)
     }).catch(($, e, next) => next(e))

@@ -257,10 +257,13 @@ func TestKeychainServiceFollowsClaudeConfigDir(t *testing.T) {
 	if got := keychainService("/Users/fujie/.config/ccprofile/profiles/max"); got != "Claude Code-credentials-1614b2a5" {
 		t.Fatalf("profile dir: %q", got)
 	}
-	cfg, _ := isolate(t)
+	cfg, home := isolate(t)
 	useLiveFetchers()
 	goos = "darwin"
-	t.Setenv("CLAUDE_CONFIG_DIR", "/Users/fujie/.config/ccprofile/profiles/max")
+	// A profile dir under the test's home: the credentials-file fallback
+	// must not find a real profile's file on the developer's machine.
+	configDir := filepath.Join(home, ".config", "ccprofile", "profiles", "max")
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
 	var asked string
 	keychainRead = func(_ context.Context, service string) ([]byte, error) {
 		asked = service
@@ -269,7 +272,7 @@ func TestKeychainServiceFollowsClaudeConfigDir(t *testing.T) {
 	if got := Snapshot(cfg, []string{"claude"}, now)["claude"]; got.Error != ErrNoToken {
 		t.Fatalf("entry %+v", got)
 	}
-	if asked != "Claude Code-credentials-1614b2a5" {
+	if asked != keychainService(configDir) {
 		t.Fatalf("asked the keychain for %q", asked)
 	}
 }
