@@ -34,6 +34,7 @@
         "answer": "あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
         "answer_truncated": true,
+        "context_tokens": 0,
         "effort": "high",
         "executor": "pi",
         "exit_code": 0,
@@ -45,6 +46,7 @@
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
+        "resumable": true,
         "resumed": false,
         "route": {
           "agent_type": null,
@@ -79,6 +81,7 @@
         "status": "ok",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,
@@ -129,6 +132,7 @@
         "answer": "x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#2>.answer.txt",
         "answer_truncated": true,
+        "context_tokens": 0,
         "effort": "high",
         "executor": "pi",
         "exit_code": 0,
@@ -140,6 +144,7 @@
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
+        "resumable": true,
         "resumed": false,
         "route": {
           "agent_type": null,
@@ -174,6 +179,7 @@
         "status": "ok",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,
@@ -222,6 +228,7 @@
       "stdout": {
         "answer": "x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀x😀",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#3>.answer.txt",
+        "context_tokens": 0,
         "effort": "high",
         "executor": "pi",
         "exit_code": 0,
@@ -233,6 +240,7 @@
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
+        "resumable": true,
         "resumed": false,
         "route": {
           "agent_type": null,
@@ -267,6 +275,7 @@
         "status": "ok",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,
@@ -309,6 +318,7 @@
       "stdout": {
         "answer": "short",
         "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#4>.answer.txt",
+        "context_tokens": 0,
         "effort": "high",
         "executor": "pi",
         "exit_code": 0,
@@ -320,6 +330,7 @@
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
+        "resumable": true,
         "resumed": false,
         "route": {
           "agent_type": null,
@@ -354,6 +365,7 @@
         "status": "ok",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,

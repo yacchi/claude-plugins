@@ -17,6 +17,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": null,
+        "context_tokens": null,
         "effort": "high",
         "executor": "pi",
         "exit_code": null,
@@ -28,6 +29,7 @@
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": "sandbox",
+        "resumable": false,
         "resumed": false,
         "route": {
           "agent_type": null,

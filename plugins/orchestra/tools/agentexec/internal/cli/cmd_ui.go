@@ -12,7 +12,7 @@ func newUICmd() *cobra.Command {
 		Args:               cobra.ArbitraryArgs,
 		DisableFlagParsing: true,
 		RunE: func(*cobra.Command, []string) error {
-			return exitf(2, "agent-exec ui was removed: wave progress is shown in the orchestra dashboard Artifact (dashboard.artifact_url; see skills/run/references/programme.md §6)")
+			return exitf(2, "agent-exec ui was removed: wave progress is shown in the orchestra dashboard Artifact (dashboard.artifact_urls, one per claude.ai organization; see skills/run/references/programme.md §6)")
 		},
 	}
 }
