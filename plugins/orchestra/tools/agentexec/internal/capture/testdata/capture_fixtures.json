@@ -22,7 +22,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 0
+     "cost_micro_usd": 0,
+     "last_context_tokens": 0
     },
     "sandbox": {
      "backend": "none",
@@ -55,7 +56,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 0
+     "cost_micro_usd": 0,
+     "last_context_tokens": 0
     },
     "sandbox": {
      "backend": "none",
@@ -88,7 +90,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 0
+     "cost_micro_usd": 0,
+     "last_context_tokens": 0
     },
     "sandbox": {
      "backend": "none",
@@ -121,7 +124,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 0
+     "cost_micro_usd": 0,
+     "last_context_tokens": 0
     },
     "sandbox": {
      "backend": "none",
@@ -154,7 +158,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 0
+     "cost_micro_usd": 0,
+     "last_context_tokens": 0
     },
     "sandbox": {
      "backend": "none",
@@ -187,7 +192,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 0
+     "cost_micro_usd": 0,
+     "last_context_tokens": 0
     },
     "sandbox": {
      "backend": "none",
@@ -220,7 +226,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 0
+     "cost_micro_usd": 0,
+     "last_context_tokens": 0
     },
     "sandbox": {
      "backend": "none",
@@ -253,7 +260,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 0
+     "cost_micro_usd": 0,
+     "last_context_tokens": 0
     },
     "sandbox": {
      "backend": "none",
@@ -413,7 +421,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 0
+     "cost_micro_usd": 0,
+     "last_context_tokens": 0
     },
     "sandbox": {
      "backend": "none",

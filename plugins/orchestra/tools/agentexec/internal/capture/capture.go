@@ -305,7 +305,8 @@ func underAny(path string, dirs []string) bool {
 
 // mergeUsage sums two normalized usage objects across grant cycles: tokens
 // key by key, other non-negative integers (cost_micro_usd) summed, anything
-// else taken from b unless null.
+// else taken from b unless null. last_context_tokens is the size of the last
+// request, not a total, so the later cycle wins rather than summing.
 func mergeUsage(a, b any) any {
 	ao, aok := a.(map[string]any)
 	bo, bok := b.(map[string]any)
@@ -345,6 +346,8 @@ func mergeUsage(a, b any) any {
 		na, aInt := va.(int64)
 		nb, bInt := vb.(int64)
 		switch {
+		case k == "last_context_tokens" && vb != nil:
+			out[k] = vb
 		case aInt && bInt && na >= 0 && nb >= 0:
 			out[k] = na + nb
 		case vb != nil:

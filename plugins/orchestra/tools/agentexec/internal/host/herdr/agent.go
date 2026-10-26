@@ -16,6 +16,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/transcript"
 )
 
 // maxStartLine keeps the start command under macOS MAX_CANON (1024): a pane
@@ -244,6 +245,11 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 	if err := e.ensureServer(ctx); err != nil {
 		return "", err
 	}
+	// Every claude process gets its own id (fresh, fork, reopen), so each
+	// transcript is found by id; the warm reader keeps the id warm.go preset.
+	if !s.Truthy("ephemeral") {
+		s.Set("claude_session_id", transcript.NewSessionID())
+	}
 	native, err := e.nativeArgs(s, fork)
 	if err != nil {
 		return "", err
@@ -266,6 +272,14 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 		args = append(args, "--env", kv)
 	}
 	payload, _, err := e.call(ctx, callTimeout, "", args...)
+	if err != nil && !e.statusRunning(ctx) {
+		// A parallel run's refresh may have stopped the server after
+		// ensureServer: start it again and retry the create once.
+		if err := e.restartServer(ctx); err != nil {
+			return "", err
+		}
+		payload, _, err = e.call(ctx, callTimeout, "", args...)
+	}
 	if err != nil {
 		return "", host.Need(host.KindError, err.Error())
 	}
@@ -306,6 +320,7 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 		break
 	}
 	if ready {
+		e.recordHosted(s)
 		return name, nil
 	}
 	screen, err := e.screen(ctx, name)
@@ -343,7 +358,20 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 		return "", err
 	}
 	e.emit(s.Pkg, "trust", name, nil)
+	e.recordHosted(s)
 	return name, nil
+}
+
+// recordHosted indexes the started claude session under its run, so the
+// run's usage and resume lookups can find its transcript, and saves the
+// session with the id.
+func (e *Executor) recordHosted(s *host.Session) {
+	runID := s.Str("run_id")
+	if runID == "" {
+		runID = e.runID
+	}
+	transcript.RecordHosted(runID, s.Str("claude_session_id"))
+	e.save(s)
 }
 
 // awaitInput waits until the trust dialog is gone and Claude's input box
@@ -433,6 +461,7 @@ func revParseCommit(repo, ref string) string {
 func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, runID, stateDir string, addDirs []string) (*host.Session, error) {
 	stateDir = e.adoptStateDir(stateDir)
 	e.mu.Lock()
+	e.runID = runID
 	if e.sname == "" {
 		e.sname = SessionName(runID, e.Env)
 	}
@@ -445,7 +474,7 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 		return nil, host.Need(host.KindError, "could not resolve "+baseRef+" to a commit")
 	}
 	dirs := host.SortedDirs(addDirs)
-	warm := e.warmFor(ctx, pkgID, repo, baseRef, model, stateDir, dirs)
+	warm := e.warmFor(ctx, pkgID, repo, baseRef, model, runID, stateDir, dirs)
 	created, err := isolate.Create(repo, "pkg-"+pkgID, isolate.CreateOptions{
 		Backend: isolate.BackendGit, Onto: baseSHA, BaseBranch: baseRef, Carry: true,
 		CarryExtra: e.isolation("carry_extra"), CarryFiles: e.carryFiles(),
@@ -460,7 +489,7 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	s := &host.Session{Pkg: pkgID, Name: e.Name(), Worktree: created.Path, Extra: map[string]any{
 		"branch": created.Branch, "workspace": nil, "pane": nil, "repo": repo,
 		"model": model, "cls": cls, "state_dir": stateDir, "created": created.Status == "created",
-		"herdr_session": e.sname, "add_dirs": dirs, "net_mark": e.netMark(),
+		"herdr_session": e.sname, "add_dirs": dirs, "net_mark": e.netMark(), "run_id": runID,
 	}}
 	if warm != nil {
 		s.Set("warm_session", warm.str("session_id"))

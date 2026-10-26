@@ -207,6 +207,21 @@ func TestUserSettingsMustDisableRemoteControl(t *testing.T) {
 	}
 }
 
+// The advisor tool is switched off for every hosted worker; `isolate` adds
+// its two switches on top.
+func TestHostedIsolationEnvDisablesAdvisor(t *testing.T) {
+	const advisorOff = "CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1"
+	inherit := MergeConfig(resolved(t, `{"orca": {"user_config": "inherit"}}`), "orca")
+	if env, err := IsolationEnv(inherit); err != nil || !reflect.DeepEqual(env, []string{advisorOff}) {
+		t.Errorf("inherit: %v %v", env, err)
+	}
+	isolate := MergeConfig(resolved(t, `{"orca": {"user_config": "isolate"}}`), "orca")
+	want := []string{"CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1", "CLAUDE_CODE_AUTO_CONNECT_IDE=false", advisorOff}
+	if env, err := IsolationEnv(isolate); err != nil || !reflect.DeepEqual(env, want) {
+		t.Errorf("isolate: %v %v", env, err)
+	}
+}
+
 var orcaTrustScreen = []string{
 	" Accessing workspace:",
 	" Quick safety check: Is this a project you created or one you trust? (Like your own code)",

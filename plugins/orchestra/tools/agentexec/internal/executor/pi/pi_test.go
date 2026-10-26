@@ -100,3 +100,52 @@ func TestVeryLongRecordIsParsed(t *testing.T) {
 		t.Fatalf("status %v", s)
 	}
 }
+
+func TestParseJSONLLastContextTokens(t *testing.T) {
+	assistant := func(usage string) string {
+		return `{"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "ok"}], "stopReason": "stop"` + usage + `}}` + "\n"
+	}
+	user := `{"type": "message_end", "message": {"role": "user", "content": "hi", "usage": {"input": 9999}}}` + "\n"
+	tests := []struct {
+		name   string
+		stdout string
+		want   any
+	}{
+		{
+			name:   "last request wins, not the sum",
+			stdout: assistant(`, "usage": {"input": 1000, "cacheRead": 0, "cacheWrite": 500}`) + assistant(`, "usage": {"input": 200, "cacheRead": 4000, "cacheWrite": 100}`),
+			want:   int64(4300),
+		},
+		{
+			name:   "trailing assistant without usage keeps the last usage",
+			stdout: assistant(`, "usage": {"input": 200, "cacheRead": 4000}`) + assistant(""),
+			want:   int64(4200),
+		},
+		{
+			name:   "user message is ignored",
+			stdout: assistant(`, "usage": {"input": 300}`) + user,
+			want:   int64(300),
+		},
+		{
+			name:   "no usage at all leaves the key absent",
+			stdout: assistant(""),
+			want:   nil,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseJSONL(tc.stdout, "", 0, false)
+			usage, _ := got["usage"].(map[string]any)
+			v, ok := usage["last_context_tokens"]
+			if tc.want == nil {
+				if ok {
+					t.Fatalf("last_context_tokens = %v, want absent", v)
+				}
+				return
+			}
+			if v != tc.want {
+				t.Fatalf("last_context_tokens = %v, want %v", v, tc.want)
+			}
+		})
+	}
+}

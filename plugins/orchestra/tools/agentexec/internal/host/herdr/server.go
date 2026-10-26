@@ -143,11 +143,28 @@ func (e *Executor) statusRunning(ctx context.Context) bool {
 	return ServerRunning(out)
 }
 
+// restartServer drops the server latch and starts or attaches the server
+// again. openAgent calls it when a workspace create fails with the server
+// gone, since ensureServer alone would trust the latch.
+func (e *Executor) restartServer(ctx context.Context) error {
+	e.mu.Lock()
+	e.serverReady = false
+	e.closeControl()
+	e.mu.Unlock()
+	return e.ensureServer(ctx)
+}
+
 func (e *Executor) ensureServer(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.serverReady {
-		return nil
+		if e.statusRunning(ctx) {
+			return nil
+		}
+		// Another run's refresh may have stopped the server this latch
+		// still believes in; forget it and attach or start again.
+		e.serverReady = false
+		e.closeControl()
 	}
 	if e.statusRunning(ctx) {
 		attached, err := e.attach(ctx)

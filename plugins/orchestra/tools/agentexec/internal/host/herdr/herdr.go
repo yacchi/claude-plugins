@@ -120,6 +120,7 @@ type Executor struct {
 	warmMu   sync.Mutex
 	stateMu  sync.Mutex
 	sname    string
+	runID    string // the wave run id, set once by Start
 	stateDir string
 	repo     string
 	homeName string

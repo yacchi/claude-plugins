@@ -38,6 +38,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/orcanest"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/transcript"
 )
 
 // RegistryName is the session registry file in the wave state dir.
@@ -353,6 +354,13 @@ func (e *Executor) command(s *host.Session) (string, error) {
 	for _, d := range s.Strings("add_dirs") {
 		command += " --add-dir " + sandbox.ShellQuote(d)
 	}
+	// Every open gets a fresh id the run can find later (transcript.HostedSessions).
+	// A template that sets its own session or resumes one keeps it.
+	if !strings.Contains(template, "--session-id") && !strings.Contains(template, "--resume") {
+		id := transcript.NewSessionID()
+		s.Set("claude_session_id", id)
+		command += " --session-id " + id
+	}
 	tokens, err := host.ShellSplit(command)
 	if err != nil {
 		return "", host.Need(host.KindError, "invalid orca.command: "+err.Error())
@@ -402,6 +410,9 @@ func (e *Executor) openTerminal(ctx context.Context, s *host.Session) (string, e
 	s.Terminal = handle
 	e.save(s)
 	e.record(s.Worktree, handle)
+	if id := s.Str("claude_session_id"); id != "" {
+		transcript.RecordHosted(s.Str("run_id"), id)
+	}
 
 	startup := e.cfg.Seconds("startup_timeout", 90)
 	deadline := e.Clock.Now().Add(startup)
@@ -525,7 +536,7 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	(&orcanest.Nester{Binary: e.Binary, Stderr: e.Stderr}).Nest(repo, baseRef, path)
 	s := &host.Session{Pkg: pkgID, Name: e.Name(), Worktree: path, Extra: map[string]any{
 		"branch": wt["branch"], "request_ids": []any{}, "repo": repo, "model": model, "cls": cls,
-		"state_dir": stateDir, "add_dirs": host.SortedDirs(addDirs),
+		"state_dir": stateDir, "add_dirs": host.SortedDirs(addDirs), "run_id": runID,
 	}}
 	e.save(s)
 	adopted, err := isolate.Adopt(repo, "pkg-"+pkgID, path, isolate.AdoptOptions{

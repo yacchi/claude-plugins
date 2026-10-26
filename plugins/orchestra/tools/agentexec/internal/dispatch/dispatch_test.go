@@ -119,7 +119,7 @@ func TestSessionStore(t *testing.T) {
 	if _, ok := ReadSession(cfg, "pi", "t-1"); ok {
 		t.Fatal("empty store must miss")
 	}
-	rec, err := WriteSession(cfg, "pi", "t-1", "sid-1", wd)
+	rec, err := WriteSession(cfg, "pi", "t-1", "sid-1", wd, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestSessionStore(t *testing.T) {
 			t.Errorf("%q must read as a miss", content)
 		}
 	}
-	if _, err := WriteSession(cfg, "pi", "///", "sid", wd); err == nil {
+	if _, err := WriteSession(cfg, "pi", "///", "sid", wd, 0); err == nil {
 		t.Error("an unusable task id must not be written")
 	}
 	if _, ok := ReadSession(cfg, "../pi", "../../x"); ok {

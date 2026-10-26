@@ -1357,7 +1357,7 @@ ul.items > li:last-child {
         if (S.runs.length === 0) {
             root.replaceChildren(h("div", { class: "placeholder" },
                 h("p", { text: "まだ実行がありません。" }),
-                h("p", { text: "ダッシュボードを設定（dashboard.artifact_url）した状態で orchestra の wave を始めると、その実行がここに表示されます。" })));
+                h("p", { text: "ダッシュボードを設定（dashboard.artifact_urls（組織ごと））した状態で orchestra の wave を始めると、その実行がここに表示されます。" })));
             return;
         }
         const shown = visible(S.runs);

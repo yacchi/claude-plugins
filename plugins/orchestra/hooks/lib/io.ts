@@ -7,15 +7,34 @@ import type { FsStat, ProcessRunInit, ProcessRunResult } from 'claude-code'
 export type EnvName =
     | 'HOME'
     | 'ORCHESTRA_ENFORCEMENT'
+    | 'ORCHESTRA_FANOUT_GUARD'
     | 'ORCHESTRA_LAUNCH_GUARD'
     | 'ORCHESTRA_LEASE_GUARD'
     | 'ORCHESTRA_LEASE_WINDOW'
     | 'ORCHESTRA_OPUS_NUDGE'
+    | 'ORCHESTRA_RESUME_GUARD'
     | 'ORCHESTRA_SESSION_CLEANUP'
     | 'ORCHESTRA_TEST_GUARD'
     | 'ORCHESTRA_TREE_GUARD'
     | 'ORCHESTRA_TURN_GUARD'
+    | 'ORCHESTRA_USAGE_GUARD'
     | 'ORCHESTRA_VCS_GUARD'
+
+// One agent of the session as `$.agent.list()` reports it.
+export type AgentInfo = {
+    id: string,
+    type: string,
+    status: string,
+    parentId?: string,
+    name?: string,
+}
+
+// One rate-limit window of the Claude plan (`$.session.usage().rateLimits`).
+export type RateLimit = {
+    kind: string,
+    percentUsed: number,
+    resetsAt?: string,
+}
 
 export type Io = {
     env: (name: EnvName) => Promise<string | undefined>,
@@ -36,4 +55,10 @@ export type Io = {
     messages: () => Promise<readonly unknown[]>,
     agentType: (agentId: string) => Promise<string | undefined>,
     log: (text: string) => void,
+    // The plugin's own root directory ($.plugin.root); '' when unknown.
+    pluginRoot: () => string,
+    // Every agent of the session, as $.agent.list() reports it.
+    agents: () => Promise<readonly AgentInfo[]>,
+    // The plan's rate-limit windows; [] off a subscription or before the first reading.
+    rateLimits: () => Promise<readonly RateLimit[]>,
 }

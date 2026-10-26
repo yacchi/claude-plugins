@@ -115,6 +115,19 @@ func nonNegInt(v any) (int64, bool) {
 	return n, ok && n >= 0
 }
 
+// requestContext is the context one assistant request re-read: its fresh
+// input plus cache reads and writes. Missing or malformed fields count as 0,
+// the same as accumulate.
+func requestContext(usage map[string]any) int64 {
+	var total int64
+	for _, k := range []string{"input", "cacheRead", "cacheWrite"} {
+		if n, ok := nonNegInt(mustGet(usage, k)); ok {
+			total += n
+		}
+	}
+	return total
+}
+
 func accumulate(tokens map[string]any, key string, v any) {
 	n, ok := nonNegInt(v)
 	if !ok {
@@ -174,6 +187,11 @@ func ParseJSONL(stdout, stderr string, exitCode int, resumed bool) map[string]an
 	var sessionID any
 	tokens := map[string]any{}
 	costUSD, sawCost := 0.0, false
+	// lastContext is the context the most recent assistant request re-read
+	// (input + cache reads + cache writes); resume gating needs this, not
+	// the summed tokens, because every resumed turn re-reads it.
+	var lastContext int64
+	sawContext := false
 	var lastAssistant map[string]any
 	var scannable []string
 
@@ -205,6 +223,8 @@ func ParseJSONL(stdout, stderr string, exitCode int, resumed bool) map[string]an
 			}
 			lastAssistant = message
 			if usage, ok := mustGet(message, "usage").(map[string]any); ok {
+				lastContext = requestContext(usage)
+				sawContext = true
 				accumulate(tokens, "input_tokens", mustGet(usage, "input"))
 				accumulate(tokens, "output_tokens", mustGet(usage, "output"))
 				accumulate(tokens, "cached_input_tokens", mustGet(usage, "cacheRead"))
@@ -265,13 +285,16 @@ func ParseJSONL(stdout, stderr string, exitCode int, resumed bool) map[string]an
 	}
 
 	var usage any
-	if len(tokens) > 0 || sawCost {
+	if len(tokens) > 0 || sawCost || sawContext {
 		u := map[string]any{}
 		if len(tokens) > 0 {
 			u["tokens"] = tokens
 		}
 		if sawCost {
 			u["cost_micro_usd"] = int64(math.Round(costUSD * 1000000))
+		}
+		if sawContext {
+			u["last_context_tokens"] = lastContext
 		}
 		usage = u
 	}

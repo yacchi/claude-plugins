@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -81,5 +83,67 @@ func TestHookCmdSeenMissingEventIsUsageError(t *testing.T) {
 	hookCmdIsolate(t)
 	if _, code := hookCmdRun(t, "", "hook", "seen", "--session", "s1"); code != 2 {
 		t.Errorf("exit %d; want 2", code)
+	}
+}
+
+// hookCtxTranscript writes a subagent transcript for session "s1" under a
+// temporary CLAUDE_CONFIG_DIR and points the command at it.
+func hookCtxTranscript(t *testing.T, lines string) string {
+	t.Helper()
+	hookCmdIsolate(t)
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	sub := filepath.Join(dir, "projects", "p", "s1", "subagents")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(sub, "agent-a1.jsonl")
+	if err := os.WriteFile(file, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+func TestHookCmdContextReportsLastSubagentResponse(t *testing.T) {
+	file := hookCtxTranscript(t, `{"message":{"usage":{"input_tokens":1,"cache_read_input_tokens":2,"cache_creation_input_tokens":3}}}
+{"message":{"usage":{"input_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":30}}}
+`)
+	out, code := hookCmdRun(t, "", "hook", "context", "--session", "s1", "--agent", "a1")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var got struct {
+		ContextTokens *int64  `json:"context_tokens"`
+		Transcript    *string `json:"transcript"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if got.ContextTokens == nil || *got.ContextTokens != 60 {
+		t.Errorf("context_tokens = %v; want 60 (last line only)", got.ContextTokens)
+	}
+	if got.Transcript == nil || *got.Transcript != file {
+		t.Errorf("transcript = %v; want %q", got.Transcript, file)
+	}
+}
+
+func TestHookCmdContextUnknownAgentIsNull(t *testing.T) {
+	hookCtxTranscript(t, `{"message":{"usage":{"input_tokens":1}}}`)
+	out, code := hookCmdRun(t, "", "hook", "context", "--session", "s1", "--agent", "nope")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if want := `{"context_tokens":null,"transcript":null}` + "\n"; out != want {
+		t.Errorf("output %q; want %q", out, want)
+	}
+}
+
+func TestHookCmdContextInvalidIDIsUsageError(t *testing.T) {
+	hookCmdIsolate(t)
+	if _, code := hookCmdRun(t, "", "hook", "context"); code != 2 {
+		t.Errorf("missing --session: exit %d; want 2", code)
+	}
+	if _, code := hookCmdRun(t, "", "hook", "context", "--session", "a/b"); code != 2 {
+		t.Errorf("--session with / : exit %d; want 2", code)
 	}
 }

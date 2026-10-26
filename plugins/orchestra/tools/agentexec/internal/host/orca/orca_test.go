@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -251,11 +252,21 @@ func TestAddDirsAndPermissionModeAreRendered(t *testing.T) {
 	e := newEnv(t, map[string]any{})
 	pin := config.PnpmStorePinName + "=" + config.PnpmStoreDir(runtime.GOOS, os.Getenv("HOME"), os.Getenv)
 	x := e.executor(`{"orca": {"permission_mode": "acceptEdits", "user_config": "inherit"}}`)
+	iso, err := host.IsolationEnv(x.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := e.start(x); err != nil {
 		t.Fatal(err)
 	}
 	cmd := opt(e.callsOf("terminal create")[0], "--command")
-	if cmd != "env "+pin+" claude --model opus --permission-mode acceptEdits --add-dir "+e.state+` --settings '{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}'` {
+	sessionID := regexp.MustCompile(`--session-id [0-9a-f-]{36}`)
+	if n := len(sessionID.FindAllString(cmd, -1)); n != 1 {
+		t.Errorf("want exactly one --session-id, got %d in %q", n, cmd)
+	}
+	cmd = sessionID.ReplaceAllString(cmd, "--session-id <ID>")
+	prefix := "env " + strings.Join(append(iso, pin), " ")
+	if cmd != prefix+" claude --model opus --permission-mode acceptEdits --add-dir "+e.state+" --session-id <ID>"+` --settings '{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}'` {
 		t.Errorf("%q", cmd)
 	}
 }

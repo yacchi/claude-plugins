@@ -161,14 +161,15 @@ telemetry:
   enabled: false
   dir: ~/.claude/orchestra/telemetry
 
-# Wave dashboard: the claude.ai Artifact page the orchestra-wave watcher writes
-# each wave's progress to and reads approve/deny decisions from. Set it in the
-# user scope (~/.claude/orchestra.yaml). Empty (the default) makes the `run`
-# skill publish the page before the first wave of a session and record its URL
-# here. Only "" or an https://claude.ai/...artifact... URL is accepted. Who may
-# approve on the page follows the Artifact's own sharing (private by default).
+# Wave dashboard: the claude.ai Artifact pages the orchestra-wave watcher writes
+# each wave's progress to and reads approve/deny decisions from. One page per
+# claude.ai organization, keyed by the organization uuid. Set it in the user scope
+# (~/.claude/orchestra.yaml). An organization without an entry gets a page published
+# by the `run` skill on first use, and its URL is recorded here. Each value is an
+# https://claude.ai/...artifact... URL. Who may approve on the page follows the
+# Artifact's own sharing (private by default). The old `artifact_url` key is an error.
 dashboard:
-  artifact_url: ""
+  artifact_urls: {}
 
 # Persisted, time-decaying executor cooldown. Entries are written automatically
 # when `agent-exec dispatch` parses
@@ -475,6 +476,22 @@ enforcement:
   turn_edits: 8
   opus_generalist: "nudge"
   session_cleanup: "on"
+  # Claude 5-hour window guards (percent). usage_advise: a note on Agent/Task/Workflow
+  # spawns and a one-new-start-per-round pace in `wave run`. usage_guard: deny new spawns
+  # and hold new `wave run` starts (the runner holds at max(usage_guard, 95); a 90 from
+  # older configs reads as 95). "off" disables either one; ORCHESTRA_USAGE_GUARD=off too.
+  usage_advise: 75
+  usage_guard: 95
+  # Planner children (hooks/guards/fanout.ts): spawns per planner run, alive at once,
+  # and tool-call budgets for a scout and a checker. "off" disables the guard.
+  fanout:
+    children: 6
+    concurrent: 2
+    scout_calls: 15
+    checker_calls: 8
+  # Never resume (SendMessage) a worker whose last context is at least this many tokens;
+  # spawn a fresh agent with a handoff instead. "off" or 0 disables.
+  resume_max_tokens: 100000
 
 # --- pricing (optional) ---------------------------------------------------------
 # `agent-exec usage` estimates cost from a built-in list of Anthropic API prices

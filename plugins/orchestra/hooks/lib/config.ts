@@ -4,14 +4,25 @@ import type { Io } from './io.ts'
 // block. Every caller fails open: a hook that errors would disrupt every tool
 // call of every session, so nothing here throws.
 
+// `missing` means the plugin's own bin/agent-exec is absent or not executable
+// (each guard's default applies); `failed` means we could not ask (a nonzero
+// exit or a timeout).
 export type AgentExecResult =
     | { kind: 'ok', stdout: string }
     | { kind: 'missing' }
     | { kind: 'failed', stdout?: string }
 
-// `command -v` first, so "agent-exec is not installed" (each guard's default
-// applies) is told apart from "we could not ask" (a nonzero exit or a timeout).
-const PROBE = 'command -v agent-exec >/dev/null 2>&1 || exit 127; exec agent-exec "$@"'
+// The plugin's own launcher, handed to the shell in the environment so the
+// argv keeps its shape; no PATH lookup (the PATH copy may be another version).
+const PROBE = '[ -n "$ORCHESTRA_AGENT_EXEC" ] && [ -x "$ORCHESTRA_AGENT_EXEC" ] || exit 127; exec "$ORCHESTRA_AGENT_EXEC" "$@"'
+
+const pluginRootOf = (io: Io): string => {
+    try {
+        return io.pluginRoot()
+    } catch {
+        return ''
+    }
+}
 
 export const agentExec = async (
     io: Io,
@@ -19,7 +30,11 @@ export const agentExec = async (
     timeoutMs: number,
 ): Promise<AgentExecResult> => {
     try {
-        const r = await io.run(['sh', '-c', PROBE, 'agent-exec', ...args], { timeoutMs })
+        const root = pluginRootOf(io)
+        const r = await io.run(['sh', '-c', PROBE, 'agent-exec', ...args], {
+            timeoutMs,
+            env: { ORCHESTRA_AGENT_EXEC: root === '' ? '' : `${root}/bin/agent-exec` },
+        })
         if (r.exitCode === 127) {
             return { kind: 'missing' }
         }
