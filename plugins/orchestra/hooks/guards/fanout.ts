@@ -14,7 +14,7 @@ import { enforcementOf, isOff, loadEnforcement } from '../lib/config.ts'
 //   children    spawns per planner (total)
 //   concurrent  live children (pending, running, waiting) per planner
 //   scout_calls / checker_calls  tool calls per child
-// `fanout: off` or ORCHESTRA_FANOUT_GUARD=off disables both checks. There is
+// `fanout: off`, ORCHESTRA_FANOUT_GUARD=off or ORCHESTRA_ENFORCEMENT=off disables both checks. There is
 // no per-call escape: a planner must not lift its own cap. Fails open.
 
 export type FanoutConfig = {
@@ -40,6 +40,9 @@ const positive = (v: unknown, fallback: number): number =>
 
 // The effective caps, or undefined when the guard is off.
 const fanoutConfig = async (io: Io, sessionId: string): Promise<FanoutConfig | undefined> => {
+    if (await io.env('ORCHESTRA_ENFORCEMENT') === 'off') {
+        return undefined
+    }
     if (isOff(await io.env('ORCHESTRA_FANOUT_GUARD'))) {
         return undefined
     }
@@ -114,7 +117,10 @@ export const checkChildBudget = async (
         let type = childTypes.get(agentId)
         if (type === undefined) {
             type = ((await io.agentType(agentId)) ?? '').toLowerCase()
-            childTypes.set(agentId, type)
+            // An empty type is not cached: the agent may be registered later.
+            if (type !== '') {
+                childTypes.set(agentId, type)
+            }
         }
         const role = type.endsWith('orchestra-scout') ? 'scout' : type.endsWith('orchestra-checker') ? 'checker' : ''
         if (!role) {

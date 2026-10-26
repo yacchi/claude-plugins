@@ -19,6 +19,16 @@ describe('guard wiring', () => {
         expect((await callTool($, undefined, { tool: 'Agent', ...SONNET })).deny).toBeUndefined()
     })
 
+    test('usage: at 80% an Agent call is allowed and carries the advice once', async ($, on) => {
+        fakeHost(on, { sessionId: freshSession(), rateLimits: [{ kind: 'five_hour', percentUsed: 80 }] })
+        const first = await callTool($, undefined, { tool: 'Agent', ...SONNET }) as { deny?: string, context?: string[] }
+        expect(first.deny).toBeUndefined()
+        expect(first.context).toHaveLength(1)
+        expect(first.context?.[0]).toContain('orchestra: Claude plan usage is 80%')
+        const second = await callTool($, undefined, { tool: 'Agent', ...SONNET }) as { context?: string[] }
+        expect(second.context ?? []).toHaveLength(0)
+    })
+
     test('usage: a Workflow call is denied at the stop level', async ($, on) => {
         fakeHost(on, { sessionId: freshSession(), rateLimits: [{ kind: 'five_hour', percentUsed: 95 }] })
         const held = await callTool($, undefined, { tool: 'Workflow', script: 'export const meta = {}' })

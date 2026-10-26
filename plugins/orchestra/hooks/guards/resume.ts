@@ -16,7 +16,7 @@ import { hasEscape } from '../lib/shell.ts'
 //
 // Escape hatches: [orchestra:allow-resume(: reason)] in the message lets the
 // first resume of each agent through (a second one for the same agent is checked
-// normally); enforcement.resume_max_tokens: off or 0; ORCHESTRA_RESUME_GUARD=off;
+// normally); enforcement.resume_max_tokens: off or 0; ORCHESTRA_RESUME_GUARD=off; ORCHESTRA_ENFORCEMENT=off;
 // fail-open on anything unexpected.
 
 // Agents whose one-time escape has been spent this session.
@@ -50,6 +50,9 @@ export const checkResume = async (
     sessionId: string,
 ): Promise<string | undefined> => {
     try {
+        if (await io.env('ORCHESTRA_ENFORCEMENT').catch(() => undefined) === 'off') {
+            return undefined
+        }
         const name = checkedTarget(input)
         if (name === undefined) {
             return undefined

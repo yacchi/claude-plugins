@@ -6,7 +6,7 @@ import { checkLightClass } from './guards/light-class.ts'
 import { checkOpusGeneralist } from './guards/opus-generalist.ts'
 import { checkOptIn, noteAnswer, noteSkill, noteUserPrompt } from './guards/opt-in.ts'
 import { checkResume } from './guards/resume.ts'
-import { checkUsage } from './guards/usage.ts'
+import { checkUsage, usageAdvice } from './guards/usage.ts'
 import { checkWorkerTests } from './guards/worker-tests.ts'
 import { checkWorkerTree } from './guards/worker-tree.ts'
 import { checkWorkerVcs } from './guards/worker-vcs.ts'
@@ -125,6 +125,9 @@ export const register: Register = (on, options) => {
                 return { deny }
             }
         }
+        // The usage note of an allowed Agent, Task or Workflow call rides on
+        // that call's own result.
+        let advice: string | undefined
         let call: WorkerCall | undefined
         // A worker's Bash call: a subagent's, or the main thread of a session
         // a wave hosts. Its command is classified once, for the full-suite
@@ -194,12 +197,14 @@ export const register: Register = (on, options) => {
             if (deny) {
                 return { deny }
             }
+            advice = await usageAdvice(io, tool, input, sessionId).catch(() => undefined)
         } else if (tool === 'Workflow') {
             const input = e as unknown as Readonly<Record<string, unknown>>
             const deny = await checkUsage(io, tool, input, sessionId, e.agentId)
             if (deny) {
                 return { deny }
             }
+            advice = await usageAdvice(io, tool, input, sessionId).catch(() => undefined)
         } else if (tool === 'SendMessage') {
             const input = e as unknown as Readonly<Record<string, unknown>>
             const deny = await checkResume(io, input, sessionId)
@@ -229,7 +234,12 @@ export const register: Register = (on, options) => {
             return nudge ? { ...result, context: [...(result.context ?? []), nudge] } : result
         }
         if (tool !== 'Bash') {
-            return next(e)
+            if (advice === undefined) {
+                return next(e)
+            }
+            const result = await next(e)
+
+            return { ...result, context: [...(result.context ?? []), advice] }
         }
         const input = e as unknown as Readonly<Record<string, unknown>>
         const command = String(input.command ?? '')

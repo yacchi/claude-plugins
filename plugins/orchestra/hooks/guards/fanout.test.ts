@@ -156,3 +156,26 @@ describe('fanout: configuration', () => {
         }
     })
 })
+
+describe('fanout: ORCHESTRA_ENFORCEMENT=off and late registration', () => {
+    test('ORCHESTRA_ENFORCEMENT=off disables the spawn cap and the child budget', async () => {
+        const planner = fresh('pl')
+        const scout = fresh('sc')
+        const io = host({ types: { [planner]: 'orchestra:orchestra-planner', [scout]: SCOUT }, env: { ORCHESTRA_ENFORCEMENT: 'off' } })
+        expect(await spawn(io, 'general-purpose', planner)).toBeUndefined()
+        for (let i = 0; i < 20; i++) {
+            expect(await checkChildBudget(io, fresh('s'), scout)).toBeUndefined()
+        }
+    })
+
+    test('a child whose type is registered after its first call is still budgeted', async () => {
+        const scout = fresh('sc')
+        const types: Record<string, string> = {}
+        const io = host({ types, enforcement: { fanout: { scout_calls: 1 } } })
+        const sessionId = fresh('s')
+        expect(await checkChildBudget(io, sessionId, scout)).toBeUndefined()
+        types[scout] = SCOUT
+        expect(await checkChildBudget(io, sessionId, scout)).toBeUndefined()
+        expect(await checkChildBudget(io, sessionId, scout)).toContain('tool budget spent')
+    })
+})

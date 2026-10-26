@@ -114,4 +114,11 @@ describe('resume guard', () => {
         expect(await checkResume(fakeIo({ ...huge, limit: null }).io, { to: id }, session())).toBeUndefined()
         expect(await checkResume(fakeIo({ ...huge, env: { ORCHESTRA_RESUME_GUARD: 'off' } }).io, { to: id }, session())).toBeUndefined()
     })
+
+    test('ORCHESTRA_ENFORCEMENT=off allows without reaching agent-exec', async () => {
+        const id = 'ag_enforcement_off'
+        const { io, runs } = fakeIo({ agents: [agent(id)], contextTokens: 500000, env: { ORCHESTRA_ENFORCEMENT: 'off' } })
+        expect(await checkResume(io, { to: id }, session())).toBeUndefined()
+        expect(runs).toEqual([])
+    })
 })
