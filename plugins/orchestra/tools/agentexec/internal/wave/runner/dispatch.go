@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/approvals"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/dispatch"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/transcript"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -37,6 +39,14 @@ func (r *runner) refresh(pid, head string) (bool, string) {
 	}
 	if _, err := gitRun(r.intPath, "merge-base", "--is-ancestor", head, baseline); err == nil {
 		return true, "" // the tree already sits on top of the integration HEAD
+	}
+	if r.host != nil && r.host.Name() == "herdr" {
+		// Close the live session through the host first: the refresh's own
+		// close goes through hostref, which stops the herdr server when this
+		// was its last workspace, and the executor would keep using a dead one.
+		if s := r.hostSession(pid); s != nil {
+			_ = r.host.Close(s, false)
+		}
 	}
 	res, err := isolate.Refresh(r.root, r.task(pid), head, "")
 	if err != nil {
@@ -155,6 +165,12 @@ func (r *runner) writeContext(pid, refreshNote string) (string, error) {
 	if refreshNote != "" {
 		lines = append(lines, "", refreshNote)
 	}
+	r.mu.Lock()
+	widen := r.widenNotes[pid]
+	r.mu.Unlock()
+	if widen != "" {
+		lines = append(lines, "", widen)
+	}
 	path := r.contextPath(pid)
 	return path, os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
 }
@@ -216,17 +232,76 @@ func (r *runner) dispatch(pid string, promptFiles []string, noResume bool, kind 
 	}()
 	var token string
 	var result map[string]any
-	if s := r.hostSession(pid); s != nil {
+	s := r.hostSession(pid)
+	keepTree := ""
+	if s != nil {
+		if files, retired := r.resumeGateRetire(pid, s, promptFiles); retired {
+			// Its context is too long to resume: a fresh session gets the
+			// full prompt; the earlier work is on disk in the tree.
+			s, keepTree, promptFiles, noResume = nil, s.Worktree, files, true
+		}
+	}
+	if s != nil {
 		// A live session already holds the contract and its code.
 		result = r.hostPrompt(pid, s, promptFiles, "")
 	} else {
 		token, result = r.dispatchOnce(pid, promptFiles, noResume)
 		if result["status"] == "delegate" && r.host != nil {
-			result = r.hostStart(pid, token, result, promptFiles)
+			result = r.hostStart(pid, token, result, promptFiles, keepTree)
 		}
 	}
 	end["status"], end["executor"] = result["status"], result["executor"]
 	return token, result
+}
+
+// resumeGateRetire closes the live session s (keeping its tree) when its
+// last context reached enforcement.resume_max_tokens, since every resumed
+// turn re-reads that context and cache reads count against the plan. It
+// returns the fresh session's prompt: the full files, then each of
+// promptFiles not already among them. Without a limit, a Claude session id
+// or a readable transcript, s is resumed as before.
+func (r *runner) resumeGateRetire(pid string, s *host.Session, promptFiles []string) ([]string, bool) {
+	cfg := r.config()
+	if cfg == nil {
+		return nil, false
+	}
+	sid := s.Str("claude_session_id")
+	if config.ResumeMaxTokens(cfg) <= 0 || sid == "" {
+		return nil, false
+	}
+	path, ok := transcript.Find(transcript.Roots("", ""), sid, "")
+	if !ok {
+		return nil, false
+	}
+	tokens, model, ok := transcript.LastUsage(path)
+	limit := config.ResumeMaxTokensFor(cfg, model)
+	if !ok || limit <= 0 || tokens < limit {
+		return nil, false
+	}
+	_ = r.host.Close(s, false)
+	r.emit("resume-retired", pid, map[string]any{"host": r.host.Name(), "context_tokens": tokens, "limit": limit})
+	files := r.fullFiles(pid)
+	for _, f := range promptFiles {
+		if !containsStr(files, f) {
+			files = append(files, f)
+		}
+	}
+	return files, true
+}
+
+// resumeGateSameTree reports whether a and b name one directory (macOS
+// temp paths reach a tree through a symlink); an empty b matches nothing.
+func resumeGateSameTree(a, b string) bool {
+	if b == "" {
+		return false
+	}
+	real := func(p string) string {
+		if e, err := filepath.EvalSymlinks(p); err == nil {
+			return e
+		}
+		return absPath(p)
+	}
+	return real(a) == real(b)
 }
 
 // dispatchOnce is prepare + dispatch with the one unavailable retry; status
@@ -348,13 +423,14 @@ func capitalize(s string) string {
 }
 
 // hostStart runs a `delegate` package in a new host session instead of
-// handing it to the instructor; the result is dispatch-shaped.
-func (r *runner) hostStart(pid, token string, delegated map[string]any, promptFiles []string) map[string]any {
+// handing it to the instructor; the result is dispatch-shaped. keepTree is
+// a retired session's tree, which the new session continues in.
+func (r *runner) hostStart(pid, token string, delegated map[string]any, promptFiles []string, keepTree string) map[string]any {
 	// No orchestra tree may hold the task id into Start: a `cli` dispatch
 	// makes none for this route, but an attempt that routed to a CLI
 	// executor first (and came back unavailable) did. Drop it (it holds
 	// nothing yet) so the task id resolves to the host's tree.
-	if stray, _, ok := isolate.ResolveWorktree(r.root, r.task(pid), ""); ok {
+	if stray, _, ok := isolate.ResolveWorktree(r.root, r.task(pid), ""); ok && !resumeGateSameTree(stray, keepTree) {
 		if _, adopted := isolate.ReadAdopted(stray); !adopted {
 			res, err := isolate.Remove(r.root, r.task(pid), false, "")
 			if err != nil || (res.Status != "removed" && res.Status != "absent") {

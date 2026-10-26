@@ -9,6 +9,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/transcript"
 )
 
 // Run is one recorded run: a Claude workflow directory ("wf_...") and/or a
@@ -55,7 +56,7 @@ func ListRuns(o RunsOptions) []Run {
 	}
 
 	if contains(requested, "claude") {
-		for _, root := range projectsRoots(o.Home, o.ConfigDir) {
+		for _, root := range transcript.Roots(o.Home, o.ConfigDir) {
 			for _, project := range projectDirs(root, o.AllProjects, o.Cwd) {
 				walkWorkflows(project, item)
 			}

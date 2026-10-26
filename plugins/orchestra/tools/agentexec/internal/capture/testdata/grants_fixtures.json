@@ -40,7 +40,8 @@
       "cached_input_tokens": 0,
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
-     }
+     },
+     "last_context_tokens": 5
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -114,7 +115,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 10
+     "cost_micro_usd": 10,
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -195,7 +197,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 10
+     "cost_micro_usd": 10,
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -280,7 +283,8 @@
       "cached_input_tokens": 0,
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
-     }
+     },
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -373,7 +377,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 10
+     "cost_micro_usd": 10,
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -457,7 +462,8 @@
       "cached_input_tokens": 0,
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
-     }
+     },
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -540,7 +546,8 @@
       "cached_input_tokens": 0,
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
-     }
+     },
+     "last_context_tokens": 5
     },
     "sandbox": {
      "backend": "bwrap",
@@ -623,7 +630,8 @@
       "cached_input_tokens": 0,
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
-     }
+     },
+     "last_context_tokens": 5
     },
     "sandbox": {
      "backend": "bwrap",
@@ -708,7 +716,8 @@
       "cached_input_tokens": 0,
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
-     }
+     },
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -780,7 +789,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 10
+     "cost_micro_usd": 10,
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -847,7 +857,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 10
+     "cost_micro_usd": 10,
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -923,7 +934,8 @@
       "cached_input_tokens": 0,
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
-     }
+     },
+     "last_context_tokens": 3
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -997,7 +1009,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 10
+     "cost_micro_usd": 10,
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",
@@ -1065,7 +1078,8 @@
       "cache_write_input_tokens": 0,
       "reasoning_output_tokens": 0
      },
-     "cost_micro_usd": 10
+     "cost_micro_usd": 10,
+     "last_context_tokens": 10
     },
     "sandbox": {
      "backend": "seatbelt",

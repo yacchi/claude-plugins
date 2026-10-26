@@ -2,7 +2,6 @@ package herdr
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/transcript"
 )
 
 // warmRecord is one model's warm reader record under WarmKey: session_id,
@@ -93,7 +93,7 @@ func (e *Executor) warmCleanup() {
 
 // warmFor is the warm record to fork pkg's session from, or nil. Never
 // fails: a failure is a `warm-failed` event and a fresh start.
-func (e *Executor) warmFor(ctx context.Context, pkg, repo, baseRef, model, stateDir string, addDirs []string) warmRecord {
+func (e *Executor) warmFor(ctx context.Context, pkg, repo, baseRef, model, runID, stateDir string, addDirs []string) warmRecord {
 	warm := e.cfg.Sub("warm")
 	get := func(k string) any {
 		if warm == nil {
@@ -111,7 +111,7 @@ func (e *Executor) warmFor(ctx context.Context, pkg, repo, baseRef, model, state
 	if e.warmFailed[model] {
 		return nil
 	}
-	rec, err := e.ensureWarm(ctx, model, baseRef, e.warmPaths, repo, stateDir, addDirs)
+	rec, err := e.ensureWarm(ctx, model, baseRef, e.warmPaths, repo, runID, stateDir, addDirs)
 	if err != nil {
 		e.warmFailed[model] = true
 		e.emit(pkg, "warm-failed", "", map[string]any{"model": model, "reason": host.AsNeed(err).Detail})
@@ -183,23 +183,15 @@ func (e *Executor) EnsureWarm(ctx context.Context, model, baseRef string, paths 
 	stateDir = e.adoptStateDir(stateDir)
 	trace.Lock(&e.warmMu, "herdr warm", trace.Attrs{Pkg: "warm-" + model})
 	defer e.warmMu.Unlock()
-	_, err := e.ensureWarm(ctx, model, baseRef, paths, repo, stateDir, host.SortedDirs(addDirs))
+	_, err := e.ensureWarm(ctx, model, baseRef, paths, repo, "", stateDir, host.SortedDirs(addDirs))
 	return err
-}
-
-func newUUID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // ensureWarm is the warm reader record for model at baseRef: reused while
 // it is fresh and its files are unchanged, otherwise rebuilt (a reader
 // session that reads the files and writes a result). Fails on anything
 // wrong; the caller falls back to a fresh start.
-func (e *Executor) ensureWarm(ctx context.Context, model, baseRef string, paths []string, repo, stateDir string, addDirs []string) (rec warmRecord, err error) {
+func (e *Executor) ensureWarm(ctx context.Context, model, baseRef string, paths []string, repo, runID, stateDir string, addDirs []string) (rec warmRecord, err error) {
 	paths = append([]string{}, paths...)
 	baseRev := revParseCommit(repo, baseRef)
 	if baseRev == "" {
@@ -252,13 +244,13 @@ func (e *Executor) ensureWarm(ctx context.Context, model, baseRef string, paths 
 	if len(files) == 0 {
 		return nil, host.Need(host.KindError, "none of the warm files exist at "+baseRef)
 	}
-	sid := newUUID()
+	sid := transcript.NewSessionID()
 	resultPath := filepath.Join(stateDir, "orca", task+".result.json")
 	_ = os.MkdirAll(filepath.Dir(resultPath), 0o755)
 	_ = os.Remove(resultPath)
 	s := &host.Session{Pkg: task, Name: e.Name(), Worktree: created.Path, Extra: map[string]any{
 		"workspace": nil, "pane": nil, "repo": repo, "model": model, "state_dir": stateDir,
-		"created": created.Status == "created", "herdr_session": e.sname,
+		"created": created.Status == "created", "herdr_session": e.sname, "run_id": runID,
 		"add_dirs":          host.SortedDirs(append(append([]string{}, addDirs...), stateDir)),
 		"claude_session_id": sid, "ephemeral": true,
 	}}

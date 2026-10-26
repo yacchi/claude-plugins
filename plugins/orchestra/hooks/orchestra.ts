@@ -1,9 +1,12 @@
 import type { EngineInterface, Register } from 'claude-code'
+import { checkChildBudget, checkFanout } from './guards/fanout.ts'
 import { checkLand } from './guards/land.ts'
 import { checkLaunch } from './guards/launch.ts'
 import { checkLightClass } from './guards/light-class.ts'
 import { checkOpusGeneralist } from './guards/opus-generalist.ts'
 import { checkOptIn, noteAnswer, noteSkill, noteUserPrompt } from './guards/opt-in.ts'
+import { checkResume } from './guards/resume.ts'
+import { checkUsage, usageAdvice } from './guards/usage.ts'
 import { checkWorkerTests } from './guards/worker-tests.ts'
 import { checkWorkerTree } from './guards/worker-tree.ts'
 import { checkWorkerVcs } from './guards/worker-vcs.ts'
@@ -29,6 +32,11 @@ import { verdictOf } from './router/verdict.ts'
 // each `.catch` passes on. No listener depends on a `classic.*` event, so all
 // of them run where cc-plugin-sec-default is seated; the router text itself
 // is a SessionStart command hook (`agent-exec hook session-start`).
+//
+// The tool.call listener also runs three guards, one line each:
+//   usage:   holds Agent, Task and Workflow calls near the plan's 5-hour limit
+//   fan-out: caps a planner's spawns, and a scout's or checker's tool calls
+//   resume:  holds SendMessage to an agent whose context is already long
 
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash'])
 const AGENT_TOOLS = new Set(['Agent', 'Task'])
@@ -45,14 +53,17 @@ const ioOf = ($: EngineInterface): Io => ({
         switch (name) {
             case 'HOME': return $.env.get('HOME')
             case 'ORCHESTRA_ENFORCEMENT': return $.env.get('ORCHESTRA_ENFORCEMENT')
+            case 'ORCHESTRA_FANOUT_GUARD': return $.env.get('ORCHESTRA_FANOUT_GUARD')
             case 'ORCHESTRA_LAUNCH_GUARD': return $.env.get('ORCHESTRA_LAUNCH_GUARD')
             case 'ORCHESTRA_LEASE_GUARD': return $.env.get('ORCHESTRA_LEASE_GUARD')
             case 'ORCHESTRA_LEASE_WINDOW': return $.env.get('ORCHESTRA_LEASE_WINDOW')
             case 'ORCHESTRA_OPUS_NUDGE': return $.env.get('ORCHESTRA_OPUS_NUDGE')
+            case 'ORCHESTRA_RESUME_GUARD': return $.env.get('ORCHESTRA_RESUME_GUARD')
             case 'ORCHESTRA_SESSION_CLEANUP': return $.env.get('ORCHESTRA_SESSION_CLEANUP')
             case 'ORCHESTRA_TEST_GUARD': return $.env.get('ORCHESTRA_TEST_GUARD')
             case 'ORCHESTRA_TREE_GUARD': return $.env.get('ORCHESTRA_TREE_GUARD')
             case 'ORCHESTRA_TURN_GUARD': return $.env.get('ORCHESTRA_TURN_GUARD')
+            case 'ORCHESTRA_USAGE_GUARD': return $.env.get('ORCHESTRA_USAGE_GUARD')
             case 'ORCHESTRA_VCS_GUARD': return $.env.get('ORCHESTRA_VCS_GUARD')
         }
     },
@@ -69,6 +80,15 @@ const ioOf = ($: EngineInterface): Io => ({
     messages: () => $.session.messages(),
     agentType: async agentId => (await $.agent.list()).find(a => a.id === agentId)?.type,
     log: text => $.ui.log(text),
+    pluginRoot: () => {
+        try {
+            return $.plugin.root
+        } catch {
+            return ''
+        }
+    },
+    agents: async () => (await $.agent.list()).map(a => ({ id: a.id, type: a.type, status: a.status, parentId: a.parentId, name: a.name })),
+    rateLimits: async () => ((await $.session.usage()).rateLimits ?? []).map(r => ({ kind: r.kind, percentUsed: r.percentUsed, resetsAt: r.resetsAt })),
 })
 
 export const register: Register = (on, options) => {
@@ -98,6 +118,16 @@ export const register: Register = (on, options) => {
     on('tool.call', async ($, e, next) => {
         const tool = String(e.tool)
         const io = ioOf($)
+        const sessionId = await io.sessionId().catch(() => '')
+        if (e.agentId) {
+            const deny = await checkChildBudget(io, sessionId, e.agentId).catch(() => undefined)
+            if (deny) {
+                return { deny }
+            }
+        }
+        // The usage note of an allowed Agent, Task or Workflow call rides on
+        // that call's own result.
+        let advice: string | undefined
         let call: WorkerCall | undefined
         // A worker's Bash call: a subagent's, or the main thread of a session
         // a wave hosts. Its command is classified once, for the full-suite
@@ -159,15 +189,29 @@ export const register: Register = (on, options) => {
             }
         } else if (AGENT_TOOLS.has(tool)) {
             const input = e as unknown as Readonly<Record<string, unknown>>
-            const sessionId = await io.sessionId().catch(() => '')
-            const deny = await checkLightClass(io, input, sessionId)
+            const deny = await checkUsage(io, tool, input, sessionId, e.agentId)
+                ?? await checkFanout(io, input, sessionId, e.agentId)
+                ?? await checkLightClass(io, input, sessionId)
                 ?? await checkOpusGeneralist(io, input, sessionId, e.agentId)
                 ?? await checkOptIn(io, input, sessionId, e.agentId, turnOf(sessionId))
             if (deny) {
                 return { deny }
             }
+            advice = await usageAdvice(io, tool, input, sessionId).catch(() => undefined)
+        } else if (tool === 'Workflow') {
+            const input = e as unknown as Readonly<Record<string, unknown>>
+            const deny = await checkUsage(io, tool, input, sessionId, e.agentId)
+            if (deny) {
+                return { deny }
+            }
+            advice = await usageAdvice(io, tool, input, sessionId).catch(() => undefined)
+        } else if (tool === 'SendMessage') {
+            const input = e as unknown as Readonly<Record<string, unknown>>
+            const deny = await checkResume(io, input, sessionId)
+            if (deny) {
+                return { deny }
+            }
         } else if (tool === 'Skill' && !e.agentId) {
-            const sessionId = await io.sessionId().catch(() => '')
             const input = e as unknown as Readonly<Record<string, unknown>>
             noteSkill(sessionId, String(input.skill ?? ''), turnOf(sessionId))
         }
@@ -178,7 +222,6 @@ export const register: Register = (on, options) => {
             if (result.deny !== undefined || result.isError === true) {
                 return result
             }
-            const sessionId = await io.sessionId().catch(() => '')
             const nudge = await turnEditsNudge(io, {
                 sessionId,
                 turnId: turnOf(sessionId),
@@ -191,11 +234,15 @@ export const register: Register = (on, options) => {
             return nudge ? { ...result, context: [...(result.context ?? []), nudge] } : result
         }
         if (tool !== 'Bash') {
-            return next(e)
+            if (advice === undefined) {
+                return next(e)
+            }
+            const result = await next(e)
+
+            return { ...result, context: [...(result.context ?? []), advice] }
         }
         const input = e as unknown as Readonly<Record<string, unknown>>
         const command = String(input.command ?? '')
-        const sessionId = await io.sessionId().catch(() => '')
         // Time the command itself; the record is written without holding up
         // the result, which is returned exactly as the tool produced it.
         const run = async () => {

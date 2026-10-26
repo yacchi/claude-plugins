@@ -28,13 +28,28 @@
           }
         },
         "dashboard": {
-          "artifact_url": ""
+          "artifact_url": "",
+          "artifact_urls": {},
+          "org": "",
+          "org_name": ""
         },
         "enforcement": {
+          "fanout": {
+            "checker_calls": 8,
+            "children": 6,
+            "concurrent": 2,
+            "scout_calls": 15
+          },
           "light_class": "off",
           "opus_generalist": "nudge",
+          "resume_max_tokens": 200000,
+          "resume_max_tokens_by_model": {
+            "haiku": 100000
+          },
           "session_cleanup": "on",
           "turn_edits": 8,
+          "usage_advise": 75,
+          "usage_guard": 95,
           "worker_vcs": "block"
         },
         "external_executors": {
@@ -313,13 +328,28 @@
           }
         },
         "dashboard": {
-          "artifact_url": ""
+          "artifact_url": "",
+          "artifact_urls": {},
+          "org": "",
+          "org_name": ""
         },
         "enforcement": {
+          "fanout": {
+            "checker_calls": 8,
+            "children": 6,
+            "concurrent": 2,
+            "scout_calls": 15
+          },
           "light_class": "off",
           "opus_generalist": "nudge",
+          "resume_max_tokens": 200000,
+          "resume_max_tokens_by_model": {
+            "haiku": 100000
+          },
           "session_cleanup": "on",
           "turn_edits": 8,
+          "usage_advise": 75,
+          "usage_guard": 95,
           "worker_vcs": "block"
         },
         "external_executors": {
@@ -588,13 +618,28 @@
           }
         },
         "dashboard": {
-          "artifact_url": ""
+          "artifact_url": "",
+          "artifact_urls": {},
+          "org": "",
+          "org_name": ""
         },
         "enforcement": {
+          "fanout": {
+            "checker_calls": 8,
+            "children": 6,
+            "concurrent": 2,
+            "scout_calls": 15
+          },
           "light_class": "off",
           "opus_generalist": "nudge",
+          "resume_max_tokens": 200000,
+          "resume_max_tokens_by_model": {
+            "haiku": 100000
+          },
           "session_cleanup": "on",
           "turn_edits": 8,
+          "usage_advise": 75,
+          "usage_guard": 95,
           "worker_vcs": "block"
         },
         "external_executors": {

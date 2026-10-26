@@ -17,6 +17,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": null,
+        "context_tokens": null,
         "effort": "high",
         "executor": "pi",
         "exit_code": -15,
@@ -28,6 +29,7 @@
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": "wall",
+        "resumable": true,
         "resumed": false,
         "route": {
           "agent_type": null,
@@ -73,6 +75,7 @@
         "~/.claude/orchestra/executor-state.json": null,
         "~/.claude/orchestra/sessions/pi-t-w.json": {
           "content": {
+            "context_tokens": 0,
             "executor": "pi",
             "session_id": "<UUID#1>",
             "task": "t-w",

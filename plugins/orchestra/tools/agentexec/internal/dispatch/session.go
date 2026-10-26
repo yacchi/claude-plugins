@@ -18,9 +18,12 @@ import (
 // conversation. It is advisory only: every read failure is "no stored
 // session", which just means a cold start.
 
-// SessionRecord is one (executor, task) record.
+// SessionRecord is one (executor, task) record. ContextTokens is the last
+// run's context (the tokens its final request re-read); 0 means unknown, as
+// in records written before it was stored.
 type SessionRecord struct {
 	Executor, Task, SessionID, Workdir, Updated string
+	ContextTokens                               int64
 }
 
 var sessionKeys = []string{"executor", "task", "session_id", "workdir", "updated"}
@@ -71,13 +74,17 @@ func ReadSession(cfg *config.Resolved, executor, task string) (SessionRecord, bo
 		}
 		vals[i] = s
 	}
-	return SessionRecord{vals[0], vals[1], vals[2], vals[3], vals[4]}, true
+	ctxTokens, _ := resumeGateCount(o["context_tokens"])
+	return SessionRecord{
+		Executor: vals[0], Task: vals[1], SessionID: vals[2], Workdir: vals[3], Updated: vals[4],
+		ContextTokens: ctxTokens,
+	}, true
 }
 
 // WriteSession creates or replaces the record (dir 0700, file 0600) through
 // an O_EXCL temp file renamed over the target, so a reader sees the old or
 // the new record, never a torn one.
-func WriteSession(cfg *config.Resolved, executor, task, sessionID, workdir string) (SessionRecord, error) {
+func WriteSession(cfg *config.Resolved, executor, task, sessionID, workdir string, contextTokens int64) (SessionRecord, error) {
 	path, err := sessionPath(cfg, executor, task)
 	if err != nil {
 		return SessionRecord{}, err
@@ -87,14 +94,15 @@ func WriteSession(cfg *config.Resolved, executor, task, sessionID, workdir strin
 	}
 	rec := SessionRecord{
 		Executor: executor, Task: task, SessionID: sessionID, Workdir: abs(workdir),
-		Updated: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		Updated: time.Now().UTC().Format("2006-01-02T15:04:05Z"), ContextTokens: contextTokens,
 	}
 	payload, err := compactJSON(map[string]any{
-		"executor":   rec.Executor,
-		"task":       rec.Task,
-		"session_id": rec.SessionID,
-		"workdir":    rec.Workdir,
-		"updated":    rec.Updated,
+		"executor":       rec.Executor,
+		"task":           rec.Task,
+		"session_id":     rec.SessionID,
+		"workdir":        rec.Workdir,
+		"updated":        rec.Updated,
+		"context_tokens": rec.ContextTokens,
 	})
 	if err != nil {
 		return SessionRecord{}, err
@@ -131,4 +139,26 @@ func sameWorkdir(a, b string) bool {
 		return false
 	}
 	return paths.RealPath(abs(a)) == paths.RealPath(abs(b))
+}
+
+// resumeGateCount reads a non-negative token count from a decoded JSON
+// value; false for anything else, so a missing or malformed count is unknown.
+func resumeGateCount(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int64:
+		return n, n >= 0
+	case float64:
+		return int64(n), n >= 0
+	}
+	return 0, false
+}
+
+// resumeGateContext is the last request's context the executor reported in
+// the result's usage; false when it reported none.
+func resumeGateContext(result map[string]any) (int64, bool) {
+	usage, ok := get(result, "usage").(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	return resumeGateCount(usage["last_context_tokens"])
 }

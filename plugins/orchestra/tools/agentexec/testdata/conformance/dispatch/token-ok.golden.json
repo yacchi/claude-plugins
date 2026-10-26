@@ -36,6 +36,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "all done",
+        "context_tokens": 0,
         "effort": "high",
         "executor": "pi",
         "exit_code": 0,
@@ -47,6 +48,7 @@
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
+        "resumable": true,
         "resumed": false,
         "route": {
           "agent_type": null,
@@ -81,6 +83,7 @@
         "status": "ok",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,
@@ -109,6 +112,7 @@
         },
         "~/.claude/orchestra/sessions/pi-t-1.json": {
           "content": {
+            "context_tokens": 0,
             "executor": "pi",
             "session_id": "<UUID#1>",
             "task": "t-1",
@@ -129,6 +133,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "all done",
+        "context_tokens": 0,
         "effort": "high",
         "executor": "pi",
         "exit_code": 0,
@@ -140,6 +145,7 @@
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
+        "resumable": true,
         "resumed": true,
         "route": {
           "agent_type": null,
@@ -174,6 +180,7 @@
         "status": "ok",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,
@@ -186,6 +193,7 @@
       "files": {
         "~/.claude/orchestra/sessions/pi-t-1.json": {
           "content": {
+            "context_tokens": 0,
             "executor": "pi",
             "session_id": "<UUID#1>",
             "task": "t-1",
@@ -207,6 +215,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "all done",
+        "context_tokens": 0,
         "effort": "high",
         "executor": "pi",
         "exit_code": 0,
@@ -218,6 +227,7 @@
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
+        "resumable": true,
         "resumed": false,
         "route": {
           "agent_type": null,
@@ -252,6 +262,7 @@
         "status": "ok",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,

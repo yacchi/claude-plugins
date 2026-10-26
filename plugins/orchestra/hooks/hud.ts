@@ -288,7 +288,16 @@ const poll = async ($: EngineInterface, wave: Wave): Promise<void> => {
 
             return
         }
-        const io = { run: (argv, init) => $.process.run(argv, init) } as Pick<Io, 'run'> as Io
+        const io = {
+            run: (argv, init) => $.process.run(argv, init),
+            pluginRoot: () => {
+                try {
+                    return $.plugin.root
+                } catch {
+                    return ''
+                }
+            },
+        } as Pick<Io, 'run' | 'pluginRoot'> as Io
         const r = await agentExec(io, ['wave', 'status', '--state', wave.statePath, '--json'], 10_000)
         if (r.kind === 'missing') {
             untrack($, wave)

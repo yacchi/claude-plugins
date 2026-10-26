@@ -37,6 +37,7 @@
         "status": "ok",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,
@@ -99,6 +100,7 @@
         "status": "ok",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,
@@ -141,6 +143,7 @@
         "status": "unavailable",
         "usage": {
           "cost_micro_usd": 0,
+          "last_context_tokens": 0,
           "tokens": {
             "cache_write_input_tokens": 0,
             "cached_input_tokens": 0,

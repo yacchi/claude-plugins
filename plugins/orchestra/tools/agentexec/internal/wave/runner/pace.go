@@ -4,18 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"os"
 	"os/exec"
+	"sync"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/quota"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sysload"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 )
 
 // Pacing that needs no judgment from the instructor: the memory guard holds
-// new starts while the OS reports memory pressure, a budget fixed up front
-// stops new starts once the run's estimated cost reaches it, and a usage
-// notice goes out every wave.usage_every integrated packages. None of them
-// touches a package already in flight.
+// new starts while the OS reports memory pressure, the Claude 5-hour plan
+// window holds them at its stop level (and paces them down before that), a
+// budget fixed up front stops new starts once the run's estimated cost
+// reaches it, and a usage notice goes out every wave.usage_every integrated
+// packages. None of them touches a package already in flight.
 
 // memoryRecheck is how often held starts look at the memory pressure again.
 var memoryRecheck = 30 * time.Second
@@ -35,13 +41,17 @@ const (
 	costTimeout        = 60 * time.Second
 )
 
-// holdStarts reports whether new starts wait for memory pressure to ease
-// (in-flight packages carry on); it records one start-held event when
-// holding begins and one start-resumed when it ends.
+// holdStarts reports whether new starts wait for memory pressure or the
+// Claude plan usage to ease (in-flight packages carry on); memory wins when
+// both hold. It records one start-held event when holding begins and one
+// start-resumed when it ends.
 func (r *runner) holdStarts() bool {
 	held, reason := false, ""
 	if r.memoryGuard {
 		held, reason = memoryPressure()
+	}
+	if !held {
+		held, reason = r.usageHeld()
 	}
 	switch {
 	case held && !r.holding:
@@ -148,4 +158,168 @@ func (r *runner) noteIntegrated(n int) {
 		}
 		r.notify("usage", payload)
 	}()
+}
+
+// usageMaxAgeSeconds is how old a cached Claude reading may be and still
+// decide: an older one says nothing about the window now.
+const usageMaxAgeSeconds = 900
+
+const (
+	// usageGuardDefault is enforcement.usage_guard when it is absent or invalid.
+	usageGuardDefault = 95
+	// usageAdviseDefault is enforcement.usage_advise when it is absent or invalid.
+	usageAdviseDefault = 75
+	// usageStopFloor is the lowest level new starts are held at, so a low
+	// usage_guard still leaves the advice band below the hold.
+	usageStopFloor = 95
+	// usageAdviseStep is the percent between two usage-advice events.
+	usageAdviseStep = 5
+)
+
+// claudeUsage returns the cached Claude entry; false when there is none. It
+// never fetches, so the scheduler never waits on the network. A variable so
+// tests can inject one.
+var claudeUsage = func() (quota.Entry, bool) {
+	path, source := quota.CachePath(), quota.SourceCache
+	if p := os.Getenv(quota.SnapshotEnv); p != "" {
+		path, source = p, quota.SourceFixture
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return quota.Entry{}, false
+	}
+	var doc map[string]any
+	if json.Unmarshal(raw, &doc) != nil {
+		return quota.Entry{}, false
+	}
+	e, ok := quota.EntryFrom(doc["claude"])
+	e.Source = source
+	return e, ok
+}
+
+// usageLevel reads enforcement.<key> as a percent in (0, 100]. off is true
+// for "off" or false; a missing key, a non-number or a number out of range
+// is def.
+func usageLevel(cfg *config.Resolved, key string, def float64) (level float64, off bool) {
+	v, ok := cfg.Lookup("enforcement", key)
+	if !ok {
+		return def, false
+	}
+	if v == "off" || v == false {
+		return 0, true
+	}
+	if n, isNum := quota.Number(v); isNum && n > 0 && n <= 100 {
+		return n, false
+	}
+	return def, false
+}
+
+// usageReading is the Claude 5-hour window the pacing acts on, with the
+// levels that apply (0 = that level is off).
+type usageReading struct {
+	pct    float64
+	resets *float64
+	stop   float64
+	advise float64
+}
+
+// usageNow returns the reading when it can decide. The off switches, a
+// missing, stale or garbled cache, no 5-hour window and a window that has
+// already reset say nothing, so they are not ok: they never hold or advise.
+func (r *runner) usageNow() (usageReading, bool) {
+	if os.Getenv("ORCHESTRA_USAGE_GUARD") == "off" {
+		return usageReading{}, false
+	}
+	cfg := r.config()
+	guard, guardOff := usageLevel(cfg, "usage_guard", usageGuardDefault)
+	advise, adviseOff := usageLevel(cfg, "usage_advise", usageAdviseDefault)
+	entry, ok := claudeUsage()
+	if !ok || entry.FiveHour == nil {
+		return usageReading{}, false
+	}
+	now := r.clock()
+	if entry.Source != quota.SourceFixture && (entry.FetchedAt <= 0 || now-entry.FetchedAt > usageMaxAgeSeconds) {
+		return usageReading{}, false
+	}
+	w := entry.FiveHour
+	if w.ResetsAt != nil && *w.ResetsAt <= now {
+		return usageReading{}, false
+	}
+	u := usageReading{pct: w.UsedPercent, resets: w.ResetsAt}
+	if !guardOff {
+		u.stop = max(guard, usageStopFloor)
+	}
+	if !adviseOff {
+		u.advise = advise
+	}
+	return u, true
+}
+
+// usageResetText renders a reset time (epoch seconds) as RFC3339 UTC; ""
+// when unknown.
+func usageResetText(p *float64) string {
+	if p == nil {
+		return ""
+	}
+	return time.Unix(int64(*p), 0).UTC().Format(time.RFC3339)
+}
+
+// usageHeld reports whether the Claude 5-hour window is at or above the stop
+// level, and why. The hold covers every new start, not only Claude-routed
+// ones: the executor is chosen inside dispatch, after the start decision.
+func (r *runner) usageHeld() (bool, string) {
+	u, ok := r.usageNow()
+	if !ok || u.stop <= 0 || u.pct < u.stop {
+		return false, ""
+	}
+	resets := usageResetText(u.resets)
+	if resets == "" {
+		resets = "unknown"
+	}
+	return true, fmt.Sprintf("Claude plan usage is %s%% of the 5-hour window (threshold %s%%, resets %s)",
+		quota.FormatPercent(u.pct), quota.FormatPercent(u.stop), resets)
+}
+
+// usageAdvised is the last usage-advice step each runner emitted; it is
+// cleared when the reading falls back below usage_advise. Only the scheduler
+// goroutine touches it.
+var (
+	usageAdviseMu sync.Mutex
+	usageAdvised  = map[*runner]float64{}
+)
+
+// paceStarts paces new starts down while the Claude 5-hour window is at or
+// above usage_advise but below the stop level: one usage-advice event per
+// usageAdviseStep above usage_advise, and at most one new start per
+// scheduling round. It returns selected unchanged otherwise.
+func (r *runner) paceStarts(selected []string) []string {
+	if len(selected) == 0 {
+		return selected
+	}
+	u, ok := r.usageNow()
+	if !ok || u.advise <= 0 {
+		return selected
+	}
+	usageAdviseMu.Lock()
+	defer usageAdviseMu.Unlock()
+	if u.pct < u.advise {
+		delete(usageAdvised, r)
+		return selected
+	}
+	if u.stop > 0 && u.pct >= u.stop {
+		return selected // holdStarts already holds it
+	}
+	step := u.advise + math.Floor((u.pct-u.advise)/usageAdviseStep)*usageAdviseStep
+	if step > usageAdvised[r] {
+		usageAdvised[r] = step
+		var resets any
+		if text := usageResetText(u.resets); text != "" {
+			resets = text
+		}
+		r.emit("usage-advice", "", map[string]any{"percent": u.pct, "resets_at": resets})
+	}
+	if len(selected) > 1 {
+		return selected[:1]
+	}
+	return selected
 }

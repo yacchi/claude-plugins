@@ -44,7 +44,7 @@ Going the other direction is cheaper still: route authentication, authorization,
 
 Escalating the class never authorizes expanding scope. A `deep` worker on an escalated packet still owns exactly the files the packet named.
 
-## 5. Why corrections resume the executor's session when one exists
+## 5. Why corrections resume the executor's session only while it is short
 
 A fresh worker avoids anchoring on the reasoning that produced the defect, which matters for a genuinely fresh *reasoning* re-start. An executor's per-task session (pi, via `agent-exec`'s per-task session store) is different: resuming it hands the same worker precise findings instead of the whole contract again, and the anchoring cost is small next to re-sending everything it already has.
 
@@ -54,7 +54,9 @@ So `runTask()` (`workflows/pipeline.js`) sends a correction round back through `
 
 **The full-shape packet must actually stand alone**: the original contract in full, the findings with their `cited_contract`, the `must_not_change` paths (behavior already accepted, which the fix must not disturb), the fact that the previous attempt's files are still on disk and must be read first, and what the next gate will check. `correctionPacketBody()` in `workflows/pipeline.js` builds both the delta and full shapes from one source so they never drift; `correctionPacket()` wraps the full shape for the no-session fallback path. `writeCorrectionPacket()` writes whichever shape applies to `task.correctionPromptFile` right after a FAIL verdict — a cheap script-driven step, deliberately not left to the reviewer's own prompt compliance: an earlier version asked the reviewer to write it as a trailing instruction, and a schema-constrained reviewer routinely returned a well-formed FAIL without writing the file, which then failed the whole task at the next dispatch even though both the work and the review had succeeded.
 
-Resume the same instance (`SendMessage`) only when the reasoning history is genuinely expensive to reconstruct — a long investigation, not a routine fix. Note the asymmetry with the *supervisor* tier: `orchestra-delegate` should be resumed across rounds, because its accumulated context is the thing of value.
+A resumed session re-reads its whole context every turn, and cache reads count against the plan limits. So above `enforcement.resume_max_tokens` the full stand-alone packet to a fresh session (the compact handoff: goal, what was done and verified, what failed and why, the exact next step, the files to read) is cheaper than resuming, and it is what `dispatch`, `runTask()` and `wave run` send. Below the limit, resume the same instance (`SendMessage`) only when the reasoning history is genuinely expensive to reconstruct — a long investigation, not a routine fix.
+
+Note the asymmetry with the *supervisor* tier: its accumulated context is the thing of value, so resume `orchestra-delegate` across rounds only below the limit; above it, use a fresh delegate with a compact handoff.
 
 ## 6. Invocation budgets
 

@@ -204,8 +204,10 @@ async function awaitDispatch(token, label, first) {
 // opts.out — optional object; on every return path that can carry a session
 // (i.e. actually reached a dispatch), dispatchClass sets out.sessionId
 // (string|null, from the dispatch result's `session_id`) and out.resumed
-// (bool, from `resumed`) before returning. A `dispatch: agent`/Claude
-// "delegate" answer has no session concept, so it sets both to null/false.
+// (bool, from `resumed`) before returning, and out.resumable (false when the
+// dispatch result says `resumable: false`, which also clears out.sessionId).
+// A `dispatch: agent`/Claude "delegate" answer has no session concept, so it
+// sets all three to null/false.
 // opts.noResume — when true, appends `--no-resume` to the dispatch call so
 // agent-exec's per-task session store is not consulted for this call, even
 // though `--task` is present (used on class escalation).
@@ -259,7 +261,13 @@ async function dispatchClass(cls, promptText, opts = {}) {
 
   if (r.status === 'ok') {
     // a CLI executor (e.g. pi) already ran it.
-    if (opts.out) { opts.out.sessionId = r.session_id ?? null; opts.out.resumed = !!r.resumed }
+    // A session past enforcement.resume_max_tokens is reported resumable: false
+    // and must not be resumed, so the correction round gets a full packet instead.
+    if (opts.out) {
+      opts.out.resumable = r.resumable !== false
+      opts.out.sessionId = opts.out.resumable ? (r.session_id ?? null) : null
+      opts.out.resumed = !!r.resumed
+    }
     // `--summary` cuts `answer` to 400 code points; the full text is on disk.
     return r.answer_truncated && r.answer_path
       ? r.answer + '\n[full answer: ' + r.answer_path + ']'
@@ -299,7 +307,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
     }
     // `agent()` (Claude or a `dispatch: agent` plugin subagent) has no
     // session-store concept - always report no session on this path.
-    if (opts.out) { opts.out.sessionId = null; opts.out.resumed = false }
+    if (opts.out) { opts.out.sessionId = null; opts.out.resumed = false; opts.out.resumable = false }
     return answer
   }
   if (r.status === 'unavailable') {
@@ -343,11 +351,12 @@ async function dispatchClass(cls, promptText, opts = {}) {
 //   correctionTokenFull   - `agent-exec dispatch prepare` token for this task,
 //     minted with `--prompt-file <workerPromptFile> --prompt-file
 //     <correctionPromptFile> --task <id> --isolate always` (same task id/tree
-//     as the round-1 token). Used when round 1 reported no session, or on a
-//     class escalation.
+//     as the round-1 token). Used when round 1 reported no session, its
+//     session is not resumable, or on a class escalation.
 //   correctionTokenDelta  - same, but `--prompt-file <correctionPromptFile>`
-//     ONLY (no contract - the resumed session already holds it). Used when
-//     round 1 reported a session and the class did not escalate.
+//     ONLY (no contract - the resumed session already holds it). Used ONLY
+//     when round 1 reported a resumable session (its context below
+//     enforcement.resume_max_tokens) and the class did not escalate.
 //   preimplementedPath    - a tree that already holds this task's round-1
 //     work (a dispatch whose result the relay lost - references/programme.md
 //     §3). runTask skips the round-1 dispatch, points iso.path at this tree,
@@ -600,7 +609,7 @@ async function runTask(task) {
   let sessionClass = cls          // class in effect when `out` below was last populated
   let prior = null
   const iso = {}                  // dispatchClass fills iso.path with the task's tree
-  const out = { sessionId: null, resumed: false, sandbox: null } // dispatchClass fills this from the last dispatch (§11)
+  const out = { sessionId: null, resumed: false, resumable: false, sandbox: null } // dispatchClass fills this from the last dispatch (§11)
   let runawaySeen = false
   let fullReviewDone = false      // the first REAL review is the full one, even at gate 2
   if (task.preimplementedPath) iso.path = task.preimplementedPath
@@ -623,7 +632,8 @@ async function runTask(task) {
       // non-resuming token regardless of out.sessionId: the resumed session
       // belongs to the OLD class's executor, which the new class may not even
       // route to (§11). Otherwise, full vs delta is chosen by whether
-      // round 1 reported a session at all (§11).
+      // round 1 reported a resumable session (§11); a session at or past
+      // enforcement.resume_max_tokens is not resumed and gets the full packet.
       const escalated = cls !== sessionClass
       const token = escalated
         ? task.correctionTokenFull
@@ -634,7 +644,7 @@ async function runTask(task) {
           : [task.correctionPromptFile]
         work = await dispatchClass(cls, files, {
           label: task.id + '-work-' + gate, workdir: task.workdir,
-          dispatchToken: token, iso, out, noResume: escalated,
+          dispatchToken: token, iso, out, noResume: escalated || !out.resumable,
         })
         sessionClass = cls
       } else {

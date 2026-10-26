@@ -47,6 +47,7 @@ func (r *runner) runPackage(pid, phase, refreshNote string) {
 		r.mu.Lock()
 		r.notes[pid] = refreshNote
 		r.mu.Unlock()
+		r.noteWidening(pid, r.applyOverrides()[pid])
 		if _, err := r.writeContext(pid, refreshNote); err != nil {
 			panic(runnerError{"OSError", err.Error()})
 		}
@@ -132,7 +133,10 @@ func (r *runner) handle(pid, token string, result map[string]any) bool {
 			return false
 		}
 		prev := r.store.Snapshot().Packages[pid]
-		session := truthy(result["session_id"]) || (prev != nil && truthy(prev.Session))
+		// A session past resume_max_tokens is not resumed: the next
+		// correction goes to a fresh one with the full prompt.
+		resumable := result["resumable"] != false
+		session := resumable && (truthy(result["session_id"]) || (prev != nil && truthy(prev.Session)))
 		_ = r.store.SetStatus(pid, "verifying", "", func(p *state.Package) {
 			p.Executor, p.Session, p.Tree = executor, session, &tree
 		})

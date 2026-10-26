@@ -26,9 +26,14 @@ export type HostOptions = {
     model?: string,
     root?: string,
     messages?: readonly unknown[],
+    rateLimits?: readonly { kind: string, percentUsed: number, resetsAt?: string }[],
 }
 
 type Tree = { path: string, branch: string, gitDir: string, common: string, repo: Repo }
+
+// A subagent as the registry keeps it: its type, its working directory, the
+// agent that spawned it (absent for the main loop), its status and its name.
+type Registered = { type: string, cwd: string, parentId?: string, status: string, name?: string }
 
 // Set around a `tool.call` or `session.end` so the stubs answer for the
 // calling agent (cwd) and for the session being ended (root).
@@ -55,7 +60,7 @@ const fail = (exitCode: number) => ({ exitCode, stdout: '', stderr: 'fatal', isS
 
 // The agents `startAgent` registered on the current host. Each host starts with
 // an empty registry; a test builds its host before it starts agents.
-let registry = new Map<string, { type: string, cwd: string }>()
+let registry = new Map<string, Registered>()
 
 export const fakeHost = (on: On, options: HostOptions) => {
     const dirs = new Set<string>(['/'])
@@ -64,7 +69,7 @@ export const fakeHost = (on: On, options: HostOptions) => {
     const runs: string[][] = []
     const logs: string[] = []
     const session = { model: options.model ?? '', root: options.root ?? options.cwd ?? '/' }
-    const agents = new Map<string, { type: string, cwd: string }>()
+    const agents = new Map<string, Registered>()
     registry = agents
     const addDir = (d: string): void => {
         let p = norm(d)
@@ -225,7 +230,10 @@ export const fakeHost = (on: On, options: HostOptions) => {
     on('session.root', () => ({ value: during.root ?? session.root }))
     on('session.messages', () => ({ value: options.messages ?? [] }))
     on('agent.list', () => ({
-        value: [...agents].map(([id, a]) => ({ id, type: a.type, description: '', status: 'running' })),
+        value: [...agents].map(([id, a]) => ({ id, type: a.type, description: '', status: a.status, parentId: a.parentId, name: a.name })),
+    }))
+    on('session.usage', () => ({
+        value: { context: {}, rateLimits: options.rateLimits ?? [] },
     }))
     on('ui.log', (_$, e) => {
         logs.push(e.text)
@@ -285,8 +293,24 @@ export const callTool = async ($: any, agentId: string | undefined, args: Record
 
 // A subagent starts: its type and working directory are registered for the
 // session, where the host's `agent.list` and `session.cwd` stubs read them.
-export const startAgent = (_$: any, agentId: string, agentType: string, cwd: string): void => {
-    registry.set(agentId, { type: agentType, cwd })
+// `extra` sets what a test needs of the agent's place in the tree.
+export const startAgent = (
+    _$: any,
+    agentId: string,
+    agentType: string,
+    cwd: string,
+    extra: { parentId?: string, status?: string, name?: string } = {},
+): void => {
+    registry.set(agentId, { type: agentType, cwd, parentId: extra.parentId, status: extra.status ?? 'running', name: extra.name })
+}
+
+// A subagent's status changes to a final one (or any other), as the engine's
+// `agent.list` would report it.
+export const stopAgent = (agentId: string, status = 'completed'): void => {
+    const agent = registry.get(agentId)
+    if (agent) {
+        agent.status = status
+    }
 }
 
 // A subagent's end: the turn it finished.

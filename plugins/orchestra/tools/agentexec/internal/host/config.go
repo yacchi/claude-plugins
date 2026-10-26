@@ -308,17 +308,19 @@ func IsolationFlags(c Config, tokens []string) ([]string, error) {
 	return flags, nil
 }
 
-// IsolationEnv is the environment `isolate` adds to a hosted worker process
-// (the bundled skills and the IDE auto-connect off); none for `inherit`.
+// IsolationEnv is the environment a hosted worker process gets. The advisor
+// tool is off in both modes: a worker calling it re-reads its whole context
+// on every call, so this is cost control that applies whatever `user_config`
+// says. The bundled skills and the IDE auto-connect off are `isolate`-only.
 func IsolationEnv(c Config) ([]string, error) {
 	mode, err := UserConfigMode(c)
 	if err != nil {
 		return nil, err
 	}
 	if mode == "inherit" {
-		return []string{}, nil
+		return []string{"CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1"}, nil
 	}
-	return []string{"CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1", "CLAUDE_CODE_AUTO_CONNECT_IDE=false"}, nil
+	return []string{"CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1", "CLAUDE_CODE_AUTO_CONNECT_IDE=false", "CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1"}, nil
 }
 
 // userSettings are the values of every --settings (`--settings v` or

@@ -11,6 +11,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/transcript"
 )
 
 // Tokens is the canonical token vocabulary every source normalizes into, so
@@ -291,41 +292,6 @@ func walkJSONL(dir string) []string {
 	return out
 }
 
-func homeDir(home string) string {
-	if home != "" {
-		return home
-	}
-	if h := os.Getenv("HOME"); h != "" {
-		return h
-	}
-	h, _ := os.UserHomeDir()
-	return h
-}
-
-// projectsRoots are the existing Claude project roots ($CLAUDE_CONFIG_DIR
-// first, then ~/.claude), de-duplicated by real path.
-func projectsRoots(home, configDir string) []string {
-	if configDir == "" {
-		configDir = os.Getenv("CLAUDE_CONFIG_DIR")
-	}
-	var candidates []string
-	if configDir != "" {
-		candidates = append(candidates, filepath.Join(configDir, "projects"))
-	}
-	candidates = append(candidates, filepath.Join(homeDir(home), ".claude", "projects"))
-	var roots []string
-	seen := map[string]bool{}
-	for _, root := range candidates {
-		real := paths.RealPath(root)
-		if seen[real] || !isDir(root) {
-			continue
-		}
-		seen[real] = true
-		roots = append(roots, root)
-	}
-	return roots
-}
-
 func isDir(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.IsDir()
@@ -369,7 +335,7 @@ func scopeName(allProjects bool) string {
 // working directory's project unless allProjects is set.
 func collectWindow(o ReportOptions) *Source {
 	s := &Source{Status: "unavailable", Scope: scopeName(o.AllProjects), Breakdown: true}
-	roots := projectsRoots(o.Home, o.ConfigDir)
+	roots := transcript.Roots(o.Home, o.ConfigDir)
 	if len(roots) == 0 {
 		s.Note = "no claude projects directory"
 		s.ByModel = map[string]Tokens{}
@@ -424,12 +390,16 @@ func (s *Source) fillClaude(acc *claudeAcc, sessions int64) {
 }
 
 // scopeFiles are the transcripts of the given runs (a workflow directory
-// below some session's subagents) and sessions (its own transcript plus its
-// subagents), once each.
+// below some session's subagents, plus the sessions hosted for the run) and
+// sessions (its own transcript plus its subagents), once each.
 func scopeFiles(home, configDir string, runIDs, sessionIDs []string) []string {
 	var out []string
 	seen := map[string]bool{}
-	for _, root := range projectsRoots(home, configDir) {
+	sids := append([]string(nil), sessionIDs...)
+	for _, run := range runIDs {
+		sids = append(sids, transcript.HostedSessions(run)...)
+	}
+	for _, root := range transcript.Roots(home, configDir) {
 		projects, err := os.ReadDir(root)
 		if err != nil {
 			continue
@@ -452,7 +422,7 @@ func scopeFiles(home, configDir string, runIDs, sessionIDs []string) []string {
 					}
 				}
 			}
-			for _, sid := range sessionIDs {
+			for _, sid := range sids {
 				candidates = append(candidates,
 					filepath.Join(project, sid+".jsonl"),
 					filepath.Join(project, sid, "subagents"))

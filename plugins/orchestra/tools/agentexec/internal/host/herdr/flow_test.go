@@ -55,11 +55,22 @@ func (e *env) forks() [][]string {
 func (e *env) warmStarts() [][]string {
 	var out [][]string
 	for _, s := range e.starts() {
-		if hasArg(s, "--session-id") {
+		if isWarmStart(s) {
 			out = append(out, s)
 		}
 	}
 	return out
+}
+
+// isWarmStart reports whether argv starts a warm reader, i.e. an agent named
+// with the p-warm- prefix.
+func isWarmStart(argv []string) bool {
+	for _, a := range argv {
+		if strings.HasPrefix(a, "p-warm-") {
+			return true
+		}
+	}
+	return false
 }
 
 func TestWarmReaderHasItsOwnWorktreeAndPackagesForkFromIt(t *testing.T) {
@@ -109,7 +120,7 @@ func TestNoForkWhenWarmDoesNotApply(t *testing.T) {
 			e.scenario(map[string]any{"running": true}, true)
 			x := e.warmExecutor(c.cfg, c.counts)
 			e.warmStart(x, "a", c.model)
-			if len(e.forks()) != 0 || e.count("agent prompt") != 0 || hasArg(e.starts()[0], "--session-id") {
+			if len(e.forks()) != 0 || e.count("agent prompt") != 0 || isWarmStart(e.starts()[0]) {
 				t.Errorf("starts %v", e.starts())
 			}
 		})
@@ -286,7 +297,7 @@ func TestTrustDialogIsReportedUnlessAutoTrustAndTheExecutorCreatedTheTree(t *tes
 	} {
 		t.Run(c.label, func(t *testing.T) {
 			e := newEnv(t)
-			e.scenario(map[string]any{"not_ready": true, "screen": trustScreen}, true)
+			e.scenario(map[string]any{"running": true, "not_ready": true, "screen": trustScreen}, true)
 			_, err := e.trustStart(c.cfg, c.precreate, c.sandboxed)
 			if n := needOf(t, err); n.Kind != host.KindTrust || e.has("agent send-keys") {
 				t.Errorf("%v", n)
@@ -297,7 +308,7 @@ func TestTrustDialogIsReportedUnlessAutoTrustAndTheExecutorCreatedTheTree(t *tes
 
 func TestAutoTrustMovesDownBeforeEnterThenWaitsForTheInputBox(t *testing.T) {
 	e := newEnv(t)
-	e.scenario(map[string]any{"not_ready": true, "screen": trustScreen, "after_keys": []any{trustScreen, "", "❯ "}}, true)
+	e.scenario(map[string]any{"running": true, "not_ready": true, "screen": trustScreen, "after_keys": []any{trustScreen, "", "❯ "}}, true)
 	if _, err := e.trustStart("", false, true); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +332,7 @@ func TestAutoTrustMovesDownBeforeEnterThenWaitsForTheInputBox(t *testing.T) {
 
 func TestInputBoxThatNeverAppearsIsStalled(t *testing.T) {
 	e := newEnv(t)
-	e.scenario(map[string]any{"not_ready": true, "screen": trustScreen, "after_keys": []any{trustScreen}}, true)
+	e.scenario(map[string]any{"running": true, "not_ready": true, "screen": trustScreen, "after_keys": []any{trustScreen}}, true)
 	_, err := e.trustStart(`{"herdr": {"startup_timeout": 5}}`, false, true)
 	if n := needOf(t, err); n.Kind != host.KindStalled {
 		t.Error(n)

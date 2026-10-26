@@ -189,10 +189,14 @@ func routed(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	}
 
 	// Session continuity, highest first: an explicit --resume; --no-resume;
-	// the store record for (executor, task) when its workdir matches; cold.
+	// the store record for (executor, task) when its workdir matches and its
+	// context is under resume_max_tokens (a longer one is re-read every turn,
+	// so the correction starts fresh); cold.
+	limit := config.ResumeMaxTokensFor(cfg, model)
 	resume, resumed := r.Resume, r.Resume != ""
 	if resume == "" && r.Task != "" && !r.NoResume {
-		if rec, ok := ReadSession(cfg, executor, r.Task); ok && sameWorkdir(rec.Workdir, workdir) {
+		if rec, ok := ReadSession(cfg, executor, r.Task); ok && sameWorkdir(rec.Workdir, workdir) &&
+			(limit == 0 || rec.ContextTokens < limit) {
 			resume, resumed = rec.SessionID, true
 		}
 	}
@@ -221,8 +225,9 @@ func routed(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	// keeps the last good session for the correction round.
 	status := result["status"]
 	sid := asString(get(result, "session_id"))
+	lastCtx, known := resumeGateContext(result)
 	if r.Task != "" && sid != "" && (status == "ok" || status == "needs-permission" || status == "runaway") {
-		_, _ = WriteSession(cfg, executor, r.Task, sid, workdir)
+		_, _ = WriteSession(cfg, executor, r.Task, sid, workdir, lastCtx)
 	}
 
 	out := maps.Clone(result)
@@ -230,6 +235,12 @@ func routed(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	out["model"] = rt.Model
 	out["effort"] = rt.Effort
 	out["resumed"] = resumed || get(result, "resumed") == true
+	if known {
+		out["context_tokens"] = lastCtx
+	} else {
+		out["context_tokens"] = nil
+	}
+	out["resumable"] = sid != "" && (limit == 0 || !known || lastCtx < limit)
 	out["route"] = rt.Object()
 	out["isolation"] = iso.obj
 	if sb := get(result, "sandbox"); sb != nil {
