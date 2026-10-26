@@ -30,7 +30,7 @@ Read the statuses:
 | status | meaning | what to do |
 |---|---|---|
 | `would-remove` | clean, or already collected — safe to reclaim | sweep it |
-| `dirty` | holds changes nobody collected, an integration branch not yet landed (merged or squashed) on a non-orchestra local branch, or a state the gate cannot verify (no baseline, failing diff) | **keep**; surface it to the user (see §3) |
+| `dirty` | holds changes nobody collected, an integration branch not yet landed on a non-orchestra local branch (`agent-exec isolate land`, or the same content there), or a state the gate cannot verify (no baseline, failing diff) | **keep**; surface it to the user (see §3) |
 | `busy` | in use right now: a fresh worktree lease or activity stamp, or a running `isolate integrate` | leave it; re-run the sweep once that work ends |
 | `skipped` | the running session's own tree, another session still active, or newer than `--older-than` | leave it |
 | `orphan` (branches) | an `orchestra/*` branch whose worktree is gone | report; delete only if the user says so |
@@ -65,12 +65,13 @@ Flags worth knowing:
 A dirty worktree is unreviewed worker output. For each one, offer the user the three real options rather than deciding:
 
 ```bash
+agent-exec isolate land --task <id> -m "<message>"   # integration tree: take it onto your branch, only when the user asks
 agent-exec isolate diff --task <id> --names-only   # what is in there (also marks it collected)
 agent-exec isolate collect --task <id>             # "I took this out by other means"
 agent-exec isolate sweep --force                   # discard everything still dirty
 ```
 
-`isolate diff` and `isolate collect` both mark the tree collected, after which a plain `sweep` reclaims it — that is the safe route. `--force` is the destructive one and needs an explicit instruction.
+`isolate diff` and `isolate collect` both mark the tree collected, after which a plain `sweep` reclaims it — that is the safe route. An integration tree landed this way is reclaimed by the next plain sweep. `--force` is the destructive one and needs an explicit instruction.
 
 ## 4. Scope and non-goals
 

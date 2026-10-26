@@ -281,7 +281,9 @@ async function dispatchClass(cls, promptText, opts = {}) {
     // dispatch already made the tree: point the worker at it (a fresh `isolation:
     // 'worktree'` here would be a SECOND tree, losing the carried-in uncommitted work
     // and the per-task reuse that lets retry rounds see each other's files). Only when
-    // dispatch could not isolate does `agent()` open one itself.
+    // dispatch could not isolate does `agent()` open one itself. A tree `agent()` opens
+    // itself (`worktree-*`) is Claude Code's; its result reaches the user only via
+    // `agent-exec isolate land --path <worktree> -m ...`, never a merge.
     const cwdLine = treeLine(iso.isolate ? (iso.workdir || iso.path) : null)
     const isoOpt = iso.isolate ? {} : { isolation: 'worktree' }
     const answer = await agent(cwdLine + directPrompt + (r.dispatch === 'agent' ? routingFlags(r) : ''), {
@@ -792,7 +794,7 @@ const results = await pipeline(tasks, async (task) => {
 // primary cleanup and SessionEnd is only insurance. Nothing here can discard
 // an unread verdict: the sweep applies the same review gate as `isolate
 // remove`, so any tree still holding uncollected work survives and is
-// reported, and so does an integration tree whose branch is not merged yet.
+// reported, and so does an integration tree not yet landed (`agent-exec isolate land`).
 // Await every agent working in a surviving tree before this call. Fold the telemetry emission (§10) into this same relay call when
 // telemetry is enabled, rather than spending a second agent on it.
 const runEnd = await agent(

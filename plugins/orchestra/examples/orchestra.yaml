@@ -459,8 +459,11 @@ priority:
 # prompt has been seen. ORCHESTRA_ENFORCEMENT=off disables it.
 #
 # orchestra_merge (default "block", or "off"): denies a Bash git merge, rebase, reset,
-# cherry-pick or pull that names an orchestra/* branch, from any caller, unless the command
-# runs inside an orchestra worktree. The deny points to `agent-exec isolate land`. Escape:
+# cherry-pick, pull, push, update-ref or branching (branch, checkout -b, switch -c) that
+# names an orchestra/* branch, from any caller, unless the command runs inside an orchestra
+# worktree (push is denied there too). Also denies a git merge or pull of an Agent worktree-*
+# branch unless --ff-only, and git calls in shell loops, after xargs or with variable
+# operands. The deny points to `agent-exec isolate land`. Escape:
 # [orchestra:allow-orchestra-merge: <reason>].
 enforcement:
   opt_in: "block"

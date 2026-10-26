@@ -144,3 +144,60 @@ func TestLandTextPrintsLandedLine(t *testing.T) {
 		t.Errorf("text %q, want %q", out, want)
 	}
 }
+
+// landUsageErr runs `isolate land` expecting a usage error and returns its
+// message and exit code.
+func landUsageErr(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	cmd := newIsolateLandCmd()
+	cmd.SetArgs(args)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("land %v: no error", args)
+	}
+	e := asExitError(cmd, err)
+	return e.Msg, e.Code
+}
+
+func TestLandNeedsExactlyOneSource(t *testing.T) {
+	const want = "isolate land: give exactly one of --task and --path"
+	for _, args := range [][]string{
+		{"-m", "subject"},
+		{"--task", "prog", "--path", "/tmp/x", "-m", "subject"},
+	} {
+		if msg, code := landUsageErr(t, args...); code != 2 || msg != want {
+			t.Errorf("land %v: exit %d %q, want 2 %q", args, code, msg, want)
+		}
+	}
+}
+
+func TestLandBaselineNeedsPath(t *testing.T) {
+	const want = "isolate land: --baseline goes with --path"
+	msg, code := landUsageErr(t, "--task", "prog", "--baseline", "main", "-m", "subject")
+	if code != 2 || msg != want {
+		t.Errorf("exit %d %q, want 2 %q", code, msg, want)
+	}
+}
+
+func TestLandPathNeedsMessage(t *testing.T) {
+	if _, code := landUsageErr(t, "--path", "/tmp/x"); code != 2 {
+		t.Errorf("missing -m: exit %d, want 2", code)
+	}
+}
+
+func TestLandPathTextNamesPath(t *testing.T) {
+	repo := landTestRepo(t)
+	wt := filepath.Join(filepath.Dir(repo), "agent-x")
+	landGit(t, repo, "worktree", "add", "-q", "-b", "worktree-agent-x", wt, "main")
+	landWrite(t, filepath.Join(wt, "d.txt"), "d\n")
+	out, code := runLand(t, "--path", wt, "--repo", repo, "-m", "subject", "--text")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	if !strings.HasPrefix(out, "landed ") || !strings.Contains(out, "on main: 1 files (from "+wt+")") {
+		t.Errorf("text %q does not name the path %s", out, wt)
+	}
+}

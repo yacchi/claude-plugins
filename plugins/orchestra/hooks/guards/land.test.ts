@@ -134,6 +134,44 @@ describe('merge-guard', () => {
         expect(await checkLand(fakeIo({ enforcement: { orchestra_merge: 'on' } }), input, '/repo'), 'explicit on').toBeDefined()
     })
 
+    test('variable operands and xargs: the ref a loop, a quote or a substitution names is denied', async () => {
+        expect(await deny('for b in worktree-agent-a1 worktree-agent-b2; do git merge -q --no-edit $b; done')).toContain('do not merge an Agent worktree branch')
+        expect(await deny('while read b; do git merge "$b"; done <<< "worktree-wf_61f2-1"')).toBeDefined()
+        expect(await deny("git branch --list 'worktree-*' | xargs -n 1 git merge")).toBeDefined()
+        expect(await deny("for b in $(git branch --list 'orchestra/*'); do git merge --ff-only $b; done")).toContain('do not merge an orchestra branch')
+    })
+
+    test('Agent worktree branches: only --ff-only merges and cherry-pick, rebase and merge-base pass', async () => {
+        expect(await deny('git merge worktree-agent-a1')).toBeDefined()
+        expect(await deny('git merge --no-ff worktree-agent-a1')).toBeDefined()
+        expect(await deny('git merge --squash worktree-agent-a1')).toBeDefined()
+        expect(await deny('git pull . worktree-agent-a1')).toBeDefined()
+        expect(await deny('git merge --ff-only worktree-agent-a1')).toBeUndefined()
+        expect(await deny('git cherry-pick worktree-agent-a1')).toBeUndefined()
+        expect(await deny('git rebase worktree-agent-a1')).toBeUndefined()
+        expect(await deny('git merge-base HEAD worktree-agent-a1')).toBeUndefined()
+        expect(await deny('git -C /repo-orchestra/a-prog merge worktree-agent-a1')).toBeUndefined()
+    })
+
+    test('moving verbs: push, update-ref, creating branch, checkout -b and switch -c name the ref', async () => {
+        expect(await deny('git push origin orchestra/a/b')).toBeDefined()
+        expect(await deny('git push origin orchestra/a/b:feature/y')).toBeDefined()
+        expect(await deny('git push origin orchestra/a/b', '/repo-orchestra/a-prog')).toBeDefined()
+        expect(await deny('git update-ref refs/heads/feature/x orchestra/a/b')).toBeDefined()
+        expect(await deny('git branch pr orchestra/a/b')).toBeDefined()
+        expect(await deny('git branch -f main orchestra/a/b')).toBeDefined()
+        expect(await deny('git checkout -b pr orchestra/a/b')).toBeDefined()
+        expect(await deny('git switch -c pr orchestra/a/b')).toBeDefined()
+    })
+
+    test('listings, deletions and pathspecs after -- are not moves', async () => {
+        expect(await deny('git branch --list orchestra/*')).toBeUndefined()
+        expect(await deny('git branch -D orchestra/a/b')).toBeUndefined()
+        expect(await deny('git push origin --delete orchestra/a/b')).toBeUndefined()
+        expect(await deny('git update-ref -d refs/heads/orchestra/a/b')).toBeUndefined()
+        expect(await deny('git reset -- orchestra/notes.md')).toBeUndefined()
+    })
+
     test('any error allows', async () => {
         expect(await checkLand(fakeIo({ envThrows: true }), { command: 'git merge orchestra/x' }, '/repo')).toBeUndefined()
     })

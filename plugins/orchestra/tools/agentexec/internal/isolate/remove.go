@@ -126,11 +126,14 @@ func unmergedIntegration(path, branch string) string {
 		return ""
 	}
 	name := branch
+	task := "<into>"
 	if name == "" {
 		name = "(detached HEAD)"
+	} else {
+		task = branch[strings.LastIndex(branch, "/")+1:]
 	}
 	return fmt.Sprintf("integration branch %s holds commits not landed on any non-orchestra local branch; "+
-		"merge or squash it there first, or pass --force", name)
+		"land them from the user's checkout with 'agent-exec isolate land --task %s -m <message>', or pass --force", name, task)
 }
 
 // pathspecChunk bounds the files per `git diff` call, keeping the argument

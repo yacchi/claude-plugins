@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 )
 
 // hook installs an executable hook into repo's shared hooks dir.
@@ -136,5 +137,49 @@ func TestTimedOutCommitRemovesItsIndexLockAndRollsBack(t *testing.T) {
 	}
 	if st := git(t, wt, "status", "--porcelain"); st != "" {
 		t.Errorf("integration tree left dirty: %q", st)
+	}
+}
+
+func TestIntegrateCommitUnstagesExcludedPathStagedEarlier(t *testing.T) {
+	repo := newRepo(t)
+	task(t, repo, "t0", map[string]string{"c.txt": "c\n"})
+	r, err := Integrate(repo, []string{"t0"}, Options{Into: "int"})
+	if err != nil || r.Status != "ok" {
+		t.Fatalf("integrate t0: %+v %v", r, err)
+	}
+	wt := string(r.Integration.Path)
+	stored := filepath.Join(wt, ".pnpm-store", "v11", "files", "ab", "x")
+	writeFile(t, stored, "x\n")
+	git(t, wt, "add", ".pnpm-store")
+	task(t, repo, "t1", map[string]string{"b.txt": "b\n"})
+	r, err = Integrate(repo, []string{"t1"}, Options{Into: "int"})
+	if err != nil || r.Status != "ok" {
+		t.Fatalf("integrate t1: %+v %v", r, err)
+	}
+	files := git(t, wt, "show", "--name-only", "--format=", "HEAD")
+	if !strings.Contains(files, "b.txt") || strings.Contains(files, ".pnpm-store") {
+		t.Errorf("integrate commit files %q", files)
+	}
+	if _, err := os.Stat(stored); err != nil {
+		t.Errorf("excluded file gone from disk: %v", err)
+	}
+}
+
+func TestRevertCommitUnstagesExcludedPathStagedEarlier(t *testing.T) {
+	repo := newRepo(t)
+	task(t, repo, "t0", map[string]string{"c.txt": "c\n"})
+	r, err := Integrate(repo, []string{"t0"}, Options{Into: "int"})
+	if err != nil || r.Status != "ok" {
+		t.Fatalf("integrate t0: %+v %v", r, err)
+	}
+	wt := string(r.Integration.Path)
+	writeFile(t, filepath.Join(wt, "a.txt"), "changed\n")
+	writeFile(t, filepath.Join(wt, ".pnpm-store", "v11", "y"), "y\n")
+	git(t, wt, "add", "a.txt", ".pnpm-store")
+	if err := commitAllWith(wt, "orchestra revert t1", isolate.CurrentFilter()); err != nil {
+		t.Fatal(err)
+	}
+	if files := strings.Fields(git(t, wt, "show", "--name-only", "--format=", "HEAD")); len(files) != 1 || files[0] != "a.txt" {
+		t.Errorf("revert commit files %v, want [a.txt]", files)
 	}
 }

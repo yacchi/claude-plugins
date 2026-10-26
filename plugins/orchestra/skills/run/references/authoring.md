@@ -7,7 +7,7 @@ Every worker preamble must say: never search outside the working tree. Do not ru
 
 ## 1. Workflow template notes (`SKILL.md` §5)
 
-**Parallel-with-integration is the default.** `pipeline()` and `parallel()` run their file-changing workers concurrently. For same-tree runs, assign disjoint file ownership up front — pin each worker's target files in its prompt and fix shared contracts/types in the prompts too. When ownership genuinely overlaps, use `isolation: 'worktree'` and have the supervisor integrate afterward with:
+**Parallel-with-integration is the default.** `pipeline()` and `parallel()` run their file-changing workers concurrently. For same-tree runs, assign disjoint file ownership up front — pin each worker's target files in its prompt and fix shared contracts/types in the prompts too. When ownership genuinely overlaps, give each worker an orchestra tree (`agent-exec dispatch --isolate always --task <id>`) and have the supervisor integrate afterward with the command below; an `agent()` worker that ran with `isolation: 'worktree'` sits in a Claude Code tree (`worktree-*`) that `isolate integrate` cannot reach — when the user asks for its result, land it with `agent-exec isolate land --path <worktree> -m "<subject>"`, never by merging its branch.
 
 ```text
 agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>] [--json|--text]
