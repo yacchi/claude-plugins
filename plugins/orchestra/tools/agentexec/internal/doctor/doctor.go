@@ -125,6 +125,11 @@ func Build(cfg *config.Resolved, cfgErr error) Report {
 		}
 		configSection["layers_found"] = layers
 		configSection["values"] = cfg.Values
+		warnings := []any{}
+		for _, w := range config.DashboardWarnings(cfg.Values) {
+			warnings = append(warnings, w)
+		}
+		configSection["warnings"] = warnings
 	} else if cfgErr != nil {
 		configSection["error"] = "agent-exec: " + cfgErr.Error()
 	}

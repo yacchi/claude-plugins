@@ -21,33 +21,37 @@ func cfgDashWriteProfile(t *testing.T, dir, org, name string) {
 	}
 }
 
-// Any dashboard.artifact_url, empty or not, is refused with the migration text.
-func TestDashboardArtifactURLKeyIsRefused(t *testing.T) {
+// Any dashboard.artifact_url, empty or not, is accepted and reported with the
+// migration text.
+func TestDashboardArtifactURLKeyIsIgnoredWithWarning(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	for _, v := range []string{"", "https://claude.ai/artifact/abc-123"} {
 		values := resolveLayers(obj("dashboard", obj("artifact_url", v)))
-		err := validateDashboard(values)
-		if err == nil {
-			t.Fatalf("artifact_url %q accepted, want an error", v)
+		if err := validateDashboard(values); err != nil {
+			t.Fatalf("artifact_url %q refused: %v", v, err)
 		}
-		if !strings.HasPrefix(err.Error(), "dashboard.artifact_url was removed: ") ||
-			!strings.HasSuffix(err.Error(), "(this session's organization: unknown), or delete the key to publish a new dashboard") {
-			t.Errorf("error = %q", err)
+		w := DashboardWarnings(values)
+		if len(w) != 1 || !strings.HasPrefix(w[0], "dashboard.artifact_url is ignored: ") ||
+			!strings.HasSuffix(w[0], "(this session's organization: unknown), or delete the key") {
+			t.Errorf("warnings = %q", w)
 		}
 	}
 	if err := validateDashboard(Defaults()); err != nil {
 		t.Errorf("defaults: %v", err)
 	}
+	if w := DashboardWarnings(Defaults()); w != nil {
+		t.Errorf("defaults warn: %q", w)
+	}
 }
 
-func TestDashboardArtifactURLErrorNamesCurrentOrg(t *testing.T) {
+func TestDashboardArtifactURLWarningNamesCurrentOrg(t *testing.T) {
 	dir := t.TempDir()
 	cfgDashWriteProfile(t, dir, cfgDashOrg, "Acme")
 	t.Setenv("CLAUDE_CONFIG_DIR", dir)
-	err := validateDashboard(resolveLayers(obj("dashboard", obj("artifact_url", ""))))
-	if err == nil || !strings.Contains(err.Error(), "(this session's organization: "+cfgDashOrg+" Acme)") {
-		t.Errorf("error = %v, want the current organization named", err)
+	w := DashboardWarnings(resolveLayers(obj("dashboard", obj("artifact_url", ""))))
+	if len(w) != 1 || !strings.Contains(w[0], "(this session's organization: "+cfgDashOrg+" Acme)") {
+		t.Errorf("warnings = %q, want the current organization named", w)
 	}
 }
 
