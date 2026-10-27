@@ -41,6 +41,32 @@ setup:
          {"id": "A", "spec": "specs/A.md", "cls": "standard", "files_owned": ["a.txt"]},
          {"id": "B", "spec": "specs/B.md", "cls": "standard", "files_owned": ["b.txt"]}
        ]}
+    ~/wave/specs/RA.md: |
+      Write ra.txt.
+      COMMANDS:
+      printf 'a\n' > ra.txt
+    ~/wave/specs/RB.md: |
+      Write rb.txt.
+      COMMANDS:
+      printf 'b\n' > rb.txt
+    ~/wave/plan-r.json: |
+      {"packages": [
+         {"id": "RA", "spec": "specs/RA.md", "cls": "standard", "files_owned": ["ra.txt"]},
+         {"id": "RB", "spec": "specs/RB.md", "cls": "standard", "files_owned": ["rb.txt"]}
+       ]}
+    ~/wave/specs/GA.md: |
+      Write ga.txt.
+      COMMANDS:
+      printf 'a\n' > ga.txt
+    ~/wave/specs/GB.md: |
+      Write gb.txt.
+      COMMANDS:
+      printf 'b\n' > gb.txt
+    ~/wave/plan-g.json: |
+      {"packages": [
+         {"id": "GA", "spec": "specs/GA.md", "cls": "standard", "files_owned": ["ga.txt"]},
+         {"id": "GB", "spec": "specs/GB.md", "cls": "standard", "files_owned": ["gb.txt"]}
+       ]}
 normalize_keys: [since, updated, at]
 normalize_text:
   - pattern: '"(seconds|until)": ?[0-9.e+-]+'
@@ -49,8 +75,8 @@ steps:
   - argv: [wave, run, --plan, wave/plan.json, --state, wave/state.json, --into, wave-int, --repo, ../work, --max-in-flight, "1", --gate, "! test -f b.txt"]
     cwd: "~"
     snapshot: ["~/wave/state.json", "~/wave/state.events.jsonl"]
-  - argv: [wave, run, --plan, wave/plan.json, --state, red/state.json, --into, red-int, --repo, ../work, --max-in-flight, "1", --gate, "false", --text]
+  - argv: [wave, run, --plan, wave/plan-r.json, --state, red/state.json, --into, red-int, --repo, ../work, --max-in-flight, "1", --gate, "false", --text]
     cwd: "~"
     snapshot: ["~/red/state.json"]
-  - argv: [wave, run, --plan, wave/plan.json, --state, green/state.json, --into, green-int, --repo, ../work, --gate, "true"]
+  - argv: [wave, run, --plan, wave/plan-g.json, --state, green/state.json, --into, green-int, --repo, ../work, --gate, "true"]
     cwd: "~"

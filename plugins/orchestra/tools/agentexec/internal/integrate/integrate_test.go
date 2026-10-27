@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 // newRepo is a throwaway repository under a hermetic git config, with a
@@ -30,6 +31,7 @@ func newRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Setenv("ORCHESTRA_ALIVE_DIR", filepath.Join(tmp, "alive"))
+	t.Setenv("ORCHESTRA_REQUEST_ROOT", filepath.Join(tmp, "requests"))
 	repo := filepath.Join(tmp, "repo")
 	writeFile(t, filepath.Join(repo, "a.txt"), "1\n2\n3\n4\n5\n6\n7\n8\n9\n")
 	writeFile(t, filepath.Join(repo, ".gitignore"), "node_modules/\n")
@@ -225,5 +227,148 @@ func TestOversizedTaskIsRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(wt, "m1")); err != nil {
 		t.Errorf("the fitting task is missing: %v", err)
+	}
+}
+
+// foreignIntegration is an integration tree named id, cut from HEAD.
+func foreignIntegration(t *testing.T, repo, id string) string {
+	t.Helper()
+	t.Setenv("ORCHESTRA_REQUEST_ROOT", t.TempDir())
+	res, err := isolate.Create(repo, id, isolate.CreateOptions{Backend: isolate.BackendGit, Onto: "HEAD",
+		Role: isolate.RoleIntegration})
+	if err != nil || res.Status != "created" {
+		t.Fatalf("create integration %s: %+v %v", id, res, err)
+	}
+	return res.Path
+}
+
+// foreignTask is a task cut from parent, with one edited file.
+func foreignTask(t *testing.T, repo, id, parent string) {
+	t.Helper()
+	res, err := isolate.Create(repo, id, isolate.CreateOptions{Backend: isolate.BackendGit, Parent: parent})
+	if err != nil || res.Status != "created" {
+		t.Fatalf("create task %s: %+v %v", id, res, err)
+	}
+	writeFile(t, filepath.Join(res.Path, "b.txt"), "b\n")
+}
+
+// A task cut from integration tree X1 is left alone when integrated into X2:
+// its source keeps the work, and X2 does not move.
+func TestForeignTaskIsLeftForItsOwnIntegrationTree(t *testing.T) {
+	repo := newRepo(t)
+	x1 := foreignIntegration(t, repo, "X1")
+	x2 := foreignIntegration(t, repo, "X2")
+	foreignTask(t, repo, "t1", x1)
+	before := git(t, x2, "rev-parse", "HEAD")
+
+	r, err := Integrate(repo, []string{"t1"}, Options{Into: "X2"})
+	if err != nil || r.Status != "ok" {
+		t.Fatalf("integrate: %+v %v", r, err)
+	}
+	want := "task t1 belongs to integration tree " + paths.RealPath(x1)
+	if got := r.Tasks[0]; got.Status != "foreign" || got.Reason != want || got.FilesChanged != 0 {
+		t.Errorf("t1: %+v, want foreign with reason %q", got, want)
+	}
+	if !strings.Contains(r.Note, "1 belong to another integration tree") {
+		t.Errorf("note %q lacks the foreign count", r.Note)
+	}
+	if after := git(t, x2, "rev-parse", "HEAD"); after != before {
+		t.Errorf("X2 moved: %s -> %s", before, after)
+	}
+	if rm, err := isolate.Remove(repo, "t1", false, ""); err != nil || rm.Status != "dirty" {
+		t.Errorf("t1 was collected: %+v %v", rm, err)
+	}
+}
+
+func TestForeignTaskIsAppliedToItsOwnIntegrationTree(t *testing.T) {
+	repo := newRepo(t)
+	x1 := foreignIntegration(t, repo, "X1")
+	foreignTask(t, repo, "t1", x1)
+
+	r, err := Integrate(repo, []string{"t1"}, Options{Into: "X1"})
+	if err != nil || r.Status != "ok" || r.Tasks[0].Status != "applied" {
+		t.Fatalf("integrate: %+v %v", r, err)
+	}
+	if _, err := os.Stat(filepath.Join(x1, "b.txt")); err != nil {
+		t.Errorf("t1's file is missing from X1: %v", err)
+	}
+}
+
+func TestIntoIsAnIntegrationTreeOfTheRequestAssembly(t *testing.T) {
+	repo := newRepo(t)
+	task(t, repo, "t1", map[string]string{"a.txt": "1\nT1\n3\n4\n5\n6\n7\n8\n9\n"})
+	task(t, repo, "t2", map[string]string{"b.txt": "t2\n"})
+	head := strings.TrimSpace(git(t, repo, "rev-parse", "HEAD"))
+
+	r, err := Integrate(repo, []string{"t1"}, Options{Into: "feat"})
+	if err != nil || r.Status != "ok" {
+		t.Fatalf("integrate: %+v %v", r, err)
+	}
+	path := paths.RealPath(string(r.Integration.Path))
+	requests := paths.RealPath(os.Getenv("ORCHESTRA_REQUEST_ROOT"))
+	if !strings.HasPrefix(path, requests+string(filepath.Separator)) {
+		t.Errorf("integration tree %s is outside the request root %s", path, requests)
+	}
+	asm := isolate.ReadParent(path)
+	if asm == "" || isolate.ReadRole(asm) != isolate.RoleAssembly {
+		t.Errorf("integration tree's parent %q is not an assembly", asm)
+	}
+	if r.Onto != head {
+		t.Errorf("onto = %s, want the checkout HEAD %s", r.Onto, head)
+	}
+
+	again, err := Integrate(repo, []string{"t2"}, Options{Into: "feat"})
+	if err != nil || again.Status != "ok" {
+		t.Fatalf("second integrate: %+v %v", again, err)
+	}
+	if again.Onto != r.Onto {
+		t.Errorf("reused tree moved its start: %s -> %s", r.Onto, again.Onto)
+	}
+}
+
+func TestUncommittedCheckoutNeedsAChoiceBeforeAnAssemblyIsCreated(t *testing.T) {
+	repo := newRepo(t)
+	t1 := task(t, repo, "t1", map[string]string{"a.txt": "1\nT1\n3\n4\n5\n6\n7\n8\n9\n"})
+	writeFile(t, filepath.Join(repo, "a.txt"), "1\nLOCAL\n3\n4\n5\n6\n7\n8\n9\n")
+
+	r, err := Integrate(repo, []string{"t1"}, Options{Into: "feat"})
+	if err != nil || r.Status != "uncommitted" || ExitCode(r) != 9 {
+		t.Fatalf("integrate: %+v %v", r, err)
+	}
+	for _, tr := range r.Tasks {
+		if tr.Status != "missing" {
+			t.Errorf("task %s is %s, want missing", tr.Task, tr.Status)
+		}
+	}
+	if collected(t, t1) {
+		t.Error("a refused integrate collected the task")
+	}
+	entries, _ := os.ReadDir(os.Getenv("ORCHESTRA_REQUEST_ROOT"))
+	for _, e := range entries {
+		if e.IsDir() {
+			t.Errorf("a refused integrate created request workspace %s", e.Name())
+		}
+	}
+
+	r, err = Integrate(repo, []string{"t1"}, Options{Into: "feat", Uncommitted: isolate.UncommittedIgnore})
+	if err != nil || r.Status != "ok" {
+		t.Fatalf("integrate with ignore: %+v %v", r, err)
+	}
+}
+
+func TestIntoTheRequestAssemblyIsRefused(t *testing.T) {
+	repo := newRepo(t)
+	asm, err := isolate.EnsureAssembly(repo, "")
+	if err != nil || asm.Status != "ready" {
+		t.Fatalf("assembly: %+v %v", asm, err)
+	}
+
+	r, err := Integrate(repo, []string{"t1"}, Options{Into: asm.Task})
+	if err != nil || r.Status != "error" ||
+		!strings.Contains(r.Note, "is an assembly worktree, not an integration target") {
+		t.Fatalf("integrate into the assembly: %+v %v", r, err)
+	}
+	if role := isolate.ReadRole(asm.Assembly); role != isolate.RoleAssembly {
+		t.Errorf("assembly role = %q after a refused integrate", role)
 	}
 }

@@ -2,8 +2,10 @@ import type { Io } from '../lib/io.ts'
 import { agentExec, loadEnforcement } from '../lib/config.ts'
 
 // SessionEnd: remove the finishing session's orchestra worktrees, keeping any
-// with uncollected changes -- unreviewed work is the only record of what a
-// worker tried, so it is surfaced, never discarded.
+// with uncollected changes or with child trees still attached -- unreviewed
+// work is the only record of what a worker tried, so it is surfaced, never
+// discarded. An assembly holding work not yet landed is surfaced with the
+// command that lands it.
 //
 // A BACKSTOP, NOT THE MECHANISM: SessionEnd never runs when the session is
 // killed, and when it does it races teardown. The pipeline sweeps at run end
@@ -30,23 +32,28 @@ const summarize = (stdout: string): string | undefined => {
     }
     const entries = removed.filter((x): x is Entry => typeof x === 'object' && x !== null)
     const removedCount = entries.filter(x => x.status === 'removed').length
-    const dirty = entries.filter(x => x.status === 'dirty')
+    const kept = entries.filter(x => x.status === 'dirty' || x.status === 'has-children')
     const errors = entries.filter(x => x.status === 'error')
-    if (removedCount === 0 && dirty.length === 0 && errors.length === 0) {
+    if (removedCount === 0 && kept.length === 0 && errors.length === 0) {
         return undefined
     }
     const lines: string[] = []
     if (removedCount > 0) {
         lines.push(`orchestra: removed ${removedCount} session worktree(s).`)
     }
-    if (dirty.length > 0) {
-        lines.push(`orchestra: kept ${dirty.length} worktree(s) with uncollected changes:`)
-        for (const x of dirty) {
-            lines.push(`  ${String(x.task)}: ${String(x.path)}`)
+    if (kept.length > 0) {
+        lines.push(`orchestra: kept ${kept.length} worktree(s) still holding work:`)
+        for (const x of kept) {
+            const children = x.status === 'has-children' ? ' (still has child trees)' : ''
+            lines.push(`  ${String(x.task)}: ${String(x.path)}${children}`)
         }
         lines.push('  inspect: agent-exec isolate diff --task <id>   |   '
             + 'discard: agent-exec isolate remove --task <id> --force   |   '
             + 'review all leftovers later: /cleanup')
+    }
+    if (kept.some(x => String(x.reason).includes('not landed on your branch'))) {
+        lines.push('orchestra: an assembly waits to be landed: from your checkout, run `agent-exec isolate land -m "<message>"` '
+            + '(any session; add --request <id> when several requests are open).')
     }
     if (errors.length > 0) {
         lines.push(`orchestra: ${errors.length} worktree removal(s) failed: ${String(errors[0]?.reason)}`)

@@ -10,8 +10,10 @@ Every worker preamble must say: never search outside the working tree. Do not ru
 **Parallel-with-integration is the default.** `pipeline()` and `parallel()` run their file-changing workers concurrently. For same-tree runs, assign disjoint file ownership up front — pin each worker's target files in its prompt and fix shared contracts/types in the prompts too. When ownership genuinely overlaps, give each worker an orchestra tree (`agent-exec dispatch --isolate always --task <id>`) and have the supervisor integrate afterward with the command below; an `agent()` worker that ran with `isolation: 'worktree'` sits in a Claude Code tree (`worktree-*`) that `isolate integrate` cannot reach — when the user asks for its result, land it with `agent-exec isolate land --path <worktree> -m "<subject>"`, never by merging its branch.
 
 ```text
-agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--onto <ref>] [--into <id>] [--json|--text]
+agent-exec isolate integrate --tasks <a,b,c> [--repo <path>] [--into <id>] [--uncommitted include|ignore] [--json|--text]
 ```
+
+`--into` names an integration tree of the session's request, cut from its assembly; `--onto` is gone.
 
 `--tasks` is required and takes comma-separated orchestra task IDs in the order to integrate. Same-file edits are not a reason to serialize. The only legitimate reason to serialize is a real dependency in which a later task must consume an earlier task's output or state. Disjoint ownership protects workers from each other; isolation protects the user's uncommitted work.
 

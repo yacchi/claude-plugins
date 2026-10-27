@@ -17,7 +17,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-boot",
+        "role": "work",
         "status": "created",
         "task": "boot"
       }
@@ -33,8 +35,11 @@
         "worktrees": [
           {
             "branch": "orchestra/00000000/boot",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
             "session": "00000000",
             "task": "boot"
           }
@@ -50,18 +55,18 @@
         "--into",
         "prep",
         "--verify",
-        "sh ../../prep.sh"
+        "sh \"$PREP\""
       ],
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
-          "path": "<WORK>-orchestra/00000000-prep",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
           "task": "prep"
         },
-        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
-        "onto": "<SHA#1>",
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+        "onto": "<SHA#2>",
         "status": "ok",
         "tasks": [
           {
@@ -101,6 +106,7 @@
         "carried_files": [],
         "carry_method": "none",
         "note": "adopted <ROOT>/ext as task x",
+        "parent": null,
         "path": "<ROOT>/ext",
         "status": "adopted",
         "task": "x"
@@ -129,18 +135,18 @@
         "--into",
         "prep2",
         "--verify",
-        "sh ../../move.sh"
+        "sh \"$MOVE\""
       ],
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep2",
-          "path": "<WORK>-orchestra/00000000-prep2",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep2",
           "task": "prep2"
         },
-        "note": "1 of 1 task(s) applied cleanly into worktree 'prep2' at <WORK>-orchestra/00000000-prep2",
-        "onto": "<SHA#1>",
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep2' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep2",
+        "onto": "<SHA#2>",
         "status": "ok",
         "tasks": [
           {
@@ -293,6 +299,7 @@
           "dirty": 2,
           "errors": 0,
           "external": 2,
+          "has_children": 1,
           "removed": 0,
           "skipped": 0,
           "trash_removed": 0,
@@ -301,21 +308,11 @@
         "worktrees": [
           {
             "age_days": "<AGE_DAYS>",
-            "branch": "orchestra/00000000/boot",
-            "current": true,
-            "path": "<WORK>-orchestra/00000000-boot",
-            "session": "00000000",
-            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
-            "status": "would-remove",
-            "task": "boot"
-          },
-          {
-            "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/prep",
             "current": true,
             "files": [],
-            "path": "<WORK>-orchestra/00000000-prep",
-            "reason": "integration branch orchestra/00000000/prep holds commits not landed on any non-orchestra local branch; land them from the user's checkout with 'agent-exec isolate land --task prep -m <message>', or pass --force",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+            "reason": "integration tree prep holds commits not merged into its assembly; merge it with 'agent-exec isolate merge --task prep -m <message>', or pass --force to discard them",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "dirty",
@@ -326,12 +323,43 @@
             "branch": "orchestra/00000000/prep2",
             "current": true,
             "files": [],
-            "path": "<WORK>-orchestra/00000000-prep2",
-            "reason": "integration branch orchestra/00000000/prep2 holds commits not landed on any non-orchestra local branch; land them from the user's checkout with 'agent-exec isolate land --task prep2 -m <message>', or pass --force",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep2",
+            "reason": "integration tree prep2 holds commits not merged into its assembly; merge it with 'agent-exec isolate merge --task prep2 -m <message>', or pass --force to discard them",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "dirty",
             "task": "prep2"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/<DATE>-00000000",
+            "children": [
+              {
+                "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+                "task": "prep"
+              },
+              {
+                "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep2",
+                "task": "prep2"
+              }
+            ],
+            "current": true,
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "reason": "2 child tree(s) still open; merge or discard them first (--force never removes a tree with children)",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "has-children",
+            "task": "<DATE>-00000000"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "would-remove",
+            "task": "boot"
           },
           {
             "age_days": "<AGE_DAYS>",

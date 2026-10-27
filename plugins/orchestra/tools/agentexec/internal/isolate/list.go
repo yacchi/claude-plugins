@@ -7,6 +7,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 // NullString renders as JSON null when empty (a session or branch that does
@@ -22,11 +23,14 @@ func (s NullString) MarshalJSON() ([]byte, error) {
 
 // Entry is one orchestra-created worktree as `isolate list` reports it.
 type Entry struct {
-	Task    string     `json:"task"`
-	Branch  string     `json:"branch"`
-	Path    string     `json:"path"`
-	Session NullString `json:"session"`
-	Current bool       `json:"current"`
+	Task     string     `json:"task"`
+	Branch   string     `json:"branch"`
+	Path     string     `json:"path"`
+	Session  NullString `json:"session"`
+	Current  bool       `json:"current"`
+	Role     string     `json:"role"`     // "work" | "integration" | "assembly"
+	Parent   NullString `json:"parent"`   // the parent tree's real path; null when none
+	Children int        `json:"children"` // live worktrees whose parent marker names this tree
 }
 
 // worktrees is `git worktree list` of root, empty when git fails.
@@ -47,18 +51,31 @@ func List(root, session string) ([]Entry, error) {
 		return []Entry{}, nil
 	}
 	current := sessionComponent(orCurrent(session))
+	all := worktrees(resolved)
+	// Counted over the whole listing before the session filter: a child can
+	// be any tree (adopted or plain), and a parent in another session still
+	// has it.
+	children := map[string]int{}
+	for _, wt := range all {
+		if parent := ReadParent(wt.Path); parent != "" {
+			children[parent]++
+		}
+	}
 	out := []Entry{}
-	for _, wt := range worktrees(resolved) {
+	for _, wt := range all {
 		if !strings.HasPrefix(wt.Branch, BranchPrefix) {
 			continue
 		}
 		owner := branchSession(wt.Branch)
 		out = append(out, Entry{
-			Task:    branchTask(wt.Branch),
-			Branch:  wt.Branch,
-			Path:    wt.Path,
-			Session: NullString(owner),
-			Current: owner != "" && owner == current,
+			Task:     branchTask(wt.Branch),
+			Branch:   wt.Branch,
+			Path:     wt.Path,
+			Session:  NullString(owner),
+			Current:  owner != "" && owner == current,
+			Role:     RoleName(wt.Path),
+			Parent:   NullString(ReadParent(wt.Path)),
+			Children: children[paths.RealPath(wt.Path)],
 		})
 	}
 	if session == "" {

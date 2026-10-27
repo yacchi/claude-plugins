@@ -22,6 +22,7 @@ type AdoptOptions struct {
 	Carry             bool
 	CarryExtra        []string
 	CarryFiles        []string
+	Parent            string // path of the parent integration tree; "" = none
 }
 
 // AdoptResult is the output of `isolate adopt` and `isolate unadopt`
@@ -32,6 +33,7 @@ type AdoptResult struct {
 	Path           string
 	Branch         string
 	Baseline       string
+	Parent         string
 	Note           string
 	Carried        []string
 	CarryMethod    string
@@ -51,6 +53,9 @@ func (r AdoptResult) MarshalJSON() ([]byte, error) {
 	}
 	o["branch"] = nullable(r.Branch)
 	o["baseline"] = nullable(r.Baseline)
+	if r.Status == "adopted" || r.Status == "exists" {
+		o["parent"] = nullable(r.Parent)
+	}
 	o["note"] = r.Note
 	o["carried"] = nonNil(r.Carried)
 	o["carry_method"] = method
@@ -63,7 +68,8 @@ func (r AdoptResult) MarshalJSON() ([]byte, error) {
 
 // Adopt registers path, a linked worktree of root that orchestra did not
 // create, as task's worktree. Re-adopting the same path under the same task
-// is "exists" and keeps the baseline unless o.Baseline is given. Only an
+// is "exists" and keeps the baseline unless o.Baseline is given; likewise the
+// parent marker is kept unless o.Parent is given. Only an
 // unusable task id is an error; refusals are in the result's Status.
 func Adopt(root, task, path string, o AdoptOptions) (AdoptResult, error) {
 	resolved, isRepo := gitx.RepoRoot(root)
@@ -120,6 +126,10 @@ func Adopt(root, task, path string, o AdoptOptions) (AdoptResult, error) {
 		}
 	}
 
+	if o.Parent != "" && (!isWorktreeOf(resolved, o.Parent) || ReadRole(o.Parent) != RoleIntegration) {
+		return fail("parent " + o.Parent + " is not an integration tree")
+	}
+
 	baseline := ""
 	if o.Baseline != "" {
 		if baseline = RevParseCommit(resolved, o.Baseline); baseline == "" {
@@ -130,8 +140,12 @@ func Adopt(root, task, path string, o AdoptOptions) (AdoptResult, error) {
 		if baseline != "" {
 			_ = WriteBaseline(wt.Path, baseline)
 		}
+		if o.Parent != "" && WriteParent(wt.Path, o.Parent) != nil {
+			return fail("could not write the parent marker for " + wt.Path)
+		}
 		res.Status, res.Note = "exists", "already adopted as "+task
 		res.Baseline, _ = ReadBaseline(wt.Path)
+		res.Parent = ReadParent(wt.Path)
 		return res, nil
 	}
 	if baseline == "" {
@@ -146,6 +160,10 @@ func Adopt(root, task, path string, o AdoptOptions) (AdoptResult, error) {
 	if writeAdoption(wt.Path, task, o.Session) != nil {
 		return fail("could not write the adoption marker for " + wt.Path)
 	}
+	if o.Parent != "" && WriteParent(wt.Path, o.Parent) != nil {
+		_ = ClearAdopted(wt.Path)
+		return fail("could not write the parent marker for " + wt.Path)
+	}
 	_ = WriteBaseline(wt.Path, baseline)
 	res.CarryMethod = carryNone
 	carryNote := ""
@@ -159,6 +177,7 @@ func Adopt(root, task, path string, o AdoptOptions) (AdoptResult, error) {
 	}
 	_ = writeCreatedIgnored(wt.Path, ignoredDigest(IgnoredEntries(wt.Path)))
 	res.Status, res.Baseline = "adopted", baseline
+	res.Parent = ReadParent(wt.Path)
 	res.Note = joinNote(fmt.Sprintf("adopted %s as task %s", wt.Path, task), carryNote)
 	return res, nil
 }

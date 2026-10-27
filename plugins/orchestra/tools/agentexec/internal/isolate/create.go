@@ -7,7 +7,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/orcanest"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 // Backends of Create.
@@ -31,12 +31,14 @@ const (
 // Onto is empty; without carry the CarryFiles are excluded from it.
 // CarryFiles nil means DefaultCarryFiles. Session "" is the calling session.
 //
-// BaseBranch names the branch Onto was cut from, so the new tree nests in
-// Orca's sidebar under the worktree that has it checked out (orcanest); ""
-// with Onto empty is the branch checked out at root, else root's checkout.
+// Dir places the tree at that path instead of under Home. It forces the git
+// backend, since gtr cannot choose a path, and refuses a path that exists and
+// is not an empty directory, so a user's files are never adopted as a tree.
 type CreateOptions struct {
 	Backend, Onto, Session string
-	BaseBranch             string
+	Role                   string // "" work tree | RoleIntegration | RoleAssembly
+	Parent                 string // path of the parent tree; "" = none
+	Dir                    string // the new tree's path; "" = under Home(root). Forces the git backend
 	Carry                  bool
 	CarryExtra             []string
 	CarryDeps              *bool
@@ -51,6 +53,8 @@ type CreateResult struct {
 	Branch         string
 	Path           string
 	Backend        string // gtr | git | existing
+	Role           string // work | integration | assembly; created and exists only
+	Parent         string // real path of the parent tree, "" = none
 	Baseline       string // created only
 	Carried        []string
 	CarryMethod    string // none | clone | copy | failed | pnpm-gvs
@@ -68,6 +72,8 @@ func (r CreateResult) MarshalJSON() ([]byte, error) {
 	o["branch"] = r.Branch
 	o["path"] = r.Path
 	o["backend"] = r.Backend
+	o["role"] = r.Role
+	o["parent"] = nullable(r.Parent)
 	if r.Status == "created" {
 		o["baseline"] = nullable(r.Baseline)
 	}
@@ -108,12 +114,10 @@ func nonNil(s []string) []string {
 	return s
 }
 
-// nester nests created trees in Orca's sidebar (a test seam).
-var nester = orcanest.Default
-
 // Create makes (or returns) task's worktree in the repository containing
-// root. Idempotent per task and session. A created tree is nested in Orca's
-// sidebar, best effort; a reused one is left as it is.
+// root. Idempotent per task and session. A created tree records its role and
+// parent in its git dir, so child counts are derived from git and never from
+// Orca; a reused tree keeps the markers it has.
 func Create(root, task string, o CreateOptions) (CreateResult, error) {
 	resolved, ok := gitx.RepoRoot(root)
 	if !ok {
@@ -122,6 +126,11 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 	task, err := SanitizeTaskID(task)
 	if err != nil {
 		return CreateResult{}, err
+	}
+	// Before the existing-branch check and any git write: an invalid parent
+	// fails even when the task's tree is already there, and leaves nothing.
+	if reason := lineageError(resolved, o); reason != "" {
+		return CreateResult{Status: "error", Reason: reason}, nil
 	}
 	branch := branchName(task, sessionComponent(orCurrent(o.Session)))
 	carryFiles := o.CarryFiles
@@ -136,17 +145,28 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 		}
 		return CreateResult{
 			Status: "exists", Task: task, Branch: branch, Path: existing,
-			Backend: backendExisting, Carried: []string{}, CarryMethod: carryNone,
-			CarriedFiles: []string{},
+			Backend: backendExisting, Role: RoleName(existing), Parent: ReadParent(existing),
+			Carried: []string{}, CarryMethod: carryNone, CarriedFiles: []string{},
 		}, nil
+	}
+
+	// Refused before any git write, so a bad path leaves no branch behind.
+	dir := o.Dir
+	if dir != "" {
+		if abs, err := filepath.Abs(dir); err == nil {
+			dir = abs
+		}
+		if occupiedDir(dir) {
+			return CreateResult{Status: "error", Reason: dir + " exists and is not an empty directory"}, nil
+		}
 	}
 
 	backend := o.Backend
 	if backend == "" {
 		backend = BackendAuto
 	}
-	if o.Onto != "" {
-		// gtr only branches from the current checkout.
+	if o.Onto != "" || dir != "" {
+		// gtr only branches from the current checkout, under its own path.
 		backend = BackendGit
 	}
 	if backend == BackendAuto {
@@ -167,7 +187,7 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 		if start == "" {
 			start = "HEAD"
 		}
-		path = createViaGit(resolved, branch, start)
+		path = createViaGit(resolved, branch, start, dir)
 	}
 	if path == "" {
 		return CreateResult{Status: "error", Reason: "could not create a worktree for " + branch}, nil
@@ -203,9 +223,19 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 	if baseline != "" {
 		_ = WriteBaseline(path, baseline)
 	}
+	if err := writeLineage(path, o); err != nil {
+		// Without its markers the tree would sit in the wrong place in the
+		// hierarchy, so drop it as a failed baseline does.
+		reason := "could not record the lineage of " + branch + ": " + err.Error()
+		if _, why := discard(resolved, path, branch); why != "" {
+			reason += "; " + why
+		}
+		return CreateResult{Status: "error", Reason: reason}, nil
+	}
 
 	res := CreateResult{
 		Status: "created", Task: task, Branch: branch, Path: path, Backend: backend,
+		Role: RoleName(path), Parent: ReadParent(path),
 		Baseline: baseline, Carried: []string{}, CarryMethod: carryNone, CarriedFiles: []string{},
 	}
 	if carryDeps {
@@ -214,13 +244,6 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 	}
 	// The ignored surface exactly as the worker receives it.
 	_ = writeCreatedIgnored(path, ignoredDigest(IgnoredEntries(path)))
-	base := o.BaseBranch
-	if base == "" && o.Onto == "" {
-		if out, err := gitx.Run(root, "symbolic-ref", "--short", "-q", "HEAD"); err == nil {
-			base = strings.TrimSpace(out)
-		}
-	}
-	nester.Nest(resolved, base, path)
 
 	switch res.CarryMethod {
 	case carryCopy:
@@ -231,10 +254,81 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 	return res, nil
 }
 
-// createViaGit adds the worktree under Home(root); "" when git refused.
-func createViaGit(root, branch, start string) string {
-	name := strings.ReplaceAll(strings.TrimPrefix(branch, BranchPrefix), "/", "-")
-	path := filepath.Join(Home(root), name)
+// lineageError is why o's role and parent are refused, "" when they are
+// accepted. The checks run in the order the messages are listed in the spec.
+func lineageError(resolved string, o CreateOptions) string {
+	switch o.Role {
+	case "", RoleIntegration, RoleAssembly:
+	default:
+		return "unknown role " + o.Role
+	}
+	if o.Role == RoleAssembly && o.Parent != "" {
+		return "an assembly worktree has no parent"
+	}
+	if o.Parent == "" {
+		return ""
+	}
+	if !isWorktreeOf(resolved, o.Parent) {
+		return "parent " + o.Parent + " is not a worktree of this repository"
+	}
+	if o.Role == "" && ReadRole(o.Parent) != RoleIntegration {
+		return "parent " + o.Parent + " is not an integration tree"
+	}
+	if o.Role == RoleIntegration && ReadRole(o.Parent) != RoleAssembly {
+		return "parent " + o.Parent + " is not an assembly worktree"
+	}
+	return ""
+}
+
+// isWorktreeOf reports whether path is one of the repository's worktrees.
+func isWorktreeOf(resolved, path string) bool {
+	list, err := gitx.WorktreeList(resolved)
+	if err != nil {
+		return false
+	}
+	for _, w := range list {
+		if paths.RealPath(w.Path) == paths.RealPath(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// writeLineage records o's role and parent in the new tree's git dir.
+func writeLineage(wt string, o CreateOptions) error {
+	if o.Role != "" {
+		if err := WriteRole(wt, o.Role); err != nil {
+			return err
+		}
+	}
+	if o.Parent != "" {
+		return WriteParent(wt, o.Parent)
+	}
+	return nil
+}
+
+// occupiedDir reports whether dir exists and is not an empty directory. A dir
+// that cannot be inspected counts as occupied: git must not write into it.
+func occupiedDir(dir string) bool {
+	st, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		return false
+	}
+	if err != nil || !st.IsDir() {
+		return true
+	}
+	entries, err := os.ReadDir(dir)
+	return err != nil || len(entries) > 0
+}
+
+// createViaGit adds the worktree at dir when set, else under Home(root); ""
+// when git refused. Missing parent directories are created.
+func createViaGit(root, branch, start, dir string) string {
+	path := dir
+	if path == "" {
+		name := strings.ReplaceAll(strings.TrimPrefix(branch, BranchPrefix), "/", "-")
+		path = filepath.Join(Home(root), name)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return ""
 	}

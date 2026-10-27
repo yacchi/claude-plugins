@@ -1,0 +1,41 @@
+description: >
+  an assembly is never created over uncommitted changes silently (start and
+  integrate refuse, listing them, nothing created); include carries them into
+  the assembly's baseline and land lands only the assembly's own change around
+  the still-uncommitted edit; ignore starts from HEAD and land refuses while a
+  tracked file is dirty
+setup:
+  git: true
+  files:
+    a.txt: "1\n2\n3\n4\n5\n"
+    c.txt: "c\n"
+  dirty:
+    a.txt: "ONE\n2\n3\n4\n5\n"
+    n.txt: "note\n"
+normalize_keys: [seconds, age_days, session_idle_minutes]
+steps:
+  - argv: [isolate, request, start]
+  - argv: [isolate, integrate, --tasks, ghost, --into, feat]
+  - argv: [isolate, request, list]
+  - argv: [isolate, request, start, --into, feat, --uncommitted, include]
+    save: {ASM: assembly, INT: integration}
+    snapshot: ["<@ASM>/a.txt", "<@ASM>/n.txt"]
+  - argv: [isolate, create, --task, t1, --parent, feat]
+    save: {T1: path}
+  - argv: [write-file, --path, "<@T1>/c.txt"]
+    stdin: "c changed\n"
+  - argv: [isolate, integrate, --tasks, t1, --into, feat]
+  - argv: [isolate, merge, --task, feat, -m, "feat: change c"]
+  - argv: [isolate, land, -m, "feat: change c"]
+    snapshot: ["<WORK>/a.txt", "<WORK>/c.txt"]
+  - argv: [isolate, request, start, --into, feat2, --uncommitted, ignore]
+    save: {ASM2: assembly, INT2: integration}
+    snapshot: ["<@ASM2>/a.txt"]
+  - argv: [isolate, create, --task, t2, --parent, feat2]
+    save: {T2: path}
+  - argv: [write-file, --path, "<@T2>/d.txt"]
+    stdin: "d\n"
+  - argv: [isolate, integrate, --tasks, t2, --into, feat2]
+  - argv: [isolate, merge, --task, feat2, -m, "feat: add d"]
+  - argv: [isolate, land, -m, "feat: add d"]
+  - argv: [isolate, request, show]

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"testing"
 )
 
 // GoldenStep is the normalized record of one step. Stdout is stored by
@@ -28,18 +29,20 @@ type Golden struct {
 }
 
 var (
-	reToken = regexp.MustCompile(`dsp-[0-9a-f]{12}`)
-	reUUID  = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
-	reSHA   = regexp.MustCompile(`\b[0-9a-f]{40}\b`)
-	reTS    = regexp.MustCompile(`\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?`)
+	reToken   = regexp.MustCompile(`dsp-[0-9a-f]{12}`)
+	reRequest = regexp.MustCompile(`\b\d{8}-00000000\b`)
+	reUUID    = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+	reSHA     = regexp.MustCompile(`\b[0-9a-f]{40}\b`)
+	reTS      = regexp.MustCompile(`\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?`)
 )
 
 // normalizer masks what legitimately differs between runs: the sandbox
 // paths (realpath'd /private/var spellings included), dispatch tokens,
-// uuids and SHAs (numbered by first appearance, so equal values stay
-// equal), timestamps, and the values of volatile JSON keys (an object
-// value keeps its keys and has every leaf masked, so its shape is still
-// compared).
+// request ids (the date changes with the calendar; the fixed session
+// makes the suffix constant), uuids and SHAs (numbered by first
+// appearance, so equal values stay equal), timestamps, and the values of
+// volatile JSON keys (an object value keeps its keys and has every leaf
+// masked, so its shape is still compared).
 type normalizer struct {
 	paths    [][2]string
 	numbered map[string]map[string]string
@@ -92,6 +95,7 @@ func (n *normalizer) text(s string) string {
 		s = strings.ReplaceAll(s, p[0], p[1])
 	}
 	s = reToken.ReplaceAllStringFunc(s, func(v string) string { return n.number("TOKEN", v) })
+	s = reRequest.ReplaceAllString(s, "<DATE>-00000000")
 	s = reUUID.ReplaceAllStringFunc(s, func(v string) string { return n.number("UUID", v) })
 	s = reSHA.ReplaceAllStringFunc(s, func(v string) string { return n.number("SHA", v) })
 	s = reTS.ReplaceAllString(s, "<TS>")
@@ -195,4 +199,23 @@ func (n *normalizer) step(st Step, raw rawStep) GoldenStep {
 		}
 	}
 	return g
+}
+
+func TestRequestIDsAreMasked(t *testing.T) {
+	root := t.TempDir()
+	s := &sandbox{root: root, home: filepath.Join(root, "home"), work: filepath.Join(root, "work")}
+	n := newNormalizer(s, nil, nil)
+
+	cases := map[string]string{
+		"/work/requests/20261028-00000000/.integration/work/feat": "/work/requests/<DATE>-00000000/.integration/work/feat",
+		"20261028-00000000-2":                  "<DATE>-00000000-2",
+		"00000000-0000-4000-8000-0000000c0f0e": "<UUID#1>",
+		"120261028-00000000":                   "120261028-00000000",
+		"20261028-000000001":                   "20261028-000000001",
+	}
+	for in, want := range cases {
+		if got := n.text(in); got != want {
+			t.Errorf("text(%q) = %q, want %q", in, got, want)
+		}
+	}
 }

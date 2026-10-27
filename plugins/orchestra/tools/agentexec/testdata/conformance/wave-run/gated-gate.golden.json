@@ -27,6 +27,7 @@
         "integrated": [
           "A"
         ],
+        "merge": null,
         "needs": [
           {
             "id": "B",
@@ -93,7 +94,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -157,7 +158,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'wave-int' at <WORK>-orchestra/00000000-wave-int",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'wave-int' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int",
               "event": "integrate",
               "from": null,
               "pkg": null,
@@ -213,7 +214,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-B\"}",
               "event": "check-start",
               "from": null,
               "pkg": "B",
@@ -293,7 +294,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "reverted: 0 of 1 task(s) applied cleanly (1 reverted) into worktree 'wave-int' at <WORK>-orchestra/00000000-wave-int",
+              "detail": "reverted: 0 of 1 task(s) applied cleanly (1 reverted) into worktree 'wave-int' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int",
               "event": "integrate",
               "from": null,
               "pkg": null,
@@ -314,7 +315,7 @@
           "content": {
             "integration": {
               "base": "<SHA#3>",
-              "path": "<WORK>-orchestra/00000000-wave-int",
+              "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int",
               "task": "wave-int"
             },
             "needs": [
@@ -335,7 +336,7 @@
                 "session": true,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A"
               },
               "B": {
                 "attempts": 0,
@@ -346,7 +347,7 @@
                 "session": true,
                 "since": "<SINCE>",
                 "status": "needs",
-                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-B"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-B"
               }
             },
             "plan": "<HOME>/wave/plan.json",
@@ -364,7 +365,7 @@
         "wave",
         "run",
         "--plan",
-        "wave/plan.json",
+        "wave/plan-r.json",
         "--state",
         "red/state.json",
         "--into",
@@ -379,29 +380,29 @@
       ],
       "exit": 5,
       "stdout_shape": "text",
-      "stdout": "wave run stopped  waves=1  reason: integration tree red before this wave\n  integrated: A\n  pending: B\n",
+      "stdout": "wave run stopped  waves=1  reason: integration tree red before this wave\n  integrated: RA\n  pending: RB\n",
       "files": {
         "~/red/state.json": {
           "content": {
             "integration": {
               "base": "<SHA#3>",
-              "path": "<WORK>-orchestra/00000000-red-int",
+              "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/red-int",
               "task": "red-int"
             },
             "needs": [],
             "packages": {
-              "A": {
+              "RA": {
                 "attempts": 0,
-                "commit": "<SHA#1>",
+                "commit": "<SHA#4>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
                 "session": true,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/red-int-orchestra/00000000-pkg-RA"
               },
-              "B": {
+              "RB": {
                 "attempts": 0,
                 "commit": null,
                 "detail": "",
@@ -413,7 +414,7 @@
                 "tree": null
               }
             },
-            "plan": "<HOME>/wave/plan.json",
+            "plan": "<HOME>/wave/plan-r.json",
             "stopped": {
               "at": "<AT>",
               "reason": "integration tree red before this wave"
@@ -431,7 +432,7 @@
         "wave",
         "run",
         "--plan",
-        "wave/plan.json",
+        "wave/plan-g.json",
         "--state",
         "green/state.json",
         "--into",
@@ -448,9 +449,20 @@
         "blocked": [],
         "flaky_tests": [],
         "integrated": [
-          "A",
-          "B"
+          "GA",
+          "GB"
         ],
+        "merge": {
+          "assembly": "<DATE>-00000000",
+          "commit": "<SHA#5>",
+          "files": [
+            "ga.txt",
+            "gb.txt"
+          ],
+          "removed": true,
+          "status": "merged",
+          "task": "green-int"
+        },
         "needs": [],
         "network_denials": [],
         "pending": [],

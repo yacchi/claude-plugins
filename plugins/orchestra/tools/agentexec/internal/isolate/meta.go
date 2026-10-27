@@ -29,7 +29,8 @@ const (
 	// it (after carried dependency dirs landed), so remove can tell what
 	// orchestra put there from what the worker added.
 	createdIgnoredFile = "orchestra-created-ignored"
-	// roleFile: "integration" for an integrate target, whose ignored
+	// roleFile: "integration" for an integrate target, "assembly" for a
+	// request's finished product; absent for a work tree. Role trees' ignored
 	// surface is expected to change across rounds.
 	roleFile = "orchestra-role"
 	// adoptedFile: JSON {"task","session","adopted_at"} on a worktree
@@ -39,6 +40,10 @@ const (
 
 // RoleIntegration marks an `isolate integrate` target worktree.
 const RoleIntegration = "integration"
+
+// RoleAssembly marks a request's assembly: the finished product that
+// `isolate land` lands.
+const RoleAssembly = "assembly"
 
 var errNoGitDir = errors.New("not a git worktree")
 
@@ -181,10 +186,11 @@ func ReadAdopted(wt string) (string, bool) {
 // WriteAdopted registers wt as task's worktree for the calling session.
 func WriteAdopted(wt, task string) error { return writeAdoption(wt, task, "") }
 
-// ClearAdopted drops the adoption together with the baseline and collected
-// markers. Files and the worktree itself are never touched.
+// ClearAdopted drops the adoption together with the baseline, collected and
+// parent markers: an unadopted tree must stop counting as its parent's child.
+// Files and the worktree itself are never touched.
 func ClearAdopted(wt string) error {
-	return removeMarkers(wt, adoptedFile, baselineFile, collectedFile)
+	return removeMarkers(wt, adoptedFile, baselineFile, collectedFile, parentFile)
 }
 
 // IgnoredEntries are the gitignored paths of wt in git's traditional
@@ -207,9 +213,10 @@ func IgnoredEntries(wt string) []string {
 }
 
 // ignoredForDigest is the ignored surface folded into a collected digest:
-// none for an integration worktree, whose ignored surface changes routinely.
+// none for a role tree (integration or assembly), whose ignored surface
+// changes routinely as its children land in it.
 func ignoredForDigest(wt string) []string {
-	if ReadRole(wt) == RoleIntegration {
+	if ReadRole(wt) != "" {
 		return nil
 	}
 	return IgnoredEntries(wt)

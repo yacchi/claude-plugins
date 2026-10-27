@@ -27,6 +27,7 @@
         "integrated": [
           "C"
         ],
+        "merge": null,
         "needs": [
           {
             "id": "A",
@@ -97,7 +98,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -145,7 +146,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -209,7 +210,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-C\"}",
               "event": "check-start",
               "from": null,
               "pkg": "C",
@@ -273,7 +274,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'wave-int' at <WORK>-orchestra/00000000-wave-int",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'wave-int' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int",
               "event": "integrate",
               "from": null,
               "pkg": null,
@@ -294,7 +295,7 @@
           "content": {
             "integration": {
               "base": "<SHA#2>",
-              "path": "<WORK>-orchestra/00000000-wave-int",
+              "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int",
               "task": "wave-int"
             },
             "needs": [
@@ -315,7 +316,7 @@
                 "session": true,
                 "since": "<SINCE>",
                 "status": "needs",
-                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-A"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A"
               },
               "B": {
                 "attempts": 0,
@@ -337,7 +338,7 @@
                 "session": true,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<WORK>-orchestra/00000000-wave-int-orchestra/00000000-pkg-C"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-C"
               }
             },
             "plan": "<HOME>/wave/plan.json",

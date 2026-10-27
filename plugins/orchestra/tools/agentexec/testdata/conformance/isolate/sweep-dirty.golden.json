@@ -17,7 +17,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/22222222-clean",
+        "role": "work",
         "status": "created",
         "task": "clean"
       }
@@ -38,7 +40,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/22222222-dirty",
+        "role": "work",
         "status": "created",
         "task": "dirty"
       }
@@ -59,7 +63,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/22222222-done",
+        "role": "work",
         "status": "created",
         "task": "done"
       }
@@ -75,22 +81,31 @@
         "worktrees": [
           {
             "branch": "orchestra/22222222/clean",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/22222222-clean",
+            "role": "work",
             "session": "22222222",
             "task": "clean"
           },
           {
             "branch": "orchestra/22222222/dirty",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/22222222-dirty",
+            "role": "work",
             "session": "22222222",
             "task": "dirty"
           },
           {
             "branch": "orchestra/22222222/done",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/22222222-done",
+            "role": "work",
             "session": "22222222",
             "task": "done"
           }
@@ -108,22 +123,31 @@
         "worktrees": [
           {
             "branch": "orchestra/22222222/clean",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/22222222-clean",
+            "role": "work",
             "session": "22222222",
             "task": "clean"
           },
           {
             "branch": "orchestra/22222222/dirty",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/22222222-dirty",
+            "role": "work",
             "session": "22222222",
             "task": "dirty"
           },
           {
             "branch": "orchestra/22222222/done",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/22222222-done",
+            "role": "work",
             "session": "22222222",
             "task": "done"
           }
@@ -165,7 +189,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>\n  skipped      clean            0.0d      <WORK>-orchestra/22222222-clean  (newer than --older-than 0.5 day(s))\n  skipped      dirty            0.0d      <WORK>-orchestra/22222222-dirty  (newer than --older-than 0.5 day(s))\n  skipped      done             0.0d      <WORK>-orchestra/22222222-done  (newer than --older-than 0.5 day(s))\nsummary: removed 0, would-remove 0, dirty 0, skipped 3, external 0, errors 0, branches 0 orphan / 0 deleted\n"
+      "stdout": "sweep <WORK>\n  skipped      clean            0.0d      <WORK>-orchestra/22222222-clean  (newer than --older-than 0.5 day(s))\n  skipped      dirty            0.0d      <WORK>-orchestra/22222222-dirty  (newer than --older-than 0.5 day(s))\n  skipped      done             0.0d      <WORK>-orchestra/22222222-done  (newer than --older-than 0.5 day(s))\nsummary: removed 0, would-remove 0, dirty 0, has-children 0, skipped 3, external 0, errors 0, branches 0 orphan / 0 deleted\n"
     },
     {
       "argv": [
@@ -178,7 +202,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>  (dry-run)\n  would-remove clean            0.0d      <WORK>-orchestra/22222222-clean\n  dirty        dirty            0.0d      <WORK>-orchestra/22222222-dirty  (worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force)\n  would-remove done             0.0d      <WORK>-orchestra/22222222-done\nsummary: removed 0, would-remove 2, dirty 1, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n  inspect: agent-exec isolate diff --task <id>   |   discard: agent-exec isolate sweep --force\n"
+      "stdout": "sweep <WORK>  (dry-run)\n  would-remove clean            0.0d      <WORK>-orchestra/22222222-clean\n  dirty        dirty            0.0d      <WORK>-orchestra/22222222-dirty  (worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force)\n  would-remove done             0.0d      <WORK>-orchestra/22222222-done\nsummary: removed 0, would-remove 2, dirty 1, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n  inspect: agent-exec isolate diff --task <id>   |   discard: agent-exec isolate sweep --force\n"
     },
     {
       "argv": [
@@ -204,6 +228,7 @@
           "dirty": 1,
           "errors": 0,
           "external": 0,
+          "has_children": 0,
           "removed": 0,
           "skipped": 0,
           "trash_removed": 0,
@@ -257,7 +282,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>\n  removed      clean            0.0d      <WORK>-orchestra/22222222-clean\n  dirty        dirty            0.0d      <WORK>-orchestra/22222222-dirty  (worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force)\n  removed      done             0.0d      <WORK>-orchestra/22222222-done\nsummary: removed 2, would-remove 0, dirty 1, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n  inspect: agent-exec isolate diff --task <id>   |   discard: agent-exec isolate sweep --force\n"
+      "stdout": "sweep <WORK>\n  removed      clean            0.0d      <WORK>-orchestra/22222222-clean\n  dirty        dirty            0.0d      <WORK>-orchestra/22222222-dirty  (worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force)\n  removed      done             0.0d      <WORK>-orchestra/22222222-done\nsummary: removed 2, would-remove 0, dirty 1, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n  inspect: agent-exec isolate diff --task <id>   |   discard: agent-exec isolate sweep --force\n"
     },
     {
       "argv": [
@@ -271,7 +296,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>  (dry-run)\n  would-remove dirty            0.0d      <WORK>-orchestra/22222222-dirty\nsummary: removed 0, would-remove 1, dirty 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
+      "stdout": "sweep <WORK>  (dry-run)\n  would-remove dirty            0.0d      <WORK>-orchestra/22222222-dirty\nsummary: removed 0, would-remove 1, dirty 0, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
     },
     {
       "argv": [
@@ -286,7 +311,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>\n  removed      dirty            0.0d      <WORK>-orchestra/22222222-dirty\nsummary: removed 1, would-remove 0, dirty 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
+      "stdout": "sweep <WORK>\n  removed      dirty            0.0d      <WORK>-orchestra/22222222-dirty\nsummary: removed 1, would-remove 0, dirty 0, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
     },
     {
       "argv": [

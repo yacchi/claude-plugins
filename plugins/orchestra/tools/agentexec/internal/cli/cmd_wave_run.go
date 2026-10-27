@@ -14,9 +14,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/orca"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/runner"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/watch"
@@ -49,6 +51,7 @@ func addWaveRunCommands(parent *cobra.Command) {
 	fl.StringVar(&o.State, "state", "", "state.json path")
 	fl.StringVar(&o.Into, "into", "", "integration task id")
 	fl.StringVar(&o.Repo, "repo", "", "repository path (default cwd)")
+	fl.StringVar(&o.Uncommitted, "uncommitted", "", "include|ignore: what the request's assembly does with your uncommitted changes when this run creates it")
 	maxInFlight := fl.String("max-in-flight", "auto", "packages dispatched at once (N, or auto: every startable one)")
 	fl.StringVar(&o.Gate, "gate", "", "command run after each integration")
 	fl.StringVar(&o.Full, "full", "", "full verification command")
@@ -74,6 +77,13 @@ func addWaveRunCommands(parent *cobra.Command) {
 			return exitf(2, "wave run: "+format, args...)
 		}
 		changed := cmd.Flags().Changed
+		// A done run merges its integration tree into the request's assembly.
+		o.Merge = true
+		switch o.Uncommitted {
+		case "", isolate.UncommittedInclude, isolate.UncommittedIgnore:
+		default:
+			return bad("--uncommitted must be include or ignore, got %q", o.Uncommitted)
+		}
 		if v := strings.TrimSpace(*maxInFlight); !strings.EqualFold(v, "auto") {
 			n, err := strconv.Atoi(v)
 			if err != nil || n < 1 {
@@ -121,6 +131,9 @@ func addWaveRunCommands(parent *cobra.Command) {
 		if _, err := config.Resolve(); err != nil {
 			return exitf(3, "wave run: %s", err)
 		}
+		if err := waveRunPreflight(cmd.OutOrStdout(), o.Repo, o.Uncommitted, runFormat.is("text")); err != nil {
+			return err
+		}
 		if *detach {
 			return runWaveDetach(cmd.OutOrStdout(), o.State)
 		}
@@ -128,6 +141,28 @@ func addWaveRunCommands(parent *cobra.Command) {
 	}
 
 	parent.AddCommand(run, newWaveMarkCmd())
+}
+
+// waveRunPreflight refuses a start that the request's assembly cannot take (a
+// dirty checkout without --uncommitted) before any runner starts, so the
+// caller sees the refusal at once rather than in a crashed detached runner.
+// It only looks: nothing is created, so a refused start leaves no tree behind.
+func waveRunPreflight(out io.Writer, repo, uncommitted string, text bool) error {
+	if _, ok := gitx.RepoRoot(repo); !ok {
+		return nil // not a repository: the runner reports that itself
+	}
+	res, err := isolate.CheckAssembly(repo, uncommitted)
+	if err != nil {
+		return exitf(2, "wave run: %s", err)
+	}
+	if res.Status != "uncommitted" {
+		return nil
+	}
+	rep := runner.Report{Status: "error", Reason: &res.Reason, Kind: "uncommitted"}
+	if err := writeResult(out, text, rep, func() string { return runner.FormatText(rep) }); err != nil {
+		return err
+	}
+	return &ExitError{Code: runner.ExitCode(rep)}
 }
 
 func runWaveRun(out, errw io.Writer, o runner.Options, text bool) error {

@@ -1,6 +1,7 @@
 package isolate
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -358,49 +359,198 @@ func TestMissingCreateMarker(t *testing.T) {
 	}
 }
 
-// createIntegration plants an integration tree for task (exactly HEAD, as
-// integrate creates it) carrying one integrated commit; returns path and
-// branch.
-func createIntegration(t *testing.T, repo, task string) (string, string) {
+// createIntegration plants a parentless integration tree for task carrying
+// one integrated commit; returns its path.
+func createIntegration(t *testing.T, repo, task string) string {
 	t.Helper()
-	head := strings.TrimSpace(git(t, repo, "rev-parse", "HEAD"))
-	res, err := Create(repo, task, CreateOptions{Backend: BackendGit, Onto: head})
-	if err != nil || res.Status != "created" {
-		t.Fatalf("create %s: %+v, %v", task, res, err)
-	}
-	_ = WriteRole(res.Path, RoleIntegration)
-	writeFile(t, filepath.Join(res.Path, task+".txt"), "integrated\n")
-	git(t, res.Path, "add", "-A")
-	git(t, res.Path, "commit", "-q", "-m", "integrate "+task)
-	return res.Path, res.Branch
+	path := plantTree(t, repo, task, RoleIntegration, "")
+	gateCommit(t, path, task+".txt", "integrated\n")
+	return path
 }
 
-func TestIntegrationTreeKeptUntilItsBranchIsMerged(t *testing.T) {
+// gateCommit commits name with content in the tree at path.
+func gateCommit(t *testing.T, path, name, content string) {
+	t.Helper()
+	writeFile(t, filepath.Join(path, name), content)
+	git(t, path, "add", "-A")
+	git(t, path, "commit", "-q", "-m", "commit "+name)
+}
+
+// gateHead is the HEAD sha of the tree at path.
+func gateHead(t *testing.T, path string) string {
+	t.Helper()
+	return strings.TrimSpace(git(t, path, "rev-parse", "HEAD"))
+}
+
+func TestIntegrationTreeKeptUntilMergedAtHead(t *testing.T) {
 	repo := newRepo(t)
-	path, branch := createIntegration(t, repo, "int")
-	writeFile(t, filepath.Join(path, ".venv", "built"), "x")
-	// Its commits live only on its own branch.
-	if r := remove(t, repo, "int", false, ""); r.Status != "dirty" || !strings.Contains(r.Reason, branch) || !exists(path) {
+	asm := plantTree(t, repo, "asm", RoleAssembly, "")
+	x := plantTree(t, repo, "x", RoleIntegration, asm)
+
+	// Nothing committed past its baseline: nothing to lose.
+	if r := remove(t, repo, "x", false, ""); r.Status != "removed" || exists(x) {
+		t.Fatalf("untouched integration tree: %+v", r)
+	}
+
+	x = plantTree(t, repo, "x", RoleIntegration, asm)
+	gateCommit(t, x, "x.txt", "integrated\n")
+	writeFile(t, filepath.Join(x, ".venv", "built"), "x")
+	g1 := "integration tree x holds commits not merged into its assembly; merge it with " +
+		"'agent-exec isolate merge --task x -m <message>', or pass --force to discard them"
+	if r := remove(t, repo, "x", false, ""); r.Status != "dirty" || r.Reason != g1 || !exists(x) {
 		t.Fatalf("unmerged integration tree: %+v", r)
 	}
 	sw := sweep(t, repo, SweepOptions{IncludeCurrent: true, IncludeLive: true})
-	if w := byTask(sw)["int"]; w.Status != "dirty" || !exists(path) {
+	if w := byTask(sw)["x"]; w.Status != "dirty" || !exists(x) {
 		t.Fatalf("sweep took an unmerged integration tree: %+v", w)
 	}
-	// Merged elsewhere: only uncommitted work counts, ignored drift exempt.
-	git(t, repo, "merge", "-q", "--ff-only", branch)
-	writeFile(t, filepath.Join(path, "int.txt"), "edited after landing\n")
-	if r := remove(t, repo, "int", false, ""); r.Status != "dirty" || !slices.Equal(r.Files, []string{"int.txt"}) || !exists(path) {
-		t.Fatalf("landed integration tree with an uncommitted edit: %+v", r)
+
+	// Merged at HEAD, then committed again: unmerged again.
+	_ = writeMarker(x, mergedFile, gateHead(t, x))
+	gateCommit(t, x, "y.txt", "later\n")
+	if r := remove(t, repo, "x", false, ""); r.Status != "dirty" || r.Reason != g1 {
+		t.Fatalf("commit after the merge: %+v", r)
 	}
-	writeFile(t, filepath.Join(path, "int.txt"), "integrated\n")
-	if r := remove(t, repo, "int", false, ""); r.Status != "removed" || exists(path) {
+
+	// Merged at HEAD: only uncommitted work counts, ignored drift exempt.
+	_ = writeMarker(x, mergedFile, gateHead(t, x))
+	writeFile(t, filepath.Join(x, "x.txt"), "edited after merging\n")
+	r := remove(t, repo, "x", false, "")
+	if r.Status != "dirty" || !slices.Equal(r.Files, []string{"x.txt"}) || !exists(x) ||
+		r.Reason != "integration tree holds 1 uncommitted change(s) on top of its merged commits; commit and merge them, or pass --force" {
+		t.Fatalf("merged integration tree with an uncommitted edit: %+v", r)
+	}
+	writeFile(t, filepath.Join(x, "x.txt"), "integrated\n")
+	if r := remove(t, repo, "x", false, ""); r.Status != "removed" || exists(x) {
 		t.Fatalf("merged integration tree: %+v", r)
 	}
 
-	other, _ := createIntegration(t, repo, "int2")
-	if r := remove(t, repo, "int2", true, ""); r.Status != "removed" || exists(other) {
+	// No parent: nothing to merge into.
+	lone := createIntegration(t, repo, "lone")
+	if r := remove(t, repo, "lone", false, ""); r.Status != "dirty" ||
+		r.Reason != "integration tree lone has no assembly to merge into; pass --force to discard it" {
+		t.Fatalf("parentless integration tree: %+v", r)
+	}
+	if r := remove(t, repo, "lone", true, ""); r.Status != "removed" || exists(lone) {
 		t.Fatalf("--force: %+v", r)
+	}
+}
+
+func TestAssemblyKeptUntilLandedAtHead(t *testing.T) {
+	repo := newRepo(t)
+	asm := plantTree(t, repo, "asm", RoleAssembly, "")
+	if r := remove(t, repo, "asm", false, ""); r.Status != "removed" || exists(asm) {
+		t.Fatalf("untouched assembly: %+v", r)
+	}
+
+	asm = plantTree(t, repo, "asm", RoleAssembly, "")
+	gateCommit(t, asm, "a.txt", "merged\n")
+	if r := remove(t, repo, "asm", false, ""); r.Status != "dirty" || !exists(asm) ||
+		r.Reason != "assembly asm holds work not landed on your branch; land it from your checkout with "+
+			"'agent-exec isolate land --task asm -m <message>', or pass --force to discard it" {
+		t.Fatalf("unlanded assembly: %+v", r)
+	}
+	_ = writeMarker(asm, landedFile, gateHead(t, asm))
+	writeFile(t, filepath.Join(asm, "a.txt"), "edited\n")
+	r := remove(t, repo, "asm", false, "")
+	if r.Status != "dirty" || !slices.Equal(r.Files, []string{"a.txt"}) ||
+		r.Reason != "assembly holds 1 uncommitted change(s) on top of its landed commits; commit and land them, or pass --force" {
+		t.Fatalf("landed assembly with an uncommitted edit: %+v", r)
+	}
+	writeFile(t, filepath.Join(asm, "a.txt"), "merged\n")
+	if r := remove(t, repo, "asm", false, ""); r.Status != "removed" || exists(asm) {
+		t.Fatalf("landed assembly: %+v", r)
+	}
+}
+
+// gateHierarchy plants assembly a <- integration x <- work t.
+func gateHierarchy(t *testing.T, repo string) (a, x, w string) {
+	t.Helper()
+	a = plantTree(t, repo, "a", RoleAssembly, "")
+	x = plantTree(t, repo, "x", RoleIntegration, a)
+	w = plantTree(t, repo, "t", "", x)
+	return a, x, w
+}
+
+func TestTreeWithChildrenIsNeverRemoved(t *testing.T) {
+	repo := newRepo(t)
+	a, x, w := gateHierarchy(t, repo)
+	for _, force := range []bool{false, true} {
+		r := remove(t, repo, "a", force, "")
+		if r.Status != "has-children" || len(r.Children) != 1 || r.Children[0].Task != "x" || !exists(a) ||
+			r.Reason != "1 child tree(s) still open; merge or discard them first (--force never removes a tree with children)" {
+			t.Fatalf("assembly with a child (force %v): %+v", force, r)
+		}
+	}
+	r := remove(t, repo, "x", true, "")
+	if r.Status != "has-children" || len(r.Children) != 1 || r.Children[0].Task != "t" || !exists(x) {
+		t.Fatalf("integration tree with a child: %+v", r)
+	}
+	b, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Status   string  `json:"status"`
+		Task     string  `json:"task"`
+		Path     string  `json:"path"`
+		Children []Child `json:"children"`
+	}
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "has-children" || got.Task != "x" || got.Path != x ||
+		len(got.Children) != 1 || got.Children[0].Task != "t" || got.Children[0].Path != w {
+		t.Errorf("has-children JSON = %s", b)
+	}
+	for _, task := range []string{"t", "x", "a"} {
+		if r := remove(t, repo, task, true, ""); r.Status != "removed" {
+			t.Fatalf("remove %s once its children are gone: %+v", task, r)
+		}
+	}
+}
+
+func TestAdoptedChildKeepsItsParent(t *testing.T) {
+	repo := newRepo(t)
+	a := plantTree(t, repo, "a", RoleAssembly, "")
+	x := plantTree(t, repo, "x", RoleIntegration, a)
+	ext := filepath.Join(filepath.Dir(repo), "external")
+	git(t, repo, "worktree", "add", "-q", "-b", "feature/ext", ext)
+	if err := WriteAdopted(ext, "ext-task"); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteParent(ext, x); err != nil {
+		t.Fatal(err)
+	}
+	r := remove(t, repo, "x", true, "")
+	if r.Status != "has-children" || len(r.Children) != 1 || r.Children[0].Task != "ext-task" || !exists(x) {
+		t.Fatalf("integration tree with an adopted child: %+v", r)
+	}
+}
+
+func TestRemoveSessionGoesBottomUp(t *testing.T) {
+	repo := newRepo(t)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", sessA)
+	a, x, w := gateHierarchy(t, repo)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	r, err := RemoveSession(repo, sessA, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, one := range r.Removed {
+		if one.Status != "removed" {
+			t.Errorf("%+v", one)
+		}
+		got = append(got, one.Task)
+	}
+	if !slices.Equal(got, []string{"t", "x", "a"}) {
+		t.Fatalf("removal order = %v, want [t x a]", got)
+	}
+	for _, p := range []string{a, x, w} {
+		if exists(p) {
+			t.Errorf("%s survived", p)
+		}
 	}
 }
 
@@ -449,21 +599,6 @@ func TestBashActivityKeepsTheTreeBusy(t *testing.T) {
 	activity(time.Hour)
 	if r := remove(t, repo, "t1", false, ""); r.Status != "removed" || exists(path) {
 		t.Fatalf("stale activity: %+v", r)
-	}
-}
-
-func TestSquashLandedIntegrationTreeIsRemovable(t *testing.T) {
-	repo := newRepo(t)
-	path, _ := createIntegration(t, repo, "int")
-	writeFile(t, filepath.Join(repo, "other.txt"), "unrelated\n")
-	git(t, repo, "add", "-A")
-	git(t, repo, "commit", "-q", "-m", "unrelated")
-	// The squash: the same content, a different commit, on top of main.
-	writeFile(t, filepath.Join(repo, "int.txt"), "integrated\n")
-	git(t, repo, "add", "-A")
-	git(t, repo, "commit", "-q", "-m", "squash int")
-	if r := remove(t, repo, "int", false, ""); r.Status != "removed" || exists(path) {
-		t.Fatalf("squash-landed integration tree: %+v", r)
 	}
 }
 

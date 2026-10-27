@@ -127,7 +127,7 @@ func TestLandMaxAddedFilesRefusesOnBothSources(t *testing.T) {
 		t.Fatalf("agent tree over the cap: %+v, %v", r, err)
 	}
 
-	integration := landIntegration(t, repo)
+	integration := landAssembly(t, repo)
 	writeFile(t, filepath.Join(integration, "d.txt"), "d\n")
 	writeFile(t, filepath.Join(integration, "e.txt"), "e\n")
 	landCommit(t, integration, "orchestra integrate pc")

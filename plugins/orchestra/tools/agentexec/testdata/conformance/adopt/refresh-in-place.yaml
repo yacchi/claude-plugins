@@ -5,6 +5,9 @@ description: >
   markers kept on a conflict, so the task still resolves)
 setup:
   git: true
+  env:
+    PREP: "<ROOT>/prep.sh"
+    MOVE: "<ROOT>/move.sh"
   files:
     a.txt: "1\n2\n3\n4\n5\n6\n7\n8\n9\n"
     .gitignore: "cache/\n"
@@ -27,10 +30,10 @@ steps:
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
     env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
-  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
   - argv: [isolate, adopt, --task, x, --path, ../ext]
   - argv: [isolate, adopt, --task, y, --path, ../ext2, --text]
-  - argv: [isolate, integrate, --tasks, boot, --into, prep2, --verify, "sh ../../move.sh"]
+  - argv: [isolate, integrate, --tasks, boot, --into, prep2, --verify, 'sh "$MOVE"']
   - argv: [isolate, refresh, --task, x]
     snapshot:
       - <ROOT>/ext/a.txt

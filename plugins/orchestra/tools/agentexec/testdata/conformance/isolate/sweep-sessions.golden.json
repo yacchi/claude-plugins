@@ -17,7 +17,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-mine",
+        "role": "work",
         "status": "created",
         "task": "mine"
       }
@@ -38,7 +40,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/11111111-theirs",
+        "role": "work",
         "status": "created",
         "task": "theirs"
       }
@@ -59,7 +63,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/legacy",
+        "role": "work",
         "status": "created",
         "task": "legacy"
       }
@@ -88,6 +94,7 @@
           "dirty": 0,
           "errors": 0,
           "external": 0,
+          "has_children": 0,
           "removed": 0,
           "skipped": 0,
           "trash_removed": 0,
@@ -148,6 +155,7 @@
           "dirty": 0,
           "errors": 0,
           "external": 0,
+          "has_children": 0,
           "removed": 1,
           "skipped": 2,
           "trash_removed": 0,
@@ -200,15 +208,21 @@
         "worktrees": [
           {
             "branch": "orchestra/00000000/mine",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-mine",
+            "role": "work",
             "session": "00000000",
             "task": "mine"
           },
           {
             "branch": "orchestra/11111111/theirs",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/11111111-theirs",
+            "role": "work",
             "session": "11111111",
             "task": "theirs"
           }
@@ -239,6 +253,7 @@
           "dirty": 0,
           "errors": 0,
           "external": 0,
+          "has_children": 0,
           "removed": 1,
           "skipped": 1,
           "trash_removed": 0,
@@ -291,6 +306,7 @@
           "dirty": 0,
           "errors": 0,
           "external": 0,
+          "has_children": 0,
           "removed": 1,
           "skipped": 0,
           "trash_removed": 0,

@@ -11,11 +11,12 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
-// landedFile: the integration tree's tip as last landed, so remove can
-// reclaim a tree whose squash no longer matches any branch's content once
-// the target moved on. Kept in the tree's git dir like the other markers.
+// landedFile: the assembly's tip as last landed, so remove can reclaim an
+// assembly whose squash no longer matches any branch's content once the
+// target moved on. Kept in the tree's git dir like the other markers.
 const landedFile = "orchestra-landed"
 
 // landOwnSubject matches the subjects orchestra writes on integration
@@ -25,21 +26,29 @@ var landOwnSubject = regexp.MustCompile(`(?i)^orchestra (integrate|revert|baseli
 const landOwnReason = "write a commit message in the repository's convention; " +
 	"orchestra's own subjects stay on the integration branch"
 
-// LandResult is `isolate land`'s output.
+// LandResult is `isolate land`'s output; the landed tree is always an
+// assembly. An assembly is landed only once it has no children, and landing
+// (or finding nothing to land) removes it.
 type LandResult struct {
-	Status string // landed | empty | dirty | conflict | refused | absent | error
-	Task   string
-	Path   string   // the --path source; "" for --task
-	Branch string   // the target branch, short name
-	Commit string   // landed: the new commit
-	Base   string   // landed: the target branch tip it was made on
-	Files  []string // landed: changed paths; dirty: the dirty paths; conflict: conflicted paths; refused: offending paths (may be empty)
-	Reason string   // every status except landed and empty
+	Status       string // landed | empty | dirty | conflict | refused | absent | error | has-children
+	Task         string
+	Path         string   // the --path source; "" for --task
+	Branch       string   // the target branch, short name
+	Commit       string   // landed: the new commit
+	Base         string   // landed: the target branch tip it was made on
+	Files        []string // landed: changed paths; dirty: the dirty paths; conflict: conflicted paths; refused: offending paths (may be empty)
+	Reason       string   // every status except landed and empty
+	Children     []Child  // has-children only
+	Request      string   // the request the assembly belonged to; "" when none
+	Removed      bool     // landed/empty (--task): the assembly was removed afterwards
+	RequestEnded bool     // landed/empty (--task): that removal ended the request
 }
 
 // MarshalJSON always writes "status" and "task", and "path" for a --path
 // source; landed adds "branch", "commit", "base" and "files"; empty adds
-// "branch"; the others add "reason" and, when non-empty, "files".
+// "branch"; a --task landed or empty adds "removed", "request",
+// "request_ended" and, when non-empty, "reason"; has-children adds
+// "children"; the others add "reason" and, when non-empty, "files".
 func (r LandResult) MarshalJSON() ([]byte, error) {
 	o := map[string]any{"status": r.Status, "task": r.Task}
 	if r.Path != "" {
@@ -59,21 +68,44 @@ func (r LandResult) MarshalJSON() ([]byte, error) {
 			o["files"] = r.Files
 		}
 	}
+	if r.Path == "" && (r.Status == "landed" || r.Status == "empty") {
+		var request any
+		if r.Request != "" {
+			request = r.Request
+		}
+		o["removed"] = r.Removed
+		o["request"] = request
+		o["request_ended"] = r.RequestEnded
+		if r.Reason != "" {
+			o["reason"] = r.Reason
+		}
+	}
+	if r.Status == "has-children" {
+		children := r.Children
+		if children == nil {
+			children = []Child{}
+		}
+		o["children"] = children
+	}
 	return fsutil.MarshalJSON(o)
 }
 
-// Land squashes task's integration branch (baseline..HEAD of its worktree)
-// into one commit on the branch checked out at root, authored by the
-// repository's own identity with message as written: the per-package
-// `orchestra integrate` commits stay on the integration branch, where the
-// runner, bisect and fix-ups read them. message is the full commit message
-// (subject, optional blank line + body). A non-nil error is unusable input
-// only (an unusable task id, an ambiguous task, an empty message), as
-// everywhere in this package.
+// Land squashes task's assembly (baseline..HEAD of its worktree) into one
+// commit on the branch checked out at root, authored by the repository's own
+// identity with message as written. An assembly holds the organized product;
+// integration trees reach it only through `isolate merge`, so any other tree
+// is refused and changes nothing. An assembly with children is refused too,
+// before anything is landed. Landing (or finding nothing to land) removes the
+// assembly, and its request ends with its last assembly. message is the full
+// commit message (subject, optional blank line + body). A non-nil error is
+// unusable input only (an unusable task id, an ambiguous task, an empty
+// message), as everywhere in this package.
 func Land(root, task, message string) (LandResult, error) {
 	return landWith(root, task, message, CurrentFilter())
 }
 
+// landWith is Land with the change filter f. The assembly is removed through
+// Remove's own gate, never forced: a refusal there leaves it in place.
 func landWith(root, task, message string, f ChangeFilter) (LandResult, error) {
 	resolved, ok := gitx.RepoRoot(root)
 	if !ok {
@@ -100,6 +132,20 @@ func landWith(root, task, message string, f ChangeFilter) (LandResult, error) {
 		return LandResult{Status: "error", Task: task, Reason: reason}, nil
 	}
 
+	if reason := landRoleReason(resolved, wt.Path, task); reason != "" {
+		return LandResult{Status: "refused", Task: task, Reason: reason}, nil
+	}
+	// Before landBranch and the dirty checks: a refusal for children must not
+	// depend on the checkout.
+	kids, err := Children(resolved, wt.Path)
+	if err != nil {
+		return fail(fmt.Sprintf("cannot list the assembly's children (%v); nothing was landed", err))
+	}
+	if len(kids) > 0 {
+		return LandResult{Status: "has-children", Task: task, Children: kids,
+			Reason: fmt.Sprintf("assembly %s still has %d open integration tree(s); merge them with 'agent-exec isolate merge --task <into> -m <message>' or discard them, then land", task, len(kids))}, nil
+	}
+
 	branch, reason := landBranch(resolved)
 	if reason != "" {
 		return LandResult{Status: "refused", Task: task, Branch: branch, Reason: reason}, nil
@@ -107,36 +153,75 @@ func landWith(root, task, message string, f ChangeFilter) (LandResult, error) {
 
 	pending, err := uncommittedWith(wt.Path, f)
 	if err != nil {
-		return fail(fmt.Sprintf("cannot list the integration tree's uncommitted changes: %v", err))
+		return fail(fmt.Sprintf("cannot list the assembly's uncommitted changes: %v", err))
 	}
 	if len(pending) > 0 {
 		return LandResult{Status: "dirty", Task: task, Branch: branch, Files: pending,
-			Reason: "the integration tree has uncommitted changes that would not be landed"}, nil
+			Reason: "the assembly has uncommitted changes that would not be landed"}, nil
 	}
 
 	baseline := readMarker(wt.Path, baselineFile)
 	if baseline == "" {
-		return fail("the integration tree has no baseline marker")
+		return fail("the assembly has no baseline marker")
 	}
 	tip, err := landRevParse(wt.Path, "HEAD")
 	if err != nil {
-		return fail(fmt.Sprintf("cannot read the integration tree's HEAD: %v", err))
+		return fail(fmt.Sprintf("cannot read the assembly's HEAD: %v", err))
 	}
 
-	res, err := landOnto(resolved, task, branch, baseline, tip, message, f)
-	if err != nil || res.Status != "landed" {
+	// An included assembly's baseline carries the user's uncommitted work; the
+	// marker names the HEAD that work was on, which is what the target must
+	// still contain.
+	anchor := readMarker(wt.Path, includedFile)
+	if anchor == "" {
+		anchor = baseline
+	}
+	res, err := landOntoFrom(resolved, task, branch, baseline, anchor, tip, message, f)
+	if err != nil {
 		return res, err
 	}
-	if err := writeMarker(wt.Path, landedFile, tip); err != nil {
-		return fail(fmt.Sprintf("landed %s, but could not record it in the integration tree: %v", res.Commit, err))
+	switch res.Status {
+	case "landed":
+		if err := writeMarker(wt.Path, landedFile, tip); err != nil {
+			return fail(fmt.Sprintf("landed %s, but could not record it in the assembly: %v", res.Commit, err))
+		}
+	case "empty":
+	default:
+		return res, nil
 	}
-	return res, nil
+	return finishAssembly(resolved, task, wt.Path, wt.Branch, res), nil
+}
+
+// finishAssembly removes the assembly once its work is landed (or nothing was
+// left to land), and ends its request when that was the request's last live
+// assembly. The request is found first: once the assembly is gone, nothing
+// names it any more.
+func finishAssembly(resolved, task, path, branch string, res LandResult) LandResult {
+	req, _, _ := RequestFor(path)
+	res.Request = req.ID
+	rr, err := Remove(resolved, task, false, branchSession(branch))
+	switch {
+	case err != nil:
+		res.Reason = fmt.Sprintf("the assembly was kept: %v", err)
+	case rr.Status != "removed":
+		res.Reason = fmt.Sprintf("the assembly was kept: %s: %s", rr.Status, rr.Reason)
+	default:
+		res.Removed = true
+		if req.ID != "" {
+			ended, err := EndRequestIfDone(req.ID)
+			res.RequestEnded = ended
+			if err != nil {
+				res.Reason = fmt.Sprintf("could not end request %s: %v", req.ID, err)
+			}
+		}
+	}
+	return res
 }
 
 // LandPath lands the Agent-tool worktree at path (any linked worktree of
 // the repository other than the checkout): its whole content, committed and
 // uncommitted, measured from its fork point with the checkout or from
-// baseline, and squashed the way Land squashes an integration branch.
+// baseline, and squashed the way Land squashes an assembly.
 func LandPath(root, path, baseline, message string) (LandResult, error) {
 	return landPathWith(root, path, baseline, message, CurrentFilter())
 }
@@ -282,6 +367,18 @@ func landSnapshot(path, head string, f ChangeFilter) (string, error) {
 // repository's own identity and message, fast-forwarded in. task is "" for a
 // --path source.
 func landOnto(resolved, task, branch, base, tip, message string, f ChangeFilter) (LandResult, error) {
+	return landOntoFrom(resolved, task, branch, base, base, tip, message, f)
+}
+
+// landOntoFrom is landOnto for a tip whose history starts at base but whose
+// target must still contain anchor. An assembly built on the user's
+// uncommitted work has base = its baseline commit, which holds that work on
+// top of the HEAD it was cut from: the target is the user's branch, which
+// need not carry the baseline itself, only the HEAD (anchor) it was made on.
+// Only base..tip is squashed, so the uncommitted work stays out of the
+// landed commit, and only the checkout's dirty paths the land changes block
+// it: the fast-forward keeps the rest.
+func landOntoFrom(resolved, task, branch, base, anchor, tip, message string, f ChangeFilter) (LandResult, error) {
 	fail := func(reason string) (LandResult, error) {
 		return LandResult{Status: "error", Task: task, Reason: reason}, nil
 	}
@@ -314,21 +411,28 @@ func landOnto(resolved, task, branch, base, tip, message string, f ChangeFilter)
 	if err != nil {
 		return fail(fmt.Sprintf("cannot read the checkout's status: %v", err))
 	}
-	if dirty := landStatusPaths(out); len(dirty) > 0 {
-		return LandResult{Status: "dirty", Task: task, Branch: branch, Files: dirty,
-			Reason: "the checkout has uncommitted changes to tracked files; commit or set them aside first"}, nil
+	dirty := landStatusPaths(out)
+	reason := "the checkout has uncommitted changes to tracked files; commit or set them aside first"
+	if anchor != base {
+		dirty = landOverlap(dirty, changed)
+		reason = "the checkout has uncommitted changes to files this land changes; the assembly was built on your uncommitted work, so commit it (or set it aside) and land again"
+	}
+	if len(dirty) > 0 {
+		return LandResult{Status: "dirty", Task: task, Branch: branch, Files: dirty, Reason: reason}, nil
 	}
 
 	target, err := landRevParse(resolved, "HEAD")
 	if err != nil {
 		return fail(fmt.Sprintf("cannot read %s's tip: %v", branch, err))
 	}
-	if _, err := gitx.Run(resolved, "merge-base", "--is-ancestor", base, target); err != nil {
+	if _, err := gitx.Run(resolved, "merge-base", "--is-ancestor", anchor, target); err != nil {
 		return LandResult{Status: "refused", Task: task, Branch: branch,
-			Reason: fmt.Sprintf("%s no longer contains the run's base %s", branch, base[:min(8, len(base))])}, nil
+			Reason: fmt.Sprintf("%s no longer contains the run's base %s", branch, anchor[:min(8, len(anchor))])}, nil
 	}
 
 	var tree string
+	// Compared with base, never anchor: with target at the anchor, the shortcut
+	// would commit tip's tree, uncommitted work included.
 	if target == base {
 		if tree, err = landRevParse(resolved, tip+"^{tree}"); err != nil {
 			return fail(fmt.Sprintf("cannot read the integrated tree: %v", err))
@@ -369,6 +473,33 @@ func landOnto(resolved, task, branch, base, tip, message string, f ChangeFilter)
 func landOwnMessage(message string) bool {
 	subject, _, _ := strings.Cut(message, "\n")
 	return landOwnSubject.MatchString(strings.TrimSpace(subject))
+}
+
+// landRoleReason is why the tree at path cannot land, "" for an assembly.
+func landRoleReason(resolved, path, task string) string {
+	switch ReadRole(path) {
+	case RoleAssembly:
+		return ""
+	case RoleIntegration:
+		if ReadParent(path) != "" {
+			return fmt.Sprintf("%s is an integration tree: merge it into its assembly with 'agent-exec isolate merge --task %s -m <message>', then land the assembly with 'agent-exec isolate land --task %s -m <message>'",
+				task, task, landAssemblyTask(resolved, ReadParent(path)))
+		}
+		return fmt.Sprintf("%s is an integration tree with no assembly; it cannot be landed: discard it with 'agent-exec isolate remove --task %s --force'", task, task)
+	default:
+		return fmt.Sprintf("%s is a work tree; only an assembly lands: integrate it with 'agent-exec isolate integrate --tasks %s --into <integration>'", task, task)
+	}
+}
+
+// landAssemblyTask is the task of the worktree at path, the assembly an
+// integration tree names as its parent; "<assembly>" when it is not found.
+func landAssemblyTask(resolved, path string) string {
+	for _, w := range worktrees(resolved) {
+		if paths.RealPath(w.Path) == paths.RealPath(path) && strings.HasPrefix(w.Branch, BranchPrefix) {
+			return branchTask(w.Branch)
+		}
+	}
+	return "<assembly>"
 }
 
 // landBranch is the branch checked out at resolved, the one a land lands on;
@@ -425,6 +556,18 @@ func landSplitZ(out string) []string {
 		}
 	}
 	return files
+}
+
+// landOverlap is the sorted paths both lists name.
+func landOverlap(dirty, changed []string) []string {
+	var both []string
+	for _, p := range dirty {
+		if slices.Contains(changed, p) {
+			both = append(both, p)
+		}
+	}
+	slices.Sort(both)
+	return both
 }
 
 // landStatusPaths is the paths of `git status --porcelain=v1 -z

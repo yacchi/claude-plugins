@@ -148,8 +148,9 @@ const ESCAPE = 'To override deliberately, include [orchestra:allow-orchestra-mer
 const orchestraReason = ({ ref, dir, verb }: Hit): string =>
     `orchestra: do not ${verb} an orchestra branch (${ref}) into ${dir}. `
     + 'Its commits are authored "orchestra" with "orchestra integrate <id>" subjects and must not reach the user\'s history. '
-    + 'When the user asks to take the run\'s result, land it from the user\'s checkout with '
-    + '`agent-exec isolate land --task <into> -m "<subject in the repository\'s convention>"`: '
+    + 'When the user asks to take the run\'s result, finish each integration tree with '
+    + '`agent-exec isolate merge --task <into> -m "<subject>"` and land the request\'s assembly from the user\'s checkout with '
+    + '`agent-exec isolate land -m "<subject in the repository\'s convention>"`: '
     + 'one squashed commit with the user\'s identity. '
     + ESCAPE
 

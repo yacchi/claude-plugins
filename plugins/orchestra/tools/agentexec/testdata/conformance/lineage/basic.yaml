@@ -1,0 +1,37 @@
+description: >
+  a request's assembly and integration tree from isolate request start --into,
+  a work tree under the integration tree, list's role/parent/children,
+  has-children even with --force, land refusing an integration tree and an
+  assembly that still has children, integrate into the request's integration
+  tree, merge reaping its integrated child and squashing into the assembly,
+  the assembly's not-landed gate, land of the request's assembly removing it
+  and ending the request
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+normalize_keys: [seconds, age_days, session_idle_minutes]
+steps:
+  - argv: [isolate, request, start, --into, feat]
+    save: {REQ: request, ASM: assembly, INT: integration}
+  - argv: [isolate, create, --task, t1, --parent, feat]
+    save: {T1: path}
+  - argv: [isolate, create, --task, bad, --parent, "<@REQ>"]
+  - argv: [isolate, create, --task, bad, --parent, nope]
+  - argv: [isolate, list]
+  - argv: [write-file, --path, "<@T1>/b.txt"]
+    stdin: "b\n"
+  - argv: [isolate, remove, --task, "<@REQ>", --force]
+  - argv: [isolate, remove, --task, feat, --force]
+  - argv: [isolate, land, --task, feat, -m, "feat: add b"]
+  - argv: [isolate, land, -m, "feat: add b"]
+  - argv: [isolate, integrate, --tasks, t1, --into, feat]
+  - argv: [isolate, merge, --task, t1, -m, "feat: add b"]
+  - argv: [isolate, merge, --task, feat, -m, "feat: add b"]
+  - argv: [isolate, list]
+  - argv: [isolate, sweep, --dry-run, --include-current, --live-window, "0"]
+  - argv: [isolate, land, -m, "feat: add b"]
+    snapshot:
+      - <WORK>/b.txt
+  - argv: [isolate, list]
+  - argv: [isolate, request, list]

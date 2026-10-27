@@ -1,6 +1,7 @@
 package isolate
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 func sweep(t *testing.T, repo string, o SweepOptions) SweepResult {
@@ -29,6 +31,148 @@ func byTask(r SweepResult) map[string]SweepWorktree {
 		m[w.Task] = w
 	}
 	return m
+}
+
+// sweepTreeRows is each orchestra row as "task=status", in report order.
+func sweepTreeRows(r SweepResult) []string {
+	var rows []string
+	for _, w := range r.Worktrees {
+		rows = append(rows, w.Task+"="+w.Status)
+	}
+	return rows
+}
+
+// sweepTreeUnmerged plants the hierarchy a <- x <- t with t collected and x
+// holding one commit past its baseline that was never merged into a.
+func sweepTreeUnmerged(t *testing.T) (repo, a, x, w string) {
+	t.Helper()
+	repo = newRepo(t)
+	a, x, w = gateHierarchy(t, repo)
+	gateCommit(t, w, "w.txt", "w\n")
+	if c, _ := Collect(repo, "t", ""); c.Status != "collected" {
+		t.Fatalf("collect t: %+v", c)
+	}
+	gateCommit(t, x, "x.txt", "x\n")
+	return repo, a, x, w
+}
+
+func TestSweepTreeForceRemovesTheChainBottomUp(t *testing.T) {
+	repo := newRepo(t)
+	a, x, w := gateHierarchy(t, repo)
+	dry := sweep(t, repo, SweepOptions{DryRun: true, Force: true})
+	if got := sweepTreeRows(dry); !slices.Equal(got, []string{"t=would-remove", "x=would-remove", "a=would-remove"}) ||
+		!exists(a) || !exists(x) || !exists(w) {
+		t.Fatalf("dry run: %v", got)
+	}
+	r := sweep(t, repo, SweepOptions{Force: true})
+	if got := sweepTreeRows(r); !slices.Equal(got, []string{"t=removed", "x=removed", "a=removed"}) ||
+		r.Summary.HasChildren != 0 || exists(a) || exists(x) || exists(w) {
+		t.Fatalf("real run: %v %+v", got, r.Summary)
+	}
+}
+
+func TestSweepTreeParentWaitsForAnUnmergedChild(t *testing.T) {
+	repo, a, x, w := sweepTreeUnmerged(t)
+	r := sweep(t, repo, SweepOptions{})
+	if got := sweepTreeRows(r); !slices.Equal(got, []string{"t=removed", "x=dirty", "a=has-children"}) ||
+		exists(w) || !exists(x) || !exists(a) {
+		t.Fatalf("real run: %v", got)
+	}
+	if s := r.Summary; s.Removed != 1 || s.Dirty != 1 || s.HasChildren != 1 || s.Skipped != 0 {
+		t.Errorf("summary %+v", s)
+	}
+	kids := byTask(r)["a"].Children
+	if len(kids) != 1 || kids[0].Task != "x" || kids[0].Path != paths.RealPath(x) {
+		t.Errorf("children of a: %+v", kids)
+	}
+	// "children" is only emitted on the has-children row.
+	for task, want := range map[string]bool{"a": true, "t": false} {
+		b, err := json.Marshal(byTask(r)[task])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := m["children"]; ok != want {
+			t.Errorf("%s: children key present %v in %s", task, ok, b)
+		}
+	}
+}
+
+func TestSweepTreeDryRunPreviewMatchesTheRealRun(t *testing.T) {
+	repo, _, _, _ := sweepTreeUnmerged(t)
+	r := sweep(t, repo, SweepOptions{DryRun: true})
+	if got := sweepTreeRows(r); !slices.Equal(got, []string{"t=would-remove", "x=dirty", "a=has-children"}) {
+		t.Fatalf("dry run: %v", got)
+	}
+	want := "summary: removed 0, would-remove 1, dirty 1, has-children 1, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted"
+	if text := FormatSweepText(r); !strings.Contains(text, want) {
+		t.Errorf("text summary:\n%s", text)
+	}
+}
+
+func TestSweepTreeAdoptedChildKeepsItsParent(t *testing.T) {
+	repo := newRepo(t)
+	a := plantTree(t, repo, "a", RoleAssembly, "")
+	x := plantTree(t, repo, "x", RoleIntegration, a)
+	ext := filepath.Join(filepath.Dir(repo), "external")
+	git(t, repo, "worktree", "add", "-q", "-b", "feature/ext", ext)
+	if err := WriteAdopted(ext, "ext-task"); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteParent(ext, x); err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range []SweepOptions{{DryRun: true}, {}, {Force: true}} {
+		r := byTask(sweep(t, repo, o))
+		if r["x"].Status != "has-children" || r["a"].Status != "has-children" || r["ext-task"].Status != "external" ||
+			!exists(x) || !exists(a) {
+			t.Fatalf("sweep %+v: x %+v, a %+v", o, r["x"], r["a"])
+		}
+	}
+}
+
+func TestListReportsRoleParentAndChildren(t *testing.T) {
+	repo := newRepo(t)
+	a := plantTree(t, repo, "a", RoleAssembly, "")
+	x := plantTree(t, repo, "x", RoleIntegration, a)
+	plain := filepath.Join(filepath.Dir(repo), "plain")
+	git(t, repo, "worktree", "add", "-q", "-b", "feature/plain", plain)
+	if err := WriteParent(plain, x); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := List(repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Entry{}
+	for _, e := range entries {
+		got[e.Task] = e
+	}
+	if e := got["a"]; e.Role != RoleAssembly || e.Parent != "" || e.Children != 1 {
+		t.Errorf("assembly: %+v", e)
+	}
+	if e := got["x"]; e.Role != RoleIntegration || e.Parent != NullString(paths.RealPath(a)) || e.Children != 1 {
+		t.Errorf("integration: %+v", e)
+	}
+}
+
+func TestListCountsChildrenOutsideTheSessionFilter(t *testing.T) {
+	repo := newRepo(t)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", sessA)
+	x := plantTree(t, repo, "x", RoleIntegration, "")
+	t.Setenv("CLAUDE_CODE_SESSION_ID", sessB)
+	plantTree(t, repo, "c", "", x)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", sessA)
+	entries, err := List(repo, sessA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Task != "x" || entries[0].Children != 1 {
+		t.Fatalf("sessA's list: %+v", entries)
+	}
 }
 
 func TestSweepKeepsUncollectedWorkAndLeavesOtherTreesAlone(t *testing.T) {

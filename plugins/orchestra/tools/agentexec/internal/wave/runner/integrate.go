@@ -136,7 +136,7 @@ func (r *runner) integrateReady() int {
 		bySanitized[r.sanitized(pid)] = pid
 	}
 	res, err := integrate.Integrate(r.root, tasks, integrate.Options{
-		Onto: r.base, Into: r.into, OnConflict: integrate.OnConflictSkip, Verify: gate,
+		Into: r.into, OnConflict: integrate.OnConflictSkip, Verify: gate,
 		VerifyTimeout: integrateVerifyTimeout, Bisect: true,
 		Progress: progressWriter{r: r, byTsk: bySanitized, tasks: true},
 	})

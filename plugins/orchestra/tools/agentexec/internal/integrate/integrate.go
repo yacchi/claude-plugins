@@ -38,22 +38,24 @@ const DefaultInto = "integrate"
 // Options.BisectMax is not positive.
 const DefaultBisectMax = 3
 
-// Options tunes Integrate. Onto "" starts a new integration tree at the
-// first task's baseline. Into "" is DefaultInto. OnConflict "" is keep.
-// Verify "" runs no verification; VerifyTimeout 0 means no limit. Lock ""
-// takes no lock; LockWait waits up to LockTimeout, LockFail tries once.
+// Options tunes Integrate. Into "" is DefaultInto; the integration tree is
+// created by isolate.EnsureIntegration from the calling session's request
+// assembly, and Uncommitted is the choice it needs when the user's checkout
+// has uncommitted work (see isolate.UncommittedInclude). OnConflict "" is
+// keep. Verify "" runs no verification; VerifyTimeout 0 means no limit. Lock
+// "" takes no lock; LockWait waits up to LockTimeout, LockFail tries once.
 // Progress, when set, receives one JSON line per stage
 // ({"event","pkg","detail","at"}), one Write per line; its errors are
 // ignored. Filter nil is isolate.CurrentFilter(): excluded paths never
 // enter a change set or a commit, and a task adding more than MaxAdded new
 // files is refused.
 type Options struct {
-	Onto, Into, OnConflict, Verify, Lock string
-	VerifyTimeout, LockTimeout           time.Duration
-	Bisect                               bool
-	BisectMax                            int
-	Progress                             io.Writer
-	Filter                               *isolate.ChangeFilter
+	Into, OnConflict, Verify, Lock, Uncommitted string
+	VerifyTimeout, LockTimeout                  time.Duration
+	Bisect                                      bool
+	BisectMax                                   int
+	Progress                                    io.Writer
+	Filter                                      *isolate.ChangeFilter
 }
 
 // Integration names the integration worktree.
@@ -64,8 +66,11 @@ type Integration struct {
 }
 
 // TaskResult is one task's outcome. Status is applied | conflicted |
-// missing | empty | skipped | reverted | refused (adds more new files than
-// the filter allows; Reason says how many, and the task was not applied) |
+// missing | empty | foreign (its parent marker names another integration
+// tree; left for that tree, because the hierarchy only completes when every
+// child merges into its OWN integration tree) | skipped | reverted | refused
+// (adds more new files than the filter allows; Reason says how many, and the
+// task was not applied) |
 // commit-failed (its integrate commit failed; Reason is git's output, the
 // apply was rolled back and the source is not collected).
 // Excluded counts the files the filter kept out of an applied change set.
@@ -83,8 +88,9 @@ type TaskResult struct {
 
 // Result is `isolate integrate`'s output. Status is ok | conflicted |
 // verify-failed | commit-failed | reverted | refused (otherwise ok, but a
-// task was refused) | error, or locked (then only Into, Holder, LockFile
-// and Note are meaningful).
+// task was refused) | uncommitted (the checkout has uncommitted work and the
+// request's assembly was not created; every task is missing) | error, or
+// locked (then only Into, Holder, LockFile and Note are meaningful).
 type Result struct {
 	Status      string
 	Integration Integration
@@ -143,6 +149,8 @@ func ExitCode(r Result) int {
 		return 7
 	case "commit-failed":
 		return 8
+	case "uncommitted":
+		return 9
 	}
 	return 3
 }
@@ -234,10 +242,10 @@ func emit(w io.Writer, event string, pkg string, detail map[string]any) {
 // changeSet is one source task's own changes.
 type changeSet struct {
 	task         string
-	state        string // missing | empty | ready
+	state        string // missing | empty | ready | foreign
+	reason       string // why a foreign task is left alone
 	files        []string
 	patch        string
-	baseline     string
 	added        int // new files among files
 	excluded     int // files the filter kept out
 	excludedDirs []string
@@ -267,7 +275,7 @@ func taskChangeSet(root, task string, f isolate.ChangeFilter) (changeSet, error)
 	if diff.Status != "ok" {
 		return blank, nil
 	}
-	cs := changeSet{task: task, state: "empty", patch: diff.Patch, baseline: diff.Baseline,
+	cs := changeSet{task: task, state: "empty", patch: diff.Patch,
 		added: diff.Added, excluded: diff.Excluded, excludedDirs: diff.ExcludedDirs}
 	for _, f := range diff.Files {
 		if f != "" {
@@ -297,7 +305,8 @@ func clearSourceCollected(root, task string) {
 }
 
 // Integrate replays tasks' diffs onto the integration worktree o.Into of
-// the repository containing root. The user's tree is never touched. Each
+// the request of the repository containing root. The user's tree is never
+// touched. Each
 // applied task is committed there, giving the next 3-way apply a real merge
 // base. A non-nil error means unusable input (a task id with no usable
 // characters, an ambiguous task); everything else is in Result.Status.
@@ -361,35 +370,43 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 		}
 	}
 
-	// Default base: the first task's baseline, the commit it was written
-	// against, so its patch applies to the tree it expects.
-	ref := o.Onto
-	if ref == "" {
-		ref = "HEAD"
-		if len(changes) > 0 && changes[0].baseline != "" {
-			ref = changes[0].baseline
-		}
-	}
-	ontoSHA := isolate.RevParseCommit(resolved, ref)
-	if ontoSHA == "" {
-		return failure(fmt.Sprintf("could not resolve --onto ref %q to a commit", ref))
-	}
-	created, err := isolate.Create(resolved, intoTask, isolate.CreateOptions{Backend: isolate.BackendGit, Onto: ontoSHA})
+	ens, err := isolate.EnsureIntegration(resolved, intoTask, o.Uncommitted)
 	if err != nil {
 		return Result{}, err
 	}
-	wt := created.Path
-	if st, serr := os.Stat(wt); created.Status == "error" || wt == "" || serr != nil || !st.IsDir() {
-		return failure("could not create the integration worktree " + branch)
+	switch ens.Status {
+	case "ready":
+	case "uncommitted":
+		res, _ := failure(ens.Reason)
+		res.Status = "uncommitted"
+		return res, nil
+	default:
+		return failure(ens.Reason)
 	}
-	if created.Status == "exists" {
-		// A reused integration tree's own baseline is the truth about where
-		// it starts, not the ref we would have picked.
-		if b, ok := isolate.ReadBaseline(wt); ok {
-			ontoSHA = b
+	wt := ens.Integration
+	// A reused integration tree's own baseline is the truth about where it
+	// started; a fresh one starts at the assembly's HEAD.
+	ontoSHA := ens.Head
+	if b, ok := isolate.ReadBaseline(wt); ok {
+		ontoSHA = b
+	}
+
+	// A task whose parent marker names another integration tree belongs to
+	// that tree: merging it here would strand it under the wrong parent.
+	for i := range changes {
+		ch := &changes[i]
+		if ch.state != "ready" && ch.state != "empty" {
+			continue
+		}
+		src, _, ok := isolate.ResolveWorktree(resolved, ch.task, "")
+		if !ok {
+			continue
+		}
+		if parent := isolate.ReadParent(src); parent != "" && parent != paths.RealPath(wt) {
+			ch.state = "foreign"
+			ch.reason = fmt.Sprintf("task %s belongs to integration tree %s", ch.task, parent)
 		}
 	}
-	_ = isolate.WriteRole(wt, isolate.RoleIntegration)
 
 	// Bisection's search space starts at the tip before THIS invocation: a
 	// reused tree may already carry earlier rounds' commits.
@@ -410,7 +427,8 @@ func integrate(root string, tasks []string, into string, o Options) (Result, err
 			continue
 		}
 		if ch.state != "ready" {
-			results = append(results, TaskResult{Task: task, Status: ch.state, Conflicts: []isolate.Conflict{}})
+			results = append(results, TaskResult{Task: task, Status: ch.state, Conflicts: []isolate.Conflict{},
+				Reason: ch.reason})
 			emit(o.Progress, "integrate-task", task, map[string]any{"status": ch.state})
 			if ch.state == "empty" {
 				markSourceCollected(resolved, task, ch.files, ch.patch)
@@ -569,6 +587,9 @@ func note(results []TaskResult, intoTask, wt string) string {
 	var tail []string
 	if n := counts["missing"]; n > 0 {
 		tail = append(tail, fmt.Sprintf("%d had no worktree", n))
+	}
+	if n := counts["foreign"]; n > 0 {
+		tail = append(tail, fmt.Sprintf("%d belong to another integration tree", n))
 	}
 	if n := counts["empty"]; n > 0 {
 		tail = append(tail, fmt.Sprintf("%d changed nothing", n))

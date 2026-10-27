@@ -74,10 +74,15 @@ func callerIsolates() isolation {
 
 // isolateFor resolves isolation for a dispatch into workdir. Failing to
 // isolate degrades to the shared tree with the reason, except a refused start
-// commit (HEAD tracks dependency stores), which aborts the dispatch: the
-// refusal runs before Create, so no worktree is made and the worker never
-// lands in the user's checkout.
-func isolateFor(cfg *config.Resolved, workdir, mode, task string) isolation {
+// commit (HEAD tracks dependency stores) and, for a forced isolation with a run
+// id in the user's checkout, a request whose integration tree cannot be made:
+// those abort the dispatch before Create, so no worktree is made and the worker
+// never lands in the user's checkout.
+//
+// With a run id the task tree starts from the request's integration tree for
+// that run and is recorded as its child, so the run's work flows checkout ->
+// assembly -> integration tree -> task trees.
+func isolateFor(cfg *config.Resolved, workdir, mode, task, runID string) isolation {
 	want, verdict := shouldIsolate(workdir, mode)
 	if !want {
 		return isolation{obj: verdict}
@@ -86,20 +91,49 @@ func isolateFor(cfg *config.Resolved, workdir, mode, task string) isolation {
 	shared := func(reason string) isolation {
 		return isolation{obj: map[string]any{"isolate": false, "mode": mode, "reason": reason}}
 	}
+	refuse := func(reason string) isolation {
+		return isolation{
+			obj:     map[string]any{"isolate": false, "mode": mode, "reason": reason},
+			refused: reason,
+		}
+	}
 	if task == "" {
 		return shared(fmt.Sprintf("isolation wanted (%s) but no --task id was given; "+
 			"an id is what lets retry rounds share one worktree", why))
 	}
 	if dirs, err := isolate.TrackedExcluded(workdir, "HEAD", isolate.CurrentFilter()); err == nil && len(dirs) > 0 {
-		msg := isolate.TrackedRefusal("HEAD", dirs)
-		return isolation{
-			obj:     map[string]any{"isolate": false, "mode": mode, "reason": msg},
-			refused: msg,
+		return refuse(isolate.TrackedRefusal("HEAD", dirs))
+	}
+	opts := isolate.CreateOptions{
+		Carry: true, CarryExtra: cfg.StringList("isolation", "carry_extra"),
+	}
+	// A workdir inside an integration tree (wave run's per-package dispatch)
+	// makes the task tree that tree's child, so the integration tree counts it.
+	if root, ok := gitx.RepoRoot(workdir); ok && isolate.ReadRole(root) == isolate.RoleIntegration {
+		opts.Parent = root
+	}
+	cut := ""
+	if (mode == IsolateAlways || mode == IsolateCli) && runID != "" {
+		if _, user := isolate.UserCheckout(workdir); user {
+			res, err := isolate.EnsureIntegration(workdir, runID, "")
+			switch {
+			case err != nil:
+				return refuse(err.Error())
+			case res.Status == "uncommitted":
+				return refuse(fmt.Sprintf("%s; run 'agent-exec isolate request start --into %s --uncommitted include|ignore' once before preparing or dispatching", res.Reason, runID))
+			case res.Status != "ready" || res.Head == "":
+				return refuse(fmt.Sprintf("could not prepare integration tree %s: %s", runID, res.Reason))
+			}
+			// The task tree is cut from the integration tree's HEAD, but its
+			// dependencies still come from the checkout (Create's root).
+			opts.Onto, opts.Parent = res.Head, res.Integration
+			cut = fmt.Sprintf("; cut from integration tree %s", res.Into)
+			if res.Request != "" {
+				cut += fmt.Sprintf(" of request %s", res.Request)
+			}
 		}
 	}
-	created, err := isolate.Create(workdir, task, isolate.CreateOptions{
-		Carry: true, CarryExtra: cfg.StringList("isolation", "carry_extra"),
-	})
+	created, err := isolate.Create(workdir, task, opts)
 	if err != nil {
 		created = isolate.CreateResult{Status: "error", Reason: err.Error()}
 	}
@@ -109,6 +143,14 @@ func isolateFor(cfg *config.Resolved, workdir, mode, task string) isolation {
 			reason = "unknown error"
 		}
 		return shared(fmt.Sprintf("could not isolate (%s); running in the shared tree", reason))
+	}
+	// An existing tree under another integration tree is not this wave's to
+	// reuse; integrate would reject it as foreign later, so stop here.
+	if created.Status == "exists" && opts.Parent != "" && created.Parent != "" &&
+		paths.RealPath(created.Parent) != paths.RealPath(opts.Parent) {
+		return refuse(fmt.Sprintf("task %s already has a tree at %s under %s, not under %s; "+
+			"finish or discard it ('agent-exec isolate remove --task %s', add --force to discard its work), "+
+			"or use another task id", task, created.Path, created.Parent, opts.Parent, task))
 	}
 	wt := created.Path
 	effective, fallback := wt, ""
@@ -129,7 +171,7 @@ func isolateFor(cfg *config.Resolved, workdir, mode, task string) isolation {
 			}
 		}
 	}
-	reason := fmt.Sprint(why)
+	reason := fmt.Sprint(why) + cut
 	if fallback != "" {
 		reason += "; " + fallback
 	}

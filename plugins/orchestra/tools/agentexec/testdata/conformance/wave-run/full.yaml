@@ -45,6 +45,32 @@ setup:
          {"id": "A", "spec": "specs/A.md", "cls": "standard", "files_owned": ["a.txt"]},
          {"id": "B", "spec": "specs/B.md", "cls": "standard", "depends_on": ["A"], "files_owned": ["b.txt"]}
        ]}
+    ~/wave/specs/RA.md: |
+      Write ra.txt.
+      COMMANDS:
+      printf 'a\n' > ra.txt
+    ~/wave/specs/RB.md: |
+      Write rb.txt.
+      COMMANDS:
+      printf 'b\n' > rb.txt
+    ~/wave/plan-r.json: |
+      {"packages": [
+         {"id": "RA", "spec": "specs/RA.md", "cls": "standard", "files_owned": ["ra.txt"]},
+         {"id": "RB", "spec": "specs/RB.md", "cls": "standard", "depends_on": ["RA"], "files_owned": ["rb.txt"]}
+       ]}
+    ~/wave/specs/FA.md: |
+      Write fa.txt.
+      COMMANDS:
+      printf 'a\n' > fa.txt
+    ~/wave/specs/FB.md: |
+      Write fb.txt.
+      COMMANDS:
+      printf 'b\n' > fb.txt
+    ~/wave/plan-f.json: |
+      {"packages": [
+         {"id": "FA", "spec": "specs/FA.md", "cls": "standard", "files_owned": ["fa.txt"]},
+         {"id": "FB", "spec": "specs/FB.md", "cls": "standard", "depends_on": ["FA"], "files_owned": ["fb.txt"]}
+       ]}
 normalize_keys: [since, updated, at]
 normalize_text:
   - pattern: '"(seconds|until)": ?[0-9.e+-]+'
@@ -57,13 +83,13 @@ steps:
     env:
       ORCHESTRA_CONFIG_ROOT: "<HOME>/gated-root"
     snapshot: ["~/gated/state.json", "~/gated/state.events.jsonl", "~/gated/green.json", "~/green.out"]
-  - argv: [wave, run, --plan, wave/plan.json, --state, red/state.json, --into, red-int, --repo, ../work, --max-in-flight, "1",
+  - argv: [wave, run, --plan, wave/plan-r.json, --state, red/state.json, --into, red-int, --repo, ../work, --max-in-flight, "1",
            --gate, "true", --full, "false"]
     cwd: "~"
     env:
       ORCHESTRA_CONFIG_ROOT: "<HOME>/gated-root"
     snapshot: ["~/red/state.json", "~/red/green.json"]
-  - argv: [wave, run, --plan, wave/plan.json, --state, final/state.json, --into, final-int, --repo, ../work, --max-in-flight, "1",
+  - argv: [wave, run, --plan, wave/plan-f.json, --state, final/state.json, --into, final-int, --repo, ../work, --max-in-flight, "1",
            --full, "echo boom; exit 1"]
     cwd: "~"
     snapshot: ["~/final/state.json", "~/final/state.events.jsonl", "~/final/fixups.json", "~/final/fixups/fix-1.md"]

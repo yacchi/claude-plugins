@@ -1,0 +1,449 @@
+{
+  "scenario": "lineage/adopt",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "boot"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#1>",
+        "branch": "orchestra/00000000/boot",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "parent": null,
+        "path": "<WORK>-orchestra/00000000-boot",
+        "role": "work",
+        "status": "created",
+        "task": "boot"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/boot",
+            "children": 0,
+            "current": true,
+            "parent": null,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
+            "session": "00000000",
+            "task": "boot"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "boot",
+        "--into",
+        "prep",
+        "--verify",
+        "sh \"$PREP\""
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/prep",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+          "task": "prep"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+        "onto": "<SHA#2>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "boot"
+          }
+        ],
+        "verify": {
+          "baseline": null,
+          "dirtied": 0,
+          "excerpt": "",
+          "exit": 0,
+          "reason": "",
+          "seconds": "<SECONDS>",
+          "status": "pass",
+          "timed_out": false
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "start",
+        "--into",
+        "feat"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [],
+        "head": "<SHA#2>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "into": "feat",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "clean"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "pkg-a",
+        "--path",
+        "../ext",
+        "--parent",
+        "feat"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "baseline": "<SHA#2>",
+        "branch": "ext",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "adopted <ROOT>/ext as task pkg-a",
+        "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "path": "<ROOT>/ext",
+        "status": "adopted",
+        "task": "pkg-a"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "pkg-b",
+        "--path",
+        "../ext2",
+        "--parent",
+        "boot"
+      ],
+      "exit": 3,
+      "stdout_shape": "json",
+      "stdout": {
+        "baseline": null,
+        "branch": "ext2",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "note": "parent <WORK>-orchestra/00000000-boot is not an integration tree",
+        "path": "<ROOT>/ext2",
+        "status": "error",
+        "task": "pkg-b"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "adopt",
+        "--task",
+        "pkg-b",
+        "--path",
+        "../ext2",
+        "--parent",
+        "nope"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/feat",
+            "children": 1,
+            "current": true,
+            "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+            "role": "integration",
+            "session": "00000000",
+            "task": "feat"
+          },
+          {
+            "branch": "orchestra/00000000/prep",
+            "children": 0,
+            "current": true,
+            "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+            "role": "integration",
+            "session": "00000000",
+            "task": "prep"
+          },
+          {
+            "branch": "orchestra/00000000/<DATE>-00000000",
+            "children": 2,
+            "current": true,
+            "parent": null,
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "role": "assembly",
+            "session": "00000000",
+            "task": "<DATE>-00000000"
+          },
+          {
+            "branch": "orchestra/00000000/boot",
+            "children": 0,
+            "current": true,
+            "parent": null,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
+            "session": "00000000",
+            "task": "boot"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "feat",
+        "--force"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "children": [
+          {
+            "path": "<ROOT>/ext",
+            "task": "pkg-a"
+          }
+        ],
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "reason": "1 child tree(s) still open; merge or discard them first (--force never removes a tree with children)",
+        "status": "has-children",
+        "task": "feat"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--dry-run",
+        "--include-current",
+        "--include-live",
+        "--live-window",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "branches": [],
+        "dry_run": true,
+        "pruned": false,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 1,
+          "errors": 0,
+          "external": 1,
+          "has_children": 2,
+          "removed": 0,
+          "skipped": 0,
+          "trash_removed": 0,
+          "would_remove": 1
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/feat",
+            "children": [
+              {
+                "path": "<ROOT>/ext",
+                "task": "pkg-a"
+              }
+            ],
+            "current": true,
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+            "reason": "1 child tree(s) still open; merge or discard them first (--force never removes a tree with children)",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "has-children",
+            "task": "feat"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/prep",
+            "current": true,
+            "files": [],
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+            "reason": "integration tree prep holds commits not merged into its assembly; merge it with 'agent-exec isolate merge --task prep -m <message>', or pass --force to discard them",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "dirty",
+            "task": "prep"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/<DATE>-00000000",
+            "children": [
+              {
+                "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+                "task": "feat"
+              },
+              {
+                "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+                "task": "prep"
+              }
+            ],
+            "current": true,
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "reason": "2 child tree(s) still open; merge or discard them first (--force never removes a tree with children)",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "has-children",
+            "task": "<DATE>-00000000"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/boot",
+            "current": true,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "would-remove",
+            "task": "boot"
+          },
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "ext",
+            "current": false,
+            "path": "<ROOT>/ext",
+            "reason": "adopted external worktree; orchestra never removes it",
+            "session": "00000000",
+            "status": "external",
+            "task": "pkg-a"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "unadopt",
+        "--task",
+        "pkg-a"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "path": "<ROOT>/ext",
+        "status": "unadopted",
+        "task": "pkg-a"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/feat",
+            "children": 0,
+            "current": true,
+            "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+            "role": "integration",
+            "session": "00000000",
+            "task": "feat"
+          },
+          {
+            "branch": "orchestra/00000000/prep",
+            "children": 0,
+            "current": true,
+            "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+            "role": "integration",
+            "session": "00000000",
+            "task": "prep"
+          },
+          {
+            "branch": "orchestra/00000000/<DATE>-00000000",
+            "children": 2,
+            "current": true,
+            "parent": null,
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "role": "assembly",
+            "session": "00000000",
+            "task": "<DATE>-00000000"
+          },
+          {
+            "branch": "orchestra/00000000/boot",
+            "children": 0,
+            "current": true,
+            "parent": null,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
+            "session": "00000000",
+            "task": "boot"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "feat"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "branch": "orchestra/00000000/feat",
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "session": "00000000",
+        "status": "removed",
+        "task": "feat"
+      }
+    }
+  ]
+}

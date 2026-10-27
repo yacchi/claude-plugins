@@ -126,9 +126,9 @@ func (r RefreshResult) MarshalJSON() ([]byte, error) {
 	return fsutil.MarshalJSON(o)
 }
 
-// Refresh moves task's worktree onto onto ("" = HEAD of root). session ""
-// is the calling session. Only an unusable task id or an ambiguous task is
-// an error; everything else is in the result's Status.
+// Refresh moves task's worktree onto onto ("" = HEAD of the tree's parent,
+// else of root). session "" is the calling session. Only an unusable task id
+// or an ambiguous task is an error; everything else is in the result's Status.
 func Refresh(root, task, onto, session string) (RefreshResult, error) {
 	resolved, isRepo := gitx.RepoRoot(root)
 	task, err := SanitizeTaskID(task)
@@ -150,14 +150,23 @@ func Refresh(root, task, onto, session string) (RefreshResult, error) {
 		res.Status, res.Note = "error", note
 		return res, nil
 	}
-	if ReadRole(wt.Path) == RoleIntegration {
-		return fail("refusing to refresh an integration worktree")
+	if role := ReadRole(wt.Path); role != "" {
+		return fail(fmt.Sprintf("refusing to refresh an %s worktree", role))
 	}
-	ref := onto
+	// Checked before anything is touched: a gone parent must not leave the
+	// default base unresolvable or the task half-moved.
+	parent := ReadParent(wt.Path)
+	if parent != "" && ReadRole(parent) != RoleIntegration {
+		return fail(fmt.Sprintf("parent tree %s is gone; nothing touched", parent))
+	}
+	ref, base := onto, resolved
 	if ref == "" {
 		ref = "HEAD"
+		if parent != "" {
+			base = parent
+		}
 	}
-	ontoSHA := RevParseCommit(resolved, ref)
+	ontoSHA := RevParseCommit(base, ref)
 	if ontoSHA == "" {
 		return fail(fmt.Sprintf("could not resolve --onto ref %q to a commit", ref))
 	}
@@ -217,7 +226,7 @@ func Refresh(root, task, onto, session string) (RefreshResult, error) {
 	}
 	carryDeps := true
 	created, err := Create(resolved, task, CreateOptions{
-		Backend: BackendGit, Onto: ontoSHA, Session: sess, Carry: false, CarryDeps: &carryDeps,
+		Backend: BackendGit, Onto: ontoSHA, Session: sess, Parent: parent, Carry: false, CarryDeps: &carryDeps,
 	})
 	lost := RefreshResult{Status: "error", Task: task, OldBaseline: res.OldBaseline, PatchFile: res.PatchFile,
 		Warning: res.Warning}

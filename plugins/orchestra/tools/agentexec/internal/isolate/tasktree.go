@@ -11,7 +11,8 @@ import (
 
 // TaskTree reports whether dir lies in an orchestra TASK worktree: a linked
 // worktree (its git dir differs from the common dir) whose git dir holds the
-// baseline or the adoption marker, and whose role is not RoleIntegration.
+// baseline or the adoption marker, and that has no role marker: integration
+// trees and assemblies are the supervisor's, never a worker's.
 // top is that worktree's top-level directory. A dir that does not exist is
 // replaced by its nearest existing parent first. Anything git cannot answer
 // is "not a task tree".
@@ -41,7 +42,7 @@ func TaskTree(dir string) (top string, ok bool) {
 			return "", false
 		}
 	}
-	if ReadRole(top) == RoleIntegration {
+	if ReadRole(top) != "" {
 		return "", false
 	}
 	return top, true

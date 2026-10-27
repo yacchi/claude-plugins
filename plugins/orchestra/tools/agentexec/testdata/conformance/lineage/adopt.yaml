@@ -1,0 +1,32 @@
+description: >
+  adopt --parent records an adopted tree as a child of an integration tree;
+  the refusals (a parent that is not an integration tree, exit 3; an unknown
+  parent id, exit 2); the adopted child counts in list and blocks removal
+  even with --force; sweep reports it external and keeps its parent; unadopt
+  drops the lineage
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+    <ROOT>/prep.sh: |
+      set -e
+      cd <WORK>
+      git worktree add -q -b ext <ROOT>/ext
+      git worktree add -q -b ext2 <ROOT>/ext2
+  env: {PREP: "<ROOT>/prep.sh"}
+normalize_keys: [seconds, age_days, session_idle_minutes]
+steps:
+  - argv: [isolate, create, --task, boot]
+  - argv: [isolate, list]
+    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
+  - argv: [isolate, request, start, --into, feat]
+  - argv: [isolate, adopt, --task, pkg-a, --path, ../ext, --parent, feat]
+  - argv: [isolate, adopt, --task, pkg-b, --path, ../ext2, --parent, boot]
+  - argv: [isolate, adopt, --task, pkg-b, --path, ../ext2, --parent, nope]
+  - argv: [isolate, list]
+  - argv: [isolate, remove, --task, feat, --force]
+  - argv: [isolate, sweep, --dry-run, --include-current, --include-live, --live-window, "0"]
+  - argv: [isolate, unadopt, --task, pkg-a]
+  - argv: [isolate, list]
+  - argv: [isolate, remove, --task, feat]

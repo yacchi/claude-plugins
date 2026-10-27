@@ -18,7 +18,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t1",
+        "role": "work",
         "status": "created",
         "task": "t1"
       },
@@ -53,7 +55,9 @@
           ".claude/settings.local.json"
         ],
         "carry_method": "clone",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t2",
+        "role": "work",
         "status": "created",
         "task": "t2"
       }
@@ -80,7 +84,9 @@
           ".claude/settings.local.json"
         ],
         "carry_method": "clone",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t3",
+        "role": "work",
         "status": "created",
         "task": "t3"
       }
@@ -96,22 +102,31 @@
         "worktrees": [
           {
             "branch": "orchestra/00000000/t1",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t1",
+            "role": "work",
             "session": "00000000",
             "task": "t1"
           },
           {
             "branch": "orchestra/00000000/t2",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t2",
+            "role": "work",
             "session": "00000000",
             "task": "t2"
           },
           {
             "branch": "orchestra/00000000/t3",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t3",
+            "role": "work",
             "session": "00000000",
             "task": "t3"
           }

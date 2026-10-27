@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -17,14 +18,15 @@ import (
 // RemoveResult is `isolate remove`'s output, for one task or (IsSession,
 // Removed set) for every tree of a session.
 type RemoveResult struct {
-	Status    string // removed | dirty | busy | absent | unadopted | error
+	Status    string // removed | dirty | busy | has-children | absent | unadopted | error
 	Task      string
 	Path      string
 	Branch    string
 	Session   string
-	Reason    string   // dirty, busy, error; removed: a leftover trash dir
+	Reason    string   // dirty, busy, has-children, error; removed: a leftover trash dir
 	Warning   string   // removed: why the hosted session in the tree was left open
 	Files     []string // dirty only
+	Children  []Child  // has-children only
 	IsSession bool
 	Removed   []RemoveResult
 }
@@ -46,6 +48,16 @@ func (r RemoveResult) MarshalJSON() ([]byte, error) {
 		o["status"] = r.Status
 		o["task"] = r.Task
 		o["path"] = r.Path
+	case r.Status == "has-children":
+		children := r.Children
+		if children == nil {
+			children = []Child{}
+		}
+		o["status"] = r.Status
+		o["task"] = r.Task
+		o["path"] = r.Path
+		o["reason"] = r.Reason
+		o["children"] = children
 	case r.Status == "busy":
 		o["reason"] = r.Reason
 		o["status"] = r.Status
@@ -81,114 +93,6 @@ func (r RemoveResult) MarshalJSON() ([]byte, error) {
 	return fsutil.MarshalJSON(o)
 }
 
-// landingRefs are the local branches an integration tree can land on (full
-// ref names), filtered by the extra for-each-ref args: never own, never an
-// orchestra/* branch -- another task or integration branch holding the same
-// commits is not a landing, and is itself removable.
-func landingRefs(path, own string, args ...string) ([]string, error) {
-	out, err := gitx.Run(path, append(append([]string{"for-each-ref", "--format=%(refname)"}, args...), "refs/heads/")...)
-	if err != nil {
-		return nil, err
-	}
-	var refs []string
-	for _, ref := range strings.Split(out, "\n") {
-		ref = strings.TrimSpace(ref)
-		if ref != "" && ref != own && !strings.HasPrefix(ref, "refs/heads/"+BranchPrefix) {
-			refs = append(refs, ref)
-		}
-	}
-	return refs, nil
-}
-
-// unmergedIntegration says why an integration tree's commits would be lost
-// with it; "" once they landed on a non-orchestra local branch: its tip
-// (HEAD, so a detached tree works too) is reachable from one, or, for the
-// usual squash landing, one holds exactly the tip's content in every file
-// the tree changed since its baseline, or `isolate land` landed this tip.
-func unmergedIntegration(path, branch string) string {
-	// Landed by `isolate land` at its current tip: its squash differs from
-	// the tip's content once the target branch moved on. A later commit in
-	// the tree is unlanded again.
-	if m := readMarker(path, landedFile); m != "" {
-		if head, err := gitx.Run(path, "rev-parse", "HEAD"); err == nil && strings.TrimSpace(head) == m {
-			return ""
-		}
-	}
-	own := ""
-	if branch != "" {
-		own = "refs/heads/" + branch
-	}
-	reaching, err := landingRefs(path, own, "--contains", "HEAD")
-	if err != nil {
-		return "cannot tell whether the integration tree's commits are merged (git for-each-ref failed); pass --force"
-	}
-	if len(reaching) > 0 || squashLanded(path, own) {
-		return ""
-	}
-	name := branch
-	task := "<into>"
-	if name == "" {
-		name = "(detached HEAD)"
-	} else {
-		task = branch[strings.LastIndex(branch, "/")+1:]
-	}
-	return fmt.Sprintf("integration branch %s holds commits not landed on any non-orchestra local branch; "+
-		"land them from the user's checkout with 'agent-exec isolate land --task %s -m <message>', or pass --force", name, task)
-}
-
-// pathspecChunk bounds the files per `git diff` call, keeping the argument
-// list well under the OS limit however many files a round integrated.
-const pathspecChunk = 500
-
-// squashLanded reports whether the integrated changes of the tree at path
-// (baseline..HEAD, by file) have identical content on some local branch
-// other than own and the orchestra/* ones. A deletion must be a deletion
-// there too. Anything git cannot answer is "not landed".
-func squashLanded(path, own string) bool {
-	baseline := readMarker(path, baselineFile)
-	if baseline == "" {
-		return false
-	}
-	// --no-renames: a rename must show its old path too, whose deletion has
-	// to be on the other branch as well.
-	out, err := gitx.Run(path, "diff", "--name-only", "--no-renames", "-z", baseline, "HEAD")
-	if err != nil {
-		return false
-	}
-	var files []string
-	for _, f := range strings.Split(out, "\x00") {
-		if f != "" {
-			files = append(files, f)
-		}
-	}
-	if len(files) == 0 {
-		return true
-	}
-	refs, err := landingRefs(path, own)
-	if err != nil {
-		return false
-	}
-	for _, ref := range refs {
-		if sameContent(path, ref, files) {
-			return true
-		}
-	}
-	return false
-}
-
-// sameContent reports whether files read the same at HEAD and at ref. The
-// pathspecs are literal, so odd names never act as globs.
-func sameContent(path, ref string, files []string) bool {
-	for start := 0; start < len(files); start += pathspecChunk {
-		chunk := files[start:min(start+pathspecChunk, len(files))]
-		args := append([]string{"--literal-pathspecs", "diff", "--quiet", "--no-renames", "HEAD", ref, "--"}, chunk...)
-		if _, err := gitx.Run(path, args...); err != nil {
-			return false
-		}
-	}
-	return true
-}
-
 // uncommitted is what the tree at path holds beyond HEAD: index and working
 // tree changes, untracked non-ignored files included (made visible to `git
 // diff` as intent-to-add, as Diff does), excluded directories left out as
@@ -216,13 +120,15 @@ func uncommittedWith(path string, f ChangeFilter) ([]string, error) {
 // uncollected says why the tree at path still holds unreviewed work, or
 // returns ok=false when it is safe to discard. Shared by remove's refusal
 // and sweep's dry-run preview so the two can never disagree. Anything the
-// gate cannot establish reads as dirty, never as clean.
+// gate cannot establish reads as dirty, never as clean. A role tree is gated
+// by its commits, not by collection: an integration tree is complete once
+// `isolate merge` recorded its HEAD as merged, an assembly once `isolate
+// land` recorded its HEAD as landed (either also when nothing was ever
+// committed past its baseline); then only uncommitted changes can be lost.
 func uncollected(root, path, task, branch, session string) (files []string, reason string, dirty bool, err error) {
-	// An integration tree carries commits; collected markers say nothing
-	// about whether they landed anywhere else.
 	role := ReadRole(path)
-	if role == RoleIntegration {
-		if why := unmergedIntegration(path, branch); why != "" {
+	if role == RoleIntegration || role == RoleAssembly {
+		if why := unfinishedRoleTree(path, task, role); why != "" {
 			return nil, why, true, nil
 		}
 	}
@@ -230,18 +136,23 @@ func uncollected(root, path, task, branch, session string) (files []string, reas
 	if readMarker(path, baselineFile) == "" {
 		return nil, "no baseline recorded; cannot tell what is uncollected; pass --force", true, nil
 	}
-	if role == RoleIntegration {
-		// Landed: its commits are safe elsewhere, so only what was never
-		// committed can be lost. Its ignored surface changes routinely.
+	if role == RoleIntegration || role == RoleAssembly {
+		// Its commits are safe in its parent (or on the user's branch), so
+		// only what was never committed can be lost. Its ignored surface
+		// changes routinely.
 		files, err := uncommitted(path)
 		if err != nil {
-			return nil, fmt.Sprintf("cannot list the integration tree's uncommitted changes (%v); pass --force", err), true, nil
+			return nil, fmt.Sprintf("cannot list the %s tree's uncommitted changes (%v); pass --force", role, err), true, nil
 		}
-		if len(files) > 0 {
-			return files, fmt.Sprintf("integration tree holds %d uncommitted change(s) on top of its landed commits; "+
-				"commit and land them, or pass --force", len(files)), true, nil
+		if len(files) == 0 {
+			return nil, "", false, nil
 		}
-		return nil, "", false, nil
+		if role == RoleIntegration {
+			return files, fmt.Sprintf("integration tree holds %d uncommitted change(s) on top of its merged commits; "+
+				"commit and merge them, or pass --force", len(files)), true, nil
+		}
+		return files, fmt.Sprintf("assembly holds %d uncommitted change(s) on top of its landed commits; "+
+			"commit and land them, or pass --force", len(files)), true, nil
 	}
 	// The patch is only needed to recompute a collected digest, which can
 	// only match when a marker exists: the never-collected common case costs
@@ -276,6 +187,36 @@ func uncollected(root, path, task, branch, session string) (files []string, reas
 			"and were never collected; collect the diff or pass --force", true, nil
 	}
 	return nil, "", false, nil
+}
+
+// unfinishedRoleTree says why the commits of an integration tree or
+// assembly would be lost with it, "" once its HEAD is the one merged
+// (integration) or landed (assembly), or is still its baseline. The marker
+// is compared with this tree's own HEAD, so a commit made after the merge or
+// landing makes it unfinished again.
+func unfinishedRoleTree(path, task, role string) string {
+	out, err := gitx.Run(path, "rev-parse", "HEAD")
+	head := strings.TrimSpace(out)
+	if err != nil || head == "" {
+		return fmt.Sprintf("cannot read the %s tree's HEAD; pass --force", role)
+	}
+	done := mergedFile
+	if role == RoleAssembly {
+		done = landedFile
+	}
+	if readMarker(path, done) == head || readMarker(path, baselineFile) == head {
+		return ""
+	}
+	switch {
+	case role == RoleAssembly:
+		return fmt.Sprintf("assembly %s holds work not landed on your branch; land it from your checkout with "+
+			"'agent-exec isolate land --task %s -m <message>', or pass --force to discard it", task, task)
+	case ReadParent(path) != "":
+		return fmt.Sprintf("integration tree %s holds commits not merged into its assembly; merge it with "+
+			"'agent-exec isolate merge --task %s -m <message>', or pass --force to discard them", task, task)
+	default:
+		return fmt.Sprintf("integration tree %s has no assembly to merge into; pass --force to discard it", task)
+	}
 }
 
 // exitOf is the timing-log exit code for a filesystem call: 0 or 1.
@@ -372,10 +313,14 @@ func discard(repo, path, branch string) (ok bool, reason string) {
 	return true, ""
 }
 
-// Remove deletes task's worktree and branch, refusing (status "dirty") to
-// discard changes nobody collected unless force, and (status "busy", even
-// with force) a tree somebody is still working in. An adopted tree is never
-// deleted: only its adoption is dropped. A hosted session recorded in a tree
+// Remove deletes task's worktree and branch. It refuses, even with force, a
+// tree that still has children (status "has-children": a tree is complete
+// only once every child was merged into it or discarded) and a tree
+// somebody is still working in (status "busy"); without force it refuses
+// (status "dirty") to discard work the role's gate cannot account for: a
+// work tree's uncollected changes, an integration tree's unmerged commits,
+// an assembly's unlanded ones. An adopted tree is never deleted: only its
+// adoption is dropped. A hosted session recorded in a tree
 // that goes is closed first (Warning when it could not be). session "" is
 // the calling session.
 func Remove(root, task string, force bool, session string) (RemoveResult, error) {
@@ -397,6 +342,18 @@ func Remove(root, task string, force bool, session string) (RemoveResult, error)
 	if _, adopted := readAdoption(wt.Path); adopted {
 		_ = ClearAdopted(wt.Path)
 		return RemoveResult{Status: "unadopted", Task: task, Path: wt.Path}, nil
+	}
+	// Before force is looked at: a parent removed under its children would
+	// orphan them and everything they still hold.
+	children, err := Children(resolved, wt.Path)
+	if err != nil {
+		return RemoveResult{Status: "error", Task: task,
+			Reason: fmt.Sprintf("cannot list the tree's children (%v); nothing was removed", err)}, nil
+	}
+	if len(children) > 0 {
+		return RemoveResult{Status: "has-children", Task: task, Path: wt.Path, Children: children,
+			Reason: fmt.Sprintf("%d child tree(s) still open; merge or discard them first "+
+				"(--force never removes a tree with children)", len(children))}, nil
 	}
 	// Before the gate: its diff stages intent-to-add in the tree, which a
 	// live writer must not see either.
@@ -424,18 +381,28 @@ func Remove(root, task string, force bool, session string) (RemoveResult, error)
 }
 
 // RemoveSession removes every worktree of session (the SessionEnd hook's
-// `isolate remove --session S --repo R`); dirty ones are reported and kept.
+// `isolate remove --session S --repo R`), deepest first, so a child goes
+// before its parent and the parent can then go in the same call; dirty
+// ones and those whose children stay are reported and kept.
 func RemoveSession(root, session string, force bool) (RemoveResult, error) {
 	wanted := sessionComponent(session)
 	if wanted == "" {
 		return RemoveResult{}, errInvalidSession
 	}
 	entries, _ := List(root, "")
-	res := RemoveResult{Status: "removed", Session: wanted, IsSession: true, Removed: []RemoveResult{}}
+	var mine []Entry
 	for _, e := range entries {
-		if string(e.Session) != wanted {
-			continue
+		if string(e.Session) == wanted {
+			mine = append(mine, e)
 		}
+	}
+	depth := make(map[string]int, len(mine))
+	for _, e := range mine {
+		depth[e.Path] = lineageDepth(e.Path)
+	}
+	sort.SliceStable(mine, func(i, j int) bool { return depth[mine[i].Path] > depth[mine[j].Path] })
+	res := RemoveResult{Status: "removed", Session: wanted, IsSession: true, Removed: []RemoveResult{}}
+	for _, e := range mine {
 		one, err := Remove(root, e.Task, force, wanted)
 		if err != nil {
 			return RemoveResult{}, err

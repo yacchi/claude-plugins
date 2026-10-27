@@ -144,7 +144,7 @@ func routed(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	if mode == IsolateCli && rt.Dispatch != "cli" {
 		iso = callerIsolates()
 	} else {
-		iso = isolateFor(cfg, r.Workdir, mode, r.Task)
+		iso = isolateFor(cfg, r.Workdir, mode, r.Task, r.RunID)
 	}
 	if iso.refused != "" {
 		return Outcome{Diag: "dispatch: " + iso.refused, Exit: 1}
@@ -262,7 +262,7 @@ func direct(ctx context.Context, cfg *config.Resolved, r Request, prompt string)
 	workdir := r.Workdir
 	var iso isolation
 	if mode != IsolateNever {
-		iso = isolateFor(cfg, r.Workdir, mode, r.Task)
+		iso = isolateFor(cfg, r.Workdir, mode, r.Task, r.RunID)
 		if iso.refused != "" {
 			return Outcome{Diag: "dispatch: " + iso.refused, Exit: 1}
 		}

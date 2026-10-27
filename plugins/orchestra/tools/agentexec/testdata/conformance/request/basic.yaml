@@ -1,0 +1,36 @@
+description: >
+  a request from `isolate request start --into` (an assembly and an integration
+  tree in the request workspace): idempotent start, show/list, a work tree
+  under the integration tree, --onto removed, integrate into the request's
+  tree, an assembly refused as integrate target, merge into the assembly, land
+  of the request's assembly (no --task) removing it and ending the request,
+  land with no request
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+normalize_keys: [seconds, age_days, session_idle_minutes]
+steps:
+  - argv: [isolate, request, list]
+  - argv: [isolate, request, start, --uncommitted, bogus]
+  - argv: [isolate, request, start, --into, feat]
+    save: {REQ: request, INT: integration}
+  - argv: [isolate, request, start, --into, feat]
+  - argv: [isolate, request, show]
+  - argv: [isolate, request, show, --request, nope]
+  - argv: [isolate, create, --task, t1, --parent, feat]
+    save: {T1: path}
+  - argv: [write-file, --path, "<@T1>/b.txt"]
+    stdin: "b\n"
+  - argv: [isolate, integrate, --tasks, t1, --into, feat, --onto, HEAD]
+    stderr_contains: ["--onto was removed"]
+  - argv: [isolate, integrate, --tasks, t1, --into, feat]
+  - argv: [isolate, integrate, --tasks, t1, --into, "<@REQ>"]
+  - argv: [isolate, merge, --task, feat, -m, "feat: add b"]
+  - argv: [isolate, request, show, --text]
+  - argv: [isolate, land, -m, "feat: add b"]
+    snapshot:
+      - <WORK>/b.txt
+  - argv: [isolate, request, list]
+  - argv: [isolate, list]
+  - argv: [isolate, land, -m, "x"]

@@ -220,6 +220,13 @@ isolation:
   # Caveats (phantom deps, CI, shared links): references/isolation.md "pnpm
   # global virtual store".
   pnpm_global_virtual_store: "auto"
+  # Where request workspaces live (one directory per user request, holding its
+  # assembly and integration trees; references/isolation.md §2a). Default:
+  # $XDG_STATE_HOME/claude-orchestra/requests, else
+  # ~/.local/state/claude-orchestra/requests. Absolute or ~/...; set it in your
+  # user layer (~/.claude/orchestra.yaml): every repository must see the same
+  # root. ORCHESTRA_REQUEST_ROOT overrides it (tests, sandboxed runs).
+  # request_root: "~/orchestra-requests"
 
 # Nudges and guards, never hard walls - see the `enforcement` paragraphs below
 # for the escape hatches. NOTE: quote "off" - YAML 1.1 parses a bareword `off`

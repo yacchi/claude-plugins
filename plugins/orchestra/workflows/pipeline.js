@@ -5,7 +5,7 @@ export const meta = {
   phases: [
     { title: 'Size gate', detail: 'refuse oversized or unowned tasks before any dispatch' },
     { title: 'Implement and verify', detail: 'routed light-class worker, probe author, ownership pre-check, adversarial review, one correction round and re-gate' },
-    { title: 'Cleanup', detail: 'sweep the run worktrees and report usage' },
+    { title: 'Cleanup', detail: 'integrate passing tasks, sweep the run worktrees and report usage' },
   ],
 }
 
@@ -801,17 +801,27 @@ const results = await pipeline(tasks, async (task) => {
 // it is racing a teardown timeout -- which is exactly how repos end up holding
 // dozens of orphaned orchestra worktrees. Run end is the moment when nothing
 // is racing us and every diff has already been collected, so this is the
-// primary cleanup and SessionEnd is only insurance. Nothing here can discard
-// an unread verdict: the sweep applies the same review gate as `isolate
-// remove`, so any tree still holding uncollected work survives and is
-// reported, and so does an integration tree not yet landed (`agent-exec isolate land`).
+// primary cleanup and SessionEnd is only insurance. Passing tasks are
+// integrated into the run's integration tree first (the first dispatch cut it
+// from the request's assembly): that marks their trees collected, so the sweep
+// reclaims them. Failed tasks keep their trees for inspection. The integration
+// tree itself is kept until the instructor merges it into the assembly
+// (`agent-exec isolate merge`), and the assembly until it is landed
+// (`agent-exec isolate land`, only on the user's request). Nothing here can
+// discard an unread verdict: the sweep applies the same review gate as `isolate
+// remove`, so any tree still holding uncollected work survives and is reported.
 // Await every agent working in a surviving tree before this call. Fold the telemetry emission (§10) into this same relay call when
 // telemetry is enabled, rather than spending a second agent on it.
+const passed = results.filter(r => r && r.pass === true).map(r => r.id)
+const integrate = passed.length
+  ? 'agent-exec isolate integrate --tasks ' + shellQuote(passed.join(',')) +
+    ' --into ' + shellQuote(RUN_ID) + ' --on-conflict skip --text; '
+  : ''
 const runEnd = await agent(
-  'Run `agent-exec isolate sweep --include-current --text; agent-exec usage --run ' + RUN_ID +
+  'Run `' + integrate + 'agent-exec isolate sweep --include-current --text; agent-exec usage --run ' + RUN_ID +
     ' --text` as ONE foreground Bash call with timeout 120000. Print its stdout verbatim - nothing else.',
   { label: 'cleanup', model: 'haiku', effort: 'low' },
 )
 
-// The usage text must reach the instructor (SKILL §5 reports cost from it), so it rides in the return value; log() only reaches the user.
+// The integrate and usage text must reach the instructor (SKILL §5 reports cost from it), so it rides in the return value; log() only reaches the user.
 return { results, runEnd }

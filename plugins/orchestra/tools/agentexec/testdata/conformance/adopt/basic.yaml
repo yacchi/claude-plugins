@@ -8,6 +8,8 @@ description: >
   --text; the usage errors (exit 2)
 setup:
   git: true
+  env:
+    PREP: "<ROOT>/prep.sh"
   files:
     a.txt: "1\n2\n3\n"
     .gitignore: "node_modules/\nCLAUDE.local.md\n"
@@ -28,7 +30,7 @@ steps:
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
     env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
-  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
   - argv: [isolate, adopt, --task, x, --path, ../ext]
     snapshot:
       - <ROOT>/ext/node_modules/pkg/index.js
@@ -54,9 +56,11 @@ steps:
   - argv: [isolate, collect, --task, y]
   - argv: [isolate, sweep, --dry-run, --include-current, --include-live, --live-window, "0"]
   - argv: [isolate, sweep, --include-current, --include-live, --older-than, "0"]
+  - argv: [isolate, request, start, --into, ix]
+    save: {IX: integration}
   - argv: [isolate, integrate, --tasks, "x,y,d", --into, ix]
     snapshot:
-      - <ROOT>/work-orchestra/00000000-ix/a.txt
+      - <@IX>/a.txt
   - argv: [isolate, remove, --task, y]
   - argv: [isolate, unadopt, --task, x]
   - argv: [isolate, unadopt, --task, x]

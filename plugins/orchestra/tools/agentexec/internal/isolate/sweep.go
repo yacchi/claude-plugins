@@ -5,19 +5,23 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 // Sweep is the after-the-fact reclaim over a whole repository (the
 // SessionEnd hook only covers its own session, and only when it runs). It
 // applies exactly remove's review gate, so uncollected work is reported and
 // kept; the running session's trees and live sessions' trees are left alone
-// unless asked for; orphaned branches are only deleted on Branches.
+// unless asked for; orphaned branches are only deleted on Branches. It walks
+// bottom-up: a tree is only reclaimed after its children, and a parent is kept
+// while any child remains.
 
 // SweepOptions tunes Sweep. OlderThanDays skips anything whose branch tip
 // is newer. LiveWindow is how recently another session must have been seen
@@ -43,7 +47,8 @@ type SweepWorktree struct {
 	Reason             string
 	Warning            string // removed: the hosted session in the tree was left open
 	Files              []string
-	HasFiles           bool // files key present (even when empty)
+	HasFiles           bool    // files key present (even when empty)
+	Children           []Child // has-children only
 }
 
 func (w SweepWorktree) MarshalJSON() ([]byte, error) {
@@ -67,6 +72,13 @@ func (w SweepWorktree) MarshalJSON() ([]byte, error) {
 	}
 	if w.HasFiles {
 		o["files"] = nonNil(w.Files)
+	}
+	if w.Status == "has-children" {
+		children := w.Children
+		if children == nil {
+			children = []Child{}
+		}
+		o["children"] = children
 	}
 	return fsutil.MarshalJSON(o)
 }
@@ -105,6 +117,7 @@ type SweepSummary struct {
 	Removed             int `json:"removed"`
 	WouldRemove         int `json:"would_remove"`
 	Dirty               int `json:"dirty"`
+	HasChildren         int `json:"has_children"`
 	Skipped             int `json:"skipped"`
 	External            int `json:"external"`
 	Absent              int `json:"absent"`
@@ -222,6 +235,14 @@ func Sweep(root string, o SweepOptions) (SweepResult, error) {
 	res := SweepResult{Status: "ok", Repo: resolved, DryRun: o.DryRun, Pruned: pruned,
 		Worktrees: []SweepWorktree{}, Branches: []SweepBranch{}}
 	entries, _ := List(resolved, "")
+	depth := make(map[string]int, len(entries))
+	for _, e := range entries {
+		depth[e.Path] = lineageDepth(e.Path)
+	}
+	sort.SliceStable(entries, func(i, j int) bool { return depth[entries[i].Path] > depth[entries[j].Path] })
+	// Real paths of the trees this dry run reports would-remove: a parent
+	// whose children all go in the same sweep is reported as going too.
+	wouldRemove := map[string]bool{}
 	for _, e := range entries {
 		session := string(e.Session)
 		rec := SweepWorktree{
@@ -249,8 +270,24 @@ func Sweep(root string, o SweepOptions) (SweepResult, error) {
 			rec.Status = "skipped"
 			rec.Reason = newerReason()
 		case o.DryRun:
+			kids, err := Children(resolved, e.Path)
+			if err != nil {
+				rec.Status = "error"
+				rec.Reason = fmt.Sprintf("cannot list the tree's children (%v)", err)
+				break
+			}
+			var open []Child
+			for _, c := range kids {
+				if !wouldRemove[paths.RealPath(c.Path)] {
+					open = append(open, c)
+				}
+			}
 			rec.Status = "would-remove"
-			if reason := inUse(resolved, e.Task, e.Path); reason != "" {
+			if len(open) > 0 {
+				rec.Status, rec.Children = "has-children", open
+				rec.Reason = fmt.Sprintf("%d child tree(s) still open; merge or discard them first "+
+					"(--force never removes a tree with children)", len(open))
+			} else if reason := inUse(resolved, e.Task, e.Path); reason != "" {
 				rec.Status, rec.Reason = "busy", reason
 			} else if !o.Force {
 				files, reason, dirty, err := uncollected(resolved, e.Path, e.Task, e.Branch, session)
@@ -261,12 +298,16 @@ func Sweep(root string, o SweepOptions) (SweepResult, error) {
 					rec.Status, rec.Reason, rec.Files, rec.HasFiles = "dirty", reason, files, true
 				}
 			}
+			if rec.Status == "would-remove" {
+				wouldRemove[paths.RealPath(e.Path)] = true
+			}
 		default:
 			out, err := Remove(resolved, e.Task, o.Force, session)
 			if err != nil {
 				return SweepResult{}, err
 			}
 			rec.Status, rec.Reason, rec.Warning = out.Status, out.Reason, out.Warning
+			rec.Children = out.Children
 			if len(out.Files) > 0 {
 				rec.Files, rec.HasFiles = out.Files, true
 			}
@@ -351,6 +392,8 @@ func summarize(wts []SweepWorktree, brs []SweepBranch) SweepSummary {
 			s.WouldRemove++
 		case "dirty":
 			s.Dirty++
+		case "has-children":
+			s.HasChildren++
 		case "skipped", "busy":
 			s.Skipped++
 		case "external":
@@ -411,8 +454,8 @@ func FormatSweepText(r SweepResult) string {
 	}
 	s := r.Summary
 	lines = append(lines, fmt.Sprintf(
-		"summary: removed %d, would-remove %d, dirty %d, skipped %d, external %d, errors %d, branches %d orphan / %d deleted",
-		s.Removed, s.WouldRemove, s.Dirty, s.Skipped, s.External, s.Errors, s.BranchesOrphan, s.BranchesDeleted))
+		"summary: removed %d, would-remove %d, dirty %d, has-children %d, skipped %d, external %d, errors %d, branches %d orphan / %d deleted",
+		s.Removed, s.WouldRemove, s.Dirty, s.HasChildren, s.Skipped, s.External, s.Errors, s.BranchesOrphan, s.BranchesDeleted))
 	if s.TrashRemoved > 0 {
 		lines = append(lines, fmt.Sprintf("  trash removed %d (trees an interrupted remove left aside)", s.TrashRemoved))
 	}

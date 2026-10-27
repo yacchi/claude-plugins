@@ -73,7 +73,7 @@ Or just describe a task that needs cost-tiered delegation — Claude can invoke 
 2. Run the shipped Workflow pipeline (`orchestra:pipeline`) with a task list, which pipelines each task through a light-class implementer → `orchestra-review` → at most one correction round and re-gate. Design-latitude tasks go to `orchestra-deep` (Opus) instead.
 3. Receive only structured verdicts, never raw logs, diffs, or intermediate files.
 
-To bring a run's integration branch into your checked-out branch, ask for it explicitly: `agent-exec isolate land --task <into> -m "<message>"` takes it in as one commit with your identity and the message you give. A Claude Code Agent-tool worktree's result lands the same way with `agent-exec isolate land --path <worktree> -m "<message>"`; merging orchestra's or an Agent worktree's branch by hand is denied by a hook.
+A run's work collects in a request workspace outside your checkout, and each feature's integration tree is merged into the request's assembly. To bring the result into your checked-out branch, ask for it explicitly: `agent-exec isolate land -m "<message>"`, run from your checkout, takes the request's assembly in as one commit with your identity and the message you give, then removes it. A Claude Code Agent-tool worktree's result lands the same way with `agent-exec isolate land --path <worktree> -m "<message>"`; merging orchestra's or an Agent worktree's branch by hand is denied by a hook.
 
 Companion skills:
 

@@ -17,8 +17,9 @@ setup:
       printf '1\n2\n3\n4\n5\n6\n7\nEIGHT\n9\n' > $W/00000000-t2/a.txt
       printf 'new\n' > $W/00000000-t3/c.txt
     <ROOT>/build.sh: |
-      mkdir -p <ROOT>/work-orchestra/00000000-int/build
-      echo out > <ROOT>/work-orchestra/00000000-int/build/out.txt
+      mkdir -p "$INT_TREE/build"
+      echo out > "$INT_TREE/build/out.txt"
+  env: {PREP: "<ROOT>/prep.sh", BUILD: "<ROOT>/build.sh"}
 normalize_keys: [seconds]
 steps:
   - argv: [isolate, create, --task, t1]
@@ -27,15 +28,19 @@ steps:
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
     env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
-  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
+  - argv: [isolate, request, start, --into, int]
+    save: {INT: integration}
   - argv: [isolate, integrate, --tasks, t1, --into, int]
   - argv: [isolate, integrate, --tasks, "t2,t3", --into, int, --onto, HEAD]
+    stderr_contains: ["--onto was removed"]
     snapshot:
-      - <ROOT>/work-orchestra/00000000-int/a.txt
-      - <ROOT>/work-orchestra/00000000-int/c.txt
+      - <@INT>/a.txt
+      - <@INT>/c.txt
   - argv: [isolate, integrate, --tasks, t1, --into, int, --text]
   - argv: [isolate, diff, --task, int, --names-only]
   - argv: [isolate, refresh, --task, int]
-  - argv: [isolate, integrate, --tasks, boot, --into, prep2, --verify, "sh ../../build.sh"]
+  - argv: [isolate, integrate, --tasks, boot, --into, prep2, --verify, 'sh "$BUILD"']
+    env: {INT_TREE: "<@INT>"}
   - argv: [isolate, collect, --task, int]
   - argv: [isolate, remove, --task, int]

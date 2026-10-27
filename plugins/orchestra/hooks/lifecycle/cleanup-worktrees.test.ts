@@ -32,7 +32,7 @@ describe('cleanup-worktrees', () => {
         await end($, 's1')
         const mixed = h.logs.at(-1) ?? ''
         expect(mixed).toContain('removed 1 session worktree(s)')
-        expect(mixed).toContain('kept 1 worktree(s) with uncollected changes:\n  t2: /tmp/w2')
+        expect(mixed).toContain('kept 1 worktree(s) still holding work:\n  t2: /tmp/w2')
         expect(mixed).toContain('--force')
 
         report = removed([{ status: 'dirty', task: 't1', path: '/tmp/w1' }])
@@ -42,6 +42,31 @@ describe('cleanup-worktrees', () => {
         report = removed([done('1'), { status: 'error', task: 't2', reason: 'worktree lock held' }])
         await end($, 's1')
         expect(h.logs.at(-1)).toContain('1 worktree removal(s) failed: worktree lock held')
+    })
+
+    test('lists trees kept for child trees, and says so when only those remain', async ($, on) => {
+        let report = ''
+        const h = host(on, args => (args[0] === 'config' ? config() : { exitCode: 0, stdout: report }))
+
+        report = removed([{ status: 'has-children', task: 'feat', path: '/w/feat' }])
+        await end($, 's1')
+        expect(h.logs.at(-1)).toContain('kept 1 worktree(s) still holding work:\n  feat: /w/feat (still has child trees)')
+        expect(h.logs.at(-1)).not.toContain('land')
+    })
+
+    test('points at the land command when an assembly holds work not landed', async ($, on) => {
+        let report = ''
+        const h = host(on, args => (args[0] === 'config' ? config() : { exitCode: 0, stdout: report }))
+
+        report = removed([{
+            status: 'dirty',
+            task: 'assembly',
+            path: '/w/assembly',
+            reason: 'assembly 20261028-abcdef12 holds work not landed on your branch; land it first',
+        }])
+        await end($, 's1')
+        expect(h.logs.at(-1)).toContain('kept 1 worktree(s) still holding work:\n  assembly: /w/assembly\n')
+        expect(h.logs.at(-1)).toContain('orchestra: an assembly waits to be landed: from your checkout, run `agent-exec isolate land -m "<message>"`')
     })
 
     test('stays silent when nothing was done or the output is unusable', async ($, on) => {

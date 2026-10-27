@@ -36,6 +36,17 @@
           "A",
           "B"
         ],
+        "merge": {
+          "assembly": "<DATE>-00000000",
+          "commit": "<SHA#1>",
+          "files": [
+            "a.txt",
+            "b.txt"
+          ],
+          "removed": true,
+          "status": "merged",
+          "task": "gated-int"
+        },
         "needs": [],
         "network_denials": [],
         "pending": [],
@@ -48,7 +59,7 @@
         "~/gated/green.json": {
           "content": {
             "at": "<AT>",
-            "sha": "<SHA#1>"
+            "sha": "<SHA#2>"
           },
           "shape": "json"
         },
@@ -104,7 +115,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/gated-int-orchestra/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -144,7 +155,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"at_commit\":\"<SHA#2>\"}",
+              "detail": "{\"at_commit\":\"<SHA#3>\"}",
               "event": "verify-start",
               "from": null,
               "pkg": null,
@@ -168,7 +179,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'gated-int' at <WORK>-orchestra/00000000-gated-int",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'gated-int' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/gated-int",
               "event": "integrate",
               "from": null,
               "pkg": null,
@@ -208,7 +219,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#2>\"}",
+              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#3>\"}",
               "event": "on-green",
               "from": null,
               "pkg": null,
@@ -256,7 +267,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-B\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/gated-int-orchestra/00000000-pkg-B\"}",
               "event": "check-start",
               "from": null,
               "pkg": "B",
@@ -296,7 +307,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"at_commit\":\"<SHA#1>\"}",
+              "detail": "{\"at_commit\":\"<SHA#2>\"}",
               "event": "verify-start",
               "from": null,
               "pkg": null,
@@ -320,7 +331,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'gated-int' at <WORK>-orchestra/00000000-gated-int",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'gated-int' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/gated-int",
               "event": "integrate",
               "from": null,
               "pkg": null,
@@ -360,8 +371,16 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#1>\"}",
+              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#2>\"}",
               "event": "on-green",
+              "from": null,
+              "pkg": null,
+              "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"assembly\":\"<DATE>-00000000\",\"commit\":\"<SHA#1>\",\"files\":2,\"reason\":\"\",\"removed\":true,\"status\":\"merged\"}",
+              "event": "merge",
               "from": null,
               "pkg": null,
               "to": null
@@ -372,13 +391,24 @@
         "~/gated/state.json": {
           "content": {
             "integration": {
-              "base": "<SHA#3>",
-              "path": "<WORK>-orchestra/00000000-gated-int",
+              "base": "<SHA#4>",
+              "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/gated-int",
               "task": "gated-int"
             },
             "needs": [],
             "packages": {
               "A": {
+                "attempts": 0,
+                "commit": "<SHA#3>",
+                "detail": "",
+                "executor": "pi",
+                "files_changed": 1,
+                "session": true,
+                "since": "<SINCE>",
+                "status": "integrated",
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/gated-int-orchestra/00000000-pkg-A"
+              },
+              "B": {
                 "attempts": 0,
                 "commit": "<SHA#2>",
                 "detail": "",
@@ -387,18 +417,7 @@
                 "session": true,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A"
-              },
-              "B": {
-                "attempts": 0,
-                "commit": "<SHA#1>",
-                "detail": "",
-                "executor": "pi",
-                "files_changed": 1,
-                "session": true,
-                "since": "<SINCE>",
-                "status": "integrated",
-                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-B"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/gated-int-orchestra/00000000-pkg-B"
               }
             },
             "plan": "<HOME>/wave/plan.json",
@@ -410,7 +429,7 @@
           "shape": "json"
         },
         "~/green.out": {
-          "content": "<SHA#2> <SHA#2>\n<HOME>/gated/green-tree\n<SHA#1> <SHA#1>\n<HOME>/gated/green-tree\n",
+          "content": "<SHA#3> <SHA#3>\n<HOME>/gated/green-tree\n<SHA#2> <SHA#2>\n<HOME>/gated/green-tree\n",
           "shape": "text"
         }
       }
@@ -420,7 +439,7 @@
         "wave",
         "run",
         "--plan",
-        "wave/plan.json",
+        "wave/plan-r.json",
         "--state",
         "red/state.json",
         "--into",
@@ -441,12 +460,13 @@
         "blocked": [],
         "flaky_tests": [],
         "integrated": [
-          "A"
+          "RA"
         ],
+        "merge": null,
         "needs": [],
         "network_denials": [],
         "pending": [
-          "B"
+          "RB"
         ],
         "reason": "full verification red at the last green SHA",
         "state": "<HOME>/red/state.json",
@@ -457,31 +477,31 @@
         "~/red/green.json": {
           "content": {
             "at": "<AT>",
-            "sha": "<SHA#3>"
+            "sha": "<SHA#1>"
           },
           "shape": "json"
         },
         "~/red/state.json": {
           "content": {
             "integration": {
-              "base": "<SHA#3>",
-              "path": "<WORK>-orchestra/00000000-red-int",
+              "base": "<SHA#1>",
+              "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/red-int",
               "task": "red-int"
             },
             "needs": [],
             "packages": {
-              "A": {
+              "RA": {
                 "attempts": 0,
-                "commit": "<SHA#2>",
+                "commit": "<SHA#5>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
                 "session": true,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/red-int-orchestra/00000000-pkg-RA"
               },
-              "B": {
+              "RB": {
                 "attempts": 0,
                 "commit": null,
                 "detail": "",
@@ -493,7 +513,7 @@
                 "tree": null
               }
             },
-            "plan": "<HOME>/wave/plan.json",
+            "plan": "<HOME>/wave/plan-r.json",
             "stopped": {
               "at": "<AT>",
               "reason": "full verification red at the last green SHA"
@@ -511,7 +531,7 @@
         "wave",
         "run",
         "--plan",
-        "wave/plan.json",
+        "wave/plan-f.json",
         "--state",
         "final/state.json",
         "--into",
@@ -530,9 +550,10 @@
         "blocked": [],
         "flaky_tests": [],
         "integrated": [
-          "A",
-          "B"
+          "FA",
+          "FB"
         ],
+        "merge": null,
         "needs": [
           {
             "id": "fix-1",
@@ -600,7 +621,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "A",
+              "detail": "FA",
               "event": "wave-start",
               "from": null,
               "pkg": null,
@@ -611,7 +632,7 @@
               "detail": "",
               "event": "status",
               "from": "pending",
-              "pkg": "A",
+              "pkg": "FA",
               "to": "implementing"
             },
             {
@@ -619,7 +640,7 @@
               "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
-              "pkg": "A",
+              "pkg": "FA",
               "to": null
             },
             {
@@ -627,7 +648,7 @@
               "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
-              "pkg": "A",
+              "pkg": "FA",
               "to": null
             },
             {
@@ -635,7 +656,7 @@
               "detail": "",
               "event": "status",
               "from": "implementing",
-              "pkg": "A",
+              "pkg": "FA",
               "to": "verifying"
             },
             {
@@ -643,12 +664,12 @@
               "detail": "",
               "event": "status",
               "from": "verifying",
-              "pkg": "A",
+              "pkg": "FA",
               "to": "ready"
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\":[\"A\"]}",
+              "detail": "{\"tasks\":[\"FA\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -659,7 +680,7 @@
               "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
-              "pkg": "A",
+              "pkg": "FA",
               "to": null
             },
             {
@@ -672,7 +693,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'final-int' at <WORK>-orchestra/00000000-final-int",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'final-int' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int",
               "event": "integrate",
               "from": null,
               "pkg": null,
@@ -683,12 +704,12 @@
               "detail": "",
               "event": "status",
               "from": "ready",
-              "pkg": "A",
+              "pkg": "FA",
               "to": "integrated"
             },
             {
               "at": "<AT>",
-              "detail": "B",
+              "detail": "FB",
               "event": "wave-start",
               "from": null,
               "pkg": null,
@@ -699,7 +720,7 @@
               "detail": "",
               "event": "status",
               "from": "pending",
-              "pkg": "B",
+              "pkg": "FB",
               "to": "implementing"
             },
             {
@@ -707,7 +728,7 @@
               "detail": "{\"attempt\":1,\"cls\":\"standard\",\"kind\":\"implement\"}",
               "event": "dispatch-start",
               "from": null,
-              "pkg": "B",
+              "pkg": "FB",
               "to": null
             },
             {
@@ -715,7 +736,7 @@
               "detail": "{\"executor\":\"pi\",\"seconds\": <N>,\"status\":\"ok\"}",
               "event": "dispatch-end",
               "from": null,
-              "pkg": "B",
+              "pkg": "FB",
               "to": null
             },
             {
@@ -723,7 +744,7 @@
               "detail": "",
               "event": "status",
               "from": "implementing",
-              "pkg": "B",
+              "pkg": "FB",
               "to": "verifying"
             },
             {
@@ -731,12 +752,12 @@
               "detail": "",
               "event": "status",
               "from": "verifying",
-              "pkg": "B",
+              "pkg": "FB",
               "to": "ready"
             },
             {
               "at": "<AT>",
-              "detail": "{\"tasks\":[\"B\"]}",
+              "detail": "{\"tasks\":[\"FB\"]}",
               "event": "integrate-start",
               "from": null,
               "pkg": null,
@@ -747,7 +768,7 @@
               "detail": "{\"status\":\"applied\"}",
               "event": "integrate-task",
               "from": null,
-              "pkg": "B",
+              "pkg": "FB",
               "to": null
             },
             {
@@ -760,7 +781,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'final-int' at <WORK>-orchestra/00000000-final-int",
+              "detail": "ok: 1 of 1 task(s) applied cleanly into worktree 'final-int' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int",
               "event": "integrate",
               "from": null,
               "pkg": null,
@@ -771,7 +792,7 @@
               "detail": "",
               "event": "status",
               "from": "ready",
-              "pkg": "B",
+              "pkg": "FB",
               "to": "integrated"
             },
             {
@@ -848,7 +869,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+              "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-fix-1\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "fix-1",
@@ -928,7 +949,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+              "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-fix-2\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "fix-2",
@@ -980,20 +1001,20 @@
         "~/final/state.json": {
           "content": {
             "integration": {
-              "base": "<SHA#3>",
-              "path": "<WORK>-orchestra/00000000-final-int",
+              "base": "<SHA#1>",
+              "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int",
               "task": "final-int"
             },
             "needs": [
               {
                 "at": "<AT>",
-                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-fix-1\"}",
                 "id": "fix-1",
                 "kind": "delegate"
               },
               {
                 "at": "<AT>",
-                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-fix-2\"}",
                 "id": "fix-2",
                 "kind": "delegate"
               },
@@ -1005,52 +1026,52 @@
               }
             ],
             "packages": {
-              "A": {
+              "FA": {
                 "attempts": 0,
-                "commit": "<SHA#2>",
+                "commit": "<SHA#6>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
                 "session": true,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-A"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-FA"
               },
-              "B": {
+              "FB": {
                 "attempts": 0,
-                "commit": "<SHA#1>",
+                "commit": "<SHA#7>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
                 "session": true,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<WORK>-orchestra/00000000-gated-int-orchestra/00000000-pkg-B"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-FB"
               },
               "fix-1": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#1>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-fix-1\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,
                 "since": "<SINCE>",
                 "status": "needs",
-                "tree": "<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-1"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-fix-1"
               },
               "fix-2": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-deep\",\"effort\":\"medium\",\"model\":\"opus\",\"token\":\"<TOKEN#2>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-fix-2\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,
                 "since": "<SINCE>",
                 "status": "needs",
-                "tree": "<WORK>-orchestra/00000000-final-int-orchestra/00000000-pkg-fix-2"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int-orchestra/00000000-pkg-fix-2"
               }
             },
-            "plan": "<HOME>/wave/plan.json",
+            "plan": "<HOME>/wave/plan-f.json",
             "stopped": {
               "at": "<AT>",
               "reason": "full checks red after 2 convergence round(s)"

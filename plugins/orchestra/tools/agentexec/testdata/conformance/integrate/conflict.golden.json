@@ -17,7 +17,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t1",
+        "role": "work",
         "status": "created",
         "task": "t1"
       }
@@ -38,7 +40,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t2",
+        "role": "work",
         "status": "created",
         "task": "t2"
       }
@@ -59,7 +63,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t3",
+        "role": "work",
         "status": "created",
         "task": "t3"
       }
@@ -80,7 +86,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-boot",
+        "role": "work",
         "status": "created",
         "task": "boot"
       }
@@ -96,29 +104,41 @@
         "worktrees": [
           {
             "branch": "orchestra/00000000/boot",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
             "session": "00000000",
             "task": "boot"
           },
           {
             "branch": "orchestra/00000000/t1",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t1",
+            "role": "work",
             "session": "00000000",
             "task": "t1"
           },
           {
             "branch": "orchestra/00000000/t2",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t2",
+            "role": "work",
             "session": "00000000",
             "task": "t2"
           },
           {
             "branch": "orchestra/00000000/t3",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t3",
+            "role": "work",
             "session": "00000000",
             "task": "t3"
           }
@@ -134,18 +154,18 @@
         "--into",
         "prep",
         "--verify",
-        "sh ../../prep.sh"
+        "sh \"$PREP\""
       ],
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
-          "path": "<WORK>-orchestra/00000000-prep",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
           "task": "prep"
         },
-        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
-        "onto": "<SHA#4>",
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+        "onto": "<SHA#5>",
         "status": "ok",
         "tasks": [
           {
@@ -170,6 +190,32 @@
     {
       "argv": [
         "isolate",
+        "request",
+        "start",
+        "--into",
+        "integrate"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [],
+        "head": "<SHA#5>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
+        "into": "integrate",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "clean"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
         "integrate",
         "--tasks",
         "t1,t2,t3"
@@ -179,11 +225,11 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/integrate",
-          "path": "<WORK>-orchestra/00000000-integrate",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
           "task": "integrate"
         },
-        "note": "2 of 3 task(s) applied, 1 conflicted; resolve in worktree 'integrate' at <WORK>-orchestra/00000000-integrate",
-        "onto": "<SHA#1>",
+        "note": "2 of 3 task(s) applied, 1 conflicted; resolve in worktree 'integrate' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
+        "onto": "<SHA#5>",
         "status": "conflicted",
         "tasks": [
           {
@@ -212,11 +258,11 @@
         ]
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-integrate/a.txt": {
+        "<@INTG>/a.txt": {
           "content": "1\n2\n3\n4\n<<<<<<< ours\nFIVE-A\n=======\nFIVE-B\n>>>>>>> theirs\n6\n7\n8\n9\n",
           "shape": "text"
         },
-        "<ROOT>/work-orchestra/00000000-integrate/b.txt": {
+        "<@INTG>/b.txt": {
           "content": "other\n",
           "shape": "text"
         }
@@ -236,7 +282,33 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "integrate conflicted  onto 6b5c419701c0  worktree <WORK>-orchestra/00000000-kept\n  t1               applied    1 file(s)\n  t2               conflicted 1 file(s)  a.txt (1 hunk(s))\n  t3               applied    1 file(s)\nverify skipped  exit=None  0.0s  (conflict markers committed)\nnote: 2 of 3 task(s) applied, 1 conflicted; resolve in worktree 'kept' at <WORK>-orchestra/00000000-kept\n"
+      "stdout": "integrate conflicted  onto 1e20ebfe2548  worktree <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/kept\n  t1               applied    1 file(s)\n  t2               conflicted 1 file(s)  a.txt (1 hunk(s))\n  t3               applied    1 file(s)\nverify skipped  exit=None  0.0s  (conflict markers committed)\nnote: 2 of 3 task(s) applied, 1 conflicted; resolve in worktree 'kept' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/kept\n"
+    },
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "start",
+        "--into",
+        "skipped"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [],
+        "head": "<SHA#5>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/skipped",
+        "into": "skipped",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "clean"
+      }
     },
     {
       "argv": [
@@ -256,11 +328,11 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/skipped",
-          "path": "<WORK>-orchestra/00000000-skipped",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/skipped",
           "task": "skipped"
         },
-        "note": "2 of 3 task(s) applied, 1 conflicted; resolve in worktree 'skipped' at <WORK>-orchestra/00000000-skipped",
-        "onto": "<SHA#1>",
+        "note": "2 of 3 task(s) applied, 1 conflicted; resolve in worktree 'skipped' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/skipped",
+        "onto": "<SHA#5>",
         "status": "conflicted",
         "tasks": [
           {
@@ -300,14 +372,40 @@
         }
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-skipped/a.txt": {
+        "<@SKIPPED>/a.txt": {
           "content": "1\n2\n3\n4\nFIVE-A\n6\n7\n8\n9\n",
           "shape": "text"
         },
-        "<ROOT>/work-orchestra/00000000-skipped/b.txt": {
+        "<@SKIPPED>/b.txt": {
           "content": "other\n",
           "shape": "text"
         }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "start",
+        "--into",
+        "stopped"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [],
+        "head": "<SHA#5>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/stopped",
+        "into": "stopped",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "clean"
       }
     },
     {
@@ -326,11 +424,11 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/stopped",
-          "path": "<WORK>-orchestra/00000000-stopped",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/stopped",
           "task": "stopped"
         },
-        "note": "1 of 3 task(s) applied, 1 conflicted (1 skipped); resolve in worktree 'stopped' at <WORK>-orchestra/00000000-stopped",
-        "onto": "<SHA#1>",
+        "note": "1 of 3 task(s) applied, 1 conflicted (1 skipped); resolve in worktree 'stopped' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/stopped",
+        "onto": "<SHA#5>",
         "status": "conflicted",
         "tasks": [
           {
@@ -360,11 +458,11 @@
         ]
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-stopped/a.txt": {
+        "<@STOPPED>/a.txt": {
           "content": "1\n2\n3\n4\nFIVE-A\n6\n7\n8\n9\n",
           "shape": "text"
         },
-        "<ROOT>/work-orchestra/00000000-stopped/b.txt": null
+        "<@STOPPED>/b.txt": null
       }
     },
     {
@@ -381,7 +479,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "integrate conflicted  onto 6b5c419701c0  worktree <WORK>-orchestra/00000000-stopped2\n  t1               applied    1 file(s)\n  t2               conflicted 1 file(s)  rolled-back  a.txt (1 hunk(s))\n  t3               skipped    0 file(s)\nnote: 1 of 3 task(s) applied, 1 conflicted (1 skipped); resolve in worktree 'stopped2' at <WORK>-orchestra/00000000-stopped2\n"
+      "stdout": "integrate conflicted  onto 1e20ebfe2548  worktree <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/stopped2\n  t1               applied    1 file(s)\n  t2               conflicted 1 file(s)  rolled-back  a.txt (1 hunk(s))\n  t3               skipped    0 file(s)\nnote: 1 of 3 task(s) applied, 1 conflicted (1 skipped); resolve in worktree 'stopped2' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/stopped2\n"
     },
     {
       "argv": [
@@ -397,11 +495,11 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/reversed",
-          "path": "<WORK>-orchestra/00000000-reversed",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/reversed",
           "task": "reversed"
         },
-        "note": "1 of 2 task(s) applied, 1 conflicted; resolve in worktree 'reversed' at <WORK>-orchestra/00000000-reversed",
-        "onto": "<SHA#2>",
+        "note": "1 of 2 task(s) applied, 1 conflicted; resolve in worktree 'reversed' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/reversed",
+        "onto": "<SHA#5>",
         "status": "conflicted",
         "tasks": [
           {
