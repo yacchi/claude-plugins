@@ -72,7 +72,9 @@ func (e *Executor) Prompt(ctx context.Context, s *host.Session, promptFiles []st
 }
 
 // WaitResult waits for the result file without sending another prompt; a
-// permission/choice dialog nobody will answer is a stall.
+// permission/choice dialog nobody will answer is a stall. A login reply that
+// sits unchanged across one wait is a login need: a busy worker can show the
+// same text on screen, so one read is not enough.
 func (e *Executor) WaitResult(ctx context.Context, s *host.Session, resultPath string, timeout time.Duration) (map[string]any, error) {
 	handle := s.Terminal
 	if handle == "" {
@@ -80,6 +82,7 @@ func (e *Executor) WaitResult(ctx context.Context, s *host.Session, resultPath s
 	}
 	deadline := e.Clock.Now().Add(timeout)
 	var screen []string
+	var last string
 	for {
 		if data := host.ReadResult(resultPath); data != nil {
 			return data, nil
@@ -97,6 +100,11 @@ func (e *Executor) WaitResult(ctx context.Context, s *host.Session, resultPath s
 			return nil, host.Need(host.KindStalled, "dialog:\n"+strings.Join(lines, "\n")+"\nterminal: "+handle+
 				"\nworktree: "+s.Worktree+"\nresult: "+resultPath)
 		}
+		joined := strings.Join(screen, "\n")
+		if host.IsLoginText(joined) && joined == last {
+			return nil, host.LoginNeed(handle, host.TailLines(screen))
+		}
+		last = joined
 		remaining := deadline.Sub(e.Clock.Now())
 		if remaining <= 0 {
 			return nil, host.Need(host.KindTimeout, "no result after "+host.Seconds(timeout)+"s:\n"+host.TailLines(screen))

@@ -30,21 +30,7 @@ func newConfigCmd() *cobra.Command {
 			warnings = append(warnings,
 				map[string]any{"type": "sandbox_learned", "detail": warning})
 		}
-		for _, w := range config.DashboardWarnings(cfg.Values) {
-			warnings = append(warnings, map[string]any{"type": "dashboard_artifact_url", "detail": w})
-		}
 		out["warnings"] = warnings
-		// artifact_url is resolved for the signed-in organization so readers
-		// never get an Artifact URL that another organization cannot write.
-		uuid, name := config.CurrentOrg()
-		dash := config.ObjectAt(out, "dashboard")
-		if dash == nil {
-			dash = map[string]any{}
-			out["dashboard"] = dash
-		}
-		dash["org"] = uuid
-		dash["org_name"] = name
-		dash["artifact_url"] = config.DashboardURL(cfg.Values, uuid)
 		return writeJSON(cmd.OutOrStdout(), out)
 	}
 	return cmd

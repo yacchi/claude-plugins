@@ -16,7 +16,7 @@ var Statuses = []string{
 var NeedKinds = []string{
 	"escalate", "conflict", "post-integration", "self-verify", "delegate", "dispatch-error",
 	"empty-after-refresh", "scope", "environment", "permission", "runaway", "network", "oversized",
-	"integrate",
+	"integrate", "login",
 }
 
 var inFlight = map[string]bool{"implementing": true, "verifying": true, "fixing": true, "ready": true}

@@ -81,6 +81,9 @@ func (r *runner) handle(pid, token string, result map[string]any) bool {
 	denials := r.networkDenials(pid, result)
 	switch status {
 	case "_orca_need":
+		if r.loginNeed(pid, result) {
+			return false
+		}
 		need := map[string]any{"orca": result["kind"], "detail": result["detail"]}
 		tok := result["token"]
 		if !truthy(tok) {

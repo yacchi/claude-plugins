@@ -34,8 +34,7 @@
           "error": "<ERROR>",
           "layers_found": [],
           "resolved": false,
-          "values": null,
-          "warnings": []
+          "values": null
         },
         "cooldowns": {
           "active": {},

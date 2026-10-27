@@ -64,6 +64,8 @@ type Options struct {
 	MaxWaves        *int
 	MaxPackages     *int
 	RunID           string
+	// Title is the short task title shown in the status file; default the run id.
+	Title string
 }
 
 // Deps are the runner's collaborators; zero values pick the production
@@ -244,11 +246,13 @@ func Run(ctx context.Context, o Options, d Deps) (Report, int) {
 		rep := errorReport(kind, err)
 		return rep, ExitCode(rep)
 	}
+	sw := r.startStatus()
 	func() {
 		defer r.shutdownHost()
 		r.loop()
 	}()
 	rep := r.report()
+	sw.finish(rep)
 	if rep.Status == "done" {
 		payload := reportObject(rep)
 		payload["event"] = "done"

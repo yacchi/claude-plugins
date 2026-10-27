@@ -41,13 +41,14 @@ const (
 	costTimeout        = 60 * time.Second
 )
 
-// holdStarts reports whether new starts wait for memory pressure or the
-// Claude plan usage to ease (in-flight packages carry on); memory wins when
-// both hold. It records one start-held event when holding begins and one
-// start-resumed when it ends.
+// holdStarts reports whether new starts wait for an open login need, memory
+// pressure or the Claude plan usage to ease (in-flight packages carry on);
+// login wins over memory, and memory over usage, when several hold. It
+// records one start-held event when holding begins and one start-resumed
+// when it ends.
 func (r *runner) holdStarts() bool {
-	held, reason := false, ""
-	if r.memoryGuard {
+	held, reason := r.loginHeld()
+	if !held && r.memoryGuard {
 		held, reason = memoryPressure()
 	}
 	if !held {

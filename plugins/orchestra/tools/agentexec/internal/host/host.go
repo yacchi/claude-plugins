@@ -41,6 +41,7 @@ const (
 	KindStalled = "stalled" // a dialog, a stalled prompt, a vanished agent
 	KindTimeout = "timeout" // no result file in time
 	KindError   = "error"   // anything else that failed
+	KindLogin   = "login"   // the profile's Claude login expired or is missing
 )
 
 // NeedError is a package the host cannot carry on with. Kind is one of the
@@ -56,6 +57,14 @@ func (e *NeedError) Error() string { return e.Kind + ": " + e.Detail }
 
 // Need is a NeedError without extras.
 func Need(kind, detail string) *NeedError { return &NeedError{Kind: kind, Detail: detail} }
+
+// LoginNeed is the need of a hosted Claude Code that answered with its /login
+// reply: the Claude login of the profile it runs under expired or is missing,
+// so every other session of that profile fails the same way until someone
+// runs /login. tail is the screen tail.
+func LoginNeed(terminal, tail string) *NeedError {
+	return Need(KindLogin, "Claude Code in "+terminal+" is not logged in: the Claude login of this profile expired or is missing. Run /login in a Claude Code session of this profile.\n"+tail)
+}
 
 // NetworkDenials is the "network_denials" extra, or nil.
 func (e *NeedError) NetworkDenials() []any {

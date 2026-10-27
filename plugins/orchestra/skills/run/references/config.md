@@ -668,11 +668,6 @@ throttle:
 
 CLI (used by the hooks): **`agent-exec slot classify --command CMD`** prints `{"op":"…","heavy":bool,"kind":"test"|"build"|null,"pool":"test"|"heavy","scope":"full"|"targeted"}`. **`agent-exec slot acquire --command CMD [--owner-pid N] [--ttl 15m] [--max-wait D]`** prints `{"admitted":false}` at once for a command that is not heavy (or with its pool off), else blocks until a slot of the command's pool is held and prints `{"admitted":true,"token":"…","waited_ms":N,"op":"…","pool":"…"}` (`admitted:false` with a `reason` when `--max-wait` passed or the owner died first). `--owner-pid` defaults to the parent process. **`agent-exec slot release TOKEN`** frees it (an unknown or released token is fine, exit 0). **`agent-exec slot status [--json]`**.
 
-## 11. Wave dashboard (`dashboard`)
+## 11. Removed: wave dashboard (`dashboard`)
 
-```yaml
-dashboard:
-  artifact_urls: {}        # "<claude.ai organization uuid>": "https://claude.ai/...artifact..." ; user scope
-```
-
-`dashboard.artifact_urls` maps a claude.ai organization uuid to the Artifact page the `orchestra-wave` watcher writes each `wave wait` answer to and reads the page's approve/deny decisions from. There is one page per organization. `agent-exec config --json` resolves `dashboard.artifact_url` for the organization this profile is signed in to (`oauthAccount.organizationUuid` of `$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`) and adds `dashboard.org` and `dashboard.org_name`. The instructor passes the resolved URL to every watcher spawn. When `artifact_url` is empty and `org` is set, the `run` skill publishes the page on first use for that organization and stores its URL under `dashboard.artifact_urls."<org>"` in `~/.claude/orchestra.yaml` (`programme.md` §6). With `org` empty (not signed in to claude.ai), the run has no dashboard. Each value must be "" or an `https://claude.ai/` URL whose path names an artifact. The old `dashboard.artifact_url` key is ignored: `agent-exec config --json` (`warnings`, type `dashboard_artifact_url`) and `doctor` (`config.warnings`) say how to move the URL under the organization it was published in.
+The claude.ai Artifact dashboard (`dashboard.artifact_url`, `dashboard.artifact_urls`) was removed in v0.73.0. A `dashboard` key in any layer is a config error that names the file (`<file>: the dashboard key was removed in orchestra 0.73.0: ...`); `config`, `doctor`, `dispatch` and `wave run` stop on it. Delete the key. Wave and plan progress goes to `~/.claude/orchestra/status.json` instead, written by `agent-exec` itself (`programme.md` §6; the plugin's `docs/status-file.md` lists every field). There is nothing to configure.

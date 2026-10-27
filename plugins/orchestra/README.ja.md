@@ -104,7 +104,7 @@ claude plugin validate .
 
 ### HUD
 
-orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。ウェーブがあると、ウェーブの表示 `wave 12/40 · 5 running · 2 needs · ~35m`（統合済み/全パッケージ数、実行中のパッケージ数、未解決の needs 数、パッケージに見積もりがあるときの残り時間の見込み）が加わり、run が停止するかランナーが終了するまで `wave status --json` の `progress` から 15 秒ごとに更新されます。複数のウェーブは並べて表示します。ウェーブは、それを起動する `agent-exec wave run --state <path>` から追跡します。起動するのはメインスレッド（通常は `run_in_background`）か、監視役のサブエージェント `orchestra:orchestra-wave`（`wave run --detach` のあと `wave wait --state <path>`）で、それ以外のサブエージェントの呼び出しは無視します。`orchestra` ペインには追跡中の各ウェーブの詳細を表示します。run id、統合済み/全数、経過時間、残り時間、コストに続けて、実行中のパッケージ（`id  cls→model  phase  経過/見積もり`、フェーズは 実装/検証/修正/統合/待機）、needs、次に始まるもの、直近に統合したものです。ペインは頼んだときだけ開きます。`/orchestra:progress` で開閉でき、ペイン内の「閉じる」ボタン（ホットキー `x`）でどの画面からでも閉じられます。モバイルアプリは今のところ mod の画面を描かないので、モバイルではウェーブのダッシュボードを開いてください。claude.ai の Artifact のページ（claude.ai の組織ごとに 1 ページ。`dashboard.artifact_urls` に組織の uuid をキーとして記録し、組織ごとに初めて使うときに公開します。セッション最初のウェーブの前に `run` スキルが、または `/setup` が公開します）で、監視役の `orchestra-wave` がホップごとに進捗、未決の承認、マシンの負荷を書き込みます。ページ上でその承認を許可・拒否でき、監視役がそれを適用します。ランナーが終了したときに途中だったパッケージは「中断」として出ます（`progress.interrupted`、行には `· N interrupted`）。不要になった run や計画は、ページの「削除」ボタン（5 秒以内に 2 回押す）で 1 件ずつ、または終わった run をまとめて消せます。ページを開ける人は Artifact 自体の共有設定に従います（既定は本人のみ）。監視役の進捗の行とプッシュ通知も、これまでどおりホップごと、need ごとに状況を伝えます。ペインがないときは、プロンプトの上（ターミナルとデスクトップ）に最大 4 行の帯を表示します。run id 付きのステータス行、実行中の先頭のパッケージ、needs、次に始まるものです。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。ウェーブ全体の様子は、どの端末でも上記のダッシュボードのページで見られます。その前の planner の計画（いまの段、子のエージェント、未解決の質問）も同じページに出ます。`hud` プラグインオプション（既定はオン）で無効にできます。
+orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。ウェーブがあると、ウェーブの表示 `wave 12/40 · 5 running · 2 needs · ~35m`（統合済み/全パッケージ数、実行中のパッケージ数、未解決の needs 数、パッケージに見積もりがあるときの残り時間の見込み）が加わり、run が停止するかランナーが終了するまで `wave status --json` の `progress` から 15 秒ごとに更新されます。複数のウェーブは並べて表示します。ウェーブは、それを起動する `agent-exec wave run --state <path>` から追跡します。起動するのはメインスレッド（通常は `run_in_background`）か、監視役のサブエージェント `orchestra:orchestra-wave`（`wave run --detach` のあと `wave wait --state <path>`）で、それ以外のサブエージェントの呼び出しは無視します。`orchestra` ペインには追跡中の各ウェーブの詳細を表示します。run id、統合済み/全数、経過時間、残り時間、コストに続けて、実行中のパッケージ（`id  cls→model  phase  経過/見積もり`、フェーズは 実装/検証/修正/統合/待機）、needs、次に始まるもの、直近に統合したものです。ペインは頼んだときだけ開きます。`/orchestra:progress` で開閉でき、ペイン内の「閉じる」ボタン（ホットキー `x`）でどの画面からでも閉じられます。モバイルアプリは今のところ mod の画面を描きません。ほかの端末向けには、`agent-exec` 自身（モデルも claude.ai へのログインも使いません）が 1 つのファイル `~/.claude/orchestra/status.json`（[`docs/status-file.md`](docs/status-file.md)）を最新に保ちます。どのプロファイルから動かしたものも含め、このマシンのすべてのウェーブのランナーと planner が載ります。`summary` にはリポジトリ名、パス、パッケージ名を含めないので（動いているものがあるか、run と計画の数、対応が必要な数だけです）、これだけを公開できます。orchestra 自身は何も公開せず、別のビューワーがこのファイルを読みます。表示は読み取り専用で、承認は自分のセッションで行います。ランナーが終了したときに途中だったパッケージは「中断」として出ます（`progress.interrupted`、行には `· N interrupted`）。監視役の進捗の行とプッシュ通知が、ホップごと、need ごとに状況を伝えます。ペインがないときは、プロンプトの上（ターミナルとデスクトップ）に最大 4 行の帯を表示します。run id 付きのステータス行、実行中の先頭のパッケージ、needs、次に始まるものです。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。このマシンのすべてのウェーブと、その前の planner の計画（いまの段、未解決の質問の数）は、上記の状態ファイルに載ります。`hud` プラグインオプション（既定はオン）で無効にできます。
 
 ### Copilot CLI / opencode からの移行
 
@@ -125,7 +125,7 @@ Copilotのモデルはpiの`github-copilot/*`、ChatGPTサブスクリプショ�
 | `skills/run/` | 手順書本体と、必要なときに読む参考資料(`authoring`、`gates`、`isolation`、`config`、`programme`、`external-executors`、`poc-findings`) |
 | `skills/setup/`、`skills/cleanup/` | 付属のスキル |
 | `tools/agent-exec` | `agent-exec` CLI の起動スクリプト。初回に `tools/agentexec/` をビルドし、保存したバイナリを実行します |
-| `tools/agentexec/` | `agent-exec` CLI(Go): route、dispatch、isolate、shelf、wave、telemetry、版を固定して管理する実行役バイナリ(pi と herdr)、herdr と Orca の対話ホストなど |
+| `tools/agentexec/` | `agent-exec` CLI(Go): route、dispatch、isolate、shelf、wave、status、telemetry、版を固定して管理する実行役バイナリ(pi と herdr)、herdr と Orca の対話ホストなど |
 | `hooks/` | ルーターの注入、ターン規模の検知、ワーカーの VCS・作業ツリー・lease の防護、Opus 汎用サブエージェントへの通知、worktree の後片付け |
 | `examples/orchestra.yaml` | 設定のサンプル |
 
@@ -137,5 +137,6 @@ Copilotのモデルはpiの`github-copilot/*`、ChatGPTサブスクリプショ�
 
 - [`docs/design-notes.md`](docs/design-notes.md) — ゲート、worktree による隔離、stash の代替、worktree の lease がなぜあるのか、それぞれのきっかけになった事象
 - [`docs/components.md`](docs/components.md) — エージェント、スキル、ツール、フックそれぞれの詳しい役割
+- [`docs/status-file.md`](docs/status-file.md) — マシン全体の状態ファイル `~/.claude/orchestra/status.json` の置き場所、書き込まれる時機、すべての項目
 - [`docs/poc.md`](docs/poc.md) — PoC の測定結果と外部実行系のモデル比較
 - [`feedback/`](feedback/) — 日付ごとの利用状況の振り返り
