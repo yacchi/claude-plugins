@@ -40,6 +40,9 @@ func FormatText(r Report) string {
 		for _, l := range layers {
 			p("  - %s", show(l))
 		}
+		for _, w := range list(get(cfg, "warnings")) {
+			p("  WARNING: %s", show(w))
+		}
 	} else {
 		p("config: FAILED to resolve: %s", show(get(cfg, "error")))
 	}

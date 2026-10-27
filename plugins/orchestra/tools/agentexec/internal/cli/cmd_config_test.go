@@ -82,3 +82,27 @@ func TestConfigDashboardNoProfileGivesEmptyOrg(t *testing.T) {
 		t.Errorf("org = %v, artifact_url = %v; want both empty without a profile", dash["org"], dash["artifact_url"])
 	}
 }
+
+// The removed global dashboard.artifact_url does not stop config: it is
+// ignored, never resolved as the organization's URL, and reported in warnings.
+func TestConfigDashboardLegacyArtifactURLWarns(t *testing.T) {
+	cfgDashSetup(t, `{"oauthAccount": {"organizationUuid": "0d1e0000-0000-4000-8000-00000000000a", "organizationName": "Org A"}}`,
+		"dashboard:\n  artifact_url: https://claude.ai/artifact/old\n")
+	out, code := hookCmdRun(t, "", "config", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	var doc struct {
+		Dashboard map[string]any   `json:"dashboard"`
+		Warnings  []map[string]any `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if got := doc.Dashboard["artifact_url"]; got != "" {
+		t.Errorf("artifact_url = %v; want empty, the legacy key is ignored", got)
+	}
+	if len(doc.Warnings) != 1 || doc.Warnings[0]["type"] != "dashboard_artifact_url" {
+		t.Errorf("warnings = %v; want one dashboard_artifact_url warning", doc.Warnings)
+	}
+}

@@ -17,24 +17,13 @@ import (
 // dashboard.artifact_urls.
 var cfgDashUUIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// validateDashboard checks the dashboard Artifact URLs. dashboard.artifact_url
-// is refused outright: one global URL cannot be read from a session signed in
-// to another claude.ai organization, so the URL is kept per organization. Each
+// validateDashboard checks the dashboard Artifact URLs. Each
 // dashboard.artifact_urls entry maps an organization uuid to an empty string or
-// a claude.ai Artifact URL. It runs once, in Resolve, like validateTiers.
+// a claude.ai Artifact URL. dashboard.artifact_url is not an error: it is
+// ignored, and DashboardWarnings reports it. It runs once, in Resolve, like
+// validateTiers.
 func validateDashboard(values map[string]any) error {
 	dash := ObjectAt(values, "dashboard")
-	if _, ok := dash["artifact_url"]; ok {
-		uuid, name := CurrentOrg()
-		who := strings.TrimSpace(uuid + " " + name)
-		if who == "" {
-			who = "unknown"
-		}
-		return fmt.Errorf("dashboard.artifact_url was removed: orchestra keeps one dashboard per claude.ai organization. "+
-			"Move the URL to dashboard.artifact_urls under the organization it was published in, e.g. "+
-			"dashboard: {artifact_urls: {\"<organization uuid>\": \"<url>\"}} (this session's organization: %s), "+
-			"or delete the key to publish a new dashboard", who)
-	}
 	urls, ok := dash["artifact_urls"].(map[string]any)
 	if !ok {
 		return fmt.Errorf("invalid dashboard.artifact_urls %v: must be a map of claude.ai organization uuid to Artifact URL", dash["artifact_urls"])
@@ -50,6 +39,24 @@ func validateDashboard(values map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// DashboardWarnings lists the dashboard settings the resolved values ignore:
+// dashboard.artifact_url, since one global URL cannot be written from a session
+// signed in to another claude.ai organization.
+func DashboardWarnings(values map[string]any) []string {
+	if _, ok := ObjectAt(values, "dashboard")["artifact_url"]; !ok {
+		return nil
+	}
+	uuid, name := CurrentOrg()
+	who := strings.TrimSpace(uuid + " " + name)
+	if who == "" {
+		who = "unknown"
+	}
+	return []string{fmt.Sprintf("dashboard.artifact_url is ignored: orchestra keeps one dashboard per claude.ai organization. "+
+		"Move the URL to dashboard.artifact_urls under the organization it was published in, e.g. "+
+		"dashboard: {artifact_urls: {\"<organization uuid>\": \"<url>\"}} (this session's organization: %s), "+
+		"or delete the key", who)}
 }
 
 func isArtifactURL(s string) bool {
