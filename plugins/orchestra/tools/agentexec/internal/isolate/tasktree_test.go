@@ -54,6 +54,16 @@ func TestTaskTreeRows(t *testing.T) {
 		}
 	})
 
+	t.Run("assembly role", func(t *testing.T) {
+		if err := WriteRole(task, RoleAssembly); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = WriteRole(task, "") })
+		if got, ok := TaskTree(task); ok {
+			t.Fatalf("assembly is a task tree: %q", got)
+		}
+	})
+
 	t.Run("plain worktree without marker", func(t *testing.T) {
 		plain := filepath.Join(t.TempDir(), "plain")
 		git(t, repo, "worktree", "add", "-q", "-b", "plain", plain)

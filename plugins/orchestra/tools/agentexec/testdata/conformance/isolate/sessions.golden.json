@@ -17,7 +17,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/aaaaaaaa-t1",
+        "role": "work",
         "status": "created",
         "task": "t1"
       }
@@ -38,7 +40,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/bbbbbbbb-t1",
+        "role": "work",
         "status": "created",
         "task": "t1"
       }
@@ -59,7 +63,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/bbbbbbbb-solo",
+        "role": "work",
         "status": "created",
         "task": "solo"
       }
@@ -80,7 +86,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/legacy",
+        "role": "work",
         "status": "created",
         "task": "legacy"
       }
@@ -138,29 +146,41 @@
         "worktrees": [
           {
             "branch": "orchestra/aaaaaaaa/t1",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/aaaaaaaa-t1",
+            "role": "work",
             "session": "aaaaaaaa",
             "task": "t1"
           },
           {
             "branch": "orchestra/bbbbbbbb/solo",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/bbbbbbbb-solo",
+            "role": "work",
             "session": "bbbbbbbb",
             "task": "solo"
           },
           {
             "branch": "orchestra/bbbbbbbb/t1",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/bbbbbbbb-t1",
+            "role": "work",
             "session": "bbbbbbbb",
             "task": "t1"
           },
           {
             "branch": "orchestra/legacy",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/legacy",
+            "role": "work",
             "session": null,
             "task": "legacy"
           }
@@ -180,8 +200,11 @@
         "worktrees": [
           {
             "branch": "orchestra/aaaaaaaa/t1",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/aaaaaaaa-t1",
+            "role": "work",
             "session": "aaaaaaaa",
             "task": "t1"
           }
@@ -224,7 +247,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t1",
+        "role": "work",
         "status": "created",
         "task": "t1"
       }

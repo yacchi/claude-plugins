@@ -1,0 +1,13 @@
+description: >
+  the status file's plan entries: agent-exec status plan records a planner's
+  progress, status show prints the machine-wide summary, a malformed id is a
+  usage error (exit 2), and status close without an entry is exit 3
+setup:
+  git: true
+normalize_keys: [generated_at, updated_at, started_at]
+steps:
+  - argv: [status, plan, --id, p1, --status, planning, --phase, explore, --title, Demo, --repo, .]
+  - argv: [status, plan, --id, p1, --status, needs-user, --phase, done, --questions, "2", --packages, "5", --est-total, "900", --est-critical, "400"]
+  - argv: [status, show]
+  - argv: [status, plan, --id, "bad id", --status, planning]
+  - argv: [status, close, --state, wave/state.json, --status, stopped]

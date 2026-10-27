@@ -1,0 +1,416 @@
+{
+  "scenario": "lineage/basic",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "start",
+        "--into",
+        "feat"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "assembly",
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [],
+        "head": "<SHA#1>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "into": "feat",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "clean"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1",
+        "--parent",
+        "feat"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat-orchestra/00000000-t1",
+        "role": "work",
+        "status": "created",
+        "task": "t1"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "bad",
+        "--parent",
+        "<@REQ>"
+      ],
+      "exit": 1,
+      "stdout_shape": "json",
+      "stdout": {
+        "reason": "parent <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work is not an integration tree",
+        "status": "error"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "bad",
+        "--parent",
+        "nope"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/feat",
+            "children": 1,
+            "current": true,
+            "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+            "role": "integration",
+            "session": "00000000",
+            "task": "feat"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "children": 0,
+            "current": true,
+            "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat-orchestra/00000000-t1",
+            "role": "work",
+            "session": "00000000",
+            "task": "t1"
+          },
+          {
+            "branch": "orchestra/00000000/<DATE>-00000000",
+            "children": 1,
+            "current": true,
+            "parent": null,
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "role": "assembly",
+            "session": "00000000",
+            "task": "<DATE>-00000000"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "<@T1>/b.txt"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "chars": 1,
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat-orchestra/00000000-t1/b.txt",
+        "status": "ok"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "<@REQ>",
+        "--force"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "children": [
+          {
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+            "task": "feat"
+          }
+        ],
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "reason": "1 child tree(s) still open; merge or discard them first (--force never removes a tree with children)",
+        "status": "has-children",
+        "task": "<DATE>-00000000"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "remove",
+        "--task",
+        "feat",
+        "--force"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "children": [
+          {
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat-orchestra/00000000-t1",
+            "task": "t1"
+          }
+        ],
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "reason": "1 child tree(s) still open; merge or discard them first (--force never removes a tree with children)",
+        "status": "has-children",
+        "task": "feat"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "land",
+        "--task",
+        "feat",
+        "-m",
+        "feat: add b"
+      ],
+      "exit": 1,
+      "stdout_shape": "json",
+      "stdout": {
+        "reason": "feat is an integration tree: merge it into its assembly with 'agent-exec isolate merge --task feat -m <message>', then land the assembly with 'agent-exec isolate land --task <DATE>-00000000 -m <message>'",
+        "status": "refused",
+        "task": "feat"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "land",
+        "-m",
+        "feat: add b"
+      ],
+      "exit": 1,
+      "stdout_shape": "json",
+      "stdout": {
+        "children": [
+          {
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+            "task": "feat"
+          }
+        ],
+        "reason": "assembly <DATE>-00000000 still has 1 open integration tree(s); merge them with 'agent-exec isolate merge --task <into> -m <message>' or discard them, then land",
+        "status": "has-children",
+        "task": "<DATE>-00000000"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--into",
+        "feat"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/feat",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+          "task": "feat"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'feat' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "onto": "<SHA#1>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t1"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "merge",
+        "--task",
+        "t1",
+        "-m",
+        "feat: add b"
+      ],
+      "exit": 1,
+      "stdout_shape": "json",
+      "stdout": {
+        "reason": "t1 is not an integration tree; only an integration tree merges into an assembly",
+        "status": "refused",
+        "task": "t1"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "merge",
+        "--task",
+        "feat",
+        "-m",
+        "feat: add b"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<DATE>-00000000",
+        "commit": "<SHA#3>",
+        "files": [
+          "b.txt"
+        ],
+        "removed": true,
+        "status": "merged",
+        "task": "feat"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "worktrees": [
+          {
+            "branch": "orchestra/00000000/<DATE>-00000000",
+            "children": 0,
+            "current": true,
+            "parent": null,
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "role": "assembly",
+            "session": "00000000",
+            "task": "<DATE>-00000000"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "sweep",
+        "--dry-run",
+        "--include-current",
+        "--live-window",
+        "0"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "branches": [],
+        "dry_run": true,
+        "pruned": false,
+        "repo": "<WORK>",
+        "status": "ok",
+        "summary": {
+          "absent": 0,
+          "branches_deleted": 0,
+          "branches_orphan": 0,
+          "branches_would_delete": 0,
+          "dirty": 1,
+          "errors": 0,
+          "external": 0,
+          "has_children": 0,
+          "removed": 0,
+          "skipped": 0,
+          "trash_removed": 0,
+          "would_remove": 0
+        },
+        "worktrees": [
+          {
+            "age_days": "<AGE_DAYS>",
+            "branch": "orchestra/00000000/<DATE>-00000000",
+            "current": true,
+            "files": [],
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "reason": "assembly <DATE>-00000000 holds work not landed on your branch; land it from your checkout with 'agent-exec isolate land --task <DATE>-00000000 -m <message>', or pass --force to discard it",
+            "session": "00000000",
+            "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
+            "status": "dirty",
+            "task": "<DATE>-00000000"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "land",
+        "-m",
+        "feat: add b"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "base": "<SHA#1>",
+        "branch": "main",
+        "commit": "<SHA#3>",
+        "files": [
+          "b.txt"
+        ],
+        "removed": true,
+        "request": "<DATE>-00000000",
+        "request_ended": true,
+        "status": "landed",
+        "task": "<DATE>-00000000"
+      },
+      "files": {
+        "<WORK>/b.txt": {
+          "content": "b\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "worktrees": []
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "requests": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,416 @@
+{
+  "scenario": "request/uncommitted",
+  "steps": [
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "start"
+      ],
+      "exit": 1,
+      "stdout_shape": "json",
+      "stdout": {
+        "checkout": "<WORK>",
+        "files": [
+          "a.txt",
+          "n.txt"
+        ],
+        "reason": "<WORK> has uncommitted changes (a.txt, n.txt): the request's assembly starts from this checkout, so decide whether the work needs them: --uncommitted include builds on them (land then takes only the assembly's own changes), --uncommitted ignore starts from HEAD",
+        "status": "uncommitted"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "ghost",
+        "--into",
+        "feat"
+      ],
+      "exit": 9,
+      "stdout_shape": "json",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/feat",
+          "path": null,
+          "task": "feat"
+        },
+        "note": "<WORK> has uncommitted changes (a.txt, n.txt): the request's assembly starts from this checkout, so decide whether the work needs them: --uncommitted include builds on them (land then takes only the assembly's own changes), --uncommitted ignore starts from HEAD",
+        "onto": null,
+        "status": "uncommitted",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 0,
+            "status": "missing",
+            "task": "ghost"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "list"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "requests": []
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "start",
+        "--into",
+        "feat",
+        "--uncommitted",
+        "include"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "assembly",
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [
+          "a.txt",
+          "n.txt"
+        ],
+        "head": "<SHA#1>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "into": "feat",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "include"
+      },
+      "files": {
+        "<@ASM>/a.txt": {
+          "content": "ONE\n2\n3\n4\n5\n",
+          "shape": "text"
+        },
+        "<@ASM>/n.txt": {
+          "content": "note\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t1",
+        "--parent",
+        "feat"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#2>",
+        "branch": "orchestra/00000000/t1",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat-orchestra/00000000-t1",
+        "role": "work",
+        "status": "created",
+        "task": "t1"
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "<@T1>/c.txt"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "chars": 9,
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat-orchestra/00000000-t1/c.txt",
+        "status": "ok"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t1",
+        "--into",
+        "feat"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/feat",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+          "task": "feat"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'feat' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
+        "onto": "<SHA#1>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t1"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "merge",
+        "--task",
+        "feat",
+        "-m",
+        "feat: change c"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<DATE>-00000000",
+        "commit": "<SHA#3>",
+        "files": [
+          "c.txt"
+        ],
+        "removed": true,
+        "status": "merged",
+        "task": "feat"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "land",
+        "-m",
+        "feat: change c"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "base": "<SHA#4>",
+        "branch": "main",
+        "commit": "<SHA#5>",
+        "files": [
+          "c.txt"
+        ],
+        "removed": true,
+        "request": "<DATE>-00000000",
+        "request_ended": true,
+        "status": "landed",
+        "task": "<DATE>-00000000"
+      },
+      "files": {
+        "<WORK>/a.txt": {
+          "content": "ONE\n2\n3\n4\n5\n",
+          "shape": "text"
+        },
+        "<WORK>/c.txt": {
+          "content": "c changed\n",
+          "shape": "text"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "start",
+        "--into",
+        "feat2",
+        "--uncommitted",
+        "ignore"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "assembly",
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [
+          "a.txt",
+          "n.txt"
+        ],
+        "head": "<SHA#5>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat2",
+        "into": "feat2",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "ignore"
+      },
+      "files": {
+        "<@ASM2>/a.txt": {
+          "content": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "shape": "jsonl"
+        }
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "create",
+        "--task",
+        "t2",
+        "--parent",
+        "feat2"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "backend": "git",
+        "baseline": "<SHA#6>",
+        "branch": "orchestra/00000000/t2",
+        "carried": [],
+        "carried_files": [],
+        "carry_method": "none",
+        "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat2",
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat2-orchestra/00000000-t2",
+        "role": "work",
+        "status": "created",
+        "task": "t2"
+      }
+    },
+    {
+      "argv": [
+        "write-file",
+        "--path",
+        "<@T2>/d.txt"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "chars": 1,
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat2-orchestra/00000000-t2/d.txt",
+        "status": "ok"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "integrate",
+        "--tasks",
+        "t2",
+        "--into",
+        "feat2"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "integration": {
+          "branch": "orchestra/00000000/feat2",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat2",
+          "task": "feat2"
+        },
+        "note": "1 of 1 task(s) applied cleanly into worktree 'feat2' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat2",
+        "onto": "<SHA#5>",
+        "status": "ok",
+        "tasks": [
+          {
+            "conflicts": [],
+            "files_changed": 1,
+            "status": "applied",
+            "task": "t2"
+          }
+        ]
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "merge",
+        "--task",
+        "feat2",
+        "-m",
+        "feat: add d"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<DATE>-00000000",
+        "commit": "<SHA#7>",
+        "files": [
+          "d.txt"
+        ],
+        "removed": true,
+        "status": "merged",
+        "task": "feat2"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "land",
+        "-m",
+        "feat: add d"
+      ],
+      "exit": 1,
+      "stdout_shape": "json",
+      "stdout": {
+        "files": [
+          "a.txt"
+        ],
+        "reason": "the checkout has uncommitted changes to tracked files; commit or set them aside first",
+        "status": "dirty",
+        "task": "<DATE>-00000000"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
+        "request",
+        "show"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "created": "<TS>",
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "id": "<DATE>-00000000",
+        "repos": [
+          {
+            "alive": true,
+            "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "checkout": "<WORK>",
+            "common": "<WORK>/.git",
+            "files": [
+              "a.txt",
+              "n.txt"
+            ],
+            "integration": [],
+            "name": "work",
+            "task": "<DATE>-00000000",
+            "uncommitted": "ignore"
+          }
+        ],
+        "session": "<UUID#1>",
+        "status": "open"
+      }
+    }
+  ]
+}

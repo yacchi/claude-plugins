@@ -33,6 +33,7 @@ func newRepo(t *testing.T) string {
 	t.Setenv("ORCHESTRA_ALIVE_DIR", alive)
 	SetAliveDir(alive)
 	t.Cleanup(func() { SetAliveDir("") })
+	t.Setenv(RequestRootEnv, filepath.Join(tmp, "requests"))
 	repo := filepath.Join(tmp, "repo")
 	writeFile(t, filepath.Join(repo, "README.md"), "hello\n")
 	writeFile(t, filepath.Join(repo, ".gitignore"), "node_modules/\n.venv/\n.env\n")

@@ -1,0 +1,29 @@
+{
+  "scenario": "config/dashboard-removed",
+  "steps": [
+    {
+      "argv": [
+        "config",
+        "--json"
+      ],
+      "exit": 1,
+      "stdout_shape": "empty",
+      "stdout": null
+    },
+    {
+      "argv": [
+        "wave",
+        "run",
+        "--plan",
+        "plan.json",
+        "--state",
+        "wave/state.json",
+        "--into",
+        "prog-x"
+      ],
+      "exit": 3,
+      "stdout_shape": "empty",
+      "stdout": null
+    }
+  ]
+}

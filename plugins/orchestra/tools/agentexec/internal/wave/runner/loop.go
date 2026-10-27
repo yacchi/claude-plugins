@@ -15,6 +15,8 @@ import (
 )
 
 func (r *runner) loop() {
+	// However the run ends, a hold it recorded is over.
+	defer r.endHold()
 	if r.verifyMode == "final" {
 		r.runWaves()
 		r.converge()
@@ -123,7 +125,7 @@ func (r *runner) schedule(p *pool, running map[int]string) (progressed, halted b
 	}
 	selected := plan.Select(r.plan, view, limit)
 	if len(selected) == 0 {
-		r.holding = false // nothing left to hold
+		r.endHold() // nothing left to hold
 	}
 	if len(selected) == 0 && len(carried) == 0 && len(awaiting) == 0 {
 		return false, false

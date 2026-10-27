@@ -17,7 +17,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t1",
+        "role": "work",
         "status": "created",
         "task": "t1"
       }
@@ -38,7 +40,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t2",
+        "role": "work",
         "status": "created",
         "task": "t2"
       }
@@ -59,7 +63,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t3",
+        "role": "work",
         "status": "created",
         "task": "t3"
       }
@@ -80,7 +86,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t4",
+        "role": "work",
         "status": "created",
         "task": "t4"
       }
@@ -101,7 +109,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t5",
+        "role": "work",
         "status": "created",
         "task": "t5"
       }
@@ -122,7 +132,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-boot",
+        "role": "work",
         "status": "created",
         "task": "boot"
       }
@@ -138,43 +150,61 @@
         "worktrees": [
           {
             "branch": "orchestra/00000000/boot",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
             "session": "00000000",
             "task": "boot"
           },
           {
             "branch": "orchestra/00000000/t1",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t1",
+            "role": "work",
             "session": "00000000",
             "task": "t1"
           },
           {
             "branch": "orchestra/00000000/t2",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t2",
+            "role": "work",
             "session": "00000000",
             "task": "t2"
           },
           {
             "branch": "orchestra/00000000/t3",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t3",
+            "role": "work",
             "session": "00000000",
             "task": "t3"
           },
           {
             "branch": "orchestra/00000000/t4",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t4",
+            "role": "work",
             "session": "00000000",
             "task": "t4"
           },
           {
             "branch": "orchestra/00000000/t5",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t5",
+            "role": "work",
             "session": "00000000",
             "task": "t5"
           }
@@ -190,18 +220,18 @@
         "--into",
         "prep",
         "--verify",
-        "sh ../../prep.sh"
+        "sh \"$PREP\""
       ],
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
-          "path": "<WORK>-orchestra/00000000-prep",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
           "task": "prep"
         },
-        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
-        "onto": "<SHA#6>",
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+        "onto": "<SHA#7>",
         "status": "ok",
         "tasks": [
           {
@@ -230,18 +260,18 @@
         "--tasks",
         "t1,t2,t3",
         "--verify",
-        "sh ../../check.sh"
+        "sh \"$CHECK\""
       ],
       "exit": 4,
       "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/integrate",
-          "path": "<WORK>-orchestra/00000000-integrate",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
           "task": "integrate"
         },
-        "note": "3 of 3 task(s) applied cleanly into worktree 'integrate' at <WORK>-orchestra/00000000-integrate",
-        "onto": "<SHA#1>",
+        "note": "3 of 3 task(s) applied cleanly into worktree 'integrate' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
+        "onto": "<SHA#7>",
         "status": "verify-failed",
         "tasks": [
           {
@@ -278,13 +308,39 @@
     {
       "argv": [
         "isolate",
+        "request",
+        "start",
+        "--into",
+        "bis"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [],
+        "head": "<SHA#7>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/bis",
+        "into": "bis",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "clean"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
         "integrate",
         "--tasks",
         "t1,t2,t3,t4,t5",
         "--into",
         "bis",
         "--verify",
-        "sh ../../check.sh",
+        "sh \"$CHECK\"",
         "--bisect",
         "--progress-jsonl",
         "../progress/events.jsonl"
@@ -294,11 +350,11 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/bis",
-          "path": "<WORK>-orchestra/00000000-bis",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/bis",
           "task": "bis"
         },
-        "note": "3 of 5 task(s) applied cleanly (2 reverted) into worktree 'bis' at <WORK>-orchestra/00000000-bis",
-        "onto": "<SHA#1>",
+        "note": "3 of 5 task(s) applied cleanly (2 reverted) into worktree 'bis' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/bis",
+        "onto": "<SHA#7>",
         "status": "reverted",
         "tasks": [
           {
@@ -346,6 +402,16 @@
         }
       },
       "files": {
+        "<@BIS>/a.txt": {
+          "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT\n9\n",
+          "shape": "text"
+        },
+        "<@BIS>/bad.txt": null,
+        "<@BIS>/bad2.txt": null,
+        "<@BIS>/c.txt": {
+          "content": "good\n",
+          "shape": "text"
+        },
         "<ROOT>/progress/events.jsonl": {
           "content": [
             {
@@ -405,7 +471,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "at_commit": "<SHA#7>"
+                "at_commit": "<SHA#8>"
               },
               "event": "verify-start",
               "pkg": null
@@ -422,7 +488,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#8>",
+                "commit": "<SHA#9>",
                 "result": "fail"
               },
               "event": "bisect-probe",
@@ -431,7 +497,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#9>",
+                "commit": "<SHA#10>",
                 "result": "pass"
               },
               "event": "bisect-probe",
@@ -440,7 +506,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#10>",
+                "commit": "<SHA#11>",
                 "result": "fail"
               },
               "event": "bisect-probe",
@@ -457,7 +523,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#11>",
+                "commit": "<SHA#12>",
                 "result": "fail"
               },
               "event": "bisect-probe",
@@ -466,7 +532,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#8>",
+                "commit": "<SHA#9>",
                 "result": "pass"
               },
               "event": "bisect-probe",
@@ -490,16 +556,6 @@
             }
           ],
           "shape": "jsonl"
-        },
-        "<ROOT>/work-orchestra/00000000-bis/a.txt": {
-          "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT\n9\n",
-          "shape": "text"
-        },
-        "<ROOT>/work-orchestra/00000000-bis/bad.txt": null,
-        "<ROOT>/work-orchestra/00000000-bis/bad2.txt": null,
-        "<ROOT>/work-orchestra/00000000-bis/c.txt": {
-          "content": "good\n",
-          "shape": "text"
         }
       }
     },
@@ -512,7 +568,7 @@
         "--into",
         "bis1",
         "--verify",
-        "sh ../../check.sh",
+        "sh \"$CHECK\"",
         "--bisect",
         "--bisect-max",
         "1",
@@ -520,7 +576,7 @@
       ],
       "exit": 4,
       "stdout_shape": "text",
-      "stdout": "integrate verify-failed  onto 6b5c419701c0  worktree <WORK>-orchestra/00000000-bis1\n  t1               applied    1 file(s)\n  t2               reverted   1 file(s)\n  t3               applied    1 file(s)\n  t4               applied    1 file(s)\n  t5               applied    1 file(s)\nverify fail  exit=1  0.0s  baseline=pass\nnote: 4 of 5 task(s) applied cleanly (1 reverted) into worktree 'bis1' at <WORK>-orchestra/00000000-bis1\n"
+      "stdout": "integrate verify-failed  onto 1e20ebfe2548  worktree <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/bis1\n  t1               applied    1 file(s)\n  t2               reverted   1 file(s)\n  t3               applied    1 file(s)\n  t4               applied    1 file(s)\n  t5               applied    1 file(s)\nverify fail  exit=1  0.0s  baseline=pass\nnote: 4 of 5 task(s) applied cleanly (1 reverted) into worktree 'bis1' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/bis1\n"
     },
     {
       "argv": [
@@ -539,11 +595,11 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/red",
-          "path": "<WORK>-orchestra/00000000-red",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/red",
           "task": "red"
         },
-        "note": "2 of 2 task(s) applied cleanly into worktree 'red' at <WORK>-orchestra/00000000-red",
-        "onto": "<SHA#1>",
+        "note": "2 of 2 task(s) applied cleanly into worktree 'red' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/red",
+        "onto": "<SHA#7>",
         "status": "verify-failed",
         "tasks": [
           {
@@ -589,11 +645,11 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/slow",
-          "path": "<WORK>-orchestra/00000000-slow",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/slow",
           "task": "slow"
         },
-        "note": "1 of 1 task(s) applied cleanly into worktree 'slow' at <WORK>-orchestra/00000000-slow",
-        "onto": "<SHA#1>",
+        "note": "1 of 1 task(s) applied cleanly into worktree 'slow' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/slow",
+        "onto": "<SHA#7>",
         "status": "verify-failed",
         "tasks": [
           {
@@ -618,6 +674,32 @@
     {
       "argv": [
         "isolate",
+        "request",
+        "start",
+        "--into",
+        "messy"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [],
+        "head": "<SHA#7>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/messy",
+        "into": "messy",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "clean"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
         "integrate",
         "--tasks",
         "t1",
@@ -633,11 +715,11 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/messy",
-          "path": "<WORK>-orchestra/00000000-messy",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/messy",
           "task": "messy"
         },
-        "note": "1 of 1 task(s) applied cleanly into worktree 'messy' at <WORK>-orchestra/00000000-messy",
-        "onto": "<SHA#1>",
+        "note": "1 of 1 task(s) applied cleanly into worktree 'messy' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/messy",
+        "onto": "<SHA#7>",
         "status": "ok",
         "tasks": [
           {
@@ -659,6 +741,11 @@
         }
       },
       "files": {
+        "<@MESSY>/a.txt": {
+          "content": "1\nTWO\n3\n4\n5\n6\n7\n8\n9\n",
+          "shape": "text"
+        },
+        "<@MESSY>/junk.txt": null,
         "<ROOT>/progress/events.jsonl": {
           "content": [
             {
@@ -718,7 +805,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "at_commit": "<SHA#7>"
+                "at_commit": "<SHA#8>"
               },
               "event": "verify-start",
               "pkg": null
@@ -735,7 +822,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#8>",
+                "commit": "<SHA#9>",
                 "result": "fail"
               },
               "event": "bisect-probe",
@@ -744,7 +831,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#9>",
+                "commit": "<SHA#10>",
                 "result": "pass"
               },
               "event": "bisect-probe",
@@ -753,7 +840,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#10>",
+                "commit": "<SHA#11>",
                 "result": "fail"
               },
               "event": "bisect-probe",
@@ -770,7 +857,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#11>",
+                "commit": "<SHA#12>",
                 "result": "fail"
               },
               "event": "bisect-probe",
@@ -779,7 +866,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "commit": "<SHA#8>",
+                "commit": "<SHA#9>",
                 "result": "pass"
               },
               "event": "bisect-probe",
@@ -822,7 +909,7 @@
             {
               "at": "<AT>",
               "detail": {
-                "at_commit": "<SHA#9>"
+                "at_commit": "<SHA#10>"
               },
               "event": "verify-start",
               "pkg": null
@@ -846,12 +933,7 @@
             }
           ],
           "shape": "jsonl"
-        },
-        "<ROOT>/work-orchestra/00000000-messy/a.txt": {
-          "content": "1\nTWO\n3\n4\n5\n6\n7\n8\n9\n",
-          "shape": "text"
-        },
-        "<ROOT>/work-orchestra/00000000-messy/junk.txt": null
+        }
       }
     },
     {
@@ -868,7 +950,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <WORK>-orchestra/00000000-none\n  ghost            missing    0 file(s)\nverify skipped  exit=None  0.0s  (nothing applied)\nnote: 0 of 1 task(s) applied cleanly (1 had no worktree) into worktree 'none' at <WORK>-orchestra/00000000-none\n"
+      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/none\n  ghost            missing    0 file(s)\nverify skipped  exit=None  0.0s  (nothing applied)\nnote: 0 of 1 task(s) applied cleanly (1 had no worktree) into worktree 'none' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/none\n"
     },
     {
       "argv": [

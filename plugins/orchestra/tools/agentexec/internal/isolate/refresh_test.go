@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 func TestRefreshCarriesEditsNewDeletedAndBinaryFiles(t *testing.T) {
@@ -94,5 +96,77 @@ func TestAdoptedTaskResolutionPrefersTheSessionAndRefusesToGuess(t *testing.T) {
 	}
 	if !exists(filepath.Join(two, "README.md")) {
 		t.Error("unadopt touched the files")
+	}
+}
+
+// refreshIntegrationWithChild plants integration tree X under repo and work
+// tree t1 under X, with an edit in t1 and a newer commit in X.
+func refreshIntegrationWithChild(t *testing.T, repo string) (x, t1, xHead string) {
+	t.Helper()
+	x = plantTree(t, repo, "X", RoleIntegration, "")
+	t1 = plantTree(t, x, "t1", "", x)
+	writeFile(t, filepath.Join(t1, "README.md"), "hello\nT1\n")
+	writeFile(t, filepath.Join(x, "new.txt"), "from X\n")
+	git(t, x, "add", "-A")
+	git(t, x, "commit", "-q", "-m", "advance X")
+	xHead = strings.TrimSpace(git(t, x, "rev-parse", "HEAD"))
+	return x, t1, xHead
+}
+
+func TestRefreshDefaultsToTheParentHeadAndKeepsParent(t *testing.T) {
+	repo := newRepo(t)
+	x, _, xHead := refreshIntegrationWithChild(t, repo)
+
+	res, err := Refresh(repo, "t1", "", "")
+	if err != nil || res.Status != "ok" || res.Baseline != xHead {
+		t.Fatalf("refresh: %+v %v", res, err)
+	}
+	if got := readFile(t, filepath.Join(res.Path, "README.md")); got != "hello\nT1\n" {
+		t.Errorf("edit lost: %q", got)
+	}
+	if got := ReadParent(res.Path); got != paths.RealPath(x) {
+		t.Errorf("parent marker = %q, want %q", got, paths.RealPath(x))
+	}
+}
+
+func TestRefreshExplicitOntoWinsOverParentHead(t *testing.T) {
+	repo := newRepo(t)
+	x, _, _ := refreshIntegrationWithChild(t, repo)
+	mainSHA := strings.TrimSpace(git(t, repo, "rev-parse", "main"))
+
+	res, err := Refresh(repo, "t1", "main", "")
+	if err != nil || res.Status != "ok" || res.Baseline != mainSHA {
+		t.Fatalf("refresh: %+v %v", res, err)
+	}
+	if got := ReadParent(res.Path); got != paths.RealPath(x) {
+		t.Errorf("parent marker = %q, want %q", got, paths.RealPath(x))
+	}
+}
+
+func TestRefreshRefusesAnAssembly(t *testing.T) {
+	repo := newRepo(t)
+	plantTree(t, repo, "A", RoleAssembly, "")
+
+	res, err := Refresh(repo, "A", "", "")
+	if err != nil || res.Status != "error" || res.Note != "refusing to refresh an assembly worktree" {
+		t.Fatalf("refresh: %+v %v", res, err)
+	}
+}
+
+func TestRefreshRefusesWhenParentIsGoneAndTouchesNothing(t *testing.T) {
+	repo := newRepo(t)
+	x, t1, _ := refreshIntegrationWithChild(t, repo)
+	git(t, repo, "worktree", "remove", "--force", x)
+
+	res, err := Refresh(repo, "t1", "", "")
+	want := "parent tree " + paths.RealPath(x) + " is gone; nothing touched"
+	if err != nil || res.Status != "error" || res.Note != want {
+		t.Fatalf("refresh: %+v %v", res, err)
+	}
+	if got := readFile(t, filepath.Join(t1, "README.md")); got != "hello\nT1\n" {
+		t.Errorf("edit lost: %q", got)
+	}
+	if exists(filepath.Join(Home(repo), patchesDirName)) {
+		t.Error("patch file written before the parent check")
 	}
 }

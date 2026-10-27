@@ -14,8 +14,8 @@ import (
 )
 
 // landTestRepo is a throwaway checkout on main with README.md committed, and
-// an integration tree "prog" holding two commits (a.txt and c.txt) on top of
-// the base, planted the way the wave runner does.
+// an assembly "prog" holding two commits (a.txt and c.txt) on top of the
+// base, planted the way the wave runner does.
 func landTestRepo(t *testing.T) string {
 	t.Helper()
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
@@ -29,6 +29,7 @@ func landTestRepo(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("ORCHESTRA_REQUEST_ROOT", filepath.Join(tmp, "requests"))
 	alive := filepath.Join(tmp, "alive")
 	t.Setenv("ORCHESTRA_ALIVE_DIR", alive)
 	isolate.SetAliveDir(alive)
@@ -45,7 +46,7 @@ func landTestRepo(t *testing.T) string {
 	landGit(t, repo, "commit", "-q", "-m", "init")
 	head := strings.TrimSpace(landGit(t, repo, "rev-parse", "HEAD"))
 
-	res, err := isolate.Create(repo, "prog", isolate.CreateOptions{Backend: isolate.BackendGit, Onto: head})
+	res, err := isolate.Create(repo, "prog", isolate.CreateOptions{Backend: isolate.BackendGit, Onto: head, Role: isolate.RoleAssembly})
 	if err != nil || res.Status != "created" {
 		t.Fatalf("create: %+v, %v", res, err)
 	}
@@ -109,6 +110,28 @@ func TestLandJoinsMessageParagraphs(t *testing.T) {
 	}
 }
 
+func TestLandRefusesAnIntegrationTree(t *testing.T) {
+	repo := landTestRepo(t)
+	res, err := isolate.Create(repo, "int", isolate.CreateOptions{Backend: isolate.BackendGit, Role: isolate.RoleIntegration})
+	if err != nil || res.Status != "created" {
+		t.Fatalf("create: %+v, %v", res, err)
+	}
+	out, code := runLand(t, "--task", "int", "--repo", repo, "-m", "subject")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1: %s", code, out)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if got["status"] != "refused" {
+		t.Errorf("status: %v", got)
+	}
+	if reason, _ := got["reason"].(string); !strings.Contains(reason, "is an integration tree with no assembly") {
+		t.Errorf("reason %q", reason)
+	}
+}
+
 func TestLandNeedsMessage(t *testing.T) {
 	repo := landTestRepo(t)
 	if _, code := runLand(t, "--task", "prog", "--repo", repo); code != 2 {
@@ -139,7 +162,7 @@ func TestLandTextPrintsLandedLine(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, out)
 	}
 	head := strings.TrimSpace(landGit(t, repo, "rev-parse", "HEAD"))
-	want := "landed " + head[:8] + " on main: 2 files (from prog)\n"
+	want := "landed " + head[:8] + " on main: 2 files (from prog); assembly removed\n"
 	if out != want {
 		t.Errorf("text %q, want %q", out, want)
 	}
@@ -162,15 +185,132 @@ func landUsageErr(t *testing.T, args ...string) (string, int) {
 	return e.Msg, e.Code
 }
 
-func TestLandNeedsExactlyOneSource(t *testing.T) {
-	const want = "isolate land: give exactly one of --task and --path"
+func TestLandAcceptsAtMostOneSource(t *testing.T) {
+	const want = "isolate land: give at most one of --task, --request and --path"
 	for _, args := range [][]string{
-		{"-m", "subject"},
 		{"--task", "prog", "--path", "/tmp/x", "-m", "subject"},
+		{"--task", "a", "--request", "b", "-m", "subject"},
+		{"--request", "a", "--path", "/tmp/x", "-m", "subject"},
 	} {
 		if msg, code := landUsageErr(t, args...); code != 2 || msg != want {
 			t.Errorf("land %v: exit %d %q, want 2 %q", args, code, msg, want)
 		}
+	}
+}
+
+// landRequest makes the request assembly of repo for the given Claude Code
+// session, the way the session's own commands do, and returns the request id.
+func landRequest(t *testing.T, repo, session string) string {
+	t.Helper()
+	t.Setenv("CLAUDE_CODE_SESSION_ID", session)
+	res, err := isolate.EnsureAssembly(repo, "")
+	if err != nil || res.Status != "ready" {
+		t.Fatalf("ensure assembly for %s: %+v, %v", session, res, err)
+	}
+	return res.Task
+}
+
+// landRequestChange commits a file in the request's assembly so it has
+// something to land.
+func landRequestChange(t *testing.T, repo, request string) {
+	t.Helper()
+	res, err := isolate.EnsureAssembly(repo, "")
+	if err != nil || res.Task != request {
+		t.Fatalf("assembly of %s: %+v, %v", request, res, err)
+	}
+	landWrite(t, filepath.Join(res.Assembly, "feature.txt"), "feature\n")
+	if err := gitx.CommitAll(res.Assembly, "feat: x"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLandWithoutRequestIsAbsent(t *testing.T) {
+	repo := landTestRepo(t)
+	out, code := runLand(t, "--repo", repo, "-m", "x")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1: %s", code, out)
+	}
+	var res map[string]any
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if res["status"] != "absent" || res["reason"] != "no open request has an assembly for this repository" {
+		t.Errorf("result %v", res)
+	}
+}
+
+func TestLandTakesTheSessionsRequestAssembly(t *testing.T) {
+	repo := landTestRepo(t)
+	request := landRequest(t, repo, "aaaaaaaa-1111-4111-8111-111111111111")
+	landRequestChange(t, repo, request)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "aaaaaaaa-1111-4111-8111-111111111111")
+
+	out, code := runLand(t, "--repo", repo, "-m", "feat: x", "--text")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	if !strings.HasSuffix(out, "; assembly removed; request "+request+" ended\n") {
+		t.Errorf("text %q does not end with the removal and request end", out)
+	}
+	if got := strings.TrimSpace(landGit(t, repo, "log", "-1", "--format=%s")); got != "feat: x" {
+		t.Errorf("landed subject %q", got)
+	}
+}
+
+func TestLandRequestLandsItsAssemblyAsJSON(t *testing.T) {
+	repo := landTestRepo(t)
+	request := landRequest(t, repo, "aaaaaaaa-1111-4111-8111-111111111111")
+	landRequestChange(t, repo, request)
+
+	out, code := runLand(t, "--request", request, "--repo", repo, "-m", "feat: x")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	var res map[string]any
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if res["status"] != "landed" || res["removed"] != true || res["request"] != request || res["request_ended"] != true {
+		t.Errorf("result %v", res)
+	}
+}
+
+func TestLandRefusesSeveralRequestsAndRequestPicksOne(t *testing.T) {
+	repo := landTestRepo(t)
+	first := landRequest(t, repo, "aaaaaaaa-1111-4111-8111-111111111111")
+	landRequestChange(t, repo, first)
+	second := landRequest(t, repo, "bbbbbbbb-2222-4222-8222-222222222222")
+	landRequestChange(t, repo, second)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "cccccccc-3333-4333-8333-333333333333")
+
+	out, code := runLand(t, "--repo", repo, "-m", "feat: x")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1: %s", code, out)
+	}
+	var res map[string]any
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	reason, _ := res["reason"].(string)
+	if res["status"] != "refused" || !strings.Contains(reason, "several requests have an assembly") ||
+		!strings.Contains(reason, first) || !strings.Contains(reason, second) {
+		t.Errorf("result %v", res)
+	}
+
+	out, code = runLand(t, "--request", first, "--repo", repo, "-m", "feat: x")
+	if code != 0 {
+		t.Fatalf("--request %s: exit %d: %s", first, code, out)
+	}
+	if !strings.Contains(out, `"request":"`+first+`"`) {
+		t.Errorf("landed %q, want request %s", out, first)
+	}
+}
+
+func TestLandBaselineWithRequestIsUsageError(t *testing.T) {
+	const want = "isolate land: --baseline goes with --path"
+	msg, code := landUsageErr(t, "--baseline", "x", "--request", "y", "-m", "subject")
+	if code != 2 || msg != want {
+		t.Errorf("exit %d %q, want 2 %q", code, msg, want)
 	}
 }
 

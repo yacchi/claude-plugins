@@ -56,9 +56,6 @@
                 "sandbox": 0
               }
             },
-            "dashboard": {
-              "artifact_urls": {}
-            },
             "enforcement": {
               "fanout": {
                 "checker_calls": 8,
@@ -311,8 +308,7 @@
               "memory_guard": true,
               "usage_every": 10
             }
-          },
-          "warnings": []
+          }
         },
         "cooldowns": {
           "active": {},
@@ -561,9 +557,6 @@
                 "sandbox": 0
               }
             },
-            "dashboard": {
-              "artifact_urls": {}
-            },
             "enforcement": {
               "fanout": {
                 "checker_calls": 8,
@@ -816,8 +809,7 @@
               "memory_guard": true,
               "usage_every": 10
             }
-          },
-          "warnings": []
+          }
         },
         "cooldowns": {
           "active": {},

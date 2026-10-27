@@ -74,7 +74,10 @@ const deny = (command: string, cwd = '/repo', description = 'x') =>
 
 describe('merge-guard', () => {
     test('the table: orchestra branches are denied from the user checkout', async () => {
-        expect(await deny('git merge --ff-only orchestra/52f1a299/prog-x')).toContain('(orchestra/52f1a299/prog-x) into /repo')
+        const message = await deny('git merge --ff-only orchestra/52f1a299/prog-x')
+        expect(message).toContain('(orchestra/52f1a299/prog-x) into /repo')
+        expect(message).toContain('agent-exec isolate merge --task <into>')
+        expect(message).toContain('agent-exec isolate land -m')
         expect(await deny('cd /repo && git merge orchestra/prog')).toBeDefined()
         expect(await deny('git -C /repo reset --hard refs/heads/orchestra/a/b', '/repo-feature')).toBeDefined()
         expect(await deny('git cherry-pick orchestra/a/b~3..orchestra/a/b')).toBeDefined()

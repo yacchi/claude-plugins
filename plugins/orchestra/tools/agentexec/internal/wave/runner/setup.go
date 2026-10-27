@@ -67,9 +67,12 @@ type runner struct {
 	usageEvery  int
 	budgetUSD   float64
 
-	// Scheduler-goroutine state: whether new starts are held for memory
-	// pressure, and the packages integrated so far (usage notices).
+	// Scheduler-goroutine state: whether new starts are held (and the hold
+	// recorded in state, if any), and the packages integrated so far (usage
+	// notices).
 	holding         bool
+	hold            *state.Held
+	holdLongSent    bool
 	integratedTotal int
 
 	// costMu guards the cached run-cost estimate.
@@ -225,6 +228,12 @@ func (r *runner) init() error {
 	if _, err := r.store.Init(absPath(r.opts.Plan), ids, r.into); err != nil {
 		return err
 	}
+	// A new run is an explicit request to run: a STOP left by an earlier
+	// `wave stop` is cleared, and a hold a crashed runner left is stale.
+	if err := state.ClearStop(r.statePath); err != nil {
+		return err
+	}
+	_ = r.store.SetHeld(nil)
 	for _, w := range warnings {
 		pkg := ""
 		if w.Pkg != nil {
@@ -234,31 +243,27 @@ func (r *runner) init() error {
 		fmt.Fprintf(r.stderr, "plan-warning: %s: %s\n", derefOr(w.Pkg, "-"), w.Message)
 	}
 
-	// Integration worktree: the same create path integrate takes, so a
-	// later `isolate integrate --into` reuses it as is.
-	head := r.revParse(r.root, "HEAD")
-	if head == "" {
-		return fmt.Errorf("could not resolve HEAD in %s", r.root)
+	// Integration worktree: the request's, cut from its assembly's HEAD (the
+	// assembly is created on first use), so a later `isolate integrate
+	// --into` reuses it as is.
+	res, err := isolate.EnsureIntegration(r.root, r.into, r.opts.Uncommitted)
+	if err != nil {
+		return err
 	}
-	// A start commit that tracks excluded dependency stores would check
-	// them out into every package worktree. A scan error fails open: the
-	// Create below reports real git trouble itself.
-	if dirs, err := isolate.TrackedExcluded(r.root, head, isolate.CurrentFilter()); err == nil && len(dirs) > 0 {
-		return errors.New(isolate.TrackedRefusal(head, dirs))
+	switch res.Status {
+	case "ready":
+	case "uncommitted":
+		return &uncommittedError{res.Reason}
+	default:
+		return errors.New(res.Reason)
 	}
-	created, err := isolate.Create(r.root, r.into, isolate.CreateOptions{Backend: isolate.BackendGit, Onto: head})
-	if err != nil || created.Status == "error" || created.Path == "" || !isDir(created.Path) {
-		reason := created.Reason
-		if err != nil {
-			reason = err.Error()
-		}
-		return fmt.Errorf("could not create the integration worktree %s: %s", r.into, orUnknown(reason))
-	}
-	_ = isolate.WriteRole(created.Path, isolate.RoleIntegration)
-	r.intPath = created.Path
-	r.base = head
-	if b, ok := isolate.ReadBaseline(created.Path); ok && b != "" {
+	r.intPath = res.Integration
+	r.base = res.Head
+	if b, ok := isolate.ReadBaseline(res.Integration); ok && b != "" {
 		r.base = b
+	}
+	if r.base == "" {
+		return fmt.Errorf("could not resolve the integration tree's base in %s", res.Integration)
 	}
 	task, path, base := r.into, r.intPath, r.base
 	if err := r.store.SetIntegration(state.Integration{Task: &task, Path: &path, Base: &base}); err != nil {
@@ -300,6 +305,12 @@ func orUnknown(s string) string {
 	}
 	return s
 }
+
+// uncommittedError is the request's assembly refusing a checkout with
+// uncommitted changes until the caller picks --uncommitted include|ignore.
+type uncommittedError struct{ reason string }
+
+func (e *uncommittedError) Error() string { return e.reason }
 
 // applyOverrides adds `wave mark --widen` globs (plan-overrides.json) and
 // returns, per package, the globs this call newly added. The runner calls it

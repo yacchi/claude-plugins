@@ -14,6 +14,8 @@ setup:
       cd <WORK>
       printf '1\n2\n3\n4\nFIVE-MAIN\n6\n7\n8\n9\n' > a.txt
       git commit -qam "move main"
+  env:
+    PREP: "<ROOT>/prep.sh"
 normalize_keys: [seconds]
 steps:
   - argv: [isolate, create, --task, t1]
@@ -21,7 +23,7 @@ steps:
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
     env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
-  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
   - argv: [isolate, refresh, --task, t1]
     snapshot:
       - <ROOT>/work-orchestra/00000000-t1/a.txt

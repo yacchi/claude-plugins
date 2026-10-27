@@ -1,0 +1,12 @@
+description: >
+  a dashboard key left in the user layer is a config error (exit 1 for config,
+  exit 3 for wave run) that names the file and the removal
+setup:
+  files:
+    ~/.claude/orchestra.yaml: "sandbox:\n  mode: off\ndashboard:\n  artifact_url: https://claude.ai/artifact/old\n"
+  git: true
+steps:
+  - argv: [config, --json]
+    stderr_contains: ["agent-exec: <HOME>/.claude/orchestra.yaml: the dashboard key was removed in orchestra 0.73.0"]
+  - argv: [wave, run, --plan, plan.json, --state, wave/state.json, --into, prog-x]
+    stderr_contains: ["agent-exec: wave run: <HOME>/.claude/orchestra.yaml: the dashboard key was removed"]

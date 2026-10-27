@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
 )
 
@@ -120,7 +122,9 @@ func optString(p *string) any {
 // Workdir, prompt files and the config root are made absolute; the prompt
 // files need not exist yet (a correction round's feedback file is written
 // between prepare and dispatch). An empty Archetype is "default", an empty
-// Isolate "auto", an empty ConfigRoot cfg.Root.
+// Isolate "auto", an empty ConfigRoot cfg.Root. A run with a run id and task
+// on the user's checkout with uncommitted work is refused before anything is
+// written, until its request has decided how to start from that work.
 func Prepare(cfg *config.Resolved, s PrepareSpec) (string, error) {
 	SweepRetention(cfg)
 	if s.Archetype == "" {
@@ -131,6 +135,14 @@ func Prepare(cfg *config.Resolved, s PrepareSpec) (string, error) {
 	}
 	if !ValidIsolate(s.Isolate) {
 		return "", errors.New("--isolate must be " + IsolateModes)
+	}
+	if (s.Isolate == IsolateAlways || s.Isolate == IsolateCli) && s.RunID != nil && *s.RunID != "" && s.Task != nil && *s.Task != "" {
+		if _, user := isolate.UserCheckout(s.Workdir); user {
+			res, err := isolate.CheckAssembly(s.Workdir, "")
+			if err == nil && res.Status == "uncommitted" {
+				return "", fmt.Errorf("%s; run 'agent-exec isolate request start --into %s --uncommitted include|ignore' once before preparing or dispatching", res.Reason, *s.RunID)
+			}
+		}
 	}
 	if s.ConfigRoot == "" {
 		s.ConfigRoot = cfg.Root

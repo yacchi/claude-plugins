@@ -32,6 +32,8 @@ func addIsolateCoreCommands(parent *cobra.Command) {
 		newIsolateSimpleCmd("remove", "delete the worktree and branch (refuses uncollected changes)"),
 		newIsolateCollectCmd(),
 		newIsolateSweepCmd(),
+		newIsolateMergeCmd(),
+		newIsolateRequestCmd(),
 	)
 }
 
@@ -74,7 +76,7 @@ func newIsolateSimpleCmd(name, short string) *cobra.Command {
 	fl := cmd.Flags()
 	repo := repoFlag(cmd)
 	fl.Bool("json", false, "JSON output (the default and only format)")
-	var task, session, backend string
+	var task, session, backend, parent string
 	var noCarry, force, namesOnly, noCollect bool
 	if name != "list" {
 		fl.StringVar(&task, "task", "", "task id")
@@ -86,6 +88,8 @@ func newIsolateSimpleCmd(name, short string) *cobra.Command {
 	case "create":
 		fl.StringVar(&backend, "backend", isolate.BackendAuto, "auto|gtr|git")
 		fl.BoolVar(&noCarry, "no-carry", false, "do not carry uncommitted work and dependency dirs")
+		fl.StringVar(&parent, "parent", "",
+			"parent integration tree's task id; the new tree starts from the parent's HEAD unless --repo is given")
 		_ = cmd.MarkFlagRequired("task")
 	case "diff":
 		fl.BoolVar(&namesOnly, "names-only", false, "omit the patch text")
@@ -114,8 +118,20 @@ func newIsolateSimpleCmd(name, short string) *cobra.Command {
 					return err
 				}
 			}
+			root := *repo
+			if parent != "" {
+				parentPath, _, ok := isolate.ResolveWorktree(*repo, parent, "")
+				if !ok {
+					return exitf(2, "isolate create: --parent %s: no such tree", parent)
+				}
+				opts.Parent = parentPath
+				if !cmd.Flags().Changed("repo") {
+					// Cut from the parent's HEAD, the integration tree's own state.
+					root = parentPath
+				}
+			}
 			var r isolate.CreateResult
-			r, err = isolate.Create(*repo, task, opts)
+			r, err = isolate.Create(root, task, opts)
 			result, status = r, r.Status
 		case "list":
 			var entries []isolate.Entry

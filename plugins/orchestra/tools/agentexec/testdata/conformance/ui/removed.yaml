@@ -1,9 +1,9 @@
 description: >
-  the local dashboard is gone: ui, with or without its old options, is exit 2
-  with an error pointing at the dashboard Artifact
+  the local progress view is gone: ui, with or without its old options, is exit 2
+  with an error pointing at the status file
 steps:
   - argv: [ui]
-    stderr_contains: ["agent-exec: agent-exec ui was removed: wave progress is shown in the orchestra dashboard Artifact (dashboard.artifact_urls, one per claude.ai organization; see skills/run/references/programme.md §6)"]
+    stderr_contains: ["agent-exec: agent-exec ui was removed: wave and plan progress is written to ~/.claude/orchestra/status.json (agent-exec status show prints it; see docs/status-file.md)"]
   - argv: [ui, --open, --json]
     stderr_contains: ["agent-exec ui was removed: "]
   - argv: [ui, --stop]

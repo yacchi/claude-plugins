@@ -210,8 +210,11 @@
         "worktrees": [
           {
             "branch": "orchestra/00000000/t-pi",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t-pi",
+            "role": "work",
             "session": "00000000",
             "task": "t-pi"
           }

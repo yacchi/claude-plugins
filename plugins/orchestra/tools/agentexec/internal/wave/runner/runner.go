@@ -1,6 +1,8 @@
 // Package runner is `agent-exec wave run` / `wave mark`: the deterministic
 // outer loop that drives a plan through dispatch -> self-verify ->
-// integrate, every state change going through wave/state's Store.
+// integrate, every state change going through wave/state's Store. A run that
+// ends done with no needs merges its integration tree into the request's
+// assembly; any other run leaves that to `agent-exec isolate merge`.
 //
 // Scheduling is rolling: every package that may start runs as a goroutine
 // (an integer max_in_flight caps them; memory pressure holds new starts),
@@ -25,6 +27,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -33,6 +36,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 )
 
@@ -64,6 +68,14 @@ type Options struct {
 	MaxWaves        *int
 	MaxPackages     *int
 	RunID           string
+	// Title is the short task title shown in the status file; default the run id.
+	Title string
+	// Uncommitted is the request's choice when its assembly must be created
+	// from a dirty checkout: "" | "include" | "ignore" (isolate.Uncommitted*).
+	Uncommitted string
+	// Merge squashes the integration tree into its assembly when the run ends
+	// done with no needs; the CLI always sets it.
+	Merge bool
 }
 
 // Deps are the runner's collaborators; zero values pick the production
@@ -98,8 +110,8 @@ type Deps struct {
 	Stderr io.Writer
 }
 
-// Report is the end-of-run report. A Status of "error" (with Kind "plan"
-// or "environment") means the loop never started.
+// Report is the end-of-run report. A Status of "error" (with Kind "plan",
+// "environment" or "uncommitted") means the loop never started.
 type Report struct {
 	Status         string
 	Reason         *string
@@ -113,6 +125,7 @@ type Report struct {
 	Pending        []string
 	Blocked        []string
 	FlakyTests     []FlakyTest
+	Merge          *isolate.MergeResult // the end-of-run merge; nil when none ran
 }
 
 // NeedRef is one need in the report.
@@ -138,6 +151,10 @@ func (r Report) MarshalJSON() ([]byte, error) {
 	if r.Status == "error" {
 		return fsutil.MarshalJSON(map[string]any{"status": r.Status, "reason": deref(r.Reason), "kind": r.Kind})
 	}
+	var merge any
+	if r.Merge != nil {
+		merge = *r.Merge
+	}
 	return fsutil.MarshalJSON(map[string]any{
 		"status":          r.Status,
 		"reason":          deref(r.Reason),
@@ -150,6 +167,7 @@ func (r Report) MarshalJSON() ([]byte, error) {
 		"pending":         orEmpty(r.Pending),
 		"blocked":         orEmpty(r.Blocked),
 		"flaky_tests":     orEmpty(r.FlakyTests),
+		"merge":           merge,
 	})
 }
 
@@ -203,6 +221,9 @@ func FormatText(r Report) string {
 		}
 		lines = append(lines, "  needs: "+strings.Join(parts, ", "))
 	}
+	if r.Merge != nil {
+		lines = append(lines, "  merge: "+isolate.FormatMergeText(*r.Merge))
+	}
 	if len(r.NetworkDenials) > 0 {
 		parts := make([]string, len(r.NetworkDenials))
 		for i, d := range r.NetworkDenials {
@@ -238,17 +259,28 @@ func Run(ctx context.Context, o Options, d Deps) (Report, int) {
 	r := newRunner(ctx, o, d)
 	if err := r.init(); err != nil {
 		kind := "environment"
+		var unc *uncommittedError
 		if _, ok := err.(*plan.Error); ok {
 			kind = "plan"
+		} else if errors.As(err, &unc) {
+			kind = "uncommitted"
 		}
 		rep := errorReport(kind, err)
 		return rep, ExitCode(rep)
 	}
+	sw := r.startStatus()
 	func() {
 		defer r.shutdownHost()
 		r.loop()
 	}()
 	rep := r.report()
+	if r.opts.Merge && rep.Status == "done" && len(rep.Needs) == 0 && len(rep.Pending) == 0 && len(rep.Blocked) == 0 {
+		m := r.mergeIntegration()
+		// a merge that failed adds a need, so the report is built again
+		rep = r.report()
+		rep.Merge = &m
+	}
+	sw.finish(rep)
 	if rep.Status == "done" {
 		payload := reportObject(rep)
 		payload["event"] = "done"
@@ -260,6 +292,35 @@ func Run(ctx context.Context, o Options, d Deps) (Report, int) {
 		_, _ = gitRun(r.root, "worktree", "remove", "--force", r.greenPath)
 	}
 	return rep, ExitCode(rep)
+}
+
+// mergeIntegration squashes the integration tree into the request's assembly
+// under the run's title. A merge that does not succeed becomes a wave-level
+// need, so the instructor sees it like any other.
+func (r *runner) mergeIntegration() isolate.MergeResult {
+	subject := r.opts.Title
+	if subject == "" {
+		subject = r.opts.RunID
+	}
+	if subject == "" {
+		subject = r.into
+	}
+	res, err := isolate.Merge(r.root, r.into, subject)
+	if err != nil {
+		res = isolate.MergeResult{Status: "error", Task: r.into, Reason: err.Error()}
+	}
+	r.emit("merge", "", map[string]any{
+		"status":   res.Status,
+		"assembly": res.Assembly,
+		"commit":   res.Commit,
+		"files":    len(res.Files),
+		"removed":  res.Removed,
+		"reason":   res.Reason,
+	})
+	if res.Status != "merged" && res.Status != "empty" {
+		r.need("", "merge", isolate.FormatMergeText(res))
+	}
+	return res
 }
 
 // reportObject is the report as an ordered object (the notify payload).

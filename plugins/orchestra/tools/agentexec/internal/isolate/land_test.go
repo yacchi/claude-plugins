@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 // landRepo is newRepo whose identity comes from the repository's config
@@ -29,24 +30,16 @@ func landRepo(t *testing.T) string {
 	return repo
 }
 
-// landIntegration plants the "prog" integration tree on main's tip, as the
-// wave runner does, with commits A (a.txt edit) and B (new c.txt) made by
-// gitx.CommitAll.
-func landIntegration(t *testing.T, repo string) string {
+// landAssembly plants the "prog" assembly on main's tip with commits A
+// (a.txt edit) and B (new c.txt) made by gitx.CommitAll.
+func landAssembly(t *testing.T, repo string) string {
 	t.Helper()
-	head := strings.TrimSpace(git(t, repo, "rev-parse", "HEAD"))
-	res, err := Create(repo, "prog", CreateOptions{Backend: BackendGit, Onto: head})
-	if err != nil || res.Status != "created" {
-		t.Fatalf("create: %+v, %v", res, err)
-	}
-	if err := WriteRole(res.Path, RoleIntegration); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(res.Path, "a.txt"), "ONE\ntwo\nthree\nfour\nfive\n")
-	landCommit(t, res.Path, "orchestra integrate pa")
-	writeFile(t, filepath.Join(res.Path, "c.txt"), "c\n")
-	landCommit(t, res.Path, "orchestra integrate pb")
-	return res.Path
+	path := plantTree(t, repo, "prog", RoleAssembly, "")
+	writeFile(t, filepath.Join(path, "a.txt"), "ONE\ntwo\nthree\nfour\nfive\n")
+	landCommit(t, path, "orchestra integrate pa")
+	writeFile(t, filepath.Join(path, "c.txt"), "c\n")
+	landCommit(t, path, "orchestra integrate pb")
+	return path
 }
 
 func landCommit(t *testing.T, dir, msg string) {
@@ -68,7 +61,7 @@ func land(t *testing.T, repo, msg string) LandResult {
 func TestLandSquashesAsTheUser(t *testing.T) {
 	repo := landRepo(t)
 	base := strings.TrimSpace(git(t, repo, "rev-parse", "HEAD"))
-	path := landIntegration(t, repo)
+	path := landAssembly(t, repo)
 	tip := strings.TrimSpace(git(t, path, "rev-parse", "HEAD"))
 	msg := "feat: add c\n\nbody\n"
 	res := land(t, repo, msg)
@@ -101,11 +94,14 @@ func TestLandSquashesAsTheUser(t *testing.T) {
 	if strings.TrimSpace(git(t, repo, "status", "--porcelain")) != "" {
 		t.Fatal("checkout left dirty")
 	}
+	if !res.Removed || res.Request != "" || exists(path) || strings.Contains(branches(t, repo), "orchestra/prog") {
+		t.Fatalf("assembly kept after landing: %+v", res)
+	}
 }
 
 func TestLandOnMovedTarget(t *testing.T) {
 	repo := landRepo(t)
-	path := landIntegration(t, repo)
+	path := landAssembly(t, repo)
 	// a.txt too, apart from the integrated edit: the squash then matches
 	// the integration tip's content on no branch.
 	writeFile(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\nfour\nFIVE\n")
@@ -125,21 +121,15 @@ func TestLandOnMovedTarget(t *testing.T) {
 	}
 
 	// The squash no longer matches the tip's content anywhere; the landed
-	// marker still lets the tree go, until it gains another commit.
-	writeFile(t, filepath.Join(path, "d.txt"), "d\n")
-	landCommit(t, path, "orchestra integrate pd")
-	if r := remove(t, repo, "prog", false, ""); r.Status != "dirty" || !exists(path) {
-		t.Fatalf("unlanded commit after landing: %+v", r)
-	}
-	git(t, path, "reset", "-q", "--hard", "HEAD^")
-	if r := remove(t, repo, "prog", false, ""); r.Status != "removed" || exists(path) {
-		t.Fatalf("landed tree: %+v", r)
+	// marker still lets the land remove the assembly.
+	if !res.Removed || exists(path) {
+		t.Fatalf("assembly kept after landing on a moved target: %+v", res)
 	}
 }
 
 func TestLandConflictLeavesCheckoutUntouched(t *testing.T) {
 	repo := landRepo(t)
-	landIntegration(t, repo)
+	landAssembly(t, repo)
 	writeFile(t, filepath.Join(repo, "a.txt"), "uno\ntwo\nthree\nfour\nfive\n")
 	git(t, repo, "commit", "-q", "-am", "edit a")
 	before := git(t, repo, "rev-parse", "HEAD")
@@ -154,7 +144,7 @@ func TestLandConflictLeavesCheckoutUntouched(t *testing.T) {
 
 func TestLandRefusals(t *testing.T) {
 	repo := landRepo(t)
-	path := landIntegration(t, repo)
+	path := landAssembly(t, repo)
 	head := git(t, repo, "rev-parse", "HEAD")
 	if _, err := Land(repo, "prog", " \n"); err == nil {
 		t.Fatal("empty message accepted")
@@ -193,18 +183,106 @@ func TestLandRefusals(t *testing.T) {
 	}
 }
 
+func TestLandRefusesTreesThatAreNotAssemblies(t *testing.T) {
+	repo := landRepo(t)
+	asm := plantTree(t, repo, "prog", RoleAssembly, "")
+	plantTree(t, repo, "feat", RoleIntegration, asm)
+	plantTree(t, repo, "old", RoleIntegration, "")
+	create(t, repo, "t1", "")
+	head := git(t, repo, "rev-parse", "HEAD")
+	for _, tc := range []struct{ task, reason string }{
+		{"feat", "feat is an integration tree: merge it into its assembly with 'agent-exec isolate merge --task feat -m <message>', then land the assembly with 'agent-exec isolate land --task prog -m <message>'"},
+		{"old", "old is an integration tree with no assembly; it cannot be landed: discard it with 'agent-exec isolate remove --task old --force'"},
+		{"t1", "t1 is a work tree; only an assembly lands: integrate it with 'agent-exec isolate integrate --tasks t1 --into <integration>'"},
+	} {
+		res, err := Land(repo, tc.task, "feat: x")
+		if err != nil || res.Status != "refused" || res.Reason != tc.reason {
+			t.Fatalf("land %s: %+v, %v", tc.task, res, err)
+		}
+		if git(t, repo, "rev-parse", "HEAD") != head {
+			t.Fatalf("refused land %s moved HEAD", tc.task)
+		}
+	}
+}
+
 func TestLandNothingCommittedIsEmpty(t *testing.T) {
 	repo := landRepo(t)
 	head := strings.TrimSpace(git(t, repo, "rev-parse", "HEAD"))
-	res, err := Create(repo, "prog", CreateOptions{Backend: BackendGit, Onto: head})
-	if err != nil || res.Status != "created" {
-		t.Fatalf("create: %+v, %v", res, err)
-	}
-	_ = WriteRole(res.Path, RoleIntegration)
-	if r := land(t, repo, "feat: x"); r.Status != "empty" || r.Branch != "main" {
+	path := plantTree(t, repo, "prog", RoleAssembly, "")
+	if r := land(t, repo, "feat: x"); r.Status != "empty" || r.Branch != "main" || !r.Removed || exists(path) {
 		t.Fatalf("empty: %+v", r)
 	}
 	if strings.TrimSpace(git(t, repo, "rev-parse", "HEAD")) != head {
 		t.Fatal("empty land committed")
+	}
+}
+
+func TestLandRefusesAssemblyWithChildren(t *testing.T) {
+	repo := landRepo(t)
+	path := landAssembly(t, repo)
+	feat := plantTree(t, repo, "feat", RoleIntegration, path)
+	head := git(t, repo, "rev-parse", "HEAD")
+	res := land(t, repo, "feat: add c")
+	if res.Status != "has-children" || len(res.Children) != 1 || res.Children[0].Task != "feat" ||
+		res.Reason != "assembly prog still has 1 open integration tree(s); merge them with 'agent-exec isolate merge --task <into> -m <message>' or discard them, then land" {
+		t.Fatalf("land: %+v", res)
+	}
+	if git(t, repo, "rev-parse", "HEAD") != head || !exists(path) || !exists(feat) {
+		t.Fatal("refused land changed the checkout or removed a tree")
+	}
+}
+
+// finishRequestRoot is the request root newRepo points at.
+func finishRequestRoot(t *testing.T) string {
+	t.Helper()
+	root, err := RequestRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// finishSaveRequest writes the manifest of request id with one entry per
+// assembly path, all of repo, the way EnsureAssembly records them.
+func finishSaveRequest(t *testing.T, repo, id string, assemblies ...string) {
+	t.Helper()
+	common, err := RepoCommon(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := Request{ID: id, Created: "2026-10-28T09:00:00Z", Dir: filepath.Join(finishRequestRoot(t), id)}
+	for _, a := range assemblies {
+		r.Repos = append(r.Repos, RequestRepo{Common: common, Checkout: repo, Name: filepath.Base(a), Task: id,
+			Assembly: paths.RealPath(a), Uncommitted: "clean", Files: []string{}})
+	}
+	if err := saveRequest(r); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLandEndsItsRequest(t *testing.T) {
+	repo := landRepo(t)
+	path := landAssembly(t, repo)
+	finishSaveRequest(t, repo, "20261028-local", path)
+	res := land(t, repo, "feat: add c")
+	if res.Status != "landed" || !res.Removed || res.Request != "20261028-local" || !res.RequestEnded || exists(path) {
+		t.Fatalf("land: %+v", res)
+	}
+	if exists(filepath.Join(finishRequestRoot(t), "20261028-local", "request.json")) {
+		t.Fatal("request manifest left after its last assembly was landed")
+	}
+}
+
+func TestLandKeepsRequestWithAliveAssembly(t *testing.T) {
+	repo := landRepo(t)
+	path := landAssembly(t, repo)
+	other := plantTree(t, repo, "other", RoleAssembly, "")
+	finishSaveRequest(t, repo, "20261028-local", path, other)
+	res := land(t, repo, "feat: add c")
+	if res.Status != "landed" || !res.Removed || res.Request != "20261028-local" || res.RequestEnded || exists(path) {
+		t.Fatalf("land: %+v", res)
+	}
+	if !exists(filepath.Join(finishRequestRoot(t), "20261028-local", "request.json")) || !exists(other) {
+		t.Fatal("request ended while an assembly was still alive")
 	}
 }

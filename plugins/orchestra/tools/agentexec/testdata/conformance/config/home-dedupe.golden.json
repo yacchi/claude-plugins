@@ -27,12 +27,6 @@
             "sandbox": 0
           }
         },
-        "dashboard": {
-          "artifact_url": "",
-          "artifact_urls": {},
-          "org": "",
-          "org_name": ""
-        },
         "enforcement": {
           "fanout": {
             "checker_calls": 8,

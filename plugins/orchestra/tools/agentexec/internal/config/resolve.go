@@ -145,6 +145,9 @@ func Resolve() (*Resolved, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := checkRemovedDashboard(l.Path, data); err != nil {
+			return nil, err
+		}
 		u.add(data)
 		values = DeepMerge(values, data)
 	}
@@ -153,9 +156,6 @@ func Resolve() (*Resolved, error) {
 		return nil, err
 	}
 	if err := validatePnpmGVS(values); err != nil {
-		return nil, err
-	}
-	if err := validateDashboard(values); err != nil {
 		return nil, err
 	}
 	return &Resolved{Values: values, Layers: layers, Root: base}, nil

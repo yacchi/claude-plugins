@@ -70,6 +70,7 @@
           "dirty": 0,
           "errors": 0,
           "external": 0,
+          "has_children": 0,
           "removed": 0,
           "skipped": 0,
           "trash_removed": 0,
@@ -86,7 +87,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>\nsummary: removed 0, would-remove 0, dirty 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
+      "stdout": "sweep <WORK>\nsummary: removed 0, would-remove 0, dirty 0, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
     }
   ]
 }

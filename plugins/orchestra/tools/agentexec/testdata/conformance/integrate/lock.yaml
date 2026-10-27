@@ -5,6 +5,7 @@ description: >
   up after --lock-timeout, and a different --into target is not blocked
 setup:
   git: true
+  env: {PREP: "<ROOT>/prep.sh"}
   files:
     a.txt: "1\n2\n3\n"
     <ROOT>/prep.sh: |
@@ -25,7 +26,7 @@ steps:
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
     env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
-  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
   - argv: [isolate, integrate, --tasks, t1, --lock, fail]
   - argv: [isolate, integrate, --tasks, t1, --lock, fail, --text]
   - argv: [isolate, integrate, --tasks, t1, --lock-timeout, "0.3"]

@@ -56,8 +56,11 @@ func newIsolateIntegrateCmd() *cobra.Command {
 	tasks := fl.String("tasks", "", "comma-separated task ids, in order")
 	repo := repoFlag(cmd)
 	var o integrate.Options
-	fl.StringVar(&o.Onto, "onto", "", "start ref")
+	fl.String("onto", "", "removed: see the error")
+	_ = fl.MarkHidden("onto")
 	fl.StringVar(&o.Into, "into", integrate.DefaultInto, "integration task id")
+	fl.StringVar(&o.Uncommitted, "uncommitted", "",
+		"include|ignore: what the request's assembly does with your uncommitted changes when this integrate creates it")
 	fl.StringVar(&o.OnConflict, "on-conflict", integrate.OnConflictKeep, "keep|skip|stop")
 	fl.StringVar(&o.Verify, "verify", "", "command run in the integration worktree")
 	verifyTimeout := fl.Int("verify-timeout", 3600, "seconds")
@@ -71,6 +74,14 @@ func newIsolateIntegrateCmd() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		bad := func(format string, args ...any) error {
 			return exitf(2, "isolate integrate: "+format, args...)
+		}
+		if cmd.Flags().Changed("onto") {
+			return exitf(2, "isolate integrate: --onto was removed: an integration tree starts from its request's assembly (see agent-exec isolate request show)")
+		}
+		switch o.Uncommitted {
+		case "", isolate.UncommittedInclude, isolate.UncommittedIgnore:
+		default:
+			return bad("--uncommitted must be include or ignore, got %q", o.Uncommitted)
 		}
 		var ids []string
 		for _, t := range strings.Split(*tasks, ",") {
@@ -168,11 +179,12 @@ func newIsolateAdoptCmd(name, short string) *cobra.Command {
 	task := fl.String("task", "", "task id")
 	repo := repoFlag(cmd)
 	session := fl.String("session", "", "session id")
-	var path string
+	var path, parent string
 	var o isolate.AdoptOptions
 	if name == "adopt" {
 		fl.StringVar(&path, "path", "", "the worktree to adopt")
 		fl.StringVar(&o.Baseline, "baseline", "", "baseline ref")
+		fl.StringVar(&parent, "parent", "", "parent integration tree's task id")
 		_ = cmd.MarkFlagRequired("path")
 	}
 	noCarry := fl.Bool("no-carry", false, "do not carry dependency dirs and local files")
@@ -189,6 +201,13 @@ func newIsolateAdoptCmd(name, short string) *cobra.Command {
 				if o.CarryExtra, o.CarryFiles, err = carryConfig(); err != nil {
 					return err
 				}
+			}
+			if parent != "" {
+				p, _, ok := isolate.ResolveWorktree(*repo, parent, "")
+				if !ok {
+					return exitf(2, "isolate adopt: --parent %s: no such tree", parent)
+				}
+				o.Parent = p
 			}
 			r, err = isolate.Adopt(*repo, *task, absPath(path), o)
 		}

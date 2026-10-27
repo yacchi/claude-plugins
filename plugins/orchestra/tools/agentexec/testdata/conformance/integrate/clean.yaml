@@ -14,6 +14,7 @@ setup:
       printf '1\nTWO\n3\n4\n5\n6\n7\n8\n9\n' > $W/00000000-t1/a.txt
       printf '1\n2\n3\n4\n5\n6\n7\nEIGHT\n9\n' > $W/00000000-t2/a.txt
       printf 'new\n' > $W/00000000-t2/c.txt
+  env: {PREP: "<ROOT>/prep.sh"}
 normalize_keys: [seconds]
 steps:
   - argv: [isolate, create, --task, t1]
@@ -22,18 +23,22 @@ steps:
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
     env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
-  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, "sh ../../prep.sh"]
+  - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
+  - argv: [isolate, request, start, --into, integrate]
+    save: {INTG: integration}
   - argv: [isolate, integrate, --tasks, "t1, t2,t3,,ghost"]
     snapshot:
-      - <ROOT>/work-orchestra/00000000-integrate/a.txt
-      - <ROOT>/work-orchestra/00000000-integrate/c.txt
+      - <@INTG>/a.txt
+      - <@INTG>/c.txt
       - <WORK>/c.txt
   - argv: [isolate, list]
   - argv: [isolate, diff, --task, integrate, --names-only]
   - argv: [isolate, remove, --task, t1]
   - argv: [isolate, remove, --task, t3]
   - argv: [isolate, integrate, --tasks, t2, --into, r2, --onto, main, --text]
+    stderr_contains: ["--onto was removed"]
   - argv: [isolate, integrate, --tasks, t2, --into, r3, --onto, nope]
+    stderr_contains: ["--onto was removed"]
   - argv: [isolate, integrate, --tasks, t2, --json]
     cwd: "~"
   - argv: [isolate, integrate, --tasks, ghost, --into, r4]

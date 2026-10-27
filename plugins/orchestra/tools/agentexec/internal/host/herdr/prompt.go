@@ -180,8 +180,7 @@ func (e *Executor) waitResult(ctx context.Context, s *host.Session, resultPath s
 		if settled {
 			scr, scrErr = e.screen(ctx, name)
 			if scrErr == nil && host.IsLoginText(scr) {
-				return nil, host.Need(host.KindError, "Claude Code in "+name+" has no usable login "+
-					"(run `claude auth status` with the herdr server's CLAUDE_CONFIG_DIR):\n"+host.TailText(scr))
+				return nil, host.LoginNeed(name, host.TailText(scr))
 			}
 		}
 		// A result file that exists but does not parse, with the agent

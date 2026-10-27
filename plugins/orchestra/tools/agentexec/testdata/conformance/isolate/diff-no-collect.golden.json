@@ -17,7 +17,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t1",
+        "role": "work",
         "status": "created",
         "task": "t1"
       }
@@ -33,8 +35,11 @@
         "worktrees": [
           {
             "branch": "orchestra/00000000/t1",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t1",
+            "role": "work",
             "session": "00000000",
             "task": "t1"
           }
@@ -90,6 +95,7 @@
           "dirty": 1,
           "errors": 0,
           "external": 0,
+          "has_children": 0,
           "removed": 0,
           "skipped": 0,
           "trash_removed": 0,

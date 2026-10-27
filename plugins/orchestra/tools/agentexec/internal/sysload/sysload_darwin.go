@@ -22,13 +22,18 @@ func Load() (load1, load5 float64, ok bool) {
 		float64(binary.LittleEndian.Uint32(raw[4:8])) / scale, true
 }
 
-// MemoryPressure reads kern.memorystatus_vm_pressure_level.
+// MemoryPressure reads kern.memorystatus_vm_pressure_level and, to tell a
+// real shortage from a stale warn, kern.memorystatus_level (percent free).
 func MemoryPressure() Pressure {
 	level, err := unix.SysctlUint32("kern.memorystatus_vm_pressure_level")
 	if err != nil {
 		return Pressure{Level: Unknown}
 	}
-	return darwinPressure(level)
+	freePct := -1
+	if free, err := unix.SysctlUint32("kern.memorystatus_level"); err == nil {
+		freePct = int(free)
+	}
+	return darwinPressure(level, freePct)
 }
 
 // GitProcs counts the processes named git in kern.proc.all; -1 when the

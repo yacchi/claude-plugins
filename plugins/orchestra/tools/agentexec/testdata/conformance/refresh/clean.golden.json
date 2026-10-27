@@ -19,7 +19,9 @@
         ],
         "carried_files": [],
         "carry_method": "clone",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t1",
+        "role": "work",
         "status": "created",
         "task": "t1"
       }
@@ -42,7 +44,9 @@
         ],
         "carried_files": [],
         "carry_method": "clone",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t2",
+        "role": "work",
         "status": "created",
         "task": "t2"
       }
@@ -65,7 +69,9 @@
         ],
         "carried_files": [],
         "carry_method": "clone",
+        "parent": null,
         "path": "<WORK>-orchestra/legacy",
+        "role": "work",
         "status": "created",
         "task": "legacy"
       }
@@ -88,7 +94,9 @@
         ],
         "carried_files": [],
         "carry_method": "clone",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-boot",
+        "role": "work",
         "status": "created",
         "task": "boot"
       }
@@ -104,29 +112,41 @@
         "worktrees": [
           {
             "branch": "orchestra/00000000/boot",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
             "session": "00000000",
             "task": "boot"
           },
           {
             "branch": "orchestra/00000000/t1",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t1",
+            "role": "work",
             "session": "00000000",
             "task": "t1"
           },
           {
             "branch": "orchestra/00000000/t2",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t2",
+            "role": "work",
             "session": "00000000",
             "task": "t2"
           },
           {
             "branch": "orchestra/legacy",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/legacy",
+            "role": "work",
             "session": null,
             "task": "legacy"
           }
@@ -142,18 +162,18 @@
         "--into",
         "prep",
         "--verify",
-        "sh ../../prep.sh"
+        "sh \"$PREP\""
       ],
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
-          "path": "<WORK>-orchestra/00000000-prep",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
           "task": "prep"
         },
-        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
-        "onto": "<SHA#4>",
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+        "onto": "<SHA#5>",
         "status": "ok",
         "tasks": [
           {
@@ -185,7 +205,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "baseline": "<SHA#5>",
+        "baseline": "<SHA#6>",
         "branch": "orchestra/00000000/t1",
         "conflicts": [],
         "files": [
@@ -225,12 +245,12 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "baseline": "<SHA#5>",
+        "baseline": "<SHA#6>",
         "branch": "orchestra/00000000/t1",
         "conflicts": [],
         "files": [],
         "note": "already on onto 170a819f106f",
-        "old_baseline": "<SHA#5>",
+        "old_baseline": "<SHA#6>",
         "patch_file": null,
         "path": "<WORK>-orchestra/00000000-t1",
         "status": "unchanged",
@@ -249,7 +269,7 @@
       "stdout_shape": "json",
       "stdout": {
         "added": 1,
-        "baseline": "<SHA#5>",
+        "baseline": "<SHA#6>",
         "branch": "orchestra/00000000/t1",
         "files": [
           "a.txt",
@@ -283,7 +303,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "baseline": "<SHA#5>",
+        "baseline": "<SHA#6>",
         "branch": "orchestra/legacy",
         "conflicts": [],
         "files": [
@@ -413,37 +433,62 @@
       "stdout": {
         "worktrees": [
           {
-            "branch": "orchestra/00000000/boot",
-            "current": true,
-            "path": "<WORK>-orchestra/00000000-boot",
-            "session": "00000000",
-            "task": "boot"
-          },
-          {
             "branch": "orchestra/00000000/prep",
+            "children": 0,
             "current": true,
-            "path": "<WORK>-orchestra/00000000-prep",
+            "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+            "role": "integration",
             "session": "00000000",
             "task": "prep"
           },
           {
-            "branch": "orchestra/00000000/t1",
+            "branch": "orchestra/00000000/<DATE>-00000000",
+            "children": 1,
             "current": true,
+            "parent": null,
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "role": "assembly",
+            "session": "00000000",
+            "task": "<DATE>-00000000"
+          },
+          {
+            "branch": "orchestra/00000000/boot",
+            "children": 0,
+            "current": true,
+            "parent": null,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "children": 0,
+            "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t1",
+            "role": "work",
             "session": "00000000",
             "task": "t1"
           },
           {
             "branch": "orchestra/00000000/t2",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t2",
+            "role": "work",
             "session": "00000000",
             "task": "t2"
           },
           {
             "branch": "orchestra/legacy",
+            "children": 0,
             "current": false,
+            "parent": null,
             "path": "<WORK>-orchestra/legacy",
+            "role": "work",
             "session": null,
             "task": "legacy"
           }

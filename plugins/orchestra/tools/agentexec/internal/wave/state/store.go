@@ -302,6 +302,11 @@ func (s *Store) ClearStopped() error {
 	return s.Update(func(st *State) error { st.Stopped = nil; return nil })
 }
 
+// SetHeld records why starts are held; nil clears the hold.
+func (s *Store) SetHeld(h *Held) error {
+	return s.Update(func(st *State) error { st.Held = h; return nil })
+}
+
 // SetIntegration replaces the integration record's task/path/base.
 func (s *Store) SetIntegration(in Integration) error {
 	return s.Update(func(st *State) error { st.Integration = in; return nil })

@@ -33,7 +33,7 @@ Each task object:
 |---|---|---|
 | `id` | yes | Task id. Also the `--task` id of its isolated tree. |
 | `cls` | no | `'light'`, `'standard'` or `'deep'`. Initial class, default `'light'`; the script bumps it on escalation. |
-| `dispatchToken` | yes | Token from `agent-exec dispatch prepare --isolate always --task <id>`, minted with the round-1 prompt file. |
+| `dispatchToken` | yes | Token from `agent-exec dispatch prepare --isolate always --task <id> --run-id <runId>`, minted with the round-1 prompt file after `agent-exec isolate request start --into <runId>` (SKILL.md §5). |
 | `workerPromptFile` | yes | Path to the literal spec, edge cases and verify command for the worker. |
 | `workerPrompt` | yes | The same contract text, inlined. Used in the correction packet when no session can be resumed. |
 | `verifierPrompt` | yes | What the reviewer must re-check and which implementation mistakes to probe for. |
@@ -44,8 +44,8 @@ Each task object:
 | `noProbes` | no | Non-empty reason string. Skips the probe author. Logged. |
 | `workdir` | no | Working directory for the dispatch, when it is a subdirectory of the repo. |
 | `correctionPromptFile` | no | Path that does not exist yet. The script writes the correction packet there on a failed gate. |
-| `correctionTokenFull` | no | Token minted with the worker prompt file, the correction prompt file, `--task <id>` and `--isolate always`. Used when round 1 reported no session, or after a class bump. |
-| `correctionTokenDelta` | no | Token minted with the correction prompt file only. Used when round 1 reported a session and the class did not change. |
+| `correctionTokenFull` | no | Token minted with the worker prompt file, the correction prompt file, `--task <id>`, `--isolate always` and `--run-id <runId>` (the same tree as round 1). Used when round 1 reported no session, or after a class bump. |
+| `correctionTokenDelta` | no | Token minted with the correction prompt file only, and `--run-id <runId>` (the same tree as round 1). Used when round 1 reported a session and the class did not change. |
 | `preimplementedPath` | no | Tree that already holds this task's round-1 work (a lost dispatch result). Round 1 is skipped and the gate starts at review. |
 
 Refusal and size-gate outcomes, both returned without any dispatch:
@@ -58,7 +58,7 @@ Refusal and size-gate outcomes, both returned without any dispatch:
 A run that starts returns `{ results, runEnd }`:
 
 - `results`: one entry per task, in `tasks` order. Each carries `pass`, `rounds`, and `allowLarge` when it was set, plus the verdict fields the review returned.
-- `runEnd`: the text of the cleanup step (`agent-exec isolate sweep` and `agent-exec usage --run <runId>`), verbatim. Report cost from it.
+- `runEnd`: the text of the cleanup step (the `agent-exec isolate integrate` of the passing tasks into `<runId>`, `agent-exec isolate sweep` and `agent-exec usage --run <runId>`), verbatim. Report cost from it. The passing tasks now sit in integration tree `<runId>`: gate it, then `agent-exec isolate merge --task <runId> -m "<subject>"`; land only on the user's request.
 
 ## 4. The relay protocol
 

@@ -1,0 +1,121 @@
+{
+  "scenario": "status/plan",
+  "steps": [
+    {
+      "argv": [
+        "status",
+        "plan",
+        "--id",
+        "p1",
+        "--status",
+        "planning",
+        "--phase",
+        "explore",
+        "--title",
+        "Demo",
+        "--repo",
+        "."
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "path": "<HOME>/.claude/orchestra/status.json",
+        "plan": "p1",
+        "status": "planning"
+      }
+    },
+    {
+      "argv": [
+        "status",
+        "plan",
+        "--id",
+        "p1",
+        "--status",
+        "needs-user",
+        "--phase",
+        "done",
+        "--questions",
+        "2",
+        "--packages",
+        "5",
+        "--est-total",
+        "900",
+        "--est-critical",
+        "400"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "path": "<HOME>/.claude/orchestra/status.json",
+        "plan": "p1",
+        "status": "needs-user"
+      }
+    },
+    {
+      "argv": [
+        "status",
+        "show"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "generated_at": "<GENERATED_AT>",
+        "heartbeat_s": 60,
+        "plans": [
+          {
+            "est_critical_s": 400,
+            "est_total_s": 900,
+            "packages": 5,
+            "phase": "done",
+            "plan_id": "p1",
+            "project": "work",
+            "questions": 2,
+            "started_at": "<STARTED_AT>",
+            "status": "needs-user",
+            "title": "Demo",
+            "updated_at": "<UPDATED_AT>"
+          }
+        ],
+        "runs": [],
+        "stale_after_s": 180,
+        "summary": {
+          "busy": false,
+          "crashed": 0,
+          "held": 0,
+          "line": "1 needs",
+          "needs": 1,
+          "planning": 0,
+          "running": 0,
+          "updated_at": "<UPDATED_AT>"
+        },
+        "version": 1
+      }
+    },
+    {
+      "argv": [
+        "status",
+        "plan",
+        "--id",
+        "bad id",
+        "--status",
+        "planning"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
+    },
+    {
+      "argv": [
+        "status",
+        "close",
+        "--state",
+        "wave/state.json",
+        "--status",
+        "stopped"
+      ],
+      "exit": 3,
+      "stdout_shape": "empty",
+      "stdout": null
+    }
+  ]
+}

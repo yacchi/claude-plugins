@@ -17,7 +17,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t1",
+        "role": "work",
         "status": "created",
         "task": "t1"
       }
@@ -38,7 +40,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t2",
+        "role": "work",
         "status": "created",
         "task": "t2"
       }
@@ -59,7 +63,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-t3",
+        "role": "work",
         "status": "created",
         "task": "t3"
       }
@@ -80,7 +86,9 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
+        "parent": null,
         "path": "<WORK>-orchestra/00000000-boot",
+        "role": "work",
         "status": "created",
         "task": "boot"
       }
@@ -96,29 +104,41 @@
         "worktrees": [
           {
             "branch": "orchestra/00000000/boot",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
             "session": "00000000",
             "task": "boot"
           },
           {
             "branch": "orchestra/00000000/t1",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t1",
+            "role": "work",
             "session": "00000000",
             "task": "t1"
           },
           {
             "branch": "orchestra/00000000/t2",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t2",
+            "role": "work",
             "session": "00000000",
             "task": "t2"
           },
           {
             "branch": "orchestra/00000000/t3",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t3",
+            "role": "work",
             "session": "00000000",
             "task": "t3"
           }
@@ -134,18 +154,18 @@
         "--into",
         "prep",
         "--verify",
-        "sh ../../prep.sh"
+        "sh \"$PREP\""
       ],
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/prep",
-          "path": "<WORK>-orchestra/00000000-prep",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
           "task": "prep"
         },
-        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <WORK>-orchestra/00000000-prep",
-        "onto": "<SHA#4>",
+        "note": "1 of 1 task(s) applied cleanly into worktree 'prep' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+        "onto": "<SHA#5>",
         "status": "ok",
         "tasks": [
           {
@@ -170,6 +190,32 @@
     {
       "argv": [
         "isolate",
+        "request",
+        "start",
+        "--into",
+        "integrate"
+      ],
+      "exit": 0,
+      "stdout_shape": "json",
+      "stdout": {
+        "assembly": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+        "created": [
+          "integration"
+        ],
+        "dir": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000",
+        "files": [],
+        "head": "<SHA#5>",
+        "integration": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
+        "into": "integrate",
+        "request": "<DATE>-00000000",
+        "status": "ready",
+        "task": "<DATE>-00000000",
+        "uncommitted": "clean"
+      }
+    },
+    {
+      "argv": [
+        "isolate",
         "integrate",
         "--tasks",
         "t1, t2,t3,,ghost"
@@ -179,11 +225,11 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/integrate",
-          "path": "<WORK>-orchestra/00000000-integrate",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
           "task": "integrate"
         },
-        "note": "2 of 4 task(s) applied cleanly (1 had no worktree, 1 changed nothing) into worktree 'integrate' at <WORK>-orchestra/00000000-integrate",
-        "onto": "<SHA#1>",
+        "note": "2 of 4 task(s) applied cleanly (1 had no worktree, 1 changed nothing) into worktree 'integrate' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
+        "onto": "<SHA#5>",
         "status": "ok",
         "tasks": [
           {
@@ -213,11 +259,11 @@
         ]
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-integrate/a.txt": {
+        "<@INTG>/a.txt": {
           "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT\n9\n",
           "shape": "text"
         },
-        "<ROOT>/work-orchestra/00000000-integrate/c.txt": {
+        "<@INTG>/c.txt": {
           "content": "new\n",
           "shape": "text"
         },
@@ -234,44 +280,72 @@
       "stdout": {
         "worktrees": [
           {
-            "branch": "orchestra/00000000/boot",
-            "current": true,
-            "path": "<WORK>-orchestra/00000000-boot",
-            "session": "00000000",
-            "task": "boot"
-          },
-          {
             "branch": "orchestra/00000000/integrate",
+            "children": 0,
             "current": true,
-            "path": "<WORK>-orchestra/00000000-integrate",
+            "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
+            "role": "integration",
             "session": "00000000",
             "task": "integrate"
           },
           {
             "branch": "orchestra/00000000/prep",
+            "children": 0,
             "current": true,
-            "path": "<WORK>-orchestra/00000000-prep",
+            "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/prep",
+            "role": "integration",
             "session": "00000000",
             "task": "prep"
           },
           {
-            "branch": "orchestra/00000000/t1",
+            "branch": "orchestra/00000000/<DATE>-00000000",
+            "children": 2,
             "current": true,
+            "parent": null,
+            "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/work",
+            "role": "assembly",
+            "session": "00000000",
+            "task": "<DATE>-00000000"
+          },
+          {
+            "branch": "orchestra/00000000/boot",
+            "children": 0,
+            "current": true,
+            "parent": null,
+            "path": "<WORK>-orchestra/00000000-boot",
+            "role": "work",
+            "session": "00000000",
+            "task": "boot"
+          },
+          {
+            "branch": "orchestra/00000000/t1",
+            "children": 0,
+            "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t1",
+            "role": "work",
             "session": "00000000",
             "task": "t1"
           },
           {
             "branch": "orchestra/00000000/t2",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t2",
+            "role": "work",
             "session": "00000000",
             "task": "t2"
           },
           {
             "branch": "orchestra/00000000/t3",
+            "children": 0,
             "current": true,
+            "parent": null,
             "path": "<WORK>-orchestra/00000000-t3",
+            "role": "work",
             "session": "00000000",
             "task": "t3"
           }
@@ -290,13 +364,13 @@
       "stdout_shape": "json",
       "stdout": {
         "added": 1,
-        "baseline": "<SHA#1>",
+        "baseline": "<SHA#5>",
         "branch": "orchestra/00000000/integrate",
         "files": [
           "a.txt",
           "c.txt"
         ],
-        "path": "<WORK>-orchestra/00000000-integrate",
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/integrate",
         "session": "00000000",
         "status": "ok",
         "task": "integrate"
@@ -348,9 +422,9 @@
         "main",
         "--text"
       ],
-      "exit": 0,
-      "stdout_shape": "text",
-      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <WORK>-orchestra/00000000-r2\n  t2               applied    2 file(s)\nnote: 1 of 1 task(s) applied cleanly into worktree 'r2' at <WORK>-orchestra/00000000-r2\n"
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
     },
     {
       "argv": [
@@ -363,26 +437,9 @@
         "--onto",
         "nope"
       ],
-      "exit": 3,
-      "stdout_shape": "json",
-      "stdout": {
-        "integration": {
-          "branch": "orchestra/00000000/r3",
-          "path": null,
-          "task": "r3"
-        },
-        "note": "could not resolve --onto ref \"nope\" to a commit",
-        "onto": null,
-        "status": "error",
-        "tasks": [
-          {
-            "conflicts": [],
-            "files_changed": 0,
-            "status": "missing",
-            "task": "t2"
-          }
-        ]
-      }
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
     },
     {
       "argv": [
@@ -427,10 +484,10 @@
       "stdout": {
         "integration": {
           "branch": "orchestra/00000000/r4",
-          "path": "<WORK>-orchestra/00000000-r4",
+          "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/r4",
           "task": "r4"
         },
-        "note": "0 of 1 task(s) applied cleanly (1 had no worktree) into worktree 'r4' at <WORK>-orchestra/00000000-r4",
+        "note": "0 of 1 task(s) applied cleanly (1 had no worktree) into worktree 'r4' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/r4",
         "onto": "<SHA#5>",
         "status": "ok",
         "tasks": [
@@ -455,7 +512,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <WORK>-orchestra/00000000-r4\n  ghost            missing    0 file(s)\nnote: 0 of 1 task(s) applied cleanly (1 had no worktree) into worktree 'r4' at <WORK>-orchestra/00000000-r4\n"
+      "stdout": "integrate ok  onto 1e20ebfe2548  worktree <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/r4\n  ghost            missing    0 file(s)\nnote: 0 of 1 task(s) applied cleanly (1 had no worktree) into worktree 'r4' at <HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/r4\n"
     }
   ]
 }

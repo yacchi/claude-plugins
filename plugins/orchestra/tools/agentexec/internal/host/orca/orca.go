@@ -4,13 +4,14 @@
 // Each package gets an Orca-created worktree (`orca worktree create`; Orca
 // cannot open a terminal in a tree it did not create), adopted as task
 // `pkg-<id>` (isolate.Adopt) so diff/check/refresh/integrate reach it by
-// task id, and nested in Orca's sidebar under the tree its base branch is
-// checked out in, else the caller's checkout (orcanest, best effort). The
-// create holds a slot of the machine-wide heavy pool. The terminal is
-// recorded in the tree (isolate.WriteHostSession), so a removal that
-// deletes the tree closes it. Completion is signalled only by the result
-// file: `terminal wait --for tui-idle` can report idle before the TUI
-// started or while a dialog is up. Sessions persist in
+// task id, and recorded as a child of the integration tree its base branch
+// is checked out in (orchestra's parent marker, so that tree counts it as an
+// open child until the host removes it). Orca lineage is never set
+// (`--no-parent`). The create holds a slot of the machine-wide heavy pool.
+// The terminal is recorded in the tree (isolate.WriteHostSession), so a
+// removal that deletes the tree closes it. Completion is signalled only by
+// the result file: `terminal wait --for tui-idle` can report idle before the
+// TUI started or while a dialog is up. Sessions persist in
 // `<state dir>/orca-sessions.json`.
 package orca
 
@@ -36,7 +37,6 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/hostref"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/orcanest"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/transcript"
 )
@@ -530,10 +530,6 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	if st, err := os.Stat(path); path == "" || err != nil || !st.IsDir() {
 		return nil, host.Need(host.KindError, "orca worktree create returned no usable path")
 	}
-	// Nest the tree under the one it was cut from in Orca's sidebar, which
-	// always lists Orca-created trees. Set after create so a checkout Orca
-	// does not know cannot fail the package.
-	(&orcanest.Nester{Binary: e.Binary, Stderr: e.Stderr}).Nest(repo, baseRef, path)
 	s := &host.Session{Pkg: pkgID, Name: e.Name(), Worktree: path, Extra: map[string]any{
 		"branch": wt["branch"], "request_ids": []any{}, "repo": repo, "model": model, "cls": cls,
 		"state_dir": stateDir, "add_dirs": host.SortedDirs(addDirs), "run_id": runID,
@@ -541,6 +537,7 @@ func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, 
 	e.save(s)
 	adopted, err := isolate.Adopt(repo, "pkg-"+pkgID, path, isolate.AdoptOptions{
 		Baseline: baseSHA, Carry: true, CarryExtra: e.isolation("carry_extra"), CarryFiles: e.carryFiles(),
+		Parent: isolate.IntegrationTreeFor(repo, baseRef),
 	})
 	if err != nil || (adopted.Status != "adopted" && adopted.Status != "exists") {
 		note := adopted.Note

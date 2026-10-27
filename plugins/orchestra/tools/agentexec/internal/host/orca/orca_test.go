@@ -21,7 +21,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/orcanest"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 var fakeOrca string
@@ -214,9 +214,11 @@ func TestClaudePackageRunsInOrcaAndIsAdopted(t *testing.T) {
 	if opt(create, "--setup") != "skip" || opt(create, "--base-branch") != "main" || opt(create, "--name") != "wave-run1-a" {
 		t.Error(create)
 	}
-	if sets := e.callsOf("worktree set"); len(sets) != 1 ||
-		opt(sets[0], "--worktree") != "path:"+s.Worktree || opt(sets[0], "--parent-worktree") != "path:"+e.repo {
-		t.Errorf("not nested under the caller's checkout: %v", sets)
+	if sets := e.callsOf("worktree set"); len(sets) != 0 {
+		t.Errorf("Orca lineage was set: %v", sets)
+	}
+	if isolate.ReadParent(s.Worktree) != "" {
+		t.Error("recorded a parent although the base branch is no integration tree")
 	}
 	_ = x.Close(s, true)
 	if _, ok := x.reg.Load(e.state)["A"]; ok {
@@ -230,21 +232,28 @@ func TestClaudePackageRunsInOrcaAndIsAdopted(t *testing.T) {
 	}
 }
 
-func TestAFailedNestingStillStarts(t *testing.T) {
-	orcanest.ResetWarning(t)
-	e := newEnv(t, map[string]any{"parent_fails": true})
-	x := e.executor("")
-	s, err := e.start(x)
+func TestStartRecordsTheIntegrationTreeAsParent(t *testing.T) {
+	e := newEnv(t, nil)
+	t.Setenv("ORCHESTRA_REQUEST_ROOT", filepath.Join(e.tmp, "requests"))
+	integ, err := isolate.Create(e.repo, "wave-int", isolate.CreateOptions{Backend: isolate.BackendGit, Role: isolate.RoleIntegration})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Terminal != "term-1" {
-		t.Errorf("%+v", s)
+	x := e.executor("")
+	s, err := x.Start(context.Background(), "A", e.repo, integ.Branch, "standard", "opus", "run-1", e.state, []string{e.state})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(x.Stderr.(*bytes.Buffer).String(), "could not nest") {
-		t.Error("the failed nesting was not reported")
+	if got := isolate.ReadParent(s.Worktree); got != paths.RealPath(integ.Path) {
+		t.Errorf("parent = %q, want the integration tree %q", got, integ.Path)
+	}
+	if sets := e.callsOf("worktree set"); len(sets) != 0 {
+		t.Errorf("Orca lineage was set: %v", sets)
 	}
 	_ = x.Close(s, true)
+	if kids, err := isolate.Children(e.repo, paths.RealPath(integ.Path)); err != nil || len(kids) != 0 {
+		t.Errorf("the closed child is still counted: %v %v", kids, err)
+	}
 }
 
 func TestAddDirsAndPermissionModeAreRendered(t *testing.T) {
@@ -345,6 +354,15 @@ func TestWaits(t *testing.T) {
 	n := needOf(t, err)
 	if n.Kind != host.KindStalled || !strings.HasPrefix(n.Detail, "dialog:\nDo you want to make this edit to a.txt?\n❯ 1. Yes\n  2. No\nterminal: term-1") {
 		t.Errorf("%q", n.Detail)
+	}
+	// a login reply that stays on screen across a wait is a login need
+	e = newEnv(t, map[string]any{"prompts": map[string]any{"a": []any{map[string]any{"login": true}}}})
+	x = e.executor("")
+	s, _ = e.start(x)
+	_, err = host.PromptAndWait(context.Background(), x, s, []string{"/p/one.md"}, e.result, 60e9)
+	n = needOf(t, err)
+	if n.Kind != host.KindLogin || !strings.Contains(n.Detail, "is not logged in") || !strings.Contains(n.Detail, "Not logged in · Please run /login") {
+		t.Errorf("%s: %q", n.Kind, n.Detail)
 	}
 	// escalate via the result file
 	e = newEnv(t, map[string]any{"prompts": map[string]any{"a": []any{map[string]any{"result": map[string]any{"status": "escalate", "summary": "no"}}}}})

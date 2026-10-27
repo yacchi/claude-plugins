@@ -36,12 +36,6 @@
         "custom_user_key": {
           "a": 1
         },
-        "dashboard": {
-          "artifact_url": "",
-          "artifact_urls": {},
-          "org": "",
-          "org_name": ""
-        },
         "enforcement": {
           "fanout": {
             "checker_calls": 8,

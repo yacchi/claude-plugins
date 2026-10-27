@@ -27,12 +27,6 @@
             "sandbox": 0
           }
         },
-        "dashboard": {
-          "artifact_url": "",
-          "artifact_urls": {},
-          "org": "",
-          "org_name": ""
-        },
         "enforcement": {
           "fanout": {
             "checker_calls": 8,
@@ -315,12 +309,6 @@
             "sandbox": 0
           }
         },
-        "dashboard": {
-          "artifact_url": "",
-          "artifact_urls": {},
-          "org": "",
-          "org_name": ""
-        },
         "enforcement": {
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -590,12 +578,6 @@
             "rate-limit": 900,
             "sandbox": 0
           }
-        },
-        "dashboard": {
-          "artifact_url": "",
-          "artifact_urls": {},
-          "org": "",
-          "org_name": ""
         },
         "enforcement": {
           "fanout": {
@@ -878,12 +860,6 @@
             "rate-limit": 900,
             "sandbox": 0
           }
-        },
-        "dashboard": {
-          "artifact_url": "",
-          "artifact_urls": {},
-          "org": "",
-          "org_name": ""
         },
         "enforcement": {
           "fanout": {
