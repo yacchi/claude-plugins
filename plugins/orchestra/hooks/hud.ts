@@ -1,10 +1,10 @@
 import type { EngineInterface, Register, Timer } from 'claude-code'
 import { agentExec } from './lib/config.ts'
 import type { Io } from './lib/io.ts'
-import { type Progress, progressOf, redraw, registerProgress, type Snapshot, statusPart } from './progress.tsx'
+import { type Progress, progressOf, redraw, registerProgress, type Snapshot } from './progress.tsx'
 
-// Live orchestra visibility: a status-line entry while orchestra agents run
-// or a tracked wave is in progress, the wave's detail pane and band
+// Live orchestra visibility: the band above the prompt and the wave's detail
+// pane while orchestra agents run or a tracked wave is in progress
 // (progress.tsx), a toast only on notable failures and on each new wave
 // need. Never blocks or rewrites anything.
 
@@ -213,13 +213,9 @@ const snapshot = (): Snapshot => ({
     waves: [...waves.values()].map(w => w.progress).filter(p => p !== undefined),
 })
 
-// The one status line: the agent part and every wave's part side by side,
-// cleared only when there is neither; the pane and the band drawn again.
+// The pane and the band drawn again after the tracked agents or waves changed.
 function render($: EngineInterface): void {
-    const now = snapshot()
-    const parts = [now.agentPart, ...now.waves.map(statusPart)].filter(p => p !== undefined)
-    $.ui.status(parts.length > 0 ? `orch ▸ ${parts.join(' │ ')}` : undefined)
-    redraw($, now)
+    redraw($)
 }
 
 const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

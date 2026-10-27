@@ -54,7 +54,8 @@ type Run struct {
 	RunID     *string      `json:"run_id"`
 	Project   string       `json:"project"`
 	Title     string       `json:"title"`
-	Status    string       `json:"status"` // written: running|needs|done|stopped; Build adds crashed|stale
+	Account   *string      `json:"account"` // the profile that started this runner; nil when unknown
+	Status    string       `json:"status"`  // written: running|needs|done|stopped; Build adds crashed|stale
 	Line      string       `json:"line"`
 	Counts    Counts       `json:"counts"`
 	Packages  []RunPackage `json:"packages"`

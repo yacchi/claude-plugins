@@ -21,6 +21,7 @@ type statusWriter struct {
 	store               statusfile.Store
 	key, project, title string
 	runID               *string
+	account             *string
 	startedAt           int64
 
 	// mtime and size are the state file as the last write saw it; wrote is
@@ -49,9 +50,14 @@ func (r *runner) startStatus() *statusWriter {
 		id := r.opts.RunID
 		runID = &id
 	}
+	// Read once: the label names the profile that started this runner.
+	var account *string
+	if a := statusfile.Account(); a != "" {
+		account = &a
+	}
 	s := &statusWriter{
 		r: r, store: statusfile.Default(), key: key, project: statusfile.Project(r.root),
-		title: title, runID: runID, startedAt: time.Now().Unix(),
+		title: title, runID: runID, account: account, startedAt: time.Now().Unix(),
 		stop: make(chan struct{}), done: make(chan struct{}),
 	}
 	s.write("")
@@ -154,7 +160,7 @@ func (s *statusWriter) write(final string) {
 	}
 
 	run := statusfile.Run{
-		Key: s.key, RunID: s.runID, Project: s.project, Title: s.title,
+		Key: s.key, RunID: s.runID, Project: s.project, Title: s.title, Account: s.account,
 		Status: status, Line: watch.Line(pr),
 		Counts: statusfile.Counts{
 			Total: pr.Total, Integrated: pr.Integrated, Running: len(pr.Running), Pending: pr.Pending,

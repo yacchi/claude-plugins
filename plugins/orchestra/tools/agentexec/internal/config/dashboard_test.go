@@ -68,8 +68,8 @@ func TestResolveRejectsRemovedDashboardKey(t *testing.T) {
 			msg := err.Error()
 			if !strings.HasPrefix(msg, want+": ") ||
 				!strings.Contains(msg, "the dashboard key was removed") ||
-				!strings.Contains(msg, "~/.claude/orchestra/status.json") {
-				t.Errorf("error = %q, want it to name %s and the status file", msg, want)
+				!strings.Contains(msg, "/orchestra:board") {
+				t.Errorf("error = %q, want it to name %s and /orchestra:board", msg, want)
 			}
 		})
 	}

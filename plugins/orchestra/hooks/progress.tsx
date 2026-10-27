@@ -1,9 +1,11 @@
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 // The wave progress views the HUD draws from `wave status --json`'s
-// `progress` object: the status-line part, the `orchestra` detail pane and
-// the band above the prompt. hud.ts tracks the waves and polls them; this
-// file parses and draws, from what hud.ts hands it at each draw.
+// `progress` object: the band above the prompt (its summary row and the
+// detail rows behind its toggle) and the `orchestra` detail pane. hud.ts
+// tracks the waves and polls them; this file parses and draws, from what
+// hud.ts hands it at each draw.
 
 export type Running = {
     id: string,
@@ -18,6 +20,7 @@ export type Need = { id?: string, kind: string, detail: string }
 
 export type Progress = {
     runId?: string,
+    account?: string,
     total: number,
     integrated: number,
     running: Running[],
@@ -29,8 +32,8 @@ export type Progress = {
     costUsd?: number,
 }
 
-// What a drawing reads: the agent part of the status line and the progress
-// of every tracked wave that has answered a status read.
+// What a drawing reads: the agent part of the summary and the progress of
+// every tracked wave that has answered a status read.
 export type Snapshot = { agentPart?: string, waves: Progress[] }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -50,6 +53,7 @@ export const progressOf = (v: unknown): Progress | undefined => {
 
     return {
         runId: str(v.run_id),
+        account: str(v.account),
         total: num(v.total) ?? 0,
         integrated: num(v.integrated) ?? 0,
         running: records(v.running).map(r => ({
@@ -94,7 +98,7 @@ export const durationOf = (seconds: number): string => {
     return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`
 }
 
-// The wave's part of the status line: `wave 12/40 · 5 running · 2 needs · ~35m`.
+// The wave's part of the summary: `wave 12/40 · 5 running · 2 needs · ~35m`.
 export const statusPart = (p: Progress): string => {
     const parts = [`wave ${p.integrated}/${p.total}`, `${p.running.length} running`]
     if (p.needs.length > 0) {
@@ -170,7 +174,11 @@ export const paneLines = (waves: readonly Progress[], columns: number, rows: num
         if (lines.length > 0) {
             lines.push('')
         }
-        const header = [p.runId ?? 'wave', `${p.integrated}/${p.total}`, `経過 ${durationOf(p.elapsedS)}`]
+        const header = [
+            `${p.runId ?? 'wave'}${p.account ? ` (${p.account})` : ''}`,
+            `${p.integrated}/${p.total}`,
+            `経過 ${durationOf(p.elapsedS)}`,
+        ]
         if (p.etaS !== undefined) {
             header.push(`残り ~${durationOf(p.etaS)}`)
         }
@@ -203,15 +211,26 @@ export const paneLines = (waves: readonly Progress[], columns: number, rows: num
     return lines.map(line => clip(line, columns))
 }
 
-// The band's lines, at most 4: the status line with run ids, the first
-// running rows, the needs (only when any), what starts next.
-export const bandLines = (snapshot: Snapshot, columns: number): string[] => {
-    const waves = snapshot.waves.map(p => (p.runId ? `${p.runId} · ${statusPart(p)}` : statusPart(p)))
-    const parts = [snapshot.agentPart, ...waves].filter(part => part !== undefined)
-    const lines = [clip(`orch ▸ ${parts.join(' │ ')}`, columns)]
+// A wave's part of the summary, named by its run id and account when known.
+const waveSummary = (p: Progress): string => {
+    const head = [p.runId, p.account && `(${p.account})`].filter(Boolean).join(' ')
+
+    return head ? `${head} · ${statusPart(p)}` : statusPart(p)
+}
+
+// The band's first row, unclipped: the agent part and every wave's part.
+export const summaryLine = (snapshot: Snapshot): string => {
+    const parts = [snapshot.agentPart, ...snapshot.waves.map(waveSummary)].filter(part => part !== undefined)
+
+    return `orch ▸ ${parts.join(' │ ')}`
+}
+
+// The band's detail rows, shown behind its toggle: the running rows, the
+// needs (only when any), what starts next.
+export const detailLines = (snapshot: Snapshot, columns: number): string[] => {
     const running = snapshot.waves.flatMap(p => p.running)
         .map(r => `${r.id} ${r.model ?? r.cls} ${phaseOf(r.phase)} ${durationOf(r.elapsedS)}`)
-    lines.push(running.length > 0 ? fitJoin('', running, columns) : clip('▶ none running', columns))
+    const lines = [running.length > 0 ? fitJoin('', running, columns) : clip('▶ none running', columns)]
     const needs = snapshot.waves.flatMap(p => p.needs).map(n => `${n.id ?? 'wave'} ${n.kind}`)
     if (needs.length > 0) {
         lines.push(fitJoin('⚠ ', needs, columns))
@@ -227,11 +246,14 @@ export const bandLines = (snapshot: Snapshot, columns: number): string[] => {
 const PANE = 'orchestra'
 const TITLE = 'orchestra'
 
+// Whether the band's detail rows show; the person toggles them from the band.
+const bandOpen = atom({ plugin: 'orchestra', key: 'bandOpen' } as const, false)
+
 // Redraws the pane and the band after the tracked waves changed. The pane
 // opens only when asked: `$.ui.open` places it on every attached surface, and
 // a surface without a close mark (the mobile app) would be stuck with it.
 // (A function declaration: the engine follows `$` past an import only into one.)
-export function redraw($: EngineInterface, _snapshot: Snapshot): void {
+export function redraw($: EngineInterface): void {
     $.ui.invalidate('ui.render')
 }
 
@@ -285,21 +307,35 @@ export const registerProgress = (on: On, snapshot: () => Snapshot): void => {
         )
     }).catch(($, e, next) => next(e))
 
-    // The band shows while a wave is tracked and the pane is not up.
+    // The band shows while orchestra has anything to show and the pane is not
+    // up. Its detail rows need a tracked wave; agents alone get the summary only.
     on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
         const now = snapshot()
-        if (e.props.hasSurvey || now.waves.length === 0) {
+        if (e.props.hasSurvey || (!now.agentPart && now.waves.length === 0)) {
             return next(e)
         }
         const pane = await paneOf($)
         if (pane?.isPlaced && pane.isShown) {
             return next(e)
         }
-        const { Box, Text } = $.ui.resolve(e)
+        const { Box, Button, Text } = $.ui.resolve(e)
+        const hasDetail = now.waves.length > 0
+        const open = hasDetail && await read($, bandOpen)
+        const summaryColumns = hasDetail ? Math.max(10, e.props.bodyColumns - 9) : e.props.bodyColumns
 
         return (
             <Box flexDirection="column">
-                {bandLines(now, e.props.bodyColumns).map(line => <Text>{line}</Text>)}
+                <Box flexDirection="row" columnGap={1}>
+                    <Text>{clip(summaryLine(now), summaryColumns)}</Text>
+                    {hasDetail
+                        && <Button key="orchestra-band-toggle" label={open ? '畳む' : '詳細'} hotkey="o"
+                            onPress={() => update($, bandOpen, v => !v)} />}
+                </Box>
+                {open && (
+                    <Box flexDirection="column">
+                        {detailLines(now, e.props.bodyColumns).map(line => <Text>{line}</Text>)}
+                    </Box>
+                )}
             </Box>
         )
     }).catch(($, e, next) => next(e))

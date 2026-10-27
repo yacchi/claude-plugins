@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/statusfile"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -25,7 +26,10 @@ const (
 
 // Progress is the `progress` object of `wave status --json` and `wave wait`.
 type Progress struct {
-	RunID      *string   `json:"run_id"`
+	RunID *string `json:"run_id"`
+	// Account is the claude.ai account of the profile that started the run's
+	// runner, from its status entry; absent when unknown.
+	Account    *string   `json:"account,omitempty"`
 	Total      int       `json:"total"`
 	Integrated int       `json:"integrated"`
 	Pending    int       `json:"pending"`
@@ -105,6 +109,9 @@ func Compute(statePath string, st *state.State, now float64, cost CostFunc) Prog
 		in.record = &rec
 	}
 	pr := build(in)
+	if r, ok := statusfile.Default().ReadRun(statusfile.RunKey(statePath)); ok && r.Account != nil {
+		pr.Account = r.Account
+	}
 	pr.Held = heldOf(st, now)
 	if pr.RunID != nil && cost != nil {
 		if usd, ok := cost(*pr.RunID); ok {

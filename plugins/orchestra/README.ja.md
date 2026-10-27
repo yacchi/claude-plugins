@@ -104,7 +104,29 @@ claude plugin validate .
 
 ### HUD
 
-orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、Claude Code のステータス行に `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1` を表示します（`ext` は外部の pi 実行、`✗N` はレビュー失敗数）。完了すると自動で消えます。ウェーブがあると、ウェーブの表示 `wave 12/40 · 5 running · 2 needs · ~35m`（統合済み/全パッケージ数、実行中のパッケージ数、未解決の needs 数、パッケージに見積もりがあるときの残り時間の見込み）が加わり、run が停止するかランナーが終了するまで `wave status --json` の `progress` から 15 秒ごとに更新されます。複数のウェーブは並べて表示します。ウェーブは、それを起動する `agent-exec wave run --state <path>` から追跡します。起動するのはメインスレッド（通常は `run_in_background`）か、監視役のサブエージェント `orchestra:orchestra-wave`（`wave run --detach` のあと `wave wait --state <path>`）で、それ以外のサブエージェントの呼び出しは無視します。`orchestra` ペインには追跡中の各ウェーブの詳細を表示します。run id、統合済み/全数、経過時間、残り時間、コストに続けて、実行中のパッケージ（`id  cls→model  phase  経過/見積もり`、フェーズは 実装/検証/修正/統合/待機）、needs、次に始まるもの、直近に統合したものです。ペインは頼んだときだけ開きます。`/orchestra:progress` で開閉でき、ペイン内の「閉じる」ボタン（ホットキー `x`）でどの画面からでも閉じられます。モバイルアプリは今のところ mod の画面を描きません。ほかの端末向けには、`agent-exec` 自身（モデルも claude.ai へのログインも使いません）が 1 つのファイル `~/.claude/orchestra/status.json`（[`docs/status-file.md`](docs/status-file.md)）を最新に保ちます。どのプロファイルから動かしたものも含め、このマシンのすべてのウェーブのランナーと planner が載ります。`summary` にはリポジトリ名、パス、パッケージ名を含めないので（動いているものがあるか、run と計画の数、対応が必要な数だけです）、これだけを公開できます。orchestra 自身は何も公開せず、別のビューワーがこのファイルを読みます。表示は読み取り専用で、承認は自分のセッションで行います。ランナーが終了したときに途中だったパッケージは「中断」として出ます（`progress.interrupted`、行には `· N interrupted`）。監視役の進捗の行とプッシュ通知が、ホップごと、need ごとに状況を伝えます。ペインがないときは、プロンプトの上（ターミナルとデスクトップ）に最大 4 行の帯を表示します。run id 付きのステータス行、実行中の先頭のパッケージ、needs、次に始まるものです。トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。このマシンのすべてのウェーブと、その前の planner の計画（いまの段、未解決の質問の数）は、上記の状態ファイルに載ります。`hud` プラグインオプション（既定はオン）で無効にできます。
+orchestra のエージェント（`orchestra:*` サブエージェントと Workflow のエージェント）が動いている間、プロンプトの上に帯（band）を表示します。ターミナルとデスクトップで表示され、モバイルと VS Code の画面には帯は描きません。完了すると自動で消えます。
+
+帯の 1 行目は要約です: `orch ▸ 3 running · haiku 2 · sonnet 1 · ext 1 │ r1 (Acme) · wave 12/40 · 5 running · 2 needs · ~35m`。`ext` は外部の pi 実行、`✗N` はレビュー失敗数です。ウェーブの部分は、run id、その run のアカウント（括弧内）、統合済み/全パッケージ数、実行中のパッケージ数、未解決の needs 数、残り時間の見込みの順に並びます。複数のウェーブは並べて表示します。ウェーブを追跡しているとき、この行には「詳細」ボタンが付きます。押すと実行中のパッケージ、needs、次に始まるものが展開され、「畳む」で元に戻ります。帯は既定で畳まれています。帯にフォーカスがあるときはホットキー `o`、ctrl+x tab でも操作できます。Claude Code のエンジン自身の `[-]`（ctrl+x ctrl+a）は、要約を含む帯全体を隠します。帯は survey と `orchestra` ペインに場所を譲ります。
+
+ウェーブは、それを起動する `agent-exec wave run --state <path>` から追跡します。起動するのはメインスレッド（通常は `run_in_background`）か、監視役のサブエージェント `orchestra:orchestra-wave`（`wave run --detach` のあと `wave wait --state <path>`）で、それ以外のサブエージェントの呼び出しは無視します。各 run は、起動したときのプロファイルの claude.ai アカウントを記録します。アカウント名は組織名（なければメールアドレス）で、uuid は使いません。`agent-exec status whoami` で現在のプロファイルのアカウントを確認できます。
+
+`orchestra` ペインには追跡中の各ウェーブの詳細を表示します。run id、統合済み/全数、経過時間、残り時間、コストに続けて、実行中のパッケージ（`id  cls→model  phase  経過/見積もり`、フェーズは 実装/検証/修正/統合/待機）、needs、次に始まるもの、直近に統合したものです。ペインは頼んだときだけ開きます。`/orchestra:progress` で開閉でき、ペイン内の「閉じる」ボタン（ホットキー `x`）でどの画面からでも閉じられます。
+
+`agent-exec` 自身（モデルも claude.ai へのログインも使いません）が 1 つのファイル `~/.claude/orchestra/status.json`（[`docs/status-file.md`](docs/status-file.md)）を最新に保ちます。どのプロファイルから動かしたものも含め、このマシンのすべてのウェーブのランナーと planner が載ります。`summary` にはリポジトリ名、パス、パッケージ名を含めないので（動いているものがあるか、run と計画の数、対応が必要な数だけです）、これだけを公開できます。表示は読み取り専用で、承認は自分のセッションで行います。ランナーが終了したときに途中だったパッケージは「中断」として出ます（`progress.interrupted`、行には `· N interrupted`）。監視役の進捗の行とプッシュ通知が、ホップごと、need ごとに状況を伝えます。
+
+トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。このマシンのすべてのウェーブと、その前の planner の計画（いまの段、未解決の質問の数）は、上記の状態ファイルに載ります。`hud` プラグインオプション（既定はオン）で帯、ペイン、トーストを無効にできます。
+
+### ボード (claude.ai のダッシュボード)
+
+`/orchestra:board` は、アカウントごとに 1 つの claude.ai のページ（orchestra のダッシュボード）を扱います。Claude Code には組み込みの `/dashboard` があるため、名前を分けています。
+
+- **初回:** プロファイルで最初に `/orchestra:board` を実行すると、Claude にプラグインのページ `dashboard/dashboard.html` を claude.ai の Artifact として公開させ、サイドバーにピン留めさせます。これで、どのセッションからでも claude.ai のアプリ（スマートフォンを含む）からページを開けます。フックモジュールは、その公開で得た URL を自分のストアに記録します。ストアは Claude の設定ディレクトリにあり、ccprofile のプロファイルごと（ほぼアカウントごと）に 1 ページです。
+- **それ以降:** ページへの反映はモデルではなく、フックモジュールが行います。`~/.claude/orchestra/status.json` の内容を、そのセッションのサインインを使って ArtifactData でページに写します。各アカウントは自分のページだけを書き、ほかの組織のページには書きません。書き込みはマシンごとに 1 つのドキュメントに対して行い、要約が変わったときを除いて最短 `heartbeat_s`（既定 60 秒）に 1 回です。このマシンで変化を最初に見つけたセッションだけが書きます（`~/.claude/orchestra/dashboard/` の claim ファイルで調停します）。各 run の `pid` と `state` のパスは載せません。
+- **書くときの条件:** `ArtifactData` が `permissions.allow` に入っているときだけ書きます。入っていなければ何も書かず、確認ダイアログも出ません。`/orchestra:board` が追加すべき許可を案内します。ホストされたワーカーのセッションと `-p` の実行では書きません。別のアカウントが公開したページには書きません。
+- **ページの内容:** どのアカウントのページにも、マシンのすべての run と計画、各 run のアカウント、最後に書いたアカウントが表示されます。古いときは警告が出ます。表示のみで、承認は指示役のセッションで行います。
+- **操作:** `/orchestra:board` はページの URL を表示します（書けていない場合はその理由）。`/orchestra:board publish` はページを公開し直します（プラグインを更新した後など）。`/orchestra:board forget` は URL を忘れます（ページは claude.ai に残ります）。
+- ボードは `hud` オプションに従いません。止めるには `/orchestra:board forget` を使います。
+- 設定キー `dashboard` は 0.73.0 で廃止されました。指定すると設定エラーになり、`/orchestra:board` を案内します。何も設定されません。
 
 ### Copilot CLI / opencode からの移行
 
@@ -126,7 +148,9 @@ Copilotのモデルはpiの`github-copilot/*`、ChatGPTサブスクリプショ�
 | `skills/setup/`、`skills/cleanup/` | 付属のスキル |
 | `tools/agent-exec` | `agent-exec` CLI の起動スクリプト。初回に `tools/agentexec/` をビルドし、保存したバイナリを実行します |
 | `tools/agentexec/` | `agent-exec` CLI(Go): route、dispatch、isolate、shelf、wave、status、telemetry、版を固定して管理する実行役バイナリ(pi と herdr)、herdr と Orca の対話ホストなど |
-| `hooks/` | ルーターの注入、ターン規模の検知、ワーカーの VCS・作業ツリー・lease の防護、Opus 汎用サブエージェントへの通知、worktree の後片付け |
+| `hooks/` | ルーターの注入、ターン規模の検知、ワーカーの VCS・作業ツリー・lease の防護、Opus 汎用サブエージェントへの通知、worktree の後片付け、帯の表示、ボードへの書き込み |
+| `dashboard/dashboard.html` | ボードのページ（表示のみ）。`/orchestra:board` が claude.ai の Artifact として公開します |
+| `types/index.d.ts` | mod の状態の契約 |
 | `examples/orchestra.yaml` | 設定のサンプル |
 
 ファイルごとの詳細: [`docs/components.md`](docs/components.md)

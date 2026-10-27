@@ -1,4 +1,5 @@
 import type { EngineInterface, Register } from 'claude-code'
+import { dashboardTurnStart, registerDashboard } from './dashboard/dashboard.ts'
 import { checkChildBudget, checkFanout } from './guards/fanout.ts'
 import { checkLand } from './guards/land.ts'
 import { checkLaunch } from './guards/launch.ts'
@@ -26,7 +27,8 @@ import { verdictOf } from './router/verdict.ts'
 // The orchestra plugin's one hooks module (a plugin has one): each guard and
 // router event is hooked once here and handed to the files that own its
 // rules; the HUD (hud.ts) registers its own hooks, a Bash-only tool.call
-// among them. Every guard is a nudge or a second layer, never a hard wall:
+// among them, and the board (dashboard/) mirrors status.json to claude.ai.
+// Every guard is a nudge or a second layer, never a hard wall:
 // each has its own escape hatches and fails open on anything unexpected (a
 // guard that errors would disrupt every tool call of every session), hence
 // each `.catch` passes on. No listener depends on a `classic.*` event, so all
@@ -102,6 +104,7 @@ export const register: Register = (on, options) => {
                 stamped.add(sessionId)
                 void agentExec(io, ['hook', 'seen', '--session', sessionId, '--event', 'module'], 3000)
             }
+            dashboardTurnStart($)
         }
 
         return next(e)
@@ -287,4 +290,5 @@ export const register: Register = (on, options) => {
     }).catch(($, e, next) => next(e))
 
     registerHud(on, options)
+    registerDashboard(on)
 }

@@ -1,0 +1,1049 @@
+<title>orchestra ダッシュボード</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root {
+    --bg: #f3f5f7;
+    --surface: #ffffff;
+    --surface-2: #eaeef2;
+    --border: #d3dae2;
+    --fg: #17202a;
+    --muted: #5b6875;
+    --accent: #2453b8;
+    --accent-fg: #ffffff;
+    --accent-bg: #e3ebfa;
+    --good: #1d7a45;
+    --good-bg: #e2f3e8;
+    --warn: #9a5b00;
+    --warn-bg: #fdf0d8;
+    --crit: #b4232c;
+    --crit-bg: #fbe3e4;
+    --neutral: #4d5967;
+    --neutral-bg: #e6eaef;
+    --track: #dde3ea;
+    --focus: #2453b8;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #11161c;
+        --surface: #182029;
+        --surface-2: #202a35;
+        --border: #2e3a47;
+        --fg: #e4e9ee;
+        --muted: #93a1af;
+        --accent: #7aa2f7;
+        --accent-fg: #0d1420;
+        --accent-bg: #1d2b45;
+        --good: #5cc98a;
+        --good-bg: #16301f;
+        --warn: #e9b14f;
+        --warn-bg: #36290f;
+        --crit: #f07a80;
+        --crit-bg: #3d1a1d;
+        --neutral: #a9b5c1;
+        --neutral-bg: #26303b;
+        --track: #2a3541;
+        --focus: #7aa2f7;
+        color-scheme: dark;
+    }
+}
+:root[data-theme="dark"] {
+    --bg: #11161c;
+    --surface: #182029;
+    --surface-2: #202a35;
+    --border: #2e3a47;
+    --fg: #e4e9ee;
+    --muted: #93a1af;
+    --accent: #7aa2f7;
+    --accent-fg: #0d1420;
+    --accent-bg: #1d2b45;
+    --good: #5cc98a;
+    --good-bg: #16301f;
+    --warn: #e9b14f;
+    --warn-bg: #36290f;
+    --crit: #f07a80;
+    --crit-bg: #3d1a1d;
+    --neutral: #a9b5c1;
+    --neutral-bg: #26303b;
+    --track: #2a3541;
+    --focus: #7aa2f7;
+    color-scheme: dark;
+}
+body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "IBM Plex Sans JP", "Noto Sans JP", system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    line-height: 1.5;
+    overflow-x: hidden;
+}
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top, 0px);
+    background: var(--surface);
+    z-index: 3;
+}
+.mono, code {
+    font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.num {
+    font-variant-numeric: tabular-nums;
+}
+.top {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 2;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 10px;
+}
+.top-in {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 1280px;
+    margin: 0 auto;
+}
+.top h1 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.01em;
+}
+.conn {
+    font-size: 12px;
+    color: var(--muted);
+}
+.wrap {
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 14px 28px;
+    max-width: 1280px;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+.notice {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--warn);
+    background: var(--warn-bg);
+    color: var(--fg);
+    padding: 10px 12px;
+    border-radius: 4px;
+    margin-bottom: 14px;
+}
+.notice.crit {
+    border-left-color: var(--crit);
+    background: var(--crit-bg);
+}
+.notice p {
+    margin: 0;
+}
+.notice p + p {
+    margin-top: 4px;
+}
+.grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+}
+@media (min-width: 900px) {
+    .grid {
+        grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+        align-items: start;
+    }
+    .runs {
+        position: sticky;
+        top: calc(env(safe-area-inset-top, 0px) + 58px);
+        max-height: calc(100vh - env(safe-area-inset-top, 0px) - 72px);
+        overflow-y: auto;
+    }
+}
+.grid > * {
+    min-width: 0;
+}
+h2.sec {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 8px;
+}
+.placeholder {
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    color: var(--muted);
+    background: var(--surface);
+}
+.placeholder p {
+    margin: 0;
+}
+.placeholder p + p {
+    margin-top: 6px;
+}
+.run-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.run-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--neutral);
+    border-radius: 4px;
+    padding: 9px 10px;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+.run-item:hover {
+    background: var(--surface-2);
+}
+.run-item[aria-pressed="true"] {
+    border-color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--accent-bg);
+}
+.run-item.s-needs {
+    border-left-color: var(--warn);
+}
+.run-item.s-done {
+    border-left-color: var(--good);
+}
+.run-item.s-crashed {
+    border-left-color: var(--crit);
+}
+.run-item.s-running {
+    border-left-color: var(--accent);
+}
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.row.between {
+    justify-content: space-between;
+}
+.ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.meta {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    margin-top: 4px;
+}
+.ago.is-stale {
+    color: var(--warn);
+    font-weight: 600;
+}
+.pill {
+    display: inline-block;
+    flex: none;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 4px 7px;
+    border-radius: 3px;
+    background: var(--neutral-bg);
+    color: var(--neutral);
+    white-space: nowrap;
+}
+.pill.running {
+    background: var(--accent-bg);
+    color: var(--accent);
+}
+.pill.needs, .pill.warn {
+    background: var(--warn-bg);
+    color: var(--warn);
+}
+.pill.done, .pill.good {
+    background: var(--good-bg);
+    color: var(--good);
+}
+.pill.crashed, .pill.crit {
+    background: var(--crit-bg);
+    color: var(--crit);
+}
+.bar {
+    height: 6px;
+    background: var(--track);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.bar > span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+}
+.bar.good > span {
+    background: var(--good);
+}
+.bar.warn > span {
+    background: var(--warn);
+}
+.bar.crit > span {
+    background: var(--crit);
+}
+.run-item .bar {
+    margin-top: 7px;
+    height: 4px;
+}
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    min-width: 0;
+}
+.head h2 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+.line {
+    margin: 8px 0 0;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+.stale-banner {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: var(--warn-bg);
+    color: var(--warn);
+    font-weight: 500;
+    font-size: 13px;
+}
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
+    margin: 12px 0 0;
+}
+.stats div {
+    min-width: 0;
+}
+.stats dt {
+    font-size: 11px;
+    color: var(--muted);
+}
+.stats dd {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 500;
+}
+.cards {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+}
+@media (min-width: 1180px) {
+    .cards {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .cards .wide {
+        grid-column: 1 / -1;
+    }
+}
+.card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--surface-2);
+    border-radius: 3px;
+    padding: 2px 6px;
+}
+.count.warn {
+    color: var(--warn);
+    background: var(--warn-bg);
+}
+.empty {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0;
+}
+.table-wrap {
+    overflow-x: auto;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+}
+th, td {
+    text-align: left;
+    padding: 6px 8px 6px 0;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    white-space: nowrap;
+}
+th {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+}
+tr:last-child td {
+    border-bottom: none;
+}
+td.over {
+    color: var(--warn);
+    font-weight: 600;
+}
+.mark {
+    font-size: 11px;
+    margin-left: 4px;
+}
+ul.items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+ul.items > li {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    min-width: 0;
+}
+ul.items > li:first-child {
+    padding-top: 0;
+}
+ul.items > li:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.detail-text {
+    font-size: 13px;
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+}
+.sub {
+    font-size: 12px;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+.title {
+    font-weight: 600;
+    font-size: 14px;
+}
+.proj {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--fg);
+}
+:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+        animation: none !important;
+        scroll-behavior: auto !important;
+    }
+}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap">
+
+<header class="top">
+    <div class="top-in">
+        <h1>orchestra ダッシュボード</h1>
+        <span id="conn" class="conn">接続を準備しています…</span>
+    </div>
+</header>
+<main class="wrap">
+    <div id="notice" class="notice" hidden></div>
+    <p class="sub">表示のみ。承認や停止は指示役のセッションで行います。</p>
+    <div id="machines">
+        <div class="placeholder">
+            <p>書き込みを読み込んでいます…</p>
+        </div>
+    </div>
+</main>
+<script>
+(() => {
+    "use strict";
+
+    const STALE_S = 180;
+    // A planner writes at phase boundaries only, and a phase can take long.
+    const PLAN_STALE_S = 1200;
+    const DAY_S = 86400;
+    const PLAN_STATUS = {
+        planning: { label: "計画中", cls: "running" },
+        "needs-user": { label: "質問あり", cls: "needs" },
+        done: { label: "完了", cls: "done" },
+        failed: { label: "失敗", cls: "crashed" },
+        stale: { label: "更新なし", cls: "warn" },
+    };
+    const PLAN_PHASES = [
+        ["explore", "調査"],
+        ["verify", "反証"],
+        ["critique", "抜け漏れ確認"],
+        ["design", "設計"],
+        ["synthesize", "統合"],
+        ["reality-check", "現状確認"],
+        ["lint", "lint"],
+    ];
+    const STATUS = {
+        running: { label: "実行中", cls: "running" },
+        needs: { label: "要対応", cls: "needs" },
+        done: { label: "完了", cls: "done" },
+        stopped: { label: "停止", cls: "stopped" },
+        crashed: { label: "異常終了", cls: "crashed" },
+        stale: { label: "更新なし", cls: "warn" },
+    };
+    const LIVE_STATUSES = new Set(["running", "needs"]);
+    const PHASE = {
+        implementing: "実装",
+        verifying: "検証",
+        correcting: "修正",
+        integrating: "統合",
+        waiting: "待機",
+    };
+    const KIND = {
+        login: "ログイン切れ",
+        escalate: "エスカレーション",
+        conflict: "競合",
+        "self-verify": "自己検証",
+        "post-integration": "統合後",
+        "dispatch-error": "起動エラー",
+        environment: "環境",
+    };
+    const HELD = {
+        login: "ログイン切れ",
+        memory: "メモリ圧迫",
+        usage: "使用量の上限",
+    };
+    const NO_RETRY = new Set([
+        "invalid_argument",
+        "transform_error",
+        "not_granted",
+        "capability_disabled",
+        "capability_removed",
+        "resource_exhausted",
+    ]);
+
+    const S = {
+        db: null,
+        dbState: "loading", // loading | none | ok
+        machines: [],
+        loaded: false,
+        unsub: null,
+        fromCache: false,
+        selected: new Map(), // machine doc id -> run_id shown in its detail pane
+        error: "",
+        revoked: false,
+    };
+
+    // ---- untrusted-value coercion ----
+    const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
+    const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+    const arr = (v) => (Array.isArray(v) ? v : []);
+    // A count is written as a number in plans and as a list elsewhere.
+    const countOf = (v) => (Array.isArray(v) ? v.length : num(v) ?? 0);
+    const nowS = () => Date.now() / 1000;
+
+    // DOM builder: strings and numbers become text nodes, never markup.
+    function h(tag, props, ...kids) {
+        const el = document.createElement(tag);
+        if (props) {
+            for (const [k, v] of Object.entries(props)) {
+                if (v == null || v === false) {
+                    continue;
+                }
+                if (k === "class") {
+                    el.className = v;
+                } else if (k === "text") {
+                    el.textContent = v;
+                } else if (k.startsWith("on")) {
+                    el.addEventListener(k.slice(2), v);
+                } else if (k === "dataset") {
+                    Object.assign(el.dataset, v);
+                } else if (k in el) {
+                    el[k] = v;
+                } else {
+                    el.setAttribute(k, v === true ? "" : String(v));
+                }
+            }
+        }
+        for (const c of kids.flat()) {
+            if (c == null || c === false) {
+                continue;
+            }
+            el.append(typeof c === "string" || typeof c === "number" ? String(c) : c);
+        }
+        return el;
+    }
+
+    // ---- formatting ----
+    function fmtETA(seconds) {
+        const m = Math.ceil(Math.max(seconds, 0) / 60);
+        if (m < 60) {
+            return m + "m";
+        }
+        return Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0") + "m";
+    }
+    function fmtDur(seconds) {
+        const s = Math.max(Math.round(seconds), 0);
+        if (s < 60) {
+            return s + "秒";
+        }
+        const m = Math.floor(s / 60);
+        if (m < 60) {
+            return m + "分";
+        }
+        return Math.floor(m / 60) + "時間" + String(m % 60).padStart(2, "0") + "分";
+    }
+    function fmtAgo(at) {
+        const s = Math.max(Math.floor(nowS() - at), 0);
+        if (s < 120) {
+            return s + "秒前";
+        }
+        if (s < 7200) {
+            return Math.floor(s / 60) + "分前";
+        }
+        if (s < 172800) {
+            return Math.floor(s / 3600) + "時間前";
+        }
+        return Math.floor(s / 86400) + "日前";
+    }
+    function fmtCost(v) {
+        return "~$" + v.toFixed(2);
+    }
+    const statusOf = (data) => STATUS[str(data.status)] || { label: str(data.status) || "不明", cls: "" };
+    const isLive = (data) => LIVE_STATUSES.has(str(data.status));
+    const planStatusOf = (data) => PLAN_STATUS[str(data.status)] || { label: str(data.status) || "不明", cls: "" };
+    const planIsLive = (data) => str(data.status) === "planning";
+    const projectOf = (data) => str(data.project);
+    const titleOf = (data, fallback) => str(data.title) || fallback;
+    const keyOf = (run) => str(run.run_id);
+    const writtenAt = (m) => num(obj(obj(m.data).writer).at);
+
+    // An element that shows "N秒前" and ticks; with live set it turns into
+    // the stale warning after STALE_S.
+    function agoEl(at, prefix, live) {
+        if (at == null) {
+            return h("span", { class: "ago", text: prefix + "不明" });
+        }
+        return h("span", {
+            class: "ago num",
+            dataset: { at: String(at), prefix: prefix, live: live ? "1" : "" },
+        });
+    }
+    // "更新 N秒前" for a plan, stale after PLAN_STALE_S instead of STALE_S.
+    function planAgoEl(at, live) {
+        if (at == null) {
+            return h("span", { class: "ago", text: "更新 不明" });
+        }
+        return h("span", {
+            class: "ago num",
+            dataset: { at: String(at), prefix: "更新 ", live: live ? "1" : "", staleS: String(PLAN_STALE_S) },
+        });
+    }
+
+    // ---- db ----
+    function errMessage(e) {
+        const code = str(obj(e).code) || "unavailable";
+        switch (code) {
+            case "resource_exhausted":
+                return "読み込みが多すぎて制限されました。しばらくしてからページを開き直してください。";
+            case "quota_exceeded":
+                return "データベースの容量上限に達しています。";
+            case "revoked":
+                return "このページではデータを読み込めなくなりました。";
+            case "not_granted":
+            case "capability_disabled":
+            case "capability_removed":
+                return "このページではデータベースを使えません。claude.ai にサインインしてページを開いてください。";
+            case "invalid_argument":
+            case "transform_error":
+                return "データの読み込みが拒否されました（" + code + "）。";
+            default:
+                return "接続が途切れました。再接続しています…";
+        }
+    }
+
+    function onSubError(e, resubscribe) {
+        const code = str(obj(e).code) || "unavailable";
+        S.error = errMessage(e);
+        if (code === "revoked") {
+            S.revoked = true;
+        } else if (!NO_RETRY.has(code)) {
+            window.setTimeout(resubscribe, 2000 + Math.random() * 3000);
+        }
+        render();
+    }
+
+    function subscribe() {
+        if (S.unsub) {
+            S.unsub();
+            S.unsub = null;
+        }
+        S.unsub = S.db.collection("status").onSnapshot((snap) => {
+            const machines = [];
+            for (const d of snap.docs) {
+                if (d.exists) {
+                    machines.push({ docId: d.id, data: obj(d.data()) });
+                }
+            }
+            // The newest write first; a machine that never wrote a time sorts last.
+            machines.sort((a, b) => (writtenAt(b) ?? 0) - (writtenAt(a) ?? 0));
+            S.machines = machines;
+            S.loaded = true;
+            S.fromCache = Boolean(snap.metadata && snap.metadata.fromCache);
+            S.error = "";
+            render();
+        }, (e) => onSubError(e, subscribe));
+    }
+
+    function select(docId, runId) {
+        S.selected.set(docId, runId);
+        render();
+    }
+
+    // ---- render ----
+    function render() {
+        renderConn();
+        renderNotice();
+        renderMachines();
+        tick();
+    }
+
+    function renderConn() {
+        const el = document.getElementById("conn");
+        if (S.dbState === "loading") {
+            el.textContent = "接続を準備しています…";
+        } else if (S.dbState === "none" || S.revoked) {
+            el.textContent = "未接続";
+        } else if (!S.loaded) {
+            el.textContent = "読み込み中…";
+        } else if (S.fromCache || S.error) {
+            el.textContent = "同期待ち";
+        } else {
+            el.textContent = "ライブ";
+        }
+    }
+
+    function renderNotice() {
+        const el = document.getElementById("notice");
+        let text = "";
+        let crit = false;
+        if (S.dbState === "none") {
+            text = "このページはデータベースに接続できません。claude.ai にサインインした状態で、このページを開いてください。";
+            crit = true;
+        } else if (S.error) {
+            text = S.error;
+            crit = S.revoked;
+        }
+        el.replaceChildren(...(text ? [h("p", { text: text })] : []));
+        el.className = crit ? "notice crit" : "notice";
+        el.hidden = text === "";
+    }
+
+    function renderMachines() {
+        const root = document.getElementById("machines");
+        if (S.dbState === "none") {
+            root.replaceChildren(h("div", { class: "placeholder" },
+                h("p", { text: "claude.ai にサインインして開くと、orchestra の状態がここに表示されます。" })));
+            return;
+        }
+        if (S.dbState !== "ok" || !S.loaded) {
+            return;
+        }
+        if (S.machines.length === 0) {
+            root.replaceChildren(h("div", { class: "placeholder" },
+                h("p", { text: "まだ書き込みがありません。Claude Code で /orchestra:board を実行したセッションが、orchestra の動きをここに写します。" })));
+            return;
+        }
+        root.replaceChildren(...S.machines.map((m, index) => machineEl(m, index)));
+    }
+
+    // One machine: its newest write opens, a day-old one folds away.
+    function machineEl(m, index) {
+        const d = m.data;
+        const st = obj(d.status);
+        const sum = obj(st.summary);
+        const writer = obj(d.writer);
+        const at = num(writer.at);
+        const generatedAt = num(st.generated_at);
+        const old = at != null && nowS() - at > DAY_S;
+        const stale = sum.busy === true && generatedAt != null;
+
+        const head = h("summary", { class: "machine-head" },
+            h("h2", { text: str(d.host) || "この PC" }),
+            h("p", { class: "line mono", text: str(sum.line) || "（概要はまだありません）" }),
+            h("div", { class: "meta" },
+                agoEl(at, "最終更新 ", false),
+                h("span", { text: "· " + (str(writer.account) || "アカウント不明") })));
+
+        const body = h("div", { class: "machine-body" },
+            stale ? h("p", {
+                class: "stale-banner",
+                hidden: true,
+                dataset: { staleAt: String(generatedAt), staleS: String(num(st.stale_after_s) ?? STALE_S) },
+            }, "状態が ", agoEl(generatedAt, "", false), " から更新されていません。ランナーが止まったか、書き込むセッションが閉じています。") : null,
+            h("h2", { class: "sec", text: "計画" }),
+            planList(arr(st.plans).map(obj)),
+            h("h2", { class: "sec", text: "実行" }),
+            h("div", { class: "grid" },
+                runList(m.docId, arr(st.runs).map(obj)),
+                runDetail(m.docId, arr(st.runs).map(obj))));
+
+        return h("details", { class: "machine", open: !old || index === 0 }, head, body);
+    }
+
+    function planList(plans) {
+        if (plans.length === 0) {
+            return h("p", { class: "empty", text: "計画はありません。" });
+        }
+        return h("div", { class: "run-list" }, plans.map(planItem));
+    }
+
+    function planItem(p) {
+        const st = planStatusOf(p);
+        const phase = PLAN_PHASES.find(([k]) => k === str(p.phase));
+        const live = planIsLive(p);
+        const id = str(p.plan_id);
+        return h("div", { class: "run-item s-" + (st.cls || "other") },
+            h("div", { class: "row between" },
+                h("span", { class: "title ellipsis", text: titleOf(p, id) }),
+                h("span", { class: "pill " + st.cls, text: st.label })),
+            projectLine(p, id),
+            h("div", { class: "meta num" },
+                live && phase ? h("span", { text: phase[1] }) : null,
+                h("span", { text: countOf(p.packages) + " パッケージ" }),
+                countOf(p.questions) > 0 ? h("span", { text: "質問 " + countOf(p.questions) }) : null,
+                num(p.est_total_s) != null ? h("span", { text: "見積 ~" + fmtETA(p.est_total_s) }) : null,
+                planAgoEl(num(p.updated_at), live)));
+    }
+
+    function projectLine(data, id) {
+        return h("span", { class: "row" },
+            projectOf(data) ? h("span", { class: "proj mono", text: projectOf(data) }) : null,
+            h("span", { class: "sub mono ellipsis", text: id }));
+    }
+
+    // The runs of one machine; the one picked (or the first) feeds its detail.
+    function runList(docId, runs) {
+        if (runs.length === 0) {
+            return h("section", { class: "runs" }, h("p", { class: "empty", text: "実行はありません。" }));
+        }
+        const sel = selectedRunOf(docId, runs);
+        return h("section", { class: "runs" },
+            h("div", { class: "run-list" }, runs.map((r) => runItem(docId, r, sel))));
+    }
+
+    function selectedRunOf(docId, runs) {
+        const id = S.selected.get(docId);
+        return runs.find((r) => keyOf(r) === id) || runs[0];
+    }
+
+    function runItem(docId, r, sel) {
+        const st = statusOf(r);
+        const counts = obj(r.counts);
+        const total = num(counts.total) ?? 0;
+        const integrated = num(counts.integrated) ?? 0;
+        const eta = num(r.eta_s);
+        const cost = num(r.cost_usd);
+        const live = isLive(r);
+        const id = keyOf(r);
+        return h("button", {
+            type: "button",
+            class: "run-item s-" + (st.cls || "other"),
+            "aria-pressed": r === sel ? "true" : "false",
+            onclick: () => select(docId, id),
+        },
+        h("div", { class: "row between" },
+            h("span", { class: "title ellipsis", text: titleOf(r, id) }),
+            h("span", { class: "pill " + st.cls, text: st.label })),
+        projectLine(r, id),
+        r.account != null ? h("span", { class: "proj mono", text: "アカウント: " + str(r.account) }) : null,
+        h("p", { class: "line mono", text: str(r.line) }),
+        progressBar(integrated, total, st.cls === "done" ? "good" : st.cls === "crashed" ? "crit" : ""),
+        h("div", { class: "meta num" },
+            h("span", { text: integrated + "/" + total + " 統合" }),
+            eta != null && live ? h("span", { text: "残り ~" + fmtETA(eta) }) : null,
+            cost != null ? h("span", { text: fmtCost(cost) }) : null,
+            agoEl(num(r.updated_at), "更新 ", live)));
+    }
+
+    function progressBar(done, total, extra) {
+        const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+        return h("div", {
+            class: "bar" + (extra ? " " + extra : ""),
+            role: "progressbar",
+            "aria-valuemin": "0",
+            "aria-valuemax": String(total),
+            "aria-valuenow": String(done),
+        }, h("span", { style: "width:" + pct + "%" }));
+    }
+
+    function runDetail(docId, runs) {
+        if (runs.length === 0) {
+            return h("section", { class: "detail" },
+                h("div", { class: "placeholder" }, h("p", { text: "実行が始まると、その詳細がここに表示されます。" })));
+        }
+        const r = selectedRunOf(docId, runs);
+        const st = statusOf(r);
+        const counts = obj(r.counts);
+        const live = isLive(r);
+        const total = num(counts.total) ?? 0;
+        const integrated = num(counts.integrated) ?? 0;
+        const eta = num(r.eta_s);
+        const cost = num(r.cost_usd);
+        const held = obj(r.held);
+
+        return h("section", { class: "detail" },
+            h("div", { class: "card head" },
+                h("div", { class: "row between" },
+                    h("h2", { text: titleOf(r, keyOf(r)) }),
+                    h("span", { class: "pill " + st.cls, text: st.label })),
+                projectLine(r, keyOf(r)),
+                h("p", { class: "line mono", text: str(r.line) || "（概要はまだありません）" }),
+                h("dl", { class: "stats num" },
+                    stat("統合", integrated + "/" + total),
+                    stat("実行中", String(num(counts.running) ?? 0)),
+                    stat("待ち", String(num(counts.pending) ?? 0)),
+                    stat("ブロック", String(num(counts.blocked) ?? 0)),
+                    stat("要対応", String(num(counts.needs) ?? 0)),
+                    stat("失敗", String(num(counts.failed) ?? 0)),
+                    stat("残り", eta != null && live ? "~" + fmtETA(eta) : "—"),
+                    stat("費用", cost != null ? fmtCost(cost) : "—"))),
+            str(held.kind) ? holdCard(held) : null,
+            h("div", { class: "cards" },
+                packagesCard(arr(r.packages).map(obj)),
+                needsCard(arr(r.needs).map(obj))));
+    }
+
+    function stat(label, value) {
+        return h("div", null, h("dt", { text: label }), h("dd", { text: value }));
+    }
+
+    function cardHead(title, n, warnWhenAny) {
+        return h("h3", null, title,
+            n != null ? h("span", { class: "count num" + (warnWhenAny && n > 0 ? " warn" : ""), text: String(n) }) : null);
+    }
+
+    function holdCard(held) {
+        const kind = str(held.kind);
+        const since = num(held.since);
+        return h("section", { class: "card" },
+            cardHead("新しい開始を保留中"),
+            h("p", { class: "line", text: (HELD[kind] || kind) + (since != null ? "（" + fmtAgo(since) + "から）" : "") }),
+            str(held.reason) ? h("p", { class: "detail-text", text: str(held.reason) }) : null);
+    }
+
+    function packagesCard(rows) {
+        const card = h("section", { class: "card wide" }, cardHead("実行中のパッケージ", rows.length));
+        if (rows.length === 0) {
+            card.append(h("p", { class: "empty", text: "実行中のパッケージはありません。" }));
+            return card;
+        }
+        const tbody = h("tbody", null, rows.map((p) => {
+            const el = num(p.elapsed_s) ?? 0;
+            const est = num(p.est_s);
+            const over = est != null && est > 0 && el > est;
+            return h("tr", null,
+                h("td", { class: "mono", text: str(p.id) }),
+                h("td", { class: "mono", text: str(p.model) || "?" }),
+                h("td", { text: PHASE[str(p.phase)] || str(p.phase) }),
+                h("td", { class: "num" + (over ? " over" : "") },
+                    fmtDur(el) + " / " + (est != null ? fmtDur(est) : "—"),
+                    over ? h("span", { class: "mark", text: "▲超過" }) : null));
+        }));
+        card.append(h("div", { class: "table-wrap" }, h("table", null,
+            h("thead", null, h("tr", null,
+                h("th", { text: "ID" }),
+                h("th", { text: "モデル" }),
+                h("th", { text: "フェーズ" }),
+                h("th", { text: "経過 / 見積" }))),
+            tbody)));
+        return card;
+    }
+
+    function needsCard(needs) {
+        const card = h("section", { class: "card" }, cardHead("要対応", needs.length, true));
+        if (needs.length === 0) {
+            card.append(h("p", { class: "empty", text: "要対応の項目はありません。" }));
+            return card;
+        }
+        card.append(h("ul", { class: "items" }, needs.map((n) => h("li", null,
+            h("div", { class: "row" },
+                h("span", { class: "mono ellipsis", text: str(n.id) || "wave 全体" }),
+                h("span", { class: "pill warn", text: KIND[str(n.kind)] || str(n.kind) || "?" })),
+            h("div", { class: "detail-text mono", text: str(n.detail) })))));
+        return card;
+    }
+
+    function tick() {
+        const now = nowS();
+        for (const el of document.querySelectorAll("[data-at]")) {
+            const at = Number(el.dataset.at);
+            const limit = Number(el.dataset.staleS) || STALE_S;
+            el.textContent = (el.dataset.prefix || "") + fmtAgo(at);
+            el.classList.toggle("is-stale", el.dataset.live === "1" && now - at > limit);
+        }
+        for (const el of document.querySelectorAll("[data-stale-at]")) {
+            const limit = Number(el.dataset.staleS) || STALE_S;
+            el.hidden = !(now - Number(el.dataset.staleAt) > limit);
+        }
+    }
+
+    // ---- start ----
+    render();
+    window.setInterval(tick, 1000);
+
+    (async () => {
+        const c = window.claude;
+        if (!c || typeof c.use !== "function") {
+            S.dbState = "none";
+            render();
+            return;
+        }
+        let db = null;
+        try {
+            db = await c.use("db");
+        } catch (e) {
+            db = null;
+        }
+        if (!db) {
+            S.dbState = "none";
+            render();
+            return;
+        }
+        S.db = db;
+        S.dbState = "ok";
+        subscribe();
+        render();
+    })();
+})();
+</script>
