@@ -17,8 +17,31 @@ var statusPlanIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 func newStatusCmd() *cobra.Command {
 	cmd := groupCommand("status", "the machine-wide status file ~/.claude/orchestra/status.json")
-	cmd.AddCommand(newStatusShowCmd(), newStatusPlanCmd(), newStatusCloseCmd())
+	cmd.AddCommand(newStatusShowCmd(), newStatusPlanCmd(), newStatusCloseCmd(), newStatusWhoamiCmd())
 	return cmd
+}
+
+type statusWhoami struct {
+	Account *string `json:"account"`
+	Host    string  `json:"host"`
+}
+
+func newStatusWhoamiCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "whoami",
+		Short: "print the signed-in claude.ai account and this machine's host name",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			var out statusWhoami
+			if account := statusfile.Account(); account != "" {
+				out.Account = &account
+			}
+			if host, err := os.Hostname(); err == nil {
+				out.Host, _, _ = strings.Cut(host, ".")
+			}
+			return writeJSON(cmd.OutOrStdout(), out)
+		},
+	}
 }
 
 func newStatusShowCmd() *cobra.Command {

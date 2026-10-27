@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,47 @@ func TestStatusPlanUpdateKeepsTitleAndStartedAt(t *testing.T) {
 	}
 	if doc.Summary.Needs != 1 {
 		t.Errorf("summary.needs = %d, want 1", doc.Summary.Needs)
+	}
+}
+
+func TestStatusWhoamiReportsAccountAndHost(t *testing.T) {
+	hookCmdIsolate(t)
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	if err := os.WriteFile(filepath.Join(dir, ".claude.json"),
+		[]byte(`{"oauthAccount":{"organizationName":"Acme"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, code := hookCmdRun(t, "", "status", "whoami")
+	if code != 0 {
+		t.Fatalf("whoami exit = %d, want 0", code)
+	}
+	var got struct {
+		Account *string `json:"account"`
+		Host    string  `json:"host"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("whoami output %q: %v", out, err)
+	}
+	if got.Account == nil || *got.Account != "Acme" {
+		t.Errorf("account = %v, want Acme", got.Account)
+	}
+	if strings.Contains(got.Host, ".") {
+		t.Errorf("host = %q, want no domain part", got.Host)
+	}
+
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	out, code = hookCmdRun(t, "", "status", "whoami")
+	if code != 0 {
+		t.Fatalf("whoami with no account exit = %d, want 0", code)
+	}
+	var none map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &none); err != nil {
+		t.Fatalf("whoami output %q: %v", out, err)
+	}
+	if string(none["account"]) != "null" {
+		t.Errorf("account = %s, want null", none["account"])
 	}
 }
 

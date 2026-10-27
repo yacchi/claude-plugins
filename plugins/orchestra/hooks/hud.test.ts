@@ -1,18 +1,12 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-// The bottom stands for the engine: it answers spawns with fresh ids and records
-// what the HUD pins to the status line and toasts.
+// The bottom stands for the engine: it answers spawns with fresh ids, records
+// what the HUD toasts, and draws an empty box where the HUD draws nothing.
 const setup = (on: On) => {
-    const statuses: (string | undefined)[] = []
     const toasts: string[] = []
     let n = 0
     on('agent.spawn', (_$, e) => ({ model: e.model ?? 'claude-sonnet-5', agentId: `a${++n}` }))
-    on('ui.status', (_$, e) => {
-        statuses.push(e.text)
-
-        return { value: undefined }
-    })
     on('ui.toast', (_$, e) => {
         toasts.push(e.text)
 
@@ -20,8 +14,13 @@ const setup = (on: On) => {
     })
 
     on('turn.complete', () => ({ text: '' }))
+    on('ui.render', ($, e) => {
+        const { Box } = $.ui.resolve(e)
 
-    return { statuses, toasts }
+        return h(Box, {}) as any
+    })
+
+    return { toasts }
 }
 
 
@@ -32,35 +31,35 @@ const spawn = ($: any, args: { prompt: string, description: string, subagentType
 const finish =($: any, agentId: string | undefined, answer = '', reason = 'answer') =>
     $.turn.complete({ agentId, answer, reason, durationMs: 1, isAborted: false, turnId: 't' })
 
-test('tracks only orchestra agents, clears status and failures when idle', async ($, on) => {
-    const { statuses, toasts } = setup(on)
+test('tracks only orchestra agents, clears the band and failures when idle', async ($, on) => {
+    const { toasts } = setup(on)
     await spawn($, { prompt: 'x', description: 'plain', subagentType: 'Explore' })
-    expect(statuses).toEqual([])
+    expect(await bandRow($)).toBeUndefined()
 
     const a = await spawn($, { prompt: 'x', description: 'impl', subagentType: 'orchestra:orchestra-light', model: 'haiku' })
     const r = await spawn($, { prompt: 'x', description: 'relay', subagentType: 'orchestra:orchestra-relay' })
-    expect(statuses.at(-1)).toContain('2 running')
-    expect(statuses.at(-1)).toContain('ext 1')
+    expect(await bandRow($)).toContain('2 running')
+    expect(await bandRow($)).toContain('ext 1')
 
     await finish($, undefined)
     await finish($, 'unknown')
-    expect(statuses.at(-1)).toContain('2 running')
+    expect(await bandRow($)).toContain('2 running')
 
     await finish($, a.agentId, '```json\n{"pass": false}\n```')
     expect(toasts.length).toBe(1)
-    expect(statuses.at(-1)).toContain('✗1')
+    expect(await bandRow($)).toContain('✗1')
     await finish($, r.agentId, 'not json {')
-    expect(statuses.at(-1)).toBeUndefined()
+    expect(await bandRow($)).toBeUndefined()
 
     await spawn($, { prompt: 'x', description: 'again', subagentType: 'orchestra:orchestra-light' })
-    expect(statuses.at(-1)).not.toContain('✗')
+    expect(await bandRow($)).not.toContain('✗')
 })
 
 test('hud: false emits nothing', { options: { hud: false } }, async ($, on) => {
-    const { statuses, toasts } = setup(on)
+    const { toasts } = setup(on)
     const a = await spawn($, { prompt: 'x', description: 'impl', subagentType: 'orchestra:orchestra-light' })
     await finish($, a.agentId, '{"pass": false}')
-    expect(statuses).toEqual([])
+    expect(await bandRow($)).toBeUndefined()
     expect(toasts).toEqual([])
 })
 
@@ -101,12 +100,6 @@ const waveHost = (on: On) => {
     on('fs.exists', () => ({ value: host.exists }))
     on('session.cwd', () => ({ value: '/repo' }))
     on('tool.call', () => ({ result: { stdout: host.stdout, stderr: '', interrupted: false, ...(host.background ? { backgroundTaskId: 'b1' } : {}) } }))
-    // The engine's own drawing where the HUD draws nothing: an empty box.
-    on('ui.render', ($, e) => {
-        const { Box } = $.ui.resolve(e)
-
-        return h(Box, {}) as any
-    })
     on('ui.panes', () => ({ value: host.panes }))
     on('ui.open', (_$, e) => {
         host.opened.push(e.id)
@@ -165,51 +158,50 @@ test('wave run: --state forms parsed, a subagent\'s run and a run without --stat
 })
 
 test('wave run: one toast per need, combined with the agent part, dropped and unpolled once stopped', async ($, on) => {
-    const { statuses, toasts } = setup(on)
+    const { toasts } = setup(on)
     const { host, clock, statusCalls } = waveHost(on)
     const a = await spawn($, { prompt: 'x', description: 'impl', subagentType: 'orchestra:orchestra-light', model: 'haiku' })
     host.state = { progress: prog(['integrated', 'implementing', 'pending']), stopped: { reason: 'old', at: 1 } }
     await bash($, 'agent-exec wave run --plan p.json --state /w/state.json')
     await clock.advance(15_000)
-    expect(statuses.at(-1)).toContain('1 running · haiku 1')
-    expect(statuses.at(-1)).toContain('wave 1/3 · 1 running')
+    expect(await bandRow($)).toContain('1 running · haiku 1')
+    expect(await bandRow($)).toContain('wave 1/3')
 
     const needs = (list: unknown[]) => ({ ...host.state, progress: prog(['integrated', 'implementing', 'pending'], { needs: list }) })
     host.state = needs([{ id: 'p1', kind: 'escalate', detail: 'x' }])
     await clock.advance(15_000)
     await clock.advance(15_000)
     expect(toasts).toEqual(['orchestra: wave needs escalate — p1'])
-    expect(statuses.at(-1)).toContain('1 needs')
     host.state = needs([{ id: 'p1', kind: 'escalate', detail: 'x' }, { id: null, kind: 'environment', detail: 'y' }])
     await clock.advance(15_000)
     expect(toasts.length).toBe(2)
 
     await finish($, a.agentId)
-    expect(statuses.at(-1)).toContain('wave 1/3')
+    expect(await bandRow($)).toContain('wave 1/3')
 
     host.state = { ...host.state, stopped: { reason: 'stop requested', at: 1_000_100 } }
     await clock.advance(15_000)
-    expect(statuses.at(-1)).toBeUndefined()
+    expect(await bandRow($)).toBeUndefined()
     const calls = statusCalls().length
     await clock.advance(60_000)
     expect(statusCalls().length).toBe(calls)
 })
 
 test('wave run: dropped when the runner ends, and a foreground run once its call returns', async ($, on) => {
-    const { statuses } = setup(on)
+    setup(on)
     const { host, clock, statusCalls } = waveHost(on)
     host.state = { progress: prog(['integrated', 'pending']), stopped: null }
     await bash($, 'agent-exec wave run --state /w/a.json')
     await clock.advance(15_000)
-    expect(statuses.at(-1)).toContain('wave 1/2')
+    expect(await bandRow($)).toContain('wave 1/2')
     host.alive = false
     await clock.advance(15_000)
-    expect(statuses.at(-1)).toBeUndefined()
+    expect(await bandRow($)).toBeUndefined()
 
     host.alive = true
     host.background = false
     await bash($, 'agent-exec wave run --state /w/b.json', undefined, false)
-    expect(statuses.at(-1)).toBeUndefined()
+    expect(await bandRow($)).toBeUndefined()
     const calls = statusCalls().length
     await clock.advance(60_000)
     expect(statusCalls().length).toBe(calls)
@@ -232,20 +224,20 @@ test('wave run: a shell-expanded --state is taken from the runner started, by it
 })
 
 test('wave run: run_in_background without a backgroundTaskId is still tracked', async ($, on) => {
-    const { statuses } = setup(on)
+    setup(on)
     const { host, clock } = waveHost(on)
     host.background = false
     host.state = { progress: prog(['integrated', 'pending']), stopped: null }
     await bash($, 'agent-exec wave run --state /w/c.json')
     await clock.advance(15_000)
-    expect(statuses.at(-1)).toContain('wave 1/2')
+    expect(await bandRow($)).toContain('wave 1/2')
 
     host.alive = false
     await clock.advance(15_000)
 })
 
 test('wave run: a watcher subagent\'s detached run and wait are tracked, another subagent\'s run is not', async ($, on) => {
-    const { statuses } = setup(on)
+    setup(on)
     const { host, clock, statusCalls } = waveHost(on)
     host.background = false
     host.state = { progress: prog(['integrated', 'implementing']), stopped: null }
@@ -258,7 +250,7 @@ test('wave run: a watcher subagent\'s detached run and wait are tracked, another
     await bash($, 'agent-exec wave wait --state /w/watched.json --since 0', watcher.agentId, false)
     await clock.advance(15_000)
     expect([...new Set(statusCalls().map(r => r[7]))].sort()).toEqual(['/sp/w/state.json', '/w/watched.json'])
-    expect(statuses.at(-1)).toContain('wave 1/2 · 1 running')
+    expect(await bandRow($)).toContain('wave 1/2')
 
     host.stdout = '{"status":"done","seq":9,"line":"done","progress":{}}'
     await bash($, 'agent-exec wave wait --state /w/watched.json --since 3', watcher.agentId, false)
@@ -294,6 +286,15 @@ const texts = async (ui: { findAll: (q: { type: string }) => Promise<{ text: str
 const hasBand = async (ui: { findAll: (q: { type: string }) => Promise<{ text: string }[]> }) =>
     (await texts(ui)).some(t => t.startsWith('orch ▸'))
 
+// The band's summary row on a terminal, as drawn now; undefined when no band is drawn.
+const bandRow = async ($: any): Promise<string | undefined> => {
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: NARROW })
+    const row = (await texts(ui)).find(t => t.startsWith('orch ▸'))
+    await ui.unmount()
+
+    return row
+}
+
 test('band: shown while a wave is tracked and no pane is up, gone once tracking stops', async ($, on) => {
     setup(on)
     const { host, clock } = waveHost(on)
@@ -302,7 +303,8 @@ test('band: shown while a wave is tracked and no pane is up, gone once tracking 
     await clock.advance(15_000)
     for (const surface of ['terminal', 'desktop'] as const) {
         const ui = await $.ui.mount({ ...BAND, surface, viewport: NARROW })
-        expect(await texts(ui)).toEqual(['orch ▸ r1 · wave 1/3 · 1 running', 'p1 haiku 実装 6m', '⏭ next: p2'])
+        expect(await texts(ui)).toEqual(['orch ▸ r1 · wave 1/3 · 1 running'])
+        expect((await ui.findAll({ type: 'Button' })).map(b => [b.key, b.text])).toEqual([['orchestra-band-toggle', '詳細']])
         await ui.unmount()
     }
     expect(host.opened).toEqual([])
@@ -322,6 +324,51 @@ test('band: shown while a wave is tracked and no pane is up, gone once tracking 
     await clock.advance(15_000)
     expect(await hasBand(ui)).toBe(false)
     await ui.unmount()
+})
+
+test('band: its button expands the running rows, needs and next, and collapses again', async ($, on) => {
+    setup(on)
+    const { host, clock } = waveHost(on)
+    host.state = {
+        progress: prog(['integrated', 'implementing', 'pending'], { needs: [{ id: 'p2', kind: 'escalate', detail: 'x' }], next: ['p2'] }),
+        stopped: null,
+    }
+    await bash($, 'agent-exec wave run --state /w/open.json')
+    await clock.advance(15_000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: NARROW })
+    const summary = 'orch ▸ r1 · wave 1/3 · 1 running · 1 needs'
+    expect(await texts(ui)).toEqual([summary])
+
+    await ui.press({ key: 'orchestra-band-toggle' })
+    const open = await texts(ui)
+    expect(open[0]).toBe(summary)
+    expect(open).toContain('p1 haiku 実装 6m')
+    expect(open.some(t => t.startsWith('⚠ '))).toBe(true)
+    expect(open).toContain('⏭ next: p2')
+    expect((await ui.findAll({ type: 'Button' })).map(b => [b.key, b.text])).toEqual([['orchestra-band-toggle', '畳む']])
+
+    await ui.press({ key: 'orchestra-band-toggle' })
+    expect(await texts(ui)).toEqual([summary])
+    await ui.unmount()
+
+    host.alive = false
+    await clock.advance(15_000)
+})
+
+test('band: the run line and the pane header name the run\'s account', async ($, on) => {
+    setup(on)
+    const { host, clock } = waveHost(on)
+    host.state = { progress: prog(['integrated', 'implementing', 'pending'], { account: 'Acme' }), stopped: null }
+    await bash($, 'agent-exec wave run --state /w/acct.json')
+    await clock.advance(15_000)
+    expect(await bandRow($)).toContain('r1 (Acme) · wave')
+
+    const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    expect((await texts(pane))[0]).toMatch(/^r1 \(Acme\)  /)
+    await pane.unmount()
+
+    host.alive = false
+    await clock.advance(15_000)
 })
 
 test('pane: never opened unasked, even where it would dock; its own button closes it on every surface', async ($, on) => {
@@ -372,6 +419,7 @@ test('pane: running rows fit bodyColumns, the rest as … +k', async ($, on) => 
     await pane.unmount()
 
     const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: NARROW })
+    await band.press({ key: 'orchestra-band-toggle' })
     const row = (await texts(band))[1] ?? ''
     expect(row).toMatch(/ · \+\d+$/)
     expect(cells(row)).toBeLessThanOrEqual(BAND.props.bodyColumns)

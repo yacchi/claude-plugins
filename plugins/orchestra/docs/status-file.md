@@ -1,11 +1,12 @@
 # Status file: `~/.claude/orchestra/status.json`
 
-New in v0.73.0. This is the contract for a viewer that reads orchestra's status. orchestra writes the file and never publishes it. Publishing and viewing are left to a separate tool.
+New in v0.73.0. This is the contract for a viewer that reads orchestra's status. orchestra writes the file. The orchestra hooks module mirrors it to each account's claude.ai board page (`/orchestra:board`), from the user's interactive sessions; see the README's Board section.
 
 ## Location and writers
 
 - Path: `~/.claude/orchestra/status.json`. It is based on `$HOME`, so every ccprofile profile writes the same file, whatever its `CLAUDE_CONFIG_DIR`.
 - Only `agent-exec` writes it. No model or claude.ai sign-in is involved.
+- The hooks module reads it, never writes it, to mirror it to the board page (see Board mirror).
 - orchestra never reads anything back from it. Approve and deny happen in the instructor's Claude Code session, not in a viewer.
 - Each `agent-exec wave run` writes its own entry, `~/.claude/orchestra/status/runs/<key>.json`. `<key>` is the first 16 hex characters of the SHA-1 of the real path of the run's state file. A run writes:
   - at start;
@@ -31,10 +32,20 @@ New in v0.73.0. This is the contract for a viewer that reads orchestra's status.
 - A run that no live runner keeps fresh (ended, crashed or stale), and any plan, leave `status.json` 6 hours after their `updated_at`.
 - Their files are deleted after 7 days.
 
+## Board mirror
+
+The hooks module mirrors `status.json` into the account's board page, from the user's interactive sessions only. `/orchestra:board` publishes the page once; after that the module writes it with `ArtifactData` under the session's own sign-in. No model writes it.
+
+- Collection `status`, one document per machine. The doc id is the host name, and the data is `{schema: 1, host, status, writer: {account, at}}`.
+- `status` is `status.json` without `runs[].pid` and `runs[].state`. Both are left out of the mirror.
+- The mirror is written at most once per `heartbeat_s` (60) unless `summary.line` changed. One writer per change: the sessions on one machine take turns through a claim file under `~/.claude/orchestra/dashboard/`.
+- Only where `ArtifactData` is allowed without asking. A refusal stops the loop.
+
 ## Privacy
 
 - `summary` names no repository, path, run id or package id. It can be published alone, for example to a phone as "is anything working?".
 - `runs[]` and `plans[]` carry project names, titles, package ids, need texts and the local state path. Treat them as private.
+- The board page holds `runs[]` and `plans[]`, so it is private to the account unless its owner shares it.
 
 ## Commands
 
@@ -42,11 +53,13 @@ New in v0.73.0. This is the contract for a viewer that reads orchestra's status.
 agent-exec status show
 agent-exec status plan --id ID --status planning|done|needs-user|failed [--phase PHASE] [--repo DIR] [--title TEXT] [--questions N] [--packages N] [--est-total S] [--est-critical S]
 agent-exec status close --state PATH --status done|stopped
+agent-exec status whoami
 ```
 
 - `status show`: rebuild and print the file.
 - `status plan`: the planner's call at phase boundaries.
 - `status close`: the instructor closes an ended run that was left in `needs`. It is refused while the run's runner is alive.
+- `status whoami`: print `{"account": <label>|null, "host": <host name up to the first ".">}`.
 
 ## Conventions
 
@@ -86,6 +99,7 @@ agent-exec status close --state PATH --status done|stopped
 | `run_id` | string or null | From `--run-id`. `null` when the run was started without it. |
 | `project` | string | `owner/repo` from the `origin` remote. Otherwise the main checkout's directory name. |
 | `title` | string | `wave run --title`, else the run id, else the key. |
+| `account` | string or null | The claude.ai account label of the profile that started the run's runner, recorded at each `wave run` start: `oauthAccount.organizationName` from Claude Code's global config (`$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`), else `oauthAccount.emailAddress`. `null` when unknown. Never a uuid. |
 | `status` | string | See run statuses below. |
 | `line` | string | One-liner, e.g. `wave 3/8 · 2 running · 1 needs · ~12m left · ~$1.40`. |
 | `counts` | object | `total`, `integrated`, `running`, `pending`, `blocked`, `needs`, `failed`. |
@@ -189,6 +203,7 @@ One live run in `needs` with two packages in flight and a `login` need, plus one
             "run_id": "wave-20261027-api",
             "project": "yacchi/claude-plugins",
             "title": "status-file doc",
+            "account": "Acme",
             "status": "needs",
             "line": "wave 3/8 · 2 running · 1 needs · ~12m left · ~$1.40",
             "counts": {
