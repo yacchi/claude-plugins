@@ -2,6 +2,7 @@ package sysload
 
 import (
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -26,10 +27,25 @@ func TestMemoryPressureLevels(t *testing.T) {
 			t.Errorf("linux %s: got %+v want %s", c.name, got, c.want)
 		}
 	}
-	for level, want := range map[uint32]string{0: Normal, 1: Normal, 2: Warn, 4: Critical} {
-		if got := darwinPressure(level); got.Level != want {
-			t.Errorf("darwin level %d: got %+v want %s", level, got, want)
+	for _, c := range []struct {
+		level   uint32
+		freePct int
+		want    string
+	}{
+		{1, -1, Normal},
+		{2, -1, Warn},
+		{2, 24, Warn},
+		{2, 25, Normal},
+		{2, 48, Normal},
+		{4, 90, Critical},
+		{4, -1, Critical},
+	} {
+		if got := darwinPressure(c.level, c.freePct); got.Level != c.want {
+			t.Errorf("darwin level %d free %d: got %+v want %s", c.level, c.freePct, got, c.want)
 		}
+	}
+	if got := darwinPressure(2, 24); !strings.Contains(got.Reason, "24% free") {
+		t.Errorf("darwin warn reason %q lacks free percent", got.Reason)
 	}
 }
 

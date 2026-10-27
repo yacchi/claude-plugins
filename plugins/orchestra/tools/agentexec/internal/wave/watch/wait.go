@@ -50,9 +50,11 @@ type WaitOptions struct {
 // Wait blocks until the runner of o.State is gone (done, stopped or
 // crashed), a need recorded after event line o.Since is on the needs list
 // (needs), with o.UntilChange a viewer-visible event was recorded after
-// that line (changed), or o.MaxWait passed (running). A need wins over the
-// runner being gone: deciding it and starting the runner again is the next
-// step either way. Both win over a change: they say more.
+// that line (changed), a start hold ran long after that line and is still
+// on (held), or o.MaxWait passed (running). A need wins over the runner
+// being gone: deciding it and starting the runner again is the next step
+// either way. Both win over a change, and a held over a change too: they
+// say more.
 func Wait(o WaitOptions) Answer {
 	poll := o.Poll
 	if poll <= 0 {
@@ -71,6 +73,8 @@ func Wait(o WaitOptions) Answer {
 			status = "needs"
 		case !alive:
 			status = finalStatus(o.State, hasRec, snap)
+		case snap.exists && tail.held && snap.st.Held != nil:
+			status = "held"
 		case o.UntilChange && tail.changed:
 			status = "changed"
 		case !time.Now().Before(deadline):
@@ -132,7 +136,7 @@ func read(statePath string, tail *eventTail) snapshot {
 // eventTail follows events.jsonl: lines counts its complete lines, pkgs
 // and wave the packages moved to needs and the wave-level need details
 // recorded at or after line since, changed whether a viewer-visible event
-// was.
+// was, held whether a start hold ran long.
 type eventTail struct {
 	path    string
 	since   int
@@ -141,15 +145,17 @@ type eventTail struct {
 	pkgs    map[string]bool
 	wave    map[string]bool
 	changed bool
+	held    bool
 }
 
 // viewerEvents are the events that change what a viewer of the wave sees:
 // a package status, a dispatch starting or ending, an integration, a need,
-// a network denial (a new approval) and a stop.
+// a network denial (a new approval), a start hold or its end and a stop.
 var viewerEvents = map[string]bool{
 	"status": true, "dispatch-start": true, "dispatch-end": true,
 	"integrate-start": true, "integrate-end": true, "integrate": true,
 	"need": true, "network-denied": true, "stop": true,
+	"start-held": true, "start-resumed": true, "start-held-long": true,
 }
 
 func (t *eventTail) advance() {
@@ -201,6 +207,8 @@ func (t *eventTail) note(line []byte) {
 		if d, ok := ev["detail"].(string); ok {
 			t.wave[d] = true
 		}
+	case "start-held-long":
+		t.held = true
 	}
 }
 

@@ -92,6 +92,29 @@ func TestBuildEndedNeedsAndStalePlan(t *testing.T) {
 	}
 }
 
+func TestBuildCountsHeldRuns(t *testing.T) {
+	const now = 100000
+	hold := &RunHeld{Kind: "memory", Reason: "memory pressure", Since: now - 60}
+	runs := []Run{
+		{Key: "h", Status: "running", PID: 1, UpdatedAt: now - 10, Held: hold},
+		{Key: "e", Status: "done", EndedAt: ptr(int64(99990)), UpdatedAt: 99990, Held: hold},
+	}
+
+	doc := Build(runs, nil, now, onlyPid1)
+
+	if doc.Summary.Held != 1 {
+		t.Errorf("summary.held = %d, want 1", doc.Summary.Held)
+	}
+	if !strings.Contains(doc.Summary.Line, "1 held") {
+		t.Errorf("summary line = %q, want it to contain \"1 held\"", doc.Summary.Line)
+	}
+	for _, r := range doc.Runs {
+		if r.Key == "h" && (r.Held == nil || *r.Held != *hold) {
+			t.Errorf("run h held = %+v, want %+v", r.Held, hold)
+		}
+	}
+}
+
 func TestSummaryOmitsIdentifiers(t *testing.T) {
 	const now = 100000
 	runs := []Run{{

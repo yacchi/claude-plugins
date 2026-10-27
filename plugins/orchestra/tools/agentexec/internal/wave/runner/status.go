@@ -148,6 +148,10 @@ func (s *statusWriter) write(final string) {
 	for _, n := range pr.Needs {
 		needs = append(needs, statusfile.RunNeed{ID: n.ID, Kind: n.Kind, Detail: n.Detail})
 	}
+	var held *statusfile.RunHeld
+	if pr.Held != nil && final == "" {
+		held = &statusfile.RunHeld{Kind: pr.Held.Kind, Reason: pr.Held.Reason, Since: pr.Held.Since}
+	}
 
 	run := statusfile.Run{
 		Key: s.key, RunID: s.runID, Project: s.project, Title: s.title,
@@ -156,7 +160,7 @@ func (s *statusWriter) write(final string) {
 			Total: pr.Total, Integrated: pr.Integrated, Running: len(pr.Running), Pending: pr.Pending,
 			Blocked: pr.Blocked, Needs: len(pr.Needs), Failed: failed,
 		},
-		Packages: packages, Needs: needs, EtaS: pr.EtaS, CostUSD: pr.CostUSD,
+		Packages: packages, Needs: needs, Held: held, EtaS: pr.EtaS, CostUSD: pr.CostUSD,
 		StartedAt: s.startedAt, UpdatedAt: now.Unix(), EndedAt: endedAt,
 		PID: os.Getpid(), State: s.r.statePath,
 	}

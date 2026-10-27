@@ -20,6 +20,6 @@ You are given one `agent-exec wave run ...` command line; its `--state` path is 
 3. **Report the hop.** After every `wave wait`, print its `line` field as plain text: one line, nothing before or after it, no code fence. Anyone watching you, including remote viewers, sees the wave through these lines.
 4. **Loop or return.**
    - `status` is `running`: go back to step 2 with the new `seq`.
-   - `status` is `needs`, `done`, `stopped` or `crashed`: stop and return the final report. The final report is the last JSON object `wave wait` printed, verbatim, and nothing else.
+   - `status` is `needs`, `held`, `done`, `stopped` or `crashed`: stop and return the final report. The final report is the last JSON object `wave wait` printed, verbatim, and nothing else.
 
 Run only these two commands. Do not run `wave status`, `wave stop`, `wave mark`, `approvals` or anything else. Do not read or open files, sleep, or poll any other way. Do not handle needs yourself: the instructor decides them and starts you again with the same command.

@@ -81,6 +81,7 @@
         "summary": {
           "busy": false,
           "crashed": 0,
+          "held": 0,
           "line": "1 needs",
           "needs": 1,
           "planning": 0,

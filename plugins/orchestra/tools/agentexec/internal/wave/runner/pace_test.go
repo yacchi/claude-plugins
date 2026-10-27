@@ -1,8 +1,10 @@
 package runner
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -247,6 +249,162 @@ func TestMemoryAndUsageHoldEmitOneStartHeld(t *testing.T) {
 	eq(t, "held events", len(held), 1)
 	eq(t, "held reason", held[0]["reason"], any("test pressure"))
 	eq(t, "resumed events", len(w.details("start-resumed", "")), 1)
+}
+
+// holdRunner is a runner over a fresh state file, its clock at *now, for
+// holdStarts alone.
+func holdRunner(t *testing.T, now *float64) *runner {
+	t.Helper()
+	dir := t.TempDir()
+	r := newRunner(t.Context(), Options{State: filepath.Join(dir, "state.json")},
+		Deps{Clock: func() float64 { return *now }, Stderr: io.Discard})
+	r.memoryGuard = true
+	if _, err := r.store.Init(filepath.Join(dir, "plan.json"), nil, "wave-int"); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// eventDetails is the detail object of each event named name, in order.
+func eventDetails(t *testing.T, statePath, name string) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, ev := range state.ReadEvents(statePath, -1) {
+		if ev["event"] != name {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(fmt.Sprint(ev["detail"])), &m); err != nil {
+			t.Fatalf("%s detail is not JSON: %v", name, err)
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// A memory hold is recorded in state from its start and keeps that start
+// when its reason changes. It is reported once, when it outlasts
+// heldLongAfter, and releasing it clears the record.
+func TestMemoryHoldRecordedAndReportedWhenLong(t *testing.T) {
+	now := 1000.0
+	r := holdRunner(t, &now)
+	var reason string
+	defer func(prev func() (bool, string)) { memoryPressure = prev }(memoryPressure)
+	memoryPressure = func() (bool, string) { return reason != "", reason }
+	recorded := func() state.Held {
+		t.Helper()
+		h := r.store.Snapshot().Held
+		if h == nil {
+			t.Fatal("no hold recorded in state")
+		}
+		return *h
+	}
+
+	reason = "memory pressure warn"
+	r.holdStarts()
+	h := recorded()
+	eq(t, "kind", h.Kind, "memory")
+	eq(t, "reason", h.Reason, "memory pressure warn")
+	eq(t, "since", h.Since, 1000.0)
+
+	now = 1100
+	reason = "memory pressure critical"
+	r.holdStarts()
+	h = recorded()
+	eq(t, "reason after change", h.Reason, "memory pressure critical")
+	eq(t, "since after change", h.Since, 1000.0)
+	eq(t, "start-held events", len(eventDetails(t, r.statePath, "start-held")), 1)
+
+	now = 1000 + heldLongAfter - 1
+	r.holdStarts()
+	eq(t, "long before the limit", len(eventDetails(t, r.statePath, "start-held-long")), 0)
+
+	now = 1000 + heldLongAfter
+	r.holdStarts()
+	now += 300
+	r.holdStarts()
+	long := eventDetails(t, r.statePath, "start-held-long")
+	eq(t, "start-held-long events", len(long), 1)
+	eq(t, "start-held-long kind", long[0]["kind"], any("memory"))
+	eq(t, "start-held-long reason", long[0]["reason"], any("memory pressure critical"))
+	eq(t, "start-held-long held_s", long[0]["held_s"], any(float64(heldLongAfter)))
+
+	reason = ""
+	r.holdStarts()
+	eq(t, "hold released", r.store.Snapshot().Held == nil, true)
+	eq(t, "start-resumed events", len(eventDetails(t, r.statePath, "start-resumed")), 1)
+}
+
+// A login hold is recorded, but however long it lasts it is never reported
+// as long: the instructor already has the need.
+func TestLoginHoldNeverReportedAsLong(t *testing.T) {
+	now := 1000.0
+	r := holdRunner(t, &now)
+	if err := r.store.AddNeed("A", "login", "Not logged in"); err != nil {
+		t.Fatal(err)
+	}
+	r.holdStarts()
+	now += 10 * heldLongAfter
+	r.holdStarts()
+	h := r.store.Snapshot().Held
+	if h == nil {
+		t.Fatal("no hold recorded in state")
+	}
+	eq(t, "kind", h.Kind, "login")
+	eq(t, "start-held-long events", len(eventDetails(t, r.statePath, "start-held-long")), 0)
+}
+
+// A memory hold that lasts past heldLongAfter is reported once, however many
+// rounds follow, and the run leaves no hold in state.
+func TestLongMemoryHoldReportedOnceAndClearedAtEnd(t *testing.T) {
+	w := newWaveRepo(t)
+	w.verifyMode = "final"
+	w.plan(pkgDef{id: "A"}, pkgDef{id: "B", dependsOn: []string{"A"}})
+	now := 1_000_000.0
+	w.clock = func() float64 { return now }
+	var pressure atomic.Bool
+	defer func(prev func() (bool, string)) { memoryPressure = prev }(memoryPressure)
+	memoryPressure = func() (bool, string) { return pressure.Load(), "test pressure" }
+	ex := newFake(t, map[string][]round{
+		"A": {func(t *testing.T, s spec, x []string) map[string]any {
+			pressure.Store(true)
+			return edit(map[string]string{"a.txt": "a\n"})(t, s, x)
+		}},
+		"B": {edit(map[string]string{"b.txt": "b\n"})},
+	})
+	rounds := 0
+	w.sleep = func(float64) {
+		rounds++
+		now += 300
+		if rounds == 4 {
+			pressure.Store(false)
+		}
+	}
+	rep, code := w.run(ex)
+	eq(t, "exit", code, 0)
+	eqJSON(t, "integrated", rep.Integrated, []string{"A", "B"})
+	long := eventDetails(t, w.statePath, "start-held-long")
+	eq(t, "start-held-long events", len(long), 1)
+	eq(t, "kind", long[0]["kind"], any("memory"))
+	eq(t, "held_s", long[0]["held_s"], any(float64(600)))
+	eq(t, "resumed events", len(eventDetails(t, w.statePath, "start-resumed")), 1)
+	eq(t, "hold left in state", w.state().Held == nil, true)
+}
+
+// A STOP file left by `wave stop` does not stop a run started after it: the
+// startup clears it.
+func TestStopLeftBeforeStartupDoesNotStopRun(t *testing.T) {
+	w := newWaveRepo(t)
+	w.verifyMode = "final"
+	w.plan(pkgDef{id: "A"})
+	if err := state.RequestStop(w.statePath, "left over"); err != nil {
+		t.Fatal(err)
+	}
+	ex := newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}})
+	rep, code := w.run(ex)
+	eq(t, "exit", code, 0)
+	eqJSON(t, "integrated", rep.Integrated, []string{"A"})
+	eq(t, "STOP left", state.StopRequested(w.statePath), false)
 }
 
 // usageDeps is a runner's Deps whose config carries the given enforcement

@@ -14,6 +14,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/quota"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sysload"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
 // Pacing that needs no judgment from the instructor: the memory guard holds
@@ -34,6 +35,11 @@ var memoryPressure = func() (bool, string) {
 	return p.High(), p.Reason
 }
 
+// heldLongAfter is how long a memory or usage hold lasts, in seconds, before
+// start-held-long reports it: a hold this long reaches the instructor through
+// `wave wait`.
+var heldLongAfter = 600.0
+
 const (
 	// costRefreshSeconds is how long one estimate of the run's cost is
 	// reused (it re-reads the ledger and the transcripts).
@@ -45,26 +51,53 @@ const (
 // pressure or the Claude plan usage to ease (in-flight packages carry on);
 // login wins over memory, and memory over usage, when several hold. It
 // records one start-held event when holding begins and one start-resumed
-// when it ends.
+// when it ends, and keeps the hold in state while it lasts. A memory or usage
+// hold that outlasts heldLongAfter gets one start-held-long.
 func (r *runner) holdStarts() bool {
+	kind := "login"
 	held, reason := r.loginHeld()
 	if !held && r.memoryGuard {
+		kind = "memory"
 		held, reason = memoryPressure()
 	}
 	if !held {
+		kind = "usage"
 		held, reason = r.usageHeld()
 	}
 	switch {
 	case held && !r.holding:
 		r.holding = true
+		r.hold = &state.Held{Kind: kind, Reason: reason, Since: r.clock()}
+		_ = r.store.SetHeld(r.hold)
 		r.emit("start-held", "", map[string]any{"reason": reason})
 		fmt.Fprintf(r.stderr, "start-held: %s\n", reason)
+	case held && (r.hold.Kind != kind || r.hold.Reason != reason):
+		// The same hold, now for another reason: it keeps its start time.
+		r.hold = &state.Held{Kind: kind, Reason: reason, Since: r.hold.Since}
+		_ = r.store.SetHeld(r.hold)
 	case !held && r.holding:
-		r.holding = false
+		r.endHold()
 		r.emit("start-resumed", "", map[string]any{})
 		fmt.Fprintln(r.stderr, "start-resumed")
 	}
+	if held && kind != "login" && !r.holdLongSent && r.clock()-r.hold.Since >= heldLongAfter {
+		r.holdLongSent = true
+		heldS := int(r.clock() - r.hold.Since)
+		r.emit("start-held-long", "", map[string]any{"kind": kind, "reason": reason, "held_s": heldS})
+		fmt.Fprintf(r.stderr, "start-held-long: %s\n", reason)
+	}
 	return held
+}
+
+// endHold ends the hold bookkeeping and clears the hold recorded in state.
+func (r *runner) endHold() {
+	r.holding = false
+	if r.hold == nil {
+		return
+	}
+	r.hold = nil
+	r.holdLongSent = false
+	_ = r.store.SetHeld(nil)
 }
 
 // runCost is the run's estimated cost in USD, as `agent-exec usage --run

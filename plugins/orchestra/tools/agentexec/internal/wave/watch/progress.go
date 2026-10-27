@@ -40,6 +40,16 @@ type Progress struct {
 	EtaS        *int          `json:"eta_s"`
 	EtaBasis    string        `json:"eta_basis"`
 	CostUSD     *float64      `json:"cost_usd"`
+	Held        *Held         `json:"held,omitempty"`
+}
+
+// Held is the start hold the runner is in: it starts no package while one
+// lasts. HeldS is how long it has lasted, in seconds.
+type Held struct {
+	Kind   string `json:"kind"`
+	Reason string `json:"reason"`
+	Since  int64  `json:"since"`
+	HeldS  int    `json:"held_s"`
 }
 
 // Running is one package in flight.
@@ -95,12 +105,25 @@ func Compute(statePath string, st *state.State, now float64, cost CostFunc) Prog
 		in.record = &rec
 	}
 	pr := build(in)
+	pr.Held = heldOf(st, now)
 	if pr.RunID != nil && cost != nil {
 		if usd, ok := cost(*pr.RunID); ok {
 			pr.CostUSD = &usd
 		}
 	}
 	return pr
+}
+
+// heldOf is the state's start hold with how long it has lasted; nil without one.
+func heldOf(st *state.State, now float64) *Held {
+	if st.Held == nil {
+		return nil
+	}
+	return &Held{
+		Kind: st.Held.Kind, Reason: st.Held.Reason,
+		Since: int64(math.Floor(st.Held.Since)),
+		HeldS: int(max(math.Floor(now-st.Held.Since), 0)),
+	}
 }
 
 type inputs struct {
@@ -438,6 +461,9 @@ func Line(p Progress) string {
 		parts = append(parts, fmt.Sprintf("%d interrupted", n))
 	}
 	parts = append(parts, fmt.Sprintf("%d needs", len(p.Needs)))
+	if p.Held != nil {
+		parts = append(parts, "held: "+p.Held.Kind)
+	}
 	if p.EtaS != nil {
 		parts = append(parts, "~"+formatETA(*p.EtaS)+" left")
 	}

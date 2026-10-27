@@ -42,6 +42,7 @@ type Summary struct {
 	Running   int    `json:"running"`
 	Planning  int    `json:"planning"`
 	Needs     int    `json:"needs"`
+	Held      int    `json:"held"`
 	Crashed   int    `json:"crashed"`
 	UpdatedAt *int64 `json:"updated_at"`
 	Line      string `json:"line"`
@@ -58,6 +59,7 @@ type Run struct {
 	Counts    Counts       `json:"counts"`
 	Packages  []RunPackage `json:"packages"`
 	Needs     []RunNeed    `json:"needs"`
+	Held      *RunHeld     `json:"held,omitempty"`
 	EtaS      *int         `json:"eta_s"`
 	CostUSD   *float64     `json:"cost_usd"`
 	StartedAt int64        `json:"started_at"`
@@ -92,6 +94,13 @@ type RunNeed struct {
 	ID     *string `json:"id"`
 	Kind   string  `json:"kind"`
 	Detail string  `json:"detail"`
+}
+
+// RunHeld is the start hold a run is in: it starts no package while one lasts.
+type RunHeld struct {
+	Kind   string `json:"kind"`
+	Reason string `json:"reason"`
+	Since  int64  `json:"since"`
 }
 
 // Plan is one planner's plan.
@@ -153,6 +162,9 @@ func Build(runs []Run, plans []Plan, now int64, alive func(pid int) bool) Doc {
 		note(r.UpdatedAt)
 		if live {
 			s.Running++
+			if r.Held != nil {
+				s.Held++
+			}
 		}
 		switch r.Status {
 		case "needs":
@@ -211,6 +223,9 @@ func summaryLine(s Summary) string {
 	}
 	if s.Needs > 0 {
 		parts = append(parts, fmt.Sprintf("%d needs", s.Needs))
+	}
+	if s.Held > 0 {
+		parts = append(parts, fmt.Sprintf("%d held", s.Held))
 	}
 	if s.Crashed > 0 {
 		parts = append(parts, fmt.Sprintf("%d crashed", s.Crashed))

@@ -73,9 +73,10 @@ agent-exec status close --state PATH --status done|stopped
 | `running` | int | Runs whose runner is alive. Runs in `needs` are included. |
 | `planning` | int | Plans in `planning`. |
 | `needs` | int | Runs in `needs`, plus plans in `needs-user`. |
+| `held` | int | Non-ended runs that are held: new starts wait for memory pressure, plan usage or a login. |
 | `crashed` | int | Runs in `crashed` or `stale`. |
 | `updated_at` | int or null | Newest entry update. `null` when there are no entries. |
-| `line` | string | Human-readable one-liner, e.g. `2 running · 1 needs`. Parts appear in the order running, planning, needs, crashed. `idle` when all counts are 0. |
+| `line` | string | Human-readable one-liner, e.g. `2 running · 1 needs`. Parts appear in the order running, planning, needs, held, crashed. `idle` when all counts are 0. |
 
 ## `runs[]`
 
@@ -90,6 +91,7 @@ agent-exec status close --state PATH --status done|stopped
 | `counts` | object | `total`, `integrated`, `running`, `pending`, `blocked`, `needs`, `failed`. |
 | `packages` | array | Packages in flight. See the package object below. |
 | `needs` | array | Open needs. See the need object below. |
+| `held` | object | Present only while new starts are held: `{kind, reason, since}`. `kind` is `login`, `memory` or `usage`; `since` is a Unix time. Absent otherwise. |
 | `eta_s` | int or null | Seconds left. `null` when unknown. |
 | `cost_usd` | number or null | Estimate. `null` when unknown. |
 | `started_at` | int | Start of this runner process. |
