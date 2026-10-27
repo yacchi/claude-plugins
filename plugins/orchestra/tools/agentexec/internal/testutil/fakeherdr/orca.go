@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+// Orca prompt scenario keys (per package, in "prompts"): "result", "after_waits",
+// "files", "dialog" (a choice dialog stays on screen), and "login" (the TUI
+// shows Claude Code's "Not logged in" reply on every read).
+
 // orcaTrust is Claude Code's real folder-trust dialog: unnumbered options,
 // "No, exit" preselected.
 var orcaTrust = []string{
@@ -142,6 +146,8 @@ func (c *call) orca(root string) int {
 			screen = []string{"Starting Claude Code..."}
 		case pending != nil && truthy(pending["dialog"]):
 			screen = []string{"Do you want to make this edit to a.txt?", "❯ 1. Yes", "  2. No"}
+		case pending != nil && truthy(pending["login"]):
+			screen = []string{"❯ implement", "  ⎿  Not logged in · Please run /login", "✻ Worked for 0s"}
 		default:
 			screen = orcaReady
 		}

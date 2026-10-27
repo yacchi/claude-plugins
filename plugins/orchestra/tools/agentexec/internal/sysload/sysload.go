@@ -28,14 +28,22 @@ type Pressure struct {
 // High reports warn or worse: the level that holds new starts.
 func (p Pressure) High() bool { return p.Level == Warn || p.Level == Critical }
 
+// darwinWarnFreePct: a warn holds only below this much free memory; 2026-10-27
+// saw warn for hours at 48% free.
+const darwinWarnFreePct = 25
+
 // darwinPressure grades kern.memorystatus_vm_pressure_level: 1 normal, 2
-// warn, 4 critical.
-func darwinPressure(level uint32) Pressure {
+// warn, 4 critical. A warn counts only when kern.memorystatus_level (freePct,
+// percent of memory available) is below darwinWarnFreePct; a negative freePct
+// means it could not be read, so the warn stands.
+func darwinPressure(level uint32, freePct int) Pressure {
 	switch {
 	case level >= 4:
 		return Pressure{Critical, "memory pressure critical (kern.memorystatus_vm_pressure_level 4)"}
-	case level >= 2:
+	case level >= 2 && freePct < 0:
 		return Pressure{Warn, fmt.Sprintf("memory pressure warn (kern.memorystatus_vm_pressure_level %d)", level)}
+	case level >= 2 && freePct < darwinWarnFreePct:
+		return Pressure{Warn, fmt.Sprintf("memory pressure warn (kern.memorystatus_vm_pressure_level %d, %d%% free)", level, freePct)}
 	}
 	return Pressure{Level: Normal}
 }

@@ -346,6 +346,15 @@ func TestWaits(t *testing.T) {
 	if n.Kind != host.KindStalled || !strings.HasPrefix(n.Detail, "dialog:\nDo you want to make this edit to a.txt?\n❯ 1. Yes\n  2. No\nterminal: term-1") {
 		t.Errorf("%q", n.Detail)
 	}
+	// a login reply that stays on screen across a wait is a login need
+	e = newEnv(t, map[string]any{"prompts": map[string]any{"a": []any{map[string]any{"login": true}}}})
+	x = e.executor("")
+	s, _ = e.start(x)
+	_, err = host.PromptAndWait(context.Background(), x, s, []string{"/p/one.md"}, e.result, 60e9)
+	n = needOf(t, err)
+	if n.Kind != host.KindLogin || !strings.Contains(n.Detail, "is not logged in") || !strings.Contains(n.Detail, "Not logged in · Please run /login") {
+		t.Errorf("%s: %q", n.Kind, n.Detail)
+	}
 	// escalate via the result file
 	e = newEnv(t, map[string]any{"prompts": map[string]any{"a": []any{map[string]any{"result": map[string]any{"status": "escalate", "summary": "no"}}}}})
 	x = e.executor("")

@@ -15,14 +15,14 @@ import (
 func newWaveWaitCmd() *cobra.Command {
 	wait := &cobra.Command{
 		Use:   "wait",
-		Short: "block until a wave's runner ends, a new need appears, a change (--until-change), or a timeout",
+		Short: "block until a wave's runner ends, a new need appears, a start hold runs long, a change (--until-change), or a timeout",
 		Args:  cobra.NoArgs,
 	}
 	fl := wait.Flags()
 	statePath := fl.String("state", "", "state.json path")
 	maxWait := fl.Float64("max-wait", watch.DefaultMaxWait.Seconds(), "seconds to wait at most")
 	since := fl.Int("since", 0, "seq of the previous answer: needs and changes recorded before it are not new")
-	untilChange := fl.Bool("until-change", false, "also answer \"changed\" on any event a viewer sees (status, dispatch, integrate, need, stop) after --since")
+	untilChange := fl.Bool("until-change", false, "also answer \"changed\" on any event a viewer sees (status, dispatch, integrate, need, stop, start-held, start-resumed) after --since")
 	_ = wait.MarkFlagRequired("state")
 	wait.RunE = func(cmd *cobra.Command, _ []string) error {
 		if !finiteNonNegative(*maxWait) {

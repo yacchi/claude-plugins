@@ -289,3 +289,87 @@ func TestProgressKeepsInFlightRunningWhileTheRunnerLivesOrIsUnknown(t *testing.T
 		}
 	}
 }
+
+// holdLong records a start-held-long event for a memory hold.
+func holdLong(store *state.Store) {
+	store.Event("start-held-long", map[string]any{"detail": map[string]any{"kind": "memory", "held_s": 600}})
+}
+
+func TestComputeReportsTheStartHoldAndHowLongItLasted(t *testing.T) {
+	store := newStore(t, "a")
+	st, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := Compute(store.Path, &st, 1000, nil); p.Held != nil {
+		t.Fatalf("no hold in the state: %+v", p.Held)
+	}
+	st.Held = &state.Held{Kind: "memory", Reason: "vm pressure warn", Since: 900.5}
+	if p := Compute(store.Path, &st, 1000, nil); p.Held == nil || *p.Held != (Held{Kind: "memory", Reason: "vm pressure warn", Since: 900, HeldS: 99}) {
+		t.Fatalf("held: %+v", p.Held)
+	}
+	if p := Compute(store.Path, &st, 800, nil); p.Held == nil || p.Held.HeldS != 0 {
+		t.Fatalf("a hold dated after now is held for 0 s: %+v", p.Held)
+	}
+}
+
+func TestLineShowsTheHoldAfterTheNeeds(t *testing.T) {
+	store := newStore(t, "a")
+	st, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Held = &state.Held{Kind: "memory", Since: 900}
+	if l := Line(Compute(store.Path, &st, 1000, nil)); l != "wave 0/1 · 0 running · 0 needs · held: memory" {
+		t.Fatalf("line: %s", l)
+	}
+}
+
+func TestWaitReturnsHeldWhenAStartHoldRanLongAndIsStillOn(t *testing.T) {
+	store := newStore(t, "a")
+	liveRunner(t, store.Path)
+	if err := store.SetHeld(&state.Held{Kind: "memory", Reason: "warn", Since: 900}); err != nil {
+		t.Fatal(err)
+	}
+	seq := lines(t, store.EventsPath())
+	holdLong(store)
+	a := Wait(WaitOptions{State: store.Path, Since: seq, MaxWait: 5 * time.Second, Poll: 10 * time.Millisecond})
+	if a.Status != "held" || a.Progress.Held == nil || a.Progress.Held.Kind != "memory" {
+		t.Fatalf("a long hold after --since: %+v", a)
+	}
+}
+
+func TestWaitIgnoresAHoldEventAtOrBeforeSinceOrAClearedHold(t *testing.T) {
+	store := newStore(t, "a")
+	liveRunner(t, store.Path)
+	if err := store.SetHeld(&state.Held{Kind: "memory", Since: 900}); err != nil {
+		t.Fatal(err)
+	}
+	holdLong(store)
+	seq := lines(t, store.EventsPath())
+	if a := Wait(WaitOptions{State: store.Path, Since: seq, MaxWait: 200 * time.Millisecond, Poll: 20 * time.Millisecond}); a.Status != "running" {
+		t.Fatalf("a hold event at --since is not new: %s", a.Status)
+	}
+
+	if err := store.SetHeld(nil); err != nil {
+		t.Fatal(err)
+	}
+	if a := Wait(WaitOptions{State: store.Path, MaxWait: 200 * time.Millisecond, Poll: 20 * time.Millisecond}); a.Status != "running" {
+		t.Fatalf("the hold is cleared: %s", a.Status)
+	}
+}
+
+func TestWaitGivesANeedPrecedenceOverAHeld(t *testing.T) {
+	store := newStore(t, "a")
+	liveRunner(t, store.Path)
+	if err := store.SetHeld(&state.Held{Kind: "memory", Since: 900}); err != nil {
+		t.Fatal(err)
+	}
+	holdLong(store)
+	if err := store.AddNeed("", "environment", "wave level"); err != nil {
+		t.Fatal(err)
+	}
+	if a := Wait(WaitOptions{State: store.Path, MaxWait: time.Second, Poll: 10 * time.Millisecond}); a.Status != "needs" {
+		t.Fatalf("a need and a long hold: %s", a.Status)
+	}
+}

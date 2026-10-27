@@ -67,9 +67,12 @@ type runner struct {
 	usageEvery  int
 	budgetUSD   float64
 
-	// Scheduler-goroutine state: whether new starts are held for memory
-	// pressure, and the packages integrated so far (usage notices).
+	// Scheduler-goroutine state: whether new starts are held (and the hold
+	// recorded in state, if any), and the packages integrated so far (usage
+	// notices).
 	holding         bool
+	hold            *state.Held
+	holdLongSent    bool
 	integratedTotal int
 
 	// costMu guards the cached run-cost estimate.
@@ -225,6 +228,12 @@ func (r *runner) init() error {
 	if _, err := r.store.Init(absPath(r.opts.Plan), ids, r.into); err != nil {
 		return err
 	}
+	// A new run is an explicit request to run: a STOP left by an earlier
+	// `wave stop` is cleared, and a hold a crashed runner left is stale.
+	if err := state.ClearStop(r.statePath); err != nil {
+		return err
+	}
+	_ = r.store.SetHeld(nil)
 	for _, w := range warnings {
 		pkg := ""
 		if w.Pkg != nil {

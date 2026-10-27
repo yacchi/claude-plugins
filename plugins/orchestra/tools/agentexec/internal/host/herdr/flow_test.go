@@ -354,8 +354,8 @@ func TestAnIdleAgentWithoutALoginFailsAtOnce(t *testing.T) {
 	e.scenario(map[string]any{"running": true, "statuses": []any{"working", "idle"}, "screen": screen}, true)
 	_, err := e.executor("").WaitResult(context.Background(), e.manualSession(), e.result, 3600e9)
 	n := needOf(t, err)
-	if err := containsAll(n.Detail, "no usable login", "Not logged in"); n.Kind != host.KindError || err != nil ||
-		e.count("agent get") > 2 {
+	if err := containsAll(n.Detail, "is not logged in", "Run /login", "Not logged in"); n.Kind != host.KindLogin || err != nil ||
+		strings.Contains(n.Detail, "CLAUDE_CONFIG_DIR") || e.count("agent get") > 2 {
 		t.Errorf("%v %v gets %d", n, err, e.count("agent get"))
 	}
 }

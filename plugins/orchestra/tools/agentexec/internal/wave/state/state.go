@@ -16,7 +16,7 @@ var Statuses = []string{
 var NeedKinds = []string{
 	"escalate", "conflict", "post-integration", "self-verify", "delegate", "dispatch-error",
 	"empty-after-refresh", "scope", "environment", "permission", "runaway", "network", "oversized",
-	"integrate",
+	"integrate", "login",
 }
 
 var inFlight = map[string]bool{"implementing": true, "verifying": true, "fixing": true, "ready": true}
@@ -58,6 +58,14 @@ type Stopped struct {
 	At     float64
 }
 
+// Held records why starts are held (Kind is login, memory or usage) and since
+// when; a nil Held means starts are not held.
+type Held struct {
+	Kind   string
+	Reason string
+	Since  float64
+}
+
 // State is state.json.
 type State struct {
 	Version     int
@@ -67,6 +75,7 @@ type State struct {
 	Packages    map[string]*Package
 	Needs       []Need
 	Stopped     *Stopped
+	Held        *Held
 	Updated     float64
 	Extra       map[string]any // top-level keys this package does not know
 
@@ -124,6 +133,10 @@ func (s *State) clone() State {
 	if s.Stopped != nil {
 		st := *s.Stopped
 		out.Stopped = &st
+	}
+	if s.Held != nil {
+		h := *s.Held
+		out.Held = &h
 	}
 	out.Extra = cloneMap(s.Extra)
 	return out

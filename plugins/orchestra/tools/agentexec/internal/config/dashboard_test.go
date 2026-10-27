@@ -7,154 +7,80 @@ import (
 	"testing"
 )
 
-const cfgDashOrg = "0b1c2d3e-4f50-4617-8899-aabbccddeeff"
-
-// cfgDashWriteProfile writes a .claude.json with oauthAccount org into dir.
-func cfgDashWriteProfile(t *testing.T, dir, org, name string) {
-	t.Helper()
-	body := `{"oauthAccount":{"organizationUuid":"` + org + `","organizationName":"` + name + `"}}`
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, ".claude.json"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// Any dashboard.artifact_url, empty or not, is accepted and reported with the
-// migration text.
-func TestDashboardArtifactURLKeyIsIgnoredWithWarning(t *testing.T) {
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
-	for _, v := range []string{"", "https://claude.ai/artifact/abc-123"} {
-		values := resolveLayers(obj("dashboard", obj("artifact_url", v)))
-		if err := validateDashboard(values); err != nil {
-			t.Fatalf("artifact_url %q refused: %v", v, err)
-		}
-		w := DashboardWarnings(values)
-		if len(w) != 1 || !strings.HasPrefix(w[0], "dashboard.artifact_url is ignored: ") ||
-			!strings.HasSuffix(w[0], "(this session's organization: unknown), or delete the key") {
-			t.Errorf("warnings = %q", w)
-		}
-	}
-	if err := validateDashboard(Defaults()); err != nil {
-		t.Errorf("defaults: %v", err)
-	}
-	if w := DashboardWarnings(Defaults()); w != nil {
-		t.Errorf("defaults warn: %q", w)
-	}
-}
-
-func TestDashboardArtifactURLWarningNamesCurrentOrg(t *testing.T) {
-	dir := t.TempDir()
-	cfgDashWriteProfile(t, dir, cfgDashOrg, "Acme")
-	t.Setenv("CLAUDE_CONFIG_DIR", dir)
-	w := DashboardWarnings(resolveLayers(obj("dashboard", obj("artifact_url", ""))))
-	if len(w) != 1 || !strings.Contains(w[0], "(this session's organization: "+cfgDashOrg+" Acme)") {
-		t.Errorf("warnings = %q, want the current organization named", w)
-	}
-}
-
-func TestDashboardArtifactURLsValidation(t *testing.T) {
-	good := obj(cfgDashOrg, "https://claude.ai/artifact/abc-123", "0b1c2d3e-4f50-4617-8899-000000000001", "")
-	for _, values := range []map[string]any{
-		resolveLayers(),
-		resolveLayers(obj("dashboard", obj("artifact_urls", good))),
-	} {
-		if err := validateDashboard(values); err != nil {
-			t.Errorf("valid artifact_urls rejected: %v", err)
-		}
-	}
-	bad := map[string]any{
-		"non-uuid key":   obj("not-a-uuid", "https://claude.ai/artifact/abc"),
-		"non-claude url": obj(cfgDashOrg, "https://evil.example/artifact/abc"),
-		"chat url":       obj(cfgDashOrg, "https://claude.ai/chat/abc"),
-		"non-string url": obj(cfgDashOrg, int64(1)),
-	}
-	for name, urls := range bad {
-		values := resolveLayers(obj("dashboard", obj("artifact_urls", urls)))
-		if err := validateDashboard(values); err == nil {
-			t.Errorf("%s accepted, want an error", name)
-		}
-	}
-	values := Defaults()
-	ObjectAt(values, "dashboard")["artifact_urls"] = "https://claude.ai/artifact/abc"
-	if err := validateDashboard(values); err == nil {
-		t.Error("non-map artifact_urls accepted, want an error")
-	}
-}
-
-func TestCurrentOrgReadsProfileFile(t *testing.T) {
+// A dashboard key in any layer fails resolution naming that layer's file.
+func TestResolveRejectsRemovedDashboardKey(t *testing.T) {
 	cases := map[string]struct {
-		useCfgDir bool
-		setup     func(t *testing.T, cfgDir, home string)
-		want      string
+		user    string
+		project string
+		// wantFile is "user" or "project" for the layer the error names, "" for no error.
+		wantFile string
 	}{
-		"CLAUDE_CONFIG_DIR wins over home": {
-			useCfgDir: true,
-			setup: func(t *testing.T, cfgDir, home string) {
-				cfgDashWriteProfile(t, cfgDir, cfgDashOrg, "Acme")
-				cfgDashWriteProfile(t, home, "ffffffff-0000-4000-8000-000000000000", "Other")
-			},
-			want: cfgDashOrg + " Acme",
+		"user artifact_url": {
+			user:     "dashboard:\n  artifact_url: https://claude.ai/artifact/old\n",
+			wantFile: "user",
 		},
-		"CLAUDE_CONFIG_DIR without file does not fall back to home": {
-			useCfgDir: true,
-			setup: func(t *testing.T, cfgDir, home string) {
-				cfgDashWriteProfile(t, home, cfgDashOrg, "Acme")
-			},
-			want: "",
+		"user artifact_urls": {
+			user:     "dashboard:\n  artifact_urls: {}\n",
+			wantFile: "user",
 		},
-		"home .claude.json": {
-			setup: func(t *testing.T, cfgDir, home string) {
-				cfgDashWriteProfile(t, home, cfgDashOrg, "Acme")
-			},
-			want: cfgDashOrg + " Acme",
+		"project only": {
+			project:  "dashboard: {}\n",
+			wantFile: "project",
 		},
-		"home .claude/.claude.json fallback": {
-			setup: func(t *testing.T, cfgDir, home string) {
-				cfgDashWriteProfile(t, filepath.Join(home, ".claude"), cfgDashOrg, "Acme")
-			},
-			want: cfgDashOrg + " Acme",
-		},
-		"missing oauthAccount": {
-			setup: func(t *testing.T, cfgDir, home string) {
-				if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"numStartups":1}`), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			},
-			want: "",
+		"no dashboard key": {
+			user: "tiers: {light: sonnet}\n",
 		},
 	}
 	for title, tc := range cases {
 		t.Run(title, func(t *testing.T) {
-			cfgDir := filepath.Join(t.TempDir(), "cfg")
 			home := t.TempDir()
-			cfgDirEnv := ""
-			if tc.useCfgDir {
-				cfgDirEnv = cfgDir
-			}
-			t.Setenv("CLAUDE_CONFIG_DIR", cfgDirEnv)
+			root := t.TempDir()
 			t.Setenv("HOME", home)
-			tc.setup(t, cfgDir, home)
-			uuid, name := CurrentOrg()
-			if got := strings.TrimSpace(uuid + " " + name); got != tc.want {
-				t.Errorf("CurrentOrg() = %q, want %q", got, tc.want)
+			t.Setenv("ORCHESTRA_CONFIG_ROOT", root)
+			want := ""
+			if tc.user != "" {
+				p := filepath.Join(home, ".claude", "orchestra.yaml")
+				writeConfigFile(t, p, tc.user)
+				if tc.wantFile == "user" {
+					want = p
+				}
+			}
+			if tc.project != "" {
+				p := filepath.Join(root, ".claude", "orchestra.yaml")
+				writeConfigFile(t, p, tc.project)
+				if tc.wantFile == "project" {
+					want = p
+				}
+			}
+			cfg, err := Resolve()
+			if want == "" {
+				if err != nil {
+					t.Fatalf("Resolve() error = %v, want none", err)
+				}
+				if _, ok := cfg.Values["dashboard"]; ok {
+					t.Error("resolved values carry a dashboard key")
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("Resolve() succeeded, want the removed dashboard key error")
+			}
+			msg := err.Error()
+			if !strings.HasPrefix(msg, want+": ") ||
+				!strings.Contains(msg, "the dashboard key was removed") ||
+				!strings.Contains(msg, "~/.claude/orchestra/status.json") {
+				t.Errorf("error = %q, want it to name %s and the status file", msg, want)
 			}
 		})
 	}
 }
 
-func TestDashboardURLPicksOrganization(t *testing.T) {
-	const url = "https://claude.ai/artifact/abc-123"
-	values := resolveLayers(obj("dashboard", obj("artifact_urls", obj(cfgDashOrg, url))))
-	if got := DashboardURL(values, cfgDashOrg); got != url {
-		t.Errorf("DashboardURL(own org) = %q, want %q", got, url)
+func writeConfigFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if got := DashboardURL(values, "0b1c2d3e-4f50-4617-8899-000000000001"); got != "" {
-		t.Errorf("DashboardURL(other org) = %q, want \"\"", got)
-	}
-	if got := DashboardURL(values, ""); got != "" {
-		t.Errorf("DashboardURL(\"\") = %q, want \"\"", got)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

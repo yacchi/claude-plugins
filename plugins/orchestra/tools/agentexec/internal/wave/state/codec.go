@@ -137,7 +137,7 @@ func Parse(data []byte) (State, error) {
 		Updated:  num(get("updated")),
 		Packages: map[string]*Package{},
 		Extra: extraOf(o, "version", "plan", "integration", "wave", "packages", "needs",
-			"stopped", "updated"),
+			"stopped", "held", "updated"),
 	}
 	if in, ok := get("integration").(map[string]any); ok {
 		iv := func(k string) *string { v, _ := in[k]; return strPtr(v) }
@@ -162,6 +162,10 @@ func Parse(data []byte) (State, error) {
 	if st, ok := get("stopped").(map[string]any); ok && len(st) > 0 {
 		g := func(k string) any { return st[k] }
 		s.Stopped = &Stopped{Reason: str(g("reason")), At: num(g("at"))}
+	}
+	if h, ok := get("held").(map[string]any); ok && len(h) > 0 {
+		g := func(k string) any { return h[k] }
+		s.Held = &Held{Kind: str(g("kind")), Reason: str(g("reason")), Since: num(g("since"))}
 	}
 	return s, nil
 }
@@ -198,6 +202,9 @@ func (s *State) ToMap() map[string]any {
 			"task": ptrVal(s.Integration.Task), "path": ptrVal(s.Integration.Path), "base": ptrVal(s.Integration.Base),
 		},
 		"wave": s.Wave, "packages": pkgs, "needs": needs, "stopped": stopped, "updated": s.Updated,
+	}
+	if s.Held != nil {
+		m["held"] = map[string]any{"kind": s.Held.Kind, "reason": s.Held.Reason, "since": s.Held.Since}
 	}
 	for k, v := range s.Extra {
 		m[k] = cloneValue(v)

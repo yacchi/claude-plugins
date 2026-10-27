@@ -204,6 +204,35 @@ func TestIntegrationWaveStopped(t *testing.T) {
 	}
 }
 
+func TestHeldRoundTripAndClear(t *testing.T) {
+	s := newStore(t)
+	if _, err := s.Init("p", nil, "i"); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(s.Path); strings.Contains(string(raw), `"held"`) {
+		t.Fatalf("a state without a hold must not carry a held key:\n%s", raw)
+	}
+	if err := s.SetHeld(&Held{Kind: "memory", Reason: "vm pressure warn", Since: 900.5}); err != nil {
+		t.Fatal(err)
+	}
+	st := s.Snapshot()
+	if st.Held == nil || *st.Held != (Held{Kind: "memory", Reason: "vm pressure warn", Since: 900.5}) {
+		t.Fatalf("held lost in a round trip: %+v", st.Held)
+	}
+	if _, ok := st.Extra["held"]; ok {
+		t.Fatal("held must not be kept as an unknown field")
+	}
+	if raw, _ := os.ReadFile(s.Path); !strings.Contains(string(raw), `"held": {`) {
+		t.Fatalf("held not written:\n%s", raw)
+	}
+	if err := s.SetHeld(nil); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(s.Path); s.Snapshot().Held != nil || strings.Contains(string(raw), `"held"`) {
+		t.Fatalf("SetHeld(nil) must clear the hold:\n%s", raw)
+	}
+}
+
 func TestUnknownFieldsSurviveARewrite(t *testing.T) {
 	s := newStore(t)
 	input := `{"version": 1, "plan": "p", "wave": 1, "updated": 5, "stopped": null, "needs": [],
