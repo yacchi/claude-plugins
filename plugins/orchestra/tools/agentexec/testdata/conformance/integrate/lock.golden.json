@@ -18,7 +18,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
@@ -41,7 +41,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-boot",
+        "path": "<WT>/00000000-boot",
         "role": "work",
         "status": "created",
         "task": "boot"
@@ -61,7 +61,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -71,7 +71,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -255,7 +255,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -265,7 +265,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"

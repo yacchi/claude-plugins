@@ -10,7 +10,7 @@ setup:
     a.txt: "1\n2\n3\n"
     <ROOT>/prep.sh: |
       set -e
-      printf '1\nTWO\n3\n' > <ROOT>/work-orchestra/00000000-t1/a.txt
+      printf '1\nTWO\n3\n' > <WT>/00000000-t1/a.txt
       mkdir -p <WORK>/.git/orchestra
       perl -MFcntl=:flock -e '
         open(my $f, "+>>", $ARGV[0]) or die; flock($f, LOCK_EX) or die;
@@ -25,7 +25,7 @@ steps:
   - argv: [isolate, create, --task, t1]
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/00000000-boot/hb"}
   - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
   - argv: [isolate, integrate, --tasks, t1, --lock, fail]
   - argv: [isolate, integrate, --tasks, t1, --lock, fail, --text]

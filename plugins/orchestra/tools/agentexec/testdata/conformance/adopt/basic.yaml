@@ -27,9 +27,10 @@ setup:
 normalize_keys: [seconds, age_days, session_idle_minutes]
 steps:
   - argv: [isolate, create, --task, t1]
+    save: {T1: path}
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/00000000-boot/hb"}
   - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
   - argv: [isolate, adopt, --task, x, --path, ../ext]
     snapshot:
@@ -43,7 +44,7 @@ steps:
   - argv: [isolate, adopt, --task, t1, --path, ../ext2]
   - argv: [isolate, adopt, --task, z, --path, ../nowhere]
   - argv: [isolate, adopt, --task, z, --path, .]
-  - argv: [isolate, adopt, --task, z, --path, ../work-orchestra/00000000-t1, --text]
+  - argv: [isolate, adopt, --task, z, --path, "<@T1>", --text]
   - argv: [isolate, adopt, --task, y, --path, ../ext2]
     snapshot:
       - <ROOT>/ext2/node_modules/own/x.js

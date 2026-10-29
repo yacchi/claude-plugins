@@ -14,9 +14,9 @@ steps:
   - argv: [isolate, create, --task, done]
     env: {CLAUDE_CODE_SESSION_ID: "22222222-0000-4000-8000-000000000000", GIT_COMMITTER_DATE: "2099-01-01T00:00:00Z"}
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/22222222-dirty/scratch"}
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/22222222-dirty/scratch"}
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/22222222-done/scratch"}
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/22222222-done/scratch"}
   - argv: [isolate, diff, --task, done, --names-only]
   - argv: [isolate, sweep, --older-than, "0.5", --live-window, "0", --text]
   - argv: [isolate, sweep, --dry-run, --live-window, "0", --text]

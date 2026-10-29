@@ -19,15 +19,15 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-t1/.claude/settings.local.json": null,
-        "<ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js": null,
-        "<ROOT>/work-orchestra/00000000-t1/src/a.txt": {
+        "<WT>/00000000-t1/.claude/settings.local.json": null,
+        "<WT>/00000000-t1/node_modules/pkg/index.js": null,
+        "<WT>/00000000-t1/src/a.txt": {
           "content": "changed\n",
           "shape": "text"
         }
@@ -56,7 +56,7 @@
         ],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t2",
+        "path": "<WT>/00000000-t2",
         "role": "work",
         "status": "created",
         "task": "t2"
@@ -85,7 +85,7 @@
         ],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t3",
+        "path": "<WT>/00000000-t3",
         "role": "work",
         "status": "created",
         "task": "t3"
@@ -105,7 +105,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -115,7 +115,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t2",
+            "path": "<WT>/00000000-t2",
             "role": "work",
             "session": "00000000",
             "task": "t2"
@@ -125,7 +125,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t3",
+            "path": "<WT>/00000000-t3",
             "role": "work",
             "session": "00000000",
             "task": "t3"

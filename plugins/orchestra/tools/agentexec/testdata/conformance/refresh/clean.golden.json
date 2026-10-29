@@ -20,7 +20,7 @@
         "carried_files": [],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
@@ -45,7 +45,7 @@
         "carried_files": [],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t2",
+        "path": "<WT>/00000000-t2",
         "role": "work",
         "status": "created",
         "task": "t2"
@@ -70,7 +70,7 @@
         "carried_files": [],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/legacy",
+        "path": "<WT>/legacy",
         "role": "work",
         "status": "created",
         "task": "legacy"
@@ -95,7 +95,7 @@
         "carried_files": [],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-boot",
+        "path": "<WT>/00000000-boot",
         "role": "work",
         "status": "created",
         "task": "boot"
@@ -115,7 +115,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -125,7 +125,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -135,7 +135,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t2",
+            "path": "<WT>/00000000-t2",
             "role": "work",
             "session": "00000000",
             "task": "t2"
@@ -145,7 +145,7 @@
             "children": 0,
             "current": false,
             "parent": null,
-            "path": "<WORK>-orchestra/legacy",
+            "path": "<WT>/legacy",
             "role": "work",
             "session": null,
             "task": "legacy"
@@ -214,21 +214,21 @@
         ],
         "note": "moved 2 file(s) onto 170a819f106f",
         "old_baseline": "<SHA#1>",
-        "patch_file": "<WORK>-orchestra/.patches/t1-be97c696226c-170a819f106f.patch",
-        "path": "<WORK>-orchestra/00000000-t1",
+        "patch_file": "<WT>/.patches/t1-be97c696226c-170a819f106f.patch",
+        "path": "<WT>/00000000-t1",
         "status": "ok",
         "task": "t1"
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-t1/a.txt": {
+        "<WT>/00000000-t1/a.txt": {
           "content": "1\nTWO\n3\n4\n5\n6\n7\nEIGHT\n9\n",
           "shape": "text"
         },
-        "<ROOT>/work-orchestra/00000000-t1/new.txt": {
+        "<WT>/00000000-t1/new.txt": {
           "content": "new\n",
           "shape": "text"
         },
-        "<ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js": {
+        "<WT>/00000000-t1/node_modules/pkg/index.js": {
           "content": "module.exports = 1\n",
           "shape": "text"
         }
@@ -252,7 +252,7 @@
         "note": "already on onto 170a819f106f",
         "old_baseline": "<SHA#6>",
         "patch_file": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "status": "unchanged",
         "task": "t1"
       }
@@ -275,7 +275,7 @@
           "a.txt",
           "new.txt"
         ],
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "session": "00000000",
         "status": "ok",
         "task": "t1"
@@ -291,7 +291,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "refresh ok         task t2               onto 170a819f106f  worktree <WORK>-orchestra/00000000-t2\nnote: no work to carry for t2\n"
+      "stdout": "refresh ok         task t2               onto 170a819f106f  worktree <WT>/00000000-t2\nnote: no work to carry for t2\n"
     },
     {
       "argv": [
@@ -311,13 +311,13 @@
         ],
         "note": "moved 1 file(s) onto 170a819f106f",
         "old_baseline": "<SHA#3>",
-        "patch_file": "<WORK>-orchestra/.patches/legacy-a0e5c62075dc-170a819f106f.patch",
-        "path": "<WORK>-orchestra/legacy",
+        "patch_file": "<WT>/.patches/legacy-a0e5c62075dc-170a819f106f.patch",
+        "path": "<WT>/legacy",
         "status": "ok",
         "task": "legacy"
       },
       "files": {
-        "<ROOT>/work-orchestra/legacy/l.txt": {
+        "<WT>/legacy/l.txt": {
           "content": "legacy\n",
           "shape": "text"
         }
@@ -335,9 +335,9 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "refresh ok         task t1               onto 172110381309  worktree <WORK>-orchestra/00000000-t1\n  a.txt\n  new.txt\n  patch: <WORK>-orchestra/.patches/t1-170a819f106f-172110381309.patch\nnote: moved 2 file(s) onto 172110381309\n",
+      "stdout": "refresh ok         task t1               onto 172110381309  worktree <WT>/00000000-t1\n  a.txt\n  new.txt\n  patch: <WT>/.patches/t1-170a819f106f-172110381309.patch\nnote: moved 2 file(s) onto 172110381309\n",
       "files": {
-        "<ROOT>/work-orchestra/00000000-t1/a.txt": {
+        "<WT>/00000000-t1/a.txt": {
           "content": "1\nTWO\n3\n4\n5\n6\n7\n8\n9\n",
           "shape": "text"
         }
@@ -362,7 +362,7 @@
         "note": "could not resolve --onto ref \"nope\" to a commit",
         "old_baseline": null,
         "patch_file": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "status": "error",
         "task": "t1"
       }
@@ -457,7 +457,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -467,7 +467,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -477,7 +477,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t2",
+            "path": "<WT>/00000000-t2",
             "role": "work",
             "session": "00000000",
             "task": "t2"
@@ -487,7 +487,7 @@
             "children": 0,
             "current": false,
             "parent": null,
-            "path": "<WORK>-orchestra/legacy",
+            "path": "<WT>/legacy",
             "role": "work",
             "session": null,
             "task": "legacy"

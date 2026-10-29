@@ -18,7 +18,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
@@ -47,7 +47,7 @@
         ],
         "files": 0,
         "status": "no-checks",
-        "tree": "<WORK>-orchestra/00000000-t1"
+        "tree": "<WT>/00000000-t1"
       }
     },
     {
@@ -75,7 +75,7 @@
         ],
         "files": 1,
         "status": "fail",
-        "tree": "<WORK>-orchestra/00000000-t1"
+        "tree": "<WT>/00000000-t1"
       }
     },
     {
@@ -104,7 +104,7 @@
         ],
         "files": 1,
         "status": "preexisting",
-        "tree": "<WORK>-orchestra/00000000-t1"
+        "tree": "<WT>/00000000-t1"
       }
     },
     {

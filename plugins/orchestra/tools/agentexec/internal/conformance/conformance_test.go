@@ -42,8 +42,8 @@
 //	    snapshot: ["~/.claude/orchestra.yaml"]  # files captured after the step
 //	    save: {TOK: token}       # top-level stdout JSON key later steps use as <@TOK>
 //
-// <ROOT>, <HOME> and <WORK> are substituted in file contents, env values and
-// cwd; <@NAME> (a saved value) in argv, stdin, env values and snapshot
+// <ROOT>, <HOME>, <WORK> and <WT> (WORK's work-tree home under the state dir)
+// are substituted in file contents, env values and cwd; <@NAME> (a saved value) in argv, stdin, env values and snapshot
 // paths. Every step also sees AGENT_EXEC_UNDER_TEST, an executable running
 // the binary under test, for a PATH shim that must reach it
 // (`exec "$AGENT_EXEC_UNDER_TEST" "$@"`: a detached child re-runs the shim).

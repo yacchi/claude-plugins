@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 )
 
 // SessionID is the fixed CLAUDE_CODE_SESSION_ID every step runs under.
@@ -23,8 +25,10 @@ const fixedGitDate = "2026-01-01T00:00:00Z"
 //	<ROOT>/work   the cwd / repository
 //	<ROOT>/bin    PATH: git, the requested fakes, nothing else besides /usr/bin:/bin
 //	<ROOT>/tmp    TMPDIR
+//	<ROOT>/home/.local/state/claude-orchestra/worktrees/<key>   <WT>: WORK's work trees (isolate.Home)
 type sandbox struct {
 	root, home, work, bin string
+	wt                    string
 	env                   []string
 }
 
@@ -40,6 +44,14 @@ func newSandbox(t *testing.T, sc *Scenario) *sandbox {
 	for _, d := range []string{s.home, s.work, s.bin, filepath.Join(root, "tmp")} {
 		must(t, os.MkdirAll(d, 0o755))
 	}
+	// The binary resolves symlinks (/var is /private/var on macOS), so the
+	// key hashes the real path and the placeholder has both spellings.
+	realHome, err := filepath.EvalSymlinks(s.home)
+	must(t, err)
+	realWork, err := filepath.EvalSymlinks(s.work)
+	must(t, err)
+	key := isolate.RepoKey(filepath.Join(realWork, ".git"))
+	s.wt = filepath.Join(realHome, ".local", "state", "claude-orchestra", "worktrees", key)
 	must(t, os.Symlink(env.git, filepath.Join(s.bin, "git")))
 	for _, name := range sc.Setup.Fakes {
 		src, ok := env.fakes[name]
@@ -78,7 +90,7 @@ func newSandbox(t *testing.T, sc *Scenario) *sandbox {
 }
 
 func (s *sandbox) expand(v string) string {
-	return strings.NewReplacer("<ROOT>", s.root, "<HOME>", s.home, "<WORK>", s.work).Replace(v)
+	return strings.NewReplacer("<ROOT>", s.root, "<HOME>", s.home, "<WORK>", s.work, "<WT>", s.wt).Replace(v)
 }
 
 // resolve maps a scenario path ("~/x" under HOME, else under WORK).

@@ -73,7 +73,7 @@ claude plugin validate .
 2. 同梱の Workflow パイプライン(`orchestra:pipeline`)にタスク一覧を渡して実行する。各タスクを light クラスの実装役 → `orchestra-review` → 最大 1 回の修正と再ゲート、と流す。設計の裁量があるタスクは `orchestra-deep`(Opus)に回す。
 3. 生のログや差分、途中の成果物は受け取らず、構造化された判定だけを受け取る。
 
-実行の作業は、作業中のチェックアウトの外にあるリクエストワークスペースに集まり、各機能の統合ツリーはそのリクエストのアセンブリに merge されます。作業中のブランチに取り込むのは、利用者が明示的に依頼したときだけです。依頼されたら、チェックアウトから `agent-exec isolate land -m "<message>"` を実行します。リクエストのアセンブリを利用者の identity と渡したメッセージで 1 つのコミットとして取り込み、そのあとアセンブリを削除します。Claude Code の Agent が作った worktree の結果も `agent-exec isolate land --path <worktree> -m "<message>"` で同じように取り込みます。orchestra や Agent の worktree のブランチを手で merge するとフックが拒否します。
+実行の作業は、作業中のチェックアウトの外にあるリクエストワークスペースに集まり、各機能の統合ツリーはそのリクエストのアセンブリに merge されます。作業中のブランチに取り込むのは、利用者が明示的に依頼したときだけです。依頼されたら、チェックアウトから `agent-exec isolate land -m "<message>"` を実行します。リクエストのアセンブリを利用者の identity と渡したメッセージで 1 つのコミットとして取り込み、そのあとアセンブリを削除します。Claude Code の Agent が作った worktree の結果も `agent-exec isolate land --path <worktree> -m "<message>"` で同じように取り込みます。orchestra や Agent の worktree のブランチを手で merge するとフックが拒否します。orchestra が作るツリーはすべて `~/.local/state/claude-orchestra` の下に置かれます。リクエストに属するものはそのリクエストワークスペースに、それ以外の作業ツリーは `worktrees/<repo>-<hash8>/` に置き、チェックアウトの隣には作りません。Orca でまとめて隠すには、Orca の全体設定の `customWorktreeVisibilitySources` に、このディレクトリを `rootPath`(絶対パス)として 1 つ追加します(`skills/run/references/isolation.md` を参照)。
 
 付属のスキル:
 

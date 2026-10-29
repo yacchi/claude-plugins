@@ -7,7 +7,7 @@ setup:
   git: true
   files:
     a.txt: "a\n"
-    <ROOT>/work-orchestra/00000000-blocked/occupied.txt: "in the way\n"
+    <WT>/00000000-blocked/occupied.txt: "in the way\n"
 normalize_keys: [age_days, session_idle_minutes]
 steps:
   - argv: [isolate, create, --task, blocked]

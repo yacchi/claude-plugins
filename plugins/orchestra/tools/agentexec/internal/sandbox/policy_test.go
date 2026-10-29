@@ -274,7 +274,8 @@ func TestHostPolicy(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("HOME", home)
 	repo, _ := repoWithWorktree(t, base)
-	wtBase := repo + "-orchestra"
+	wtHome := filepath.Join(base, "state", "worktrees", "repo-0123abcd")
+	requests := filepath.Join(base, "requests")
 	plugins := filepath.Join(claude, "plugins")
 	if err := os.MkdirAll(filepath.Join(plugins, "data", "other-plugin"), 0o755); err != nil {
 		t.Fatal(err)
@@ -283,15 +284,24 @@ func TestHostPolicy(t *testing.T) {
 	userCache := filepath.Join(base, "var-folders", "C")
 	o := policyOpts{home: home, env: map[string]string{"TMPDIR": "/nonexistent-tmp"}, platform: "darwin", learned: &none,
 		userCache: userCache}
-	p := hostPolicy(HostInput{Repo: repo, WorktreeBase: wtBase, HerdrHome: filepath.Join(home, "hx")}, Config{}, o)
+	p := hostPolicy(HostInput{Repo: repo, WorktreeBases: []string{wtHome, requests}, HerdrHome: filepath.Join(home, "hx")}, Config{}, o)
 	for _, w := range []string{claude, filepath.Join(shared, "projects"), filepath.Join(shared, "history.jsonl"),
-		wtBase, filepath.Join(home, ".npm"), filepath.Join(home, "Library", "Caches"), filepath.Join(userCache, "mds")} {
+		wtHome, requests, filepath.Join(home, ".npm"), filepath.Join(home, "Library", "Caches"), filepath.Join(userCache, "mds")} {
 		if !contains(p.Writable, w) {
 			t.Errorf("%s not writable", w)
 		}
 	}
 	if underAny(repo, p.Writable) {
 		t.Error("the user's own tree is writable")
+	}
+	for _, b := range []string{wtHome, requests} {
+		if !contains(p.DenyWriteRegex, RepoConfigRegex(realPath(b))) {
+			t.Errorf("%s: orchestra config not denied (only the first base was covered?)", b)
+		}
+	}
+	empty := hostPolicy(HostInput{Repo: repo, WorktreeBases: []string{""}, HerdrHome: filepath.Join(home, "hx")}, Config{}, o)
+	if contains(empty.Writable, realPath(".")) {
+		t.Error("an empty worktree base made the working directory writable")
 	}
 	for _, d := range []string{filepath.Join(claude, "settings.json"), filepath.Join(claude, "hooks"),
 		filepath.Join(shared, "skills"), filepath.Join(StateDir(), "tools"), filepath.Join(StateDir(), "pi-agent")} {
@@ -327,7 +337,7 @@ func TestHostPolicy(t *testing.T) {
 		t.Error("the ~/.claude.json allow comes after the tamper denies")
 	}
 	results := ProbeReport{Seatbelt: Probe{Detail: "no"}, Bwrap: Probe{Detail: "no"}, Landlock: Probe{OK: true, ABI: 6}}
-	in := HostInput{Repo: repo, WorktreeBase: wtBase, HerdrHome: filepath.Join(home, "hx")}
+	in := HostInput{Repo: repo, WorktreeBases: []string{wtHome, requests}, HerdrHome: filepath.Join(home, "hx")}
 	if s := prepareHost(Config{Mode: "auto"}, in, &results, o); s.Enforced || s.Refuse {
 		t.Errorf("host on landlock only: %+v", s)
 	}
@@ -358,7 +368,7 @@ func TestPnpmPinIsTheSeededStore(t *testing.T) {
 	for _, c := range cases {
 		o := policyOpts{home: home, env: c.env, platform: c.platform, learned: &none}
 		cli := buildPolicy(filepath.Join(base, "tree"), "codex", Config{}, o)
-		host := hostPolicy(HostInput{Repo: filepath.Join(base, "repo"), WorktreeBase: filepath.Join(base, "wt"),
+		host := hostPolicy(HostInput{Repo: filepath.Join(base, "repo"), WorktreeBases: []string{filepath.Join(base, "wt")},
 			HerdrHome: filepath.Join(base, "hx")}, Config{}, o)
 		var env []string
 		for k, v := range c.env {

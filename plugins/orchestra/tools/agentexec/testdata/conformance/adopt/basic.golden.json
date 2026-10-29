@@ -22,7 +22,7 @@
         ],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
@@ -49,7 +49,7 @@
         ],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-boot",
+        "path": "<WT>/00000000-boot",
         "role": "work",
         "status": "created",
         "task": "boot"
@@ -69,7 +69,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -79,7 +79,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -295,7 +295,7 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
-        "note": "task t1 already resolves to <WORK>-orchestra/00000000-t1",
+        "note": "task t1 already resolves to <WT>/00000000-t1",
         "path": "<ROOT>/ext2",
         "status": "error",
         "task": "t1"
@@ -354,12 +354,12 @@
         "--task",
         "z",
         "--path",
-        "../work-orchestra/00000000-t1",
+        "<@T1>",
         "--text"
       ],
       "exit": 3,
       "stdout_shape": "text",
-      "stdout": "error task z                worktree <WORK>-orchestra/00000000-t1\nnote: <WORK>-orchestra/00000000-t1 is an orchestra-created worktree; it already has a task\n"
+      "stdout": "error task z                worktree <WT>/00000000-t1\nnote: <WT>/00000000-t1 is an orchestra-created worktree; it already has a task\n"
     },
     {
       "argv": [
@@ -461,7 +461,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -471,7 +471,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -582,7 +582,7 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/boot",
             "current": true,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "would-remove",
@@ -592,7 +592,7 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/t1",
             "current": true,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "would-remove",
@@ -695,7 +695,7 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/boot",
             "current": true,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "removed",
@@ -705,7 +705,7 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/t1",
             "current": true,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "removed",

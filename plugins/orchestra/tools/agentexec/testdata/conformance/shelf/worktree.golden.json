@@ -18,7 +18,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
@@ -50,7 +50,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -63,7 +63,7 @@
         "shelf",
         "push",
         "--repo",
-        "<ROOT>/work-orchestra/00000000-t1"
+        "<WT>/00000000-t1"
       ],
       "exit": 3,
       "stdout_shape": "json",
@@ -72,7 +72,7 @@
         "status": "error"
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-t1/scratch/00000000": {
+        "<WT>/00000000-t1/scratch/00000000": {
           "content": null,
           "shape": "empty"
         }
@@ -83,7 +83,7 @@
         "shelf",
         "list",
         "--repo",
-        "<ROOT>/work-orchestra/00000000-t1"
+        "<WT>/00000000-t1"
       ],
       "exit": 3,
       "stdout_shape": "json",
@@ -116,7 +116,7 @@
         "status": "error"
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-t1/scratch/00000000": {
+        "<WT>/00000000-t1/scratch/00000000": {
           "content": null,
           "shape": "empty"
         }

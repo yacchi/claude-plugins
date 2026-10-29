@@ -12,7 +12,7 @@ import (
 // HostInput describes the herdr server a HostPolicy confines.
 type HostInput struct {
 	Repo          string   // the user's repository
-	WorktreeBase  string   // orchestra's worktree base of Repo
+	WorktreeBases []string // where orchestra creates Repo's trees (isolate.WorktreeBases); "" entries are skipped
 	HerdrHome     string   // the server's private home
 	ExtraWritable []string // e.g. the managed pi agent dir
 }
@@ -115,9 +115,15 @@ func hostPolicy(in HostInput, sc Config, o policyOpts) *Policy {
 	}
 	home = realPath(home)
 	platform := o.goos()
-	base := realPath(in.WorktreeBase)
+	var bases []string
+	for _, b := range in.WorktreeBases {
+		// realPath("") resolves to the working directory, which must never become writable.
+		if b != "" {
+			bases = append(bases, realPath(b))
+		}
+	}
 
-	writable := []string{base, realPath(stateDir(home)), realPath(in.HerdrHome)}
+	writable := append(append([]string{}, bases...), realPath(stateDir(home)), realPath(in.HerdrHome))
 	for _, p := range in.ExtraWritable {
 		if p != "" {
 			writable = append(writable, realPath(p))
@@ -196,7 +202,7 @@ func hostPolicy(in HostInput, sc Config, o policyOpts) *Policy {
 	denyWrite := append(stateDenies(home), claudeDeny...)
 	denyWrite = append(denyWrite, filepath.Join(state, "pi-agent"))
 	denyRx := []string{}
-	for _, tree := range []string{in.Repo, base} {
+	for _, tree := range append([]string{in.Repo}, bases...) {
 		root := ""
 		if isDir(tree) {
 			root = repoRoot(tree)

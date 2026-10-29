@@ -18,7 +18,7 @@ normalize_keys: [seconds, age_days, session_idle_minutes]
 steps:
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/00000000-boot/hb"}
   - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
   - argv: [isolate, request, start, --into, feat]
   - argv: [isolate, adopt, --task, pkg-a, --path, ../ext, --parent, feat]

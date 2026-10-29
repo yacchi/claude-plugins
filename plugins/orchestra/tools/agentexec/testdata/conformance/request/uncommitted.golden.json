@@ -122,7 +122,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat",
-        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat-orchestra/00000000-t1",
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
@@ -138,7 +138,7 @@
       "stdout_shape": "json",
       "stdout": {
         "chars": 9,
-        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat-orchestra/00000000-t1/c.txt",
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-t1/c.txt",
         "status": "ok"
       }
     },
@@ -290,7 +290,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat2",
-        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat2-orchestra/00000000-t2",
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-t2",
         "role": "work",
         "status": "created",
         "task": "t2"
@@ -306,7 +306,7 @@
       "stdout_shape": "json",
       "stdout": {
         "chars": 1,
-        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/feat2-orchestra/00000000-t2/d.txt",
+        "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-t2/d.txt",
         "status": "ok"
       }
     },

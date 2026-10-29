@@ -18,7 +18,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
@@ -38,7 +38,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -64,7 +64,7 @@
         "files": [
           "scratch/00000000"
         ],
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "session": "00000000",
         "status": "ok",
         "task": "t1"
@@ -109,7 +109,7 @@
             "files": [
               "scratch/00000000"
             ],
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
             "session": "00000000",
             "session_idle_minutes": 0,
@@ -132,7 +132,7 @@
         "files": [
           "scratch/00000000"
         ],
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "reason": "worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force",
         "status": "dirty",
         "task": "t1"
@@ -155,7 +155,7 @@
         "files": [
           "scratch/00000000"
         ],
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "session": "00000000",
         "status": "ok",
         "task": "t1"
@@ -172,7 +172,7 @@
       "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t1",
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "session": "00000000",
         "status": "removed",
         "task": "t1"

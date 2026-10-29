@@ -217,7 +217,7 @@ func replayCase(t *testing.T, f fixtures, c fixtureCase) (Spec, []string, map[st
 		o.platform = "darwin"
 		spec = prepareHost(sc, HostInput{
 			Repo:          filepath.Join(root, c.Host.Repo),
-			WorktreeBase:  filepath.Join(root, c.Host.WorktreeBase),
+			WorktreeBases: []string{filepath.Join(root, c.Host.WorktreeBase)},
 			HerdrHome:     filepath.Join(root, c.Host.HerdrHome),
 			ExtraWritable: extra,
 		}, &results, o)

@@ -12,10 +12,10 @@ steps:
   - argv: [isolate, create, --task, t1]
   - argv: [isolate, create, --task, t2]
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t1/scratch"}
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/00000000-t1/scratch"}
   - argv: [isolate, remove, --task, t1]
     snapshot:
-      - <ROOT>/work-orchestra/00000000-t1/scratch/00000000
+      - <WT>/00000000-t1/scratch/00000000
   - argv: [isolate, collect, --task, t1]
   - argv: [isolate, remove, --task, t1]
   - argv: [isolate, remove, --task, t2]

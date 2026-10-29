@@ -11,7 +11,7 @@ steps:
   - argv: [isolate, create, --task, t3]
     env: {CLAUDE_CODE_SESSION_ID: "11111111-2222-4333-8444-555555555555"}
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t1/scratch"}
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/00000000-t1/scratch"}
   - argv: [isolate, collect]
   - argv: [isolate, collect, --session, "bad!"]
   - argv: [isolate, collect, --task, nope]

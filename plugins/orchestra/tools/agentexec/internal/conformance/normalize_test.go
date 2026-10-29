@@ -72,6 +72,10 @@ func newNormalizer(s *sandbox, keys []string, rules []TextRule) *normalizer {
 	add(s.home, "<HOME>")
 	add(s.work, "<WORK>")
 	add(s.root, "<ROOT>")
+	// The unresolved spelling is registered too, so a path that never went
+	// through EvalSymlinks does not leak into a golden.
+	add(s.wt, "<WT>")
+	add(filepath.Join(s.home, ".local", "state", "claude-orchestra", "worktrees", filepath.Base(s.wt)), "<WT>")
 	sort.SliceStable(n.paths, func(i, j int) bool { return len(n.paths[i][0]) > len(n.paths[j][0]) })
 	return n
 }
@@ -203,7 +207,12 @@ func (n *normalizer) step(st Step, raw rawStep) GoldenStep {
 
 func TestRequestIDsAreMasked(t *testing.T) {
 	root := t.TempDir()
-	s := &sandbox{root: root, home: filepath.Join(root, "home"), work: filepath.Join(root, "work")}
+	s := &sandbox{
+		root: root,
+		home: filepath.Join(root, "home"),
+		work: filepath.Join(root, "work"),
+		wt:   filepath.Join(root, "home", ".local", "state", "claude-orchestra", "worktrees", "work-00000000"),
+	}
 	n := newNormalizer(s, nil, nil)
 
 	cases := map[string]string{

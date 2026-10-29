@@ -11,6 +11,8 @@
 package isolate
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -119,15 +121,53 @@ func orCurrent(session string) string {
 	return session
 }
 
-// Home is where plain-git worktrees of root go: a sibling directory
-// "<repo>-orchestra", never inside the repository (where they would show up
-// as untracked noise in the very tree isolation keeps clean).
+// worktreesDirName is the state dir's directory of the work trees that
+// belong to no request: <state dir>/worktrees/<RepoKey>/.
+const worktreesDirName = "worktrees"
+
+// Home is where root's work trees that belong to no request go:
+// <state dir>/worktrees/<RepoKey(common)>, common being the real path of
+// root's git common dir (root's own real path outside a repository). Every
+// checkout and linked worktree of one repository shares it, it is never
+// inside or beside a checkout, and refresh keeps its patch files in it.
 func Home(root string) string {
-	abs, err := filepath.Abs(root)
+	common, err := RepoCommon(root)
 	if err != nil {
-		abs = root
+		common = paths.RealPath(root)
 	}
-	return filepath.Join(filepath.Dir(abs), filepath.Base(abs)+"-orchestra")
+	return filepath.Join(paths.StateDir(), worktreesDirName, RepoKey(common))
+}
+
+// RepoKey is the directory name, under <state dir>/worktrees, of the
+// repository whose git common dir is common: a readable name, "-", and the
+// first 8 hex digits of the SHA-256 of common, so two repositories with the
+// same name never share a directory. The name is the base name of common's
+// parent when common's base name is ".git", else common's base name without
+// a ".git" suffix, sanitized like a task id; "repo" when nothing usable is
+// left. It never touches the filesystem.
+func RepoKey(common string) string {
+	name := filepath.Base(common)
+	if name == ".git" {
+		name = filepath.Base(filepath.Dir(common))
+	}
+	name = strings.TrimSuffix(name, ".git")
+	clean, err := SanitizeTaskID(name)
+	if err != nil {
+		clean = "repo"
+	}
+	sum := sha256.Sum256([]byte(common))
+	return clean + "-" + hex.EncodeToString(sum[:4])
+}
+
+// WorktreeBases are the directories orchestra creates root's trees in:
+// Home(root), then the request root when it resolves (a request's work
+// trees live in its workspace). The herdr host sandbox makes them writable.
+func WorktreeBases(root string) []string {
+	bases := []string{Home(root)}
+	if req, err := RequestRoot(); err == nil {
+		bases = append(bases, req)
+	}
+	return bases
 }
 
 // isDir reports whether p is a directory (symlinks followed).

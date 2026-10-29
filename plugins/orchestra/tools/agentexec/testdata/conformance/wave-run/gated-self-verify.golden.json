@@ -98,7 +98,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -146,7 +146,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-A\"}",
               "event": "check-start",
               "from": null,
               "pkg": "A",
@@ -210,7 +210,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-C\"}",
+              "detail": "{\"name\":\"self-verify\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-C\"}",
               "event": "check-start",
               "from": null,
               "pkg": "C",
@@ -316,7 +316,7 @@
                 "session": true,
                 "since": "<SINCE>",
                 "status": "needs",
-                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-A"
               },
               "B": {
                 "attempts": 0,
@@ -338,7 +338,7 @@
                 "session": true,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-C"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-C"
               }
             },
             "plan": "<HOME>/wave/plan.json",

@@ -17,7 +17,7 @@ type Options = {
 // an orchestra runner tree, an adopted orchestra tree, and a plain feature tree.
 const TREES = [
     { top: '/repo', gitDir: '/repo/.git', markers: [] },
-    { top: '/repo-orchestra/a-prog', gitDir: '/repo/.git/worktrees/a-prog', markers: ['orchestra-baseline'] },
+    { top: '/state/claude-orchestra/worktrees/repo-0123abcd/a-prog', gitDir: '/repo/.git/worktrees/a-prog', markers: ['orchestra-baseline'] },
     { top: '/repo-adopted', gitDir: '/repo/.git/worktrees/adopted', markers: ['orchestra-adopted'] },
     { top: '/repo-feature', gitDir: '/repo/.git/worktrees/feature', markers: [] },
 ]
@@ -89,7 +89,7 @@ describe('merge-guard', () => {
         expect(await deny('git merge feature/orchestra-ui')).toBeUndefined()
         expect(await deny('echo "git merge orchestra/x"')).toBeUndefined()
         expect(await deny('cat <<EOF\ngit merge orchestra/x\nEOF')).toBeUndefined()
-        expect(await deny('git -C /repo-orchestra/a-prog merge orchestra/a/other')).toBeUndefined()
+        expect(await deny('git -C /state/claude-orchestra/worktrees/repo-0123abcd/a-prog merge orchestra/a/other')).toBeUndefined()
     })
 
     test('the other verbs and branch spellings are denied', async () => {
@@ -101,19 +101,19 @@ describe('merge-guard', () => {
     })
 
     test('the directory: cd into an orchestra worktree allows, cd back to the checkout denies', async () => {
-        expect(await deny('cd /repo-orchestra/a-prog && git merge orchestra/a/other')).toBeUndefined()
-        expect(await deny('cd /repo-orchestra/a-prog && cd /repo && git merge orchestra/x')).toBeDefined()
-        expect(await deny('cd /repo-orchestra/a-prog && git -C /repo merge orchestra/x')).toBeDefined()
+        expect(await deny('cd /state/claude-orchestra/worktrees/repo-0123abcd/a-prog && git merge orchestra/a/other')).toBeUndefined()
+        expect(await deny('cd /state/claude-orchestra/worktrees/repo-0123abcd/a-prog && cd /repo && git merge orchestra/x')).toBeDefined()
+        expect(await deny('cd /state/claude-orchestra/worktrees/repo-0123abcd/a-prog && git -C /repo merge orchestra/x')).toBeDefined()
     })
 
     test('the directory: -C is relative to a preceding cd', async () => {
-        expect(await deny('cd /repo-orchestra && git -C a-prog merge orchestra/x')).toBeUndefined()
-        expect(await deny('cd /repo && git -C ../repo-orchestra/a-prog merge orchestra/x')).toBeUndefined()
+        expect(await deny('cd /state/claude-orchestra/worktrees/repo-0123abcd && git -C a-prog merge orchestra/x')).toBeUndefined()
+        expect(await deny('cd /repo && git -C ../state/claude-orchestra/worktrees/repo-0123abcd/a-prog merge orchestra/x')).toBeUndefined()
     })
 
     test('the directory: a cd through a variable is not followed, so the cwd applies', async () => {
         expect(await deny('cd $WT && git merge orchestra/x', '/repo')).toBeDefined()
-        expect(await deny('cd $WT && git merge orchestra/x', '/repo-orchestra/a-prog')).toBeUndefined()
+        expect(await deny('cd $WT && git merge orchestra/x', '/state/claude-orchestra/worktrees/repo-0123abcd/a-prog')).toBeUndefined()
     })
 
     test('the directory: a linked worktree needs an orchestra marker; an adopted one counts', async () => {
@@ -153,13 +153,13 @@ describe('merge-guard', () => {
         expect(await deny('git cherry-pick worktree-agent-a1')).toBeUndefined()
         expect(await deny('git rebase worktree-agent-a1')).toBeUndefined()
         expect(await deny('git merge-base HEAD worktree-agent-a1')).toBeUndefined()
-        expect(await deny('git -C /repo-orchestra/a-prog merge worktree-agent-a1')).toBeUndefined()
+        expect(await deny('git -C /state/claude-orchestra/worktrees/repo-0123abcd/a-prog merge worktree-agent-a1')).toBeUndefined()
     })
 
     test('moving verbs: push, update-ref, creating branch, checkout -b and switch -c name the ref', async () => {
         expect(await deny('git push origin orchestra/a/b')).toBeDefined()
         expect(await deny('git push origin orchestra/a/b:feature/y')).toBeDefined()
-        expect(await deny('git push origin orchestra/a/b', '/repo-orchestra/a-prog')).toBeDefined()
+        expect(await deny('git push origin orchestra/a/b', '/state/claude-orchestra/worktrees/repo-0123abcd/a-prog')).toBeDefined()
         expect(await deny('git update-ref refs/heads/feature/x orchestra/a/b')).toBeDefined()
         expect(await deny('git branch pr orchestra/a/b')).toBeDefined()
         expect(await deny('git branch -f main orchestra/a/b')).toBeDefined()

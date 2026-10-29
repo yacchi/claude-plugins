@@ -28,9 +28,9 @@
           "created": true,
           "isolate": true,
           "mode": "auto",
-          "path": "<WORK>-orchestra/00000000-t-dirty",
+          "path": "<WT>/00000000-t-dirty",
           "reason": "working tree is dirty; the user's uncommitted work must not be reachable by a worker",
-          "workdir": "<WORK>-orchestra/00000000-t-dirty"
+          "workdir": "<WT>/00000000-t-dirty"
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
@@ -107,9 +107,9 @@
           "created": false,
           "isolate": true,
           "mode": "auto",
-          "path": "<WORK>-orchestra/00000000-t-dirty",
+          "path": "<WT>/00000000-t-dirty",
           "reason": "working tree is dirty; the user's uncommitted work must not be reachable by a worker",
-          "workdir": "<WORK>-orchestra/00000000-t-dirty"
+          "workdir": "<WT>/00000000-t-dirty"
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
@@ -188,9 +188,9 @@
           "created": true,
           "isolate": true,
           "mode": "always",
-          "path": "<WORK>-orchestra/00000000-t-sub",
+          "path": "<WT>/00000000-t-sub",
           "reason": "isolation forced (--isolate always)",
-          "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
+          "workdir": "<WT>/00000000-t-sub/sub"
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
@@ -247,7 +247,7 @@
             "session_id": "<UUID#1>",
             "task": "t-sub",
             "updated": "<TS>",
-            "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
+            "workdir": "<WT>/00000000-t-sub/sub"
           },
           "shape": "json"
         }
@@ -282,9 +282,9 @@
           "created": false,
           "isolate": true,
           "mode": "always",
-          "path": "<WORK>-orchestra/00000000-t-sub",
+          "path": "<WT>/00000000-t-sub",
           "reason": "isolation forced (--isolate always)",
-          "workdir": "<WORK>-orchestra/00000000-t-sub/sub"
+          "workdir": "<WT>/00000000-t-sub/sub"
         },
         "model": "openai-codex/gpt-5.6-luna",
         "reason": null,
@@ -361,9 +361,9 @@
           "created": true,
           "isolate": true,
           "mode": "always",
-          "path": "<WORK>-orchestra/00000000-t-scratch",
+          "path": "<WT>/00000000-t-scratch",
           "reason": "isolation forced (--isolate always); --workdir's subdirectory (scratch) does not exist in the fresh worktree; using the worktree root instead",
-          "workdir": "<WORK>-orchestra/00000000-t-scratch"
+          "workdir": "<WT>/00000000-t-scratch"
         },
         "model": "haiku",
         "route": {

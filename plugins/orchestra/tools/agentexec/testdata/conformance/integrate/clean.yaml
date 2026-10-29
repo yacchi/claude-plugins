@@ -10,7 +10,7 @@ setup:
     a.txt: "1\n2\n3\n4\n5\n6\n7\n8\n9\n"
     <ROOT>/prep.sh: |
       set -e
-      W=<ROOT>/work-orchestra
+      W=<WT>
       printf '1\nTWO\n3\n4\n5\n6\n7\n8\n9\n' > $W/00000000-t1/a.txt
       printf '1\n2\n3\n4\n5\n6\n7\nEIGHT\n9\n' > $W/00000000-t2/a.txt
       printf 'new\n' > $W/00000000-t2/c.txt
@@ -22,7 +22,7 @@ steps:
   - argv: [isolate, create, --task, t3]
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/00000000-boot/hb"}
   - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
   - argv: [isolate, request, start, --into, integrate]
     save: {INTG: integration}

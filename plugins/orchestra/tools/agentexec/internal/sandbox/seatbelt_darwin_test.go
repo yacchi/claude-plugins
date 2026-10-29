@@ -104,7 +104,7 @@ func TestSeatbeltHostWritesOnlyTheInlinePluginDir(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "")
 	repo, _ := repoWithWorktree(t, base)
 	none := []Grant{}
-	p := hostPolicy(HostInput{Repo: repo, WorktreeBase: repo + "-orchestra", HerdrHome: filepath.Join(home, "hx")},
+	p := hostPolicy(HostInput{Repo: repo, WorktreeBases: []string{filepath.Join(base, "wt")}, HerdrHome: filepath.Join(home, "hx")},
 		Config{}, policyOpts{home: home, env: map[string]string{"TMPDIR": "/nonexistent-tmp"}, platform: "darwin", learned: &none})
 	checks := map[string]bool{
 		filepath.Join(plugins, "data", "orchestra-inline", "x"): true,

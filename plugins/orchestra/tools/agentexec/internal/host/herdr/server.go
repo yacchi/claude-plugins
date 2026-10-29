@@ -95,7 +95,7 @@ func hostReport(cfg *config.Resolved, status func() srt.StatusInfo) map[string]a
 	if err != nil {
 		return map[string]any{"home": nil, "sandboxed": false, "reason": host.AsNeed(err).Detail}
 	}
-	spec := sandbox.HostPolicy(cfg, sandbox.HostInput{Repo: cwd, WorktreeBase: isolate.Home(cwd), HerdrHome: home}).Spec
+	spec := sandbox.HostPolicy(cfg, sandbox.HostInput{Repo: cwd, WorktreeBases: isolate.WorktreeBases(cwd), HerdrHome: home}).Spec
 	net := sandbox.ConfigOf(cfg).Network
 	st := status()
 	path, reason := networkPlan(cfg, spec, func() srt.StatusInfo { return st })
@@ -379,7 +379,7 @@ func (e *Executor) hostSpec(home string) (sandbox.Spec, error) {
 	if sd := e.StateDir(); sd != "" {
 		extra = []string{sd}
 	}
-	spec := sandbox.HostPolicy(e.tools, sandbox.HostInput{Repo: repo, WorktreeBase: isolate.Home(repo),
+	spec := sandbox.HostPolicy(e.tools, sandbox.HostInput{Repo: repo, WorktreeBases: isolate.WorktreeBases(repo),
 		HerdrHome: home, ExtraWritable: extra}).Spec
 	if spec.Refuse {
 		return spec, host.Need(host.KindError, spec.Reason)

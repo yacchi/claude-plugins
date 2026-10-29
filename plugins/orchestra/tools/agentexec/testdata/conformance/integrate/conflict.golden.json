@@ -18,7 +18,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
@@ -41,7 +41,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t2",
+        "path": "<WT>/00000000-t2",
         "role": "work",
         "status": "created",
         "task": "t2"
@@ -64,7 +64,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t3",
+        "path": "<WT>/00000000-t3",
         "role": "work",
         "status": "created",
         "task": "t3"
@@ -87,7 +87,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-boot",
+        "path": "<WT>/00000000-boot",
         "role": "work",
         "status": "created",
         "task": "boot"
@@ -107,7 +107,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -117,7 +117,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -127,7 +127,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t2",
+            "path": "<WT>/00000000-t2",
             "role": "work",
             "session": "00000000",
             "task": "t2"
@@ -137,7 +137,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t3",
+            "path": "<WT>/00000000-t3",
             "role": "work",
             "session": "00000000",
             "task": "t3"
@@ -533,7 +533,7 @@
       "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t1",
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "session": "00000000",
         "status": "removed",
         "task": "t1"
@@ -550,7 +550,7 @@
       "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t2",
-        "path": "<WORK>-orchestra/00000000-t2",
+        "path": "<WT>/00000000-t2",
         "session": "00000000",
         "status": "removed",
         "task": "t2"
@@ -567,7 +567,7 @@
       "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t3",
-        "path": "<WORK>-orchestra/00000000-t3",
+        "path": "<WT>/00000000-t3",
         "session": "00000000",
         "status": "removed",
         "task": "t3"

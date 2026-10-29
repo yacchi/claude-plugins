@@ -23,30 +23,30 @@
         ],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-t1/.claude/settings.local.json": {
+        "<WT>/00000000-t1/.claude/settings.local.json": {
           "content": {},
           "shape": "json"
         },
-        "<ROOT>/work-orchestra/00000000-t1/CLAUDE.local.md": null,
-        "<ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js": {
+        "<WT>/00000000-t1/CLAUDE.local.md": null,
+        "<WT>/00000000-t1/node_modules/pkg/index.js": {
           "content": "module.exports = 1\n",
           "shape": "text"
         },
-        "<ROOT>/work-orchestra/00000000-t1/notes/new.txt": {
+        "<WT>/00000000-t1/notes/new.txt": {
           "content": "untracked\n",
           "shape": "text"
         },
-        "<ROOT>/work-orchestra/00000000-t1/packages/web/node_modules/dep/x.js": {
+        "<WT>/00000000-t1/packages/web/node_modules/dep/x.js": {
           "content": "x\n",
           "shape": "text"
         },
-        "<ROOT>/work-orchestra/00000000-t1/src/a.txt": {
+        "<WT>/00000000-t1/src/a.txt": {
           "content": "one\ntwo\n",
           "shape": "text"
         }
@@ -69,7 +69,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "exists",
         "task": "t1"
@@ -89,7 +89,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -111,7 +111,7 @@
         "branch": "orchestra/00000000/t1",
         "files": [],
         "patch": "",
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "session": "00000000",
         "status": "ok",
         "task": "t1"
@@ -128,13 +128,13 @@
       "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t1",
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "session": "00000000",
         "status": "removed",
         "task": "t1"
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-t1/src/a.txt": null
+        "<WT>/00000000-t1/src/a.txt": null
       }
     },
     {

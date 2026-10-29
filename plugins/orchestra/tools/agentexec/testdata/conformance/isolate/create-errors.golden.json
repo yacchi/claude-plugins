@@ -62,7 +62,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-Foo-Bar-x",
+        "path": "<WT>/00000000-Foo-Bar-x",
         "role": "work",
         "status": "created",
         "task": "Foo-Bar-x"

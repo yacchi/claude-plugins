@@ -20,7 +20,7 @@
         "carried_files": [],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "role": "work",
         "status": "created",
         "task": "t1"
@@ -45,7 +45,7 @@
         "carried_files": [],
         "carry_method": "clone",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-t2",
+        "path": "<WT>/00000000-t2",
         "role": "work",
         "status": "created",
         "task": "t2"
@@ -65,7 +65,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t1",
+            "path": "<WT>/00000000-t1",
             "role": "work",
             "session": "00000000",
             "task": "t1"
@@ -75,7 +75,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-t2",
+            "path": "<WT>/00000000-t2",
             "role": "work",
             "session": "00000000",
             "task": "t2"
@@ -94,13 +94,13 @@
       "stdout_shape": "json",
       "stdout": {
         "files": [],
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "reason": "worktree's ignored files changed since it was created and were never collected; collect the diff or pass --force",
         "status": "dirty",
         "task": "t1"
       },
       "files": {
-        "<ROOT>/work-orchestra/00000000-t1/scratch/00000000": {
+        "<WT>/00000000-t1/scratch/00000000": {
           "content": null,
           "shape": "empty"
         }
@@ -132,7 +132,7 @@
       "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t1",
-        "path": "<WORK>-orchestra/00000000-t1",
+        "path": "<WT>/00000000-t1",
         "session": "00000000",
         "status": "removed",
         "task": "t1"
@@ -149,7 +149,7 @@
       "stdout_shape": "json",
       "stdout": {
         "branch": "orchestra/00000000/t2",
-        "path": "<WORK>-orchestra/00000000-t2",
+        "path": "<WT>/00000000-t2",
         "session": "00000000",
         "status": "removed",
         "task": "t2"

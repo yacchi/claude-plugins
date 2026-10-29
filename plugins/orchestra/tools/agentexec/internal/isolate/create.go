@@ -31,14 +31,15 @@ const (
 // Onto is empty; without carry the CarryFiles are excluded from it.
 // CarryFiles nil means DefaultCarryFiles. Session "" is the calling session.
 //
-// Dir places the tree at that path instead of under Home. It forces the git
-// backend, since gtr cannot choose a path, and refuses a path that exists and
-// is not an empty directory, so a user's files are never adopted as a tree.
+// Dir places the tree at that path instead of the default place (treeHome).
+// It forces the git backend, since gtr names the tree's directory itself, and
+// refuses a path that exists and is not an empty directory, so a user's files
+// are never adopted as a tree.
 type CreateOptions struct {
 	Backend, Onto, Session string
 	Role                   string // "" work tree | RoleIntegration | RoleAssembly
 	Parent                 string // path of the parent tree; "" = none
-	Dir                    string // the new tree's path; "" = under Home(root). Forces the git backend
+	Dir                    string // the new tree's path; "" = the default place (treeHome). Forces the git backend
 	Carry                  bool
 	CarryExtra             []string
 	CarryDeps              *bool
@@ -166,7 +167,7 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 		backend = BackendAuto
 	}
 	if o.Onto != "" || dir != "" {
-		// gtr only branches from the current checkout, under its own path.
+		// gtr only branches from the current checkout and names the tree's directory itself.
 		backend = BackendGit
 	}
 	if backend == BackendAuto {
@@ -175,9 +176,13 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 			backend = BackendGtr
 		}
 	}
+	target := dir
+	if target == "" {
+		target = filepath.Join(treeHome(resolved, o.Parent), treeLeaf(branch))
+	}
 	path := ""
 	if backend == BackendGtr {
-		path = createViaGtr(resolved, branch, gtrConfigPairs(resolved))
+		path = createViaGtr(resolved, branch, filepath.Dir(target), gtrConfigPairs(resolved))
 		if path == "" {
 			backend = BackendGit // a worktree still beats a shared tree
 		}
@@ -187,7 +192,7 @@ func Create(root, task string, o CreateOptions) (CreateResult, error) {
 		if start == "" {
 			start = "HEAD"
 		}
-		path = createViaGit(resolved, branch, start, dir)
+		path = createViaGit(resolved, branch, start, target)
 	}
 	if path == "" {
 		return CreateResult{Status: "error", Reason: "could not create a worktree for " + branch}, nil
@@ -321,14 +326,47 @@ func occupiedDir(dir string) bool {
 	return err != nil || len(entries) > 0
 }
 
-// createViaGit adds the worktree at dir when set, else under Home(root); ""
-// when git refused. Missing parent directories are created.
-func createViaGit(root, branch, start, dir string) string {
-	path := dir
-	if path == "" {
-		name := strings.ReplaceAll(strings.TrimPrefix(branch, BranchPrefix), "/", "-")
-		path = filepath.Join(Home(root), name)
+// workDirName is the request workspace's directory of the work trees cut
+// from its integration trees: <workspace>/.work/<assembly name>/<leaf>.
+const workDirName = ".work"
+
+// treeHome is the directory Create puts a tree in when CreateOptions.Dir is
+// "": <workspace>/.work/<assembly name> when parent descends from the
+// assembly of a request, else Home(resolved).
+func treeHome(resolved, parent string) string {
+	if ws, name, ok := requestOfParent(parent); ok {
+		return filepath.Join(ws, workDirName, name)
 	}
+	return Home(resolved)
+}
+
+// requestOfParent follows parent markers from parent (parent included) to
+// the first assembly. ok is true when that assembly's directory holds a
+// request manifest: workspace is that directory and name the assembly's
+// base name.
+func requestOfParent(parent string) (workspace, name string, ok bool) {
+	for cur, depth := parent, 0; cur != "" && depth < maxLineageDepth; depth++ {
+		if ReadRole(cur) == RoleAssembly {
+			ws := filepath.Dir(cur)
+			if st, err := os.Stat(filepath.Join(ws, requestFile)); err == nil && st.Mode().IsRegular() {
+				return ws, filepath.Base(cur), true
+			}
+			return "", "", false
+		}
+		cur = ReadParent(cur)
+	}
+	return "", "", false
+}
+
+// treeLeaf is the directory name of branch's tree: the branch without
+// "orchestra/", with "/" replaced by "-".
+func treeLeaf(branch string) string {
+	return strings.ReplaceAll(strings.TrimPrefix(branch, BranchPrefix), "/", "-")
+}
+
+// createViaGit adds the worktree at path, creating missing parent
+// directories; "" when git refused.
+func createViaGit(root, branch, start, path string) string {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return ""
 	}

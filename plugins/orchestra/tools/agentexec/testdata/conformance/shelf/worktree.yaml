@@ -10,15 +10,15 @@ normalize_keys: [created]
 steps:
   - argv: [isolate, create, --task, t1]
   - argv: [shelf, push]
-    cwd: <ROOT>/work-orchestra/00000000-t1
+    cwd: <WT>/00000000-t1
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-t1/scratch"}
-  - argv: [shelf, push, --repo, <ROOT>/work-orchestra/00000000-t1]
-    snapshot: [<ROOT>/work-orchestra/00000000-t1/scratch/00000000]
-  - argv: [shelf, list, --repo, <ROOT>/work-orchestra/00000000-t1]
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/00000000-t1/scratch"}
+  - argv: [shelf, push, --repo, <WT>/00000000-t1]
+    snapshot: [<WT>/00000000-t1/scratch/00000000]
+  - argv: [shelf, list, --repo, <WT>/00000000-t1]
   - argv: [shelf, list]
   - argv: [shelf, pop]
-    cwd: <ROOT>/work-orchestra/00000000-t1
-    snapshot: [<ROOT>/work-orchestra/00000000-t1/scratch/00000000]
+    cwd: <WT>/00000000-t1
+    snapshot: [<WT>/00000000-t1/scratch/00000000]
   - argv: [shelf, list]
-    cwd: <ROOT>/work-orchestra/00000000-t1
+    cwd: <WT>/00000000-t1

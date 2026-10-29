@@ -18,7 +18,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-boot",
+        "path": "<WT>/00000000-boot",
         "role": "work",
         "status": "created",
         "task": "boot"
@@ -38,7 +38,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -187,7 +187,7 @@
         "in_place": true,
         "note": "moved 1 file(s) onto 6e251b74ca30 in place",
         "old_baseline": "<SHA#2>",
-        "patch_file": "<WORK>-orchestra/.patches/x-20fcf9a12274-6e251b74ca30.patch",
+        "patch_file": "<WT>/.patches/x-20fcf9a12274-6e251b74ca30.patch",
         "path": "<ROOT>/ext",
         "status": "ok",
         "task": "x"
@@ -239,7 +239,7 @@
         "in_place": true,
         "note": "1 file(s) conflicted; resolve in worktree at <ROOT>/ext2",
         "old_baseline": "<SHA#2>",
-        "patch_file": "<WORK>-orchestra/.patches/y-20fcf9a12274-6e251b74ca30.patch",
+        "patch_file": "<WT>/.patches/y-20fcf9a12274-6e251b74ca30.patch",
         "path": "<ROOT>/ext2",
         "status": "conflicted",
         "task": "y"
@@ -355,7 +355,7 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/boot",
             "current": true,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "would-remove",

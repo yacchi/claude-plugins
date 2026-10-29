@@ -48,7 +48,7 @@
             "needs": [
               {
                 "at": "<AT>",
-                "detail": "{\"agent_type\":\"orchestra:orchestra-light\",\"effort\":\"medium\",\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-light\",\"effort\":\"medium\",\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-A\"}",
                 "id": "A",
                 "kind": "delegate"
               }
@@ -57,13 +57,13 @@
               "A": {
                 "attempts": 0,
                 "commit": null,
-                "detail": "{\"agent_type\":\"orchestra:orchestra-light\",\"effort\":\"medium\",\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A\"}",
+                "detail": "{\"agent_type\":\"orchestra:orchestra-light\",\"effort\":\"medium\",\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-A\"}",
                 "executor": "claude",
                 "files_changed": null,
                 "session": false,
                 "since": "<SINCE>",
                 "status": "needs",
-                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-A"
               },
               "B": {
                 "attempts": 0,
@@ -191,7 +191,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"agent_type\":\"orchestra:orchestra-light\",\"effort\":\"medium\",\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A\"}",
+              "detail": "{\"agent_type\":\"orchestra:orchestra-light\",\"effort\":\"medium\",\"model\":\"haiku\",\"token\":\"<TOKEN#1>\",\"tree\":\"<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-A\"}",
               "event": "status",
               "from": "implementing",
               "pkg": "A",
@@ -386,7 +386,7 @@
                 "session": false,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-A"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-A"
               },
               "B": {
                 "attempts": 0,
@@ -397,7 +397,7 @@
                 "session": true,
                 "since": "<SINCE>",
                 "status": "integrated",
-                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int-orchestra/00000000-pkg-B"
+                "tree": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.work/work/00000000-pkg-B"
               }
             },
             "plan": "<HOME>/wave/plan.json",

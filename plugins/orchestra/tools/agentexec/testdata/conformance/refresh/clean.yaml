@@ -13,7 +13,7 @@ setup:
     node_modules/pkg/index.js: "module.exports = 1\n"
     <ROOT>/prep.sh: |
       set -e
-      W=<ROOT>/work-orchestra
+      W=<WT>
       printf '1\nTWO\n3\n4\n5\n6\n7\n8\n9\n' > $W/00000000-t1/a.txt
       printf 'new\n' > $W/00000000-t1/new.txt
       printf 'legacy\n' > $W/legacy/l.txt
@@ -30,23 +30,23 @@ steps:
     env: {CLAUDE_CODE_SESSION_ID: ""}
   - argv: [isolate, create, --task, boot]
   - argv: [isolate, list]
-    env: {ORCHESTRA_ALIVE_DIR: "<ROOT>/work-orchestra/00000000-boot/hb"}
+    env: {ORCHESTRA_ALIVE_DIR: "<WT>/00000000-boot/hb"}
   - argv: [isolate, integrate, --tasks, boot, --into, prep, --verify, 'sh "$PREP"']
   - argv: [isolate, refresh, --task, t1]
     snapshot:
-      - <ROOT>/work-orchestra/00000000-t1/a.txt
-      - <ROOT>/work-orchestra/00000000-t1/new.txt
-      - <ROOT>/work-orchestra/00000000-t1/node_modules/pkg/index.js
+      - <WT>/00000000-t1/a.txt
+      - <WT>/00000000-t1/new.txt
+      - <WT>/00000000-t1/node_modules/pkg/index.js
   - argv: [isolate, refresh, --task, t1, --json]
   - argv: [isolate, diff, --task, t1, --names-only]
   - argv: [isolate, refresh, --task, t2, --text]
   - argv: [isolate, refresh, --task, legacy]
     env: {CLAUDE_CODE_SESSION_ID: ""}
     snapshot:
-      - <ROOT>/work-orchestra/legacy/l.txt
+      - <WT>/legacy/l.txt
   - argv: [isolate, refresh, --task, t1, --onto, "HEAD~1", --text]
     snapshot:
-      - <ROOT>/work-orchestra/00000000-t1/a.txt
+      - <WT>/00000000-t1/a.txt
   - argv: [isolate, refresh, --task, t1, --onto, nope]
   - argv: [isolate, refresh, --task, ghost]
   - argv: [isolate, refresh, --task, ghost, --text]

@@ -18,7 +18,7 @@
         "carried_files": [],
         "carry_method": "none",
         "parent": null,
-        "path": "<WORK>-orchestra/00000000-boot",
+        "path": "<WT>/00000000-boot",
         "role": "work",
         "status": "created",
         "task": "boot"
@@ -38,7 +38,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -159,7 +159,7 @@
         "carried": [],
         "carried_files": [],
         "carry_method": "none",
-        "note": "parent <WORK>-orchestra/00000000-boot is not an integration tree",
+        "note": "parent <WT>/00000000-boot is not an integration tree",
         "path": "<ROOT>/ext2",
         "status": "error",
         "task": "pkg-b"
@@ -224,7 +224,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
@@ -342,7 +342,7 @@
             "age_days": "<AGE_DAYS>",
             "branch": "orchestra/00000000/boot",
             "current": true,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "session": "00000000",
             "session_idle_minutes": "<SESSION_IDLE_MINUTES>",
             "status": "would-remove",
@@ -420,7 +420,7 @@
             "children": 0,
             "current": true,
             "parent": null,
-            "path": "<WORK>-orchestra/00000000-boot",
+            "path": "<WT>/00000000-boot",
             "role": "work",
             "session": "00000000",
             "task": "boot"
