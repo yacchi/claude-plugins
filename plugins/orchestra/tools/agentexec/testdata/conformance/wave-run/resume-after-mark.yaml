@@ -31,7 +31,8 @@ setup:
       COMMANDS:
       printf 'b\n' > b.txt
     ~/wave/plan.json: |
-      {"packages": [
+      {"commit_message": "feat: wave run",
+       "packages": [
          {"id": "A", "spec": "specs/A.md", "cls": "light", "files_owned": ["a.txt"]},
          {"id": "B", "spec": "specs/B.md", "cls": "standard", "depends_on": ["A"], "files_owned": ["b.txt"]}
        ]}

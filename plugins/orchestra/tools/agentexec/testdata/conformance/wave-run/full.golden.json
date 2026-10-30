@@ -43,6 +43,21 @@
             "a.txt",
             "b.txt"
           ],
+          "land": {
+            "base": "<SHA#2>",
+            "branch": "feature/gated-int",
+            "commit": "<SHA#3>",
+            "created": true,
+            "files": [
+              "a.txt",
+              "b.txt"
+            ],
+            "removed": true,
+            "request": "<DATE>-00000000",
+            "request_ended": true,
+            "status": "landed",
+            "task": "<DATE>-00000000"
+          },
           "removed": true,
           "status": "merged",
           "task": "gated-int"
@@ -59,7 +74,7 @@
         "~/gated/green.json": {
           "content": {
             "at": "<AT>",
-            "sha": "<SHA#2>"
+            "sha": "<SHA#4>"
           },
           "shape": "json"
         },
@@ -155,7 +170,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"at_commit\":\"<SHA#3>\"}",
+              "detail": "{\"at_commit\":\"<SHA#5>\"}",
               "event": "verify-start",
               "from": null,
               "pkg": null,
@@ -219,7 +234,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#3>\"}",
+              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#5>\"}",
               "event": "on-green",
               "from": null,
               "pkg": null,
@@ -307,7 +322,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"at_commit\":\"<SHA#2>\"}",
+              "detail": "{\"at_commit\":\"<SHA#4>\"}",
               "event": "verify-start",
               "from": null,
               "pkg": null,
@@ -371,7 +386,7 @@
             },
             {
               "at": "<AT>",
-              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#2>\"}",
+              "detail": "{\"exit\":0,\"seconds\": <N>,\"sha\":\"<SHA#4>\"}",
               "event": "on-green",
               "from": null,
               "pkg": null,
@@ -384,6 +399,14 @@
               "from": null,
               "pkg": null,
               "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"branch\":\"feature/gated-int\",\"commit\":\"<SHA#3>\",\"created\":true,\"reason\":\"\",\"status\":\"landed\"}",
+              "event": "land",
+              "from": null,
+              "pkg": null,
+              "to": null
             }
           ],
           "shape": "jsonl"
@@ -391,7 +414,7 @@
         "~/gated/state.json": {
           "content": {
             "integration": {
-              "base": "<SHA#4>",
+              "base": "<SHA#2>",
               "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/gated-int",
               "task": "gated-int"
             },
@@ -399,7 +422,7 @@
             "packages": {
               "A": {
                 "attempts": 0,
-                "commit": "<SHA#3>",
+                "commit": "<SHA#5>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
@@ -410,7 +433,7 @@
               },
               "B": {
                 "attempts": 0,
-                "commit": "<SHA#2>",
+                "commit": "<SHA#4>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
@@ -429,7 +452,7 @@
           "shape": "json"
         },
         "~/green.out": {
-          "content": "<SHA#3> <SHA#3>\n<HOME>/gated/green-tree\n<SHA#2> <SHA#2>\n<HOME>/gated/green-tree\n",
+          "content": "<SHA#5> <SHA#5>\n<HOME>/gated/green-tree\n<SHA#4> <SHA#4>\n<HOME>/gated/green-tree\n",
           "shape": "text"
         }
       }
@@ -477,14 +500,14 @@
         "~/red/green.json": {
           "content": {
             "at": "<AT>",
-            "sha": "<SHA#1>"
+            "sha": "<SHA#3>"
           },
           "shape": "json"
         },
         "~/red/state.json": {
           "content": {
             "integration": {
-              "base": "<SHA#1>",
+              "base": "<SHA#3>",
               "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/red-int",
               "task": "red-int"
             },
@@ -492,7 +515,7 @@
             "packages": {
               "RA": {
                 "attempts": 0,
-                "commit": "<SHA#5>",
+                "commit": "<SHA#6>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
@@ -1001,7 +1024,7 @@
         "~/final/state.json": {
           "content": {
             "integration": {
-              "base": "<SHA#1>",
+              "base": "<SHA#3>",
               "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/final-int",
               "task": "final-int"
             },
@@ -1028,7 +1051,7 @@
             "packages": {
               "FA": {
                 "attempts": 0,
-                "commit": "<SHA#6>",
+                "commit": "<SHA#7>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
@@ -1039,7 +1062,7 @@
               },
               "FB": {
                 "attempts": 0,
-                "commit": "<SHA#7>",
+                "commit": "<SHA#8>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,

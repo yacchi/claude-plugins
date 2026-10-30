@@ -134,6 +134,20 @@
           "files": [
             "b.txt"
           ],
+          "land": {
+            "base": "<SHA#1>",
+            "branch": "feature/wave-int",
+            "commit": "<SHA#3>",
+            "created": true,
+            "files": [
+              "b.txt"
+            ],
+            "removed": true,
+            "request": "<DATE>-00000000",
+            "request_ended": true,
+            "status": "landed",
+            "task": "<DATE>-00000000"
+          },
           "removed": true,
           "status": "merged",
           "task": "wave-int"
@@ -364,6 +378,14 @@
               "from": null,
               "pkg": null,
               "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"branch\":\"feature/wave-int\",\"commit\":\"<SHA#3>\",\"created\":true,\"reason\":\"\",\"status\":\"landed\"}",
+              "event": "land",
+              "from": null,
+              "pkg": null,
+              "to": null
             }
           ],
           "shape": "jsonl"
@@ -390,7 +412,7 @@
               },
               "B": {
                 "attempts": 0,
-                "commit": "<SHA#3>",
+                "commit": "<SHA#4>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,

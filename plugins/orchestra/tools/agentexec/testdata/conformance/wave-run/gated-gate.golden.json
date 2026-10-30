@@ -442,7 +442,7 @@
         "--gate",
         "true"
       ],
-      "exit": 0,
+      "exit": 1,
       "stdout_shape": "json",
       "stdout": {
         "approvals": 0,
@@ -459,11 +459,31 @@
             "ga.txt",
             "gb.txt"
           ],
+          "land": {
+            "children": [
+              {
+                "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/red-int",
+                "task": "red-int"
+              },
+              {
+                "path": "<HOME>/.local/state/claude-orchestra/requests/<DATE>-00000000/.integration/work/wave-int",
+                "task": "wave-int"
+              }
+            ],
+            "reason": "assembly <DATE>-00000000 still has 2 open integration tree(s); merge them with 'agent-exec isolate merge --task <into> -m <message>' or discard them, then land",
+            "status": "has-children",
+            "task": "<DATE>-00000000"
+          },
           "removed": true,
           "status": "merged",
           "task": "green-int"
         },
-        "needs": [],
+        "needs": [
+          {
+            "id": null,
+            "kind": "land"
+          }
+        ],
         "network_denials": [],
         "pending": [],
         "reason": null,

@@ -79,6 +79,10 @@ type Plan struct {
 	Interfaces   []Interface
 	Rules        []Rule
 	Packages     []Package
+	// CommitMessage is the full commit message a done run lands its result
+	// with (top-level `commit_message`: subject line first, optional blank
+	// line and body); "" when absent.
+	CommitMessage string
 
 	// chain caches the dependent chains for the first chainN packages (the
 	// runner only ever appends to Packages).
@@ -175,6 +179,13 @@ func load(file string, skeleton bool) (*Plan, error) {
 	}
 
 	p := &Plan{}
+	if v, has := raw["commit_message"]; has {
+		msg, isStr := v.(string)
+		if !isStr {
+			return nil, errf("plan commit_message must be a string")
+		}
+		p.CommitMessage = msg
+	}
 	rulesV, has := raw["rules"]
 	if !has {
 		rulesV = []any{}

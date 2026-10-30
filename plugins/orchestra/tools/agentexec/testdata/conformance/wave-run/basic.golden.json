@@ -35,6 +35,22 @@
             "b.txt",
             "c.txt"
           ],
+          "land": {
+            "base": "<SHA#2>",
+            "branch": "feature/wave-int",
+            "commit": "<SHA#3>",
+            "created": true,
+            "files": [
+              "a.txt",
+              "b.txt",
+              "c.txt"
+            ],
+            "removed": true,
+            "request": "<DATE>-00000000",
+            "request_ended": true,
+            "status": "landed",
+            "task": "<DATE>-00000000"
+          },
           "removed": true,
           "status": "merged",
           "task": "wave-int"
@@ -333,6 +349,14 @@
               "from": null,
               "pkg": null,
               "to": null
+            },
+            {
+              "at": "<AT>",
+              "detail": "{\"branch\":\"feature/wave-int\",\"commit\":\"<SHA#3>\",\"created\":true,\"reason\":\"\",\"status\":\"landed\"}",
+              "event": "land",
+              "from": null,
+              "pkg": null,
+              "to": null
             }
           ],
           "shape": "jsonl"
@@ -348,7 +372,7 @@
             "packages": {
               "A": {
                 "attempts": 0,
-                "commit": "<SHA#3>",
+                "commit": "<SHA#4>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
@@ -359,7 +383,7 @@
               },
               "B": {
                 "attempts": 0,
-                "commit": "<SHA#4>",
+                "commit": "<SHA#5>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
@@ -370,7 +394,7 @@
               },
               "C": {
                 "attempts": 0,
-                "commit": "<SHA#5>",
+                "commit": "<SHA#6>",
                 "detail": "",
                 "executor": "pi",
                 "files_changed": 1,
@@ -410,7 +434,7 @@
         "packages": {
           "A": {
             "attempts": 0,
-            "commit": "<SHA#3>",
+            "commit": "<SHA#4>",
             "detail": "",
             "executor": "pi",
             "files_changed": 1,
@@ -421,7 +445,7 @@
           },
           "B": {
             "attempts": 0,
-            "commit": "<SHA#4>",
+            "commit": "<SHA#5>",
             "detail": "",
             "executor": "pi",
             "files_changed": 1,
@@ -432,7 +456,7 @@
           },
           "C": {
             "attempts": 0,
-            "commit": "<SHA#5>",
+            "commit": "<SHA#6>",
             "detail": "",
             "executor": "pi",
             "files_changed": 1,
@@ -494,7 +518,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "wave run done  waves=0\n  integrated: A, B, C\n  merge: nothing to merge: wave-int has no change past its assembly\n"
+      "stdout": "wave run done  waves=0\n  integrated: A, B, C\n  merge: nothing to merge: wave-int has no change past its assembly; nothing to land: <DATE>-00000000 has no commits past its base; assembly removed; request <DATE>-00000000 ended\n"
     }
   ]
 }

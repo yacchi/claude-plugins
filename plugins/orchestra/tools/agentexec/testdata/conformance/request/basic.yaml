@@ -4,11 +4,14 @@ description: >
   under the integration tree, --onto removed, integrate into the request's
   tree, an assembly refused as integrate target, merge into the assembly, land
   of the request's assembly (no --task) removing it and ending the request,
-  land with no request
+  land with no request (isolation.land: ask; request/auto-land covers auto)
 setup:
   git: true
   files:
     a.txt: "a\n"
+    ~/.claude/orchestra.yaml: |
+      isolation:
+        land: ask
 normalize_keys: [seconds, age_days, session_idle_minutes]
 steps:
   - argv: [isolate, request, list]

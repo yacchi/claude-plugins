@@ -36,9 +36,10 @@ The instructor gives you: the user's goal; the user's constraints and prohibitio
 6. **Frozen interfaces are files.** Anything two packages must agree on (names, signatures, flags, JSON keys, file formats, error texts) goes into `<specs dir>/interfaces/<id>.md`, written once; each spec writer pastes it unchanged and the lint checks that.
 7. **No spec bodies.** Never write `<specs dir>/<id>.md`: spec writers do, in parallel, after the review. A package's `spec` is only the path its spec will have.
 8. **One shared preamble** (`<specs dir>/preamble.md`): repo facts, style rules, the user's constraints and prohibitions verbatim, the response format, "do not commit; never `git stash`", ESCALATE on contract ambiguity.
-9. **plan.json** at the plan path: top-level `preamble` (list of paths), `interfaces` (`{id, path}` list), optional `warm_read` and `rules`; `packages[]`, each with `id`, `spec`, `cls`, `depends_on`, `files_owned`, `est_seconds`, `verification`, `brief`, `risks`, `interfaces`, optional `prio`. Example:
+9. **plan.json** at the plan path: top-level `commit_message` (the commit the run's result lands with: the full message in the repository's commit convention from CLAUDE.md and `git log`, subject first; `plan lint` warns when it is missing), `preamble` (list of paths), `interfaces` (`{id, path}` list), optional `warm_read` and `rules`; `packages[]`, each with `id`, `spec`, `cls`, `depends_on`, `files_owned`, `est_seconds`, `verification`, `brief`, `risks`, `interfaces`, optional `prio`. Example:
    ```json
-   {"preamble": ["<specs dir>/preamble.md"],
+   {"commit_message": "feat(mathx): add Clamp",
+    "preamble": ["<specs dir>/preamble.md"],
     "interfaces": [{"id": "clamp-api", "path": "<specs dir>/interfaces/clamp-api.md"}],
     "packages": [
       {"id": "mathx-clamp", "spec": "<specs dir>/mathx-clamp.md", "cls": "light",

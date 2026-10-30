@@ -2,7 +2,9 @@
 // outer loop that drives a plan through dispatch -> self-verify ->
 // integrate, every state change going through wave/state's Store. A run that
 // ends done with no needs merges its integration tree into the request's
-// assembly; any other run leaves that to `agent-exec isolate merge`.
+// assembly, then lands that assembly as `isolation.land` says: auto lands it
+// on the checked-out branch (a new feature/<slug> on the default branch), ask
+// lands nothing. Any other run leaves both to `agent-exec isolate`.
 //
 // Scheduling is rolling: every package that may start runs as a goroutine
 // (an integer max_in_flight caps them; memory pressure holds new starts),
@@ -276,7 +278,8 @@ func Run(ctx context.Context, o Options, d Deps) (Report, int) {
 	rep := r.report()
 	if r.opts.Merge && rep.Status == "done" && len(rep.Needs) == 0 && len(rep.Pending) == 0 && len(rep.Blocked) == 0 {
 		m := r.mergeIntegration()
-		// a merge that failed adds a need, so the report is built again
+		r.landAssembly(&m)
+		// a merge or land that failed adds a need, so the report is built again
 		rep = r.report()
 		rep.Merge = &m
 	}
@@ -321,6 +324,30 @@ func (r *runner) mergeIntegration() isolate.MergeResult {
 		r.need("", "merge", isolate.FormatMergeText(res))
 	}
 	return res
+}
+
+// landAssembly lands the merged assembly on the checkout as isolation.land
+// says. It runs only after a merge that produced an assembly, so a tree that
+// failed to merge is never landed. Only a land that cannot go ahead becomes a
+// need: ask and empty are normal outcomes.
+func (r *runner) landAssembly(m *isolate.MergeResult) {
+	if (m.Status != "merged" && m.Status != "empty") || m.Assembly == "" {
+		return
+	}
+	slug := isolate.FeatureSlug(r.opts.RunID, r.opts.Title, r.into, m.Assembly)
+	l := isolate.FinishLand(isolate.LandMode(r.configOrDefaults()), r.root, m.Assembly, r.plan.CommitMessage, slug)
+	m.Land = &l
+	r.emit("land", "", map[string]any{
+		"status":  l.Status,
+		"branch":  l.Branch,
+		"commit":  l.Commit,
+		"created": l.Created,
+		"reason":  l.Reason,
+	})
+	if l.Status == "landed" || l.Status == "empty" || l.Status == "ask" {
+		return
+	}
+	r.need("", "land", isolate.FormatLandText(l)+"; then land it from the checkout: agent-exec isolate land --request "+m.Assembly+" --feature "+slug+" -m \"<commit message>\"")
 }
 
 // reportObject is the report as an ordered object (the notify payload).

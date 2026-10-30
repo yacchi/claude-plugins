@@ -148,8 +148,11 @@ const ESCAPE = 'To override deliberately, include [orchestra:allow-orchestra-mer
 const orchestraReason = ({ ref, dir, verb }: Hit): string =>
     `orchestra: do not ${verb} an orchestra branch (${ref}) into ${dir}. `
     + 'Its commits are authored "orchestra" with "orchestra integrate <id>" subjects and must not reach the user\'s history. '
-    + 'When the user asks to take the run\'s result, finish each integration tree with '
-    + '`agent-exec isolate merge --task <into> -m "<subject>"` and land the request\'s assembly from the user\'s checkout with '
+    + 'To take the run\'s result, finish each integration tree with '
+    + '`agent-exec isolate merge --task <into> -m "<message in the repository\'s convention>"`: '
+    + 'under isolation.land: auto (the default) it also lands the request\'s assembly on the user\'s branch '
+    + '(a new feature/<slug> branch when the checkout is on the default branch). '
+    + 'Under isolation.land: ask, land it on the user\'s request from their checkout with '
     + '`agent-exec isolate land -m "<subject in the repository\'s convention>"`: '
     + 'one squashed commit with the user\'s identity. '
     + ESCAPE
@@ -157,9 +160,10 @@ const orchestraReason = ({ ref, dir, verb }: Hit): string =>
 const worktreeReason = ({ ref, dir }: Hit): string =>
     `orchestra: do not merge an Agent worktree branch (${ref}) into ${dir}. `
     + 'A merge commit would name that branch in the user\'s history. '
-    + 'When the user asks to take the worktree\'s result, land it with '
+    + 'To take the worktree\'s result, land it from the user\'s checkout with '
     + '`agent-exec isolate land --path <its worktree> -m "<subject in the repository\'s convention>"`: '
-    + 'one squashed commit with the user\'s identity (`git worktree list` shows the path). '
+    + 'one squashed commit with the user\'s identity, on a new feature/<slug> branch when isolation.land is auto '
+    + 'and the checkout is on the default branch (`git worktree list` shows the path). '
     + `To keep the branch's own commits, use \`git merge --ff-only ${ref}\`. `
     + ESCAPE
 

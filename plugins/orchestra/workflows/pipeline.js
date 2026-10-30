@@ -807,7 +807,8 @@ const results = await pipeline(tasks, async (task) => {
 // reclaims them. Failed tasks keep their trees for inspection. The integration
 // tree itself is kept until the instructor merges it into the assembly
 // (`agent-exec isolate merge`), and the assembly until it is landed
-// (`agent-exec isolate land`, only on the user's request). Nothing here can
+// (`agent-exec isolate merge` lands it under isolation.land: auto;
+// `agent-exec isolate land` on the user's request under ask). Nothing here can
 // discard an unread verdict: the sweep applies the same review gate as `isolate
 // remove`, so any tree still holding uncollected work survives and is reported.
 // Await every agent working in a surviving tree before this call. Fold the telemetry emission (§10) into this same relay call when

@@ -18,6 +18,7 @@ import (
 // base, planted the way the wave runner does.
 func landTestRepo(t *testing.T) string {
 	t.Helper()
+	pinLandMode(t, "ask")
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	t.Setenv("GIT_AUTHOR_NAME", "Land User")
@@ -75,6 +76,18 @@ func landWrite(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// pinLandMode sets isolation.land to mode through a project config of its own,
+// so the test neither reads the user's config nor dirties the checkout.
+func pinLandMode(t *testing.T, mode string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	landWrite(t, filepath.Join(dir, ".claude", "orchestra.yaml"), "isolation:\n  land: "+mode+"\n")
+	t.Setenv("ORCHESTRA_CONFIG_ROOT", dir)
 }
 
 // runLand executes `isolate land` with args and returns its stdout and exit code.
@@ -325,6 +338,25 @@ func TestLandBaselineNeedsPath(t *testing.T) {
 func TestLandPathNeedsMessage(t *testing.T) {
 	if _, code := landUsageErr(t, "--path", "/tmp/x"); code != 2 {
 		t.Errorf("missing -m: exit %d, want 2", code)
+	}
+}
+
+func TestLandUnderAutoMakesFeatureBranchFromMain(t *testing.T) {
+	repo := landTestRepo(t)
+	pinLandMode(t, "auto")
+	out, code := runLand(t, "--task", "prog", "--repo", repo, "-m", "feat: x", "--feature", "my-work")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	var res map[string]any
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if res["status"] != "landed" || res["branch"] != "feature/my-work" || res["created"] != true {
+		t.Errorf("result %v", res)
+	}
+	if head := strings.TrimSpace(landGit(t, repo, "symbolic-ref", "--short", "HEAD")); head != "feature/my-work" {
+		t.Errorf("HEAD %q, want feature/my-work", head)
 	}
 }
 
