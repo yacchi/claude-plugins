@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 )
 
@@ -275,6 +276,11 @@ func nextDecide(cfg *config.Resolved, planPath string, in NextInput, now time.Ti
 	full, err := plan.Load(planPath)
 	if err != nil {
 		return Step{Step: "stuck", Plan: abs, Reasons: []string{err.Error()}}, nil
+	}
+	// The repo is the one the plan was made for (st.Repo; "" is the working directory).
+	repoRoot, _ := gitx.RepoRoot(st.Repo)
+	if err := plan.CheckTsJest(full, repoRoot, false); err != nil {
+		return nextContinueSkeleton(abs, st, err.Error(), continueNote), nil
 	}
 	var warnings []string
 	for _, w := range plan.Lint(full, "") {

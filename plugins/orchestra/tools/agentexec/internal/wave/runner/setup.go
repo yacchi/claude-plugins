@@ -209,6 +209,9 @@ func (r *runner) init() error {
 		return fmt.Errorf("not a git repository: %s", r.opts.Repo)
 	}
 	r.root = root
+	if err := plan.CheckTsJest(r.plan, r.root, false); err != nil {
+		return err
+	}
 	warnings := plan.Lint(r.plan, r.root)
 	r.fixups = loadFixups(r.fixupsPath())
 	for _, fp := range r.fixups.packages {

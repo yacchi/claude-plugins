@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 	wavewatch "github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/watch"
@@ -149,6 +150,11 @@ func runWaveStatus(out, errw io.Writer, o waveStatusOptions, watch bool) error {
 
 func runWaveLint(out io.Writer, planPath string, asJSON bool) error {
 	p, err := plan.Load(planPath)
+	if err == nil {
+		// The repo is the working directory's, as wave run's default; outside a repository the repo rule is skipped.
+		root, _ := gitx.RepoRoot("")
+		err = plan.CheckTsJest(p, root, false)
+	}
 	if err != nil {
 		var pe *plan.Error
 		if errors.As(err, &pe) {
