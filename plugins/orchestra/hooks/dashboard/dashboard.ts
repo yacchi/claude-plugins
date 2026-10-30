@@ -95,7 +95,10 @@ async function ensure($: EngineInterface): Promise<void> {
             input: { action: 'set', url: page.url, collection: 'status', doc_id: docIdOf(me.host), data: {} },
         })
         if (check.decision !== 'allow') {
-            blocked = 'ArtifactData would ask before every write: add "ArtifactData" to permissions.allow in this profile\'s settings.json, then run /orchestra:board'
+            const why = [check.reason, check.rule && `rule ${check.rule}`, check.setting && `setting ${check.setting}`]
+                .filter(Boolean).join('; ')
+            blocked = `the permission check answers ${check.decision} for ArtifactData writes${why === '' ? '' : ` (${why})`}: `
+                + 'add "ArtifactData" to permissions.allow in this profile\'s settings.json, then run /orchestra:board'
 
             return
         }
