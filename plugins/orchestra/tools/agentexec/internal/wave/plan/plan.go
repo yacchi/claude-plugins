@@ -47,14 +47,25 @@ type Rule struct {
 	Require []string
 }
 
+// Interface is a `interfaces` entry: a frozen contract file that packages
+// name by id and that their specs must paste verbatim; Path is absolute.
+type Interface struct {
+	ID   string
+	Path string
+}
+
 // Package is one normalized plan package; Spec is an absolute path.
 type Package struct {
-	ID         string
-	Spec       string
-	Cls        string
-	DependsOn  []string
-	FilesOwned []string
-	Prio       float64
+	ID           string
+	Spec         string
+	Cls          string
+	DependsOn    []string
+	FilesOwned   []string
+	Prio         float64
+	Verification string
+	Brief        string
+	Risks        []string
+	Interfaces   []string
 	// EstSeconds is the plan's `est_seconds` (0 = not given).
 	EstSeconds float64
 }
@@ -65,6 +76,7 @@ type Plan struct {
 	WarmRead     []string
 	Preamble     []string
 	ExternalDone []string
+	Interfaces   []Interface
 	Rules        []Rule
 	Packages     []Package
 
@@ -82,6 +94,16 @@ func (p *Plan) Package(id string) (Package, bool) {
 		}
 	}
 	return Package{}, false
+}
+
+// Interface returns the interface with the given id.
+func (p *Plan) Interface(id string) (Interface, bool) {
+	for _, iface := range p.Interfaces {
+		if iface.ID == id {
+			return iface, true
+		}
+	}
+	return Interface{}, false
 }
 
 func resolve(p, base string) string {
@@ -119,6 +141,16 @@ func stringList(v any) ([]string, bool) {
 // Load reads plan.json, fills defaults, validates, and returns the
 // normalized plan.
 func Load(file string) (*Plan, error) {
+	return load(file, false)
+}
+
+// LoadSkeleton is Load for a planning skeleton: the spec files need not exist
+// yet, and every package must carry the fields a spec writer works from.
+func LoadSkeleton(file string) (*Plan, error) {
+	return load(file, true)
+}
+
+func load(file string, skeleton bool) (*Plan, error) {
 	abs, err := filepath.Abs(file)
 	if err != nil {
 		abs = file
@@ -215,6 +247,30 @@ func Load(file string) (*Plan, error) {
 		}
 	}
 
+	p.Interfaces = []Interface{}
+	if v, has := raw["interfaces"]; has {
+		list, isList := v.([]any)
+		if !isList {
+			return nil, errf("plan interfaces must be a list of {'id': <string>, 'path': <path>} objects")
+		}
+		for _, e := range list {
+			obj, isObj := e.(map[string]any)
+			id, isID := obj["id"].(string)
+			ifacePath, isPath := obj["path"].(string)
+			if !isObj || !isID || !isPath || id == "" || ifacePath == "" {
+				return nil, errf("plan interfaces must be a list of {'id': <string>, 'path': <path>} objects")
+			}
+			if _, dup := p.Interface(id); dup {
+				return nil, errf("duplicate interface id: %s", id)
+			}
+			ifaceAbs := resolve(ifacePath, base)
+			if _, err := os.Stat(ifaceAbs); err != nil {
+				return nil, errf("interface %s: path does not exist: %s", id, ifaceAbs)
+			}
+			p.Interfaces = append(p.Interfaces, Interface{ID: id, Path: ifaceAbs})
+		}
+	}
+
 	entries, isList := rawPackages.([]any)
 	if !isList {
 		return nil, errf("plan %s: 'packages' must be a list", file)
@@ -249,10 +305,14 @@ func Load(file string) (*Plan, error) {
 			return nil, errf("%s: invalid cls %s (must be one of %s)", id, jsonText(clsV), strings.Join(ValidCls, ", "))
 		}
 		specPath := resolve(spec, base)
-		if _, err := os.Stat(specPath); err != nil {
+		// A skeleton's spec is written after it, so the file may not exist yet.
+		if _, err := os.Stat(specPath); err != nil && !skeleton {
 			return nil, errf("%s: spec path does not exist: %s", id, specPath)
 		}
-		pkg := Package{ID: id, Spec: specPath, Cls: cls, DependsOn: []string{}, FilesOwned: []string{}}
+		pkg := Package{
+			ID: id, Spec: specPath, Cls: cls, DependsOn: []string{}, FilesOwned: []string{},
+			Risks: []string{}, Interfaces: []string{},
+		}
 		if v, has := entry["depends_on"]; has {
 			list, isList := stringList(v)
 			if !isList {
@@ -287,12 +347,54 @@ func Load(file string) (*Plan, error) {
 				return nil, errf("%s: verification runs the whole suite: %s; name the changed packages' tests — "+
 					"the full suite runs after integration", id, verification)
 			}
+			pkg.Verification = verification
 		}
 		switch n := entry["est_seconds"].(type) {
 		case int64:
 			pkg.EstSeconds = max(float64(n), 0)
 		case float64:
 			pkg.EstSeconds = max(n, 0)
+		}
+		if v, has := entry["brief"]; has {
+			brief, isStr := v.(string)
+			if !isStr {
+				return nil, errf("%s: brief must be a string", id)
+			}
+			pkg.Brief = brief
+		}
+		if v, has := entry["risks"]; has {
+			list, isList := stringList(v)
+			if !isList {
+				return nil, errf("%s: risks must be a list of strings", id)
+			}
+			pkg.Risks = list
+		}
+		if v, has := entry["interfaces"]; has {
+			list, isList := stringList(v)
+			if !isList {
+				return nil, errf("%s: interfaces must be a list of interface ids", id)
+			}
+			for _, ifaceID := range list {
+				if _, known := p.Interface(ifaceID); !known {
+					return nil, errf("%s: unknown interface %s", id, strconv.Quote(ifaceID))
+				}
+			}
+			pkg.Interfaces = list
+		}
+		if skeleton {
+			_, hasRisks := entry["risks"]
+			switch {
+			case pkg.Brief == "":
+				return nil, errf("%s: missing required field 'brief'", id)
+			case !hasRisks:
+				return nil, errf("%s: missing required field 'risks'", id)
+			case pkg.EstSeconds < 1 || pkg.EstSeconds > 300:
+				return nil, errf("%s: est_seconds must be between 1 and 300; split a larger package by file ownership", id)
+			case len(pkg.FilesOwned) == 0:
+				return nil, errf("%s: files_owned must name at least one path", id)
+			case pkg.Verification == "":
+				return nil, errf("%s: missing required field 'verification'", id)
+			}
 		}
 		p.Packages = append(p.Packages, pkg)
 	}

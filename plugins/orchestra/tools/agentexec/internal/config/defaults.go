@@ -307,7 +307,22 @@ func Defaults() map[string]any {
 			"standard", modelEffort("haiku", "high"),
 			"deep", modelEffort("opus", "medium"),
 			"review", modelEffort("sonnet", "medium"),
-			"planner", modelEffort("opus", "max"),
+			"planner", modelEffort("opus", "xhigh"),
+		),
+		"planning", obj(
+			"redo", modelEffort("opus", "max"),
+			"spec_writers", obj(
+				"light", modelEffort("sonnet", "medium"),
+				"standard", modelEffort("opus", "high"),
+				"deep", modelEffort("opus", "max"),
+			),
+			"writers_concurrent", int64(8),
+			"review", true,
+			"redo_when", obj(
+				"structural_findings", int64(1),
+				"deep_packages", int64(3),
+				"interface_users", int64(5),
+			),
 		),
 		"external_executors", obj(
 			"pi", obj(
@@ -339,7 +354,7 @@ func Defaults() map[string]any {
 			"session_cleanup", "on",
 			"usage_guard", int64(95),
 			"usage_advise", int64(75),
-			"fanout", obj("children", int64(6), "concurrent", int64(2), "scout_calls", int64(15), "checker_calls", int64(8)),
+			"fanout", obj("children", int64(6), "concurrent", int64(2), "scout_calls", int64(15), "checker_calls", int64(8), "writer_calls", int64(40)),
 			"resume_max_tokens", int64(200000),
 			"resume_max_tokens_by_model", obj("haiku", int64(100000)),
 		),

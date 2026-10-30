@@ -112,7 +112,7 @@ Run it only when the context shows the user's opt-in for the Workflow tool (§8)
 
 ## 6. Writing worker prompts
 
-You decompose and write contracts yourself only for a handful of tasks. Beyond that, the planner (§14) decomposes and writes one spec file per package plus a shared preamble that already follow the rules below; pass those files as the prompts (rule 6) instead of rewriting them.
+You decompose and write contracts yourself only for a handful of tasks. Beyond that, the planning stages (§14) leave one spec file per package plus a shared preamble that already follow the rules below; pass those files as the prompts (rule 6) instead of rewriting them.
 
 Mandatory for every `workerPrompt`:
 
@@ -214,12 +214,15 @@ When the request is dozens of session-sized packages with dependencies between t
 
 ## 14. Planning: the planner, not you
 
-You run at low effort; planning a large programme is high-effort work. So beyond a handful of tasks you never plan anything yourself — not the decomposition, not the contracts, not the package list:
+You run at low effort; planning a large programme is high-effort work. So beyond a handful of tasks you never plan anything yourself — not the decomposition, not the contracts, not the package list. Planning runs in three stages (`references/programme.md` §2): a skeleton (packages, frozen interfaces, estimates) by `orchestra:orchestra-planner` at `tiers.planner` (default Opus/xhigh); an independent Codex review of that skeleton, which the planner runs itself and which can send the skeleton back once, at `planning.redo` (default Opus/max); and one `orchestra:orchestra-spec-writer` per package. **`agent-exec plan next` decides every step — stage, agent, model and effort. Never choose them yourself.**
 
-1. Read `tiers.planner` from `agent-exec config --json` (default `{model: opus, effort: max}`).
-2. Spawn `orchestra:orchestra-planner` with the Agent tool, passing that `model` and `effort` (instruction-sourced, so allowed). Its prompt carries: the user's goal, the user's constraints and prohibitions verbatim, the repo path, a specs directory and a plan path under your scratch dir. Also pass the plan id — the run id the wave will use (`--run-id`), so the status file links the plan to its run — and a short task title (at most 30 characters, in the user's language: what the user would call this work; no quotes): the planner records its phase and open questions in `~/.claude/orchestra/status.json`.
-3. It reads first, then fans out to at most 6 budgeted scout/checker children, 2 at once (the fan-out guard enforces it; `references/programme.md` §2 is its playbook). It does the synthesis, design decisions and contracts itself, runs `agent-exec wave lint`, and returns only the package count, total and critical-path estimates, its decisions, open questions and the paths.
-4. Relay its open questions to the user, verbatim and before any dispatch. Then spawn a fresh planner, not `SendMessage` (the resume guard denies it: a planner's context is long). Its prompt names the previous plan path and specs directory, carries the planner's report and the user's answers, and asks it to revise the files in place.
-5. Run the plan: spawn `orchestra:orchestra-wave` with the `agent-exec wave run --plan <plan> --run-id <plan id> --title '<the same task title>' ...` command line (`references/programme.md` §6), or for a handful of independent packages the §5 pipeline with each spec file as the `workerPrompt`.
+1. Pick a plan path and a specs directory under your scratch dir, the plan id (the run id the wave will use, `--run-id`) and a short task title (at most 30 characters, in the user's language: what the user would call this work; no quotes). Run `agent-exec plan next --plan <plan> --id <plan id> --repo <repo> --title '<title>'`; later calls need only `--plan`. Each call answers one JSON line; act on its `step`:
+   - `skeleton`: spawn `agent` with the Agent tool, passing its `model` and `effort` (instruction-sourced, so allowed). The prompt carries the user's goal, the user's constraints and prohibitions verbatim, the repo path, the specs directory, the plan path, the plan id, the title, and `note` verbatim when present. If it returns open questions, relay them to the user verbatim before anything else, write the user's answers verbatim to a file in your scratch dir, and run `agent-exec plan next --plan <plan> --answers <file>`; otherwise run `agent-exec plan next --plan <plan>`.
+   - `specs`: spawn one `agent` per `writers` entry, all in one message, each with the entry's `model`, `effort`, `description` and `prompt` verbatim. Each time a writer returns, run `agent-exec plan next --plan <plan> --returned <its id>` and act on that answer.
+   - `wait`: spawn nothing; act again when the next writer returns.
+   - `done`: the plan is lint-clean. Relay `warnings` to the user, one line each, if there are any, then run it (step 3).
+   - `stuck`: tell the user the `reasons`, one line each, and stop planning.
+2. Never `SendMessage` a planner or a writer (the resume guard denies it: their contexts are long); `plan next` always names a fresh one. Read the planner's report, never the spec bodies.
+3. Run the plan: spawn `orchestra:orchestra-wave` with the `agent-exec wave run --plan <plan> --run-id <plan id> --title '<the same task title>' ...` command line (`references/programme.md` §6), or for a handful of independent packages the §5 pipeline with each spec file as the `workerPrompt`.
 
-**A planned package never carries `allowLarge`** unless the user approved that package by name; split it instead. Read the planner's report, never its spec bodies.
+**A planned package never carries `allowLarge`** unless the user approved that package by name; split it instead.

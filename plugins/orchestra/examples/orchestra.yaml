@@ -51,13 +51,30 @@ tiers:
     model: sonnet
     effort: medium
   # planning role (never routed): the instructor spawns `orchestra:orchestra-planner`
-  # with this model and effort for anything beyond a handful of tasks. model must
-  # be opus, fable or sonnet.
+  # with this model and effort as `agent-exec plan next` answers; the planner writes
+  # only the skeleton (plan.json), and `planning` below sets the review and the
+  # spec writers. model must be opus, fable or sonnet.
   planner:
     model: opus
-    effort: max
+    effort: xhigh
   # `independent-review` has no built-in Claude model on purpose — it exists to
   # add a DIFFERENT provider's eyes; see `priority.independent-review` below.
+
+# Planner stages (`agent-exec plan`): the skeleton is written by `tiers.planner`, then
+# a Codex review (stage 2) may send it back once to `redo`, then one spec writer per
+# package (stage 3) writes its spec. Defaults shown; `planning` is commented out.
+# planning:
+#   redo: {model: opus, effort: max}         # the one skeleton redo when the redo gate trips
+#   spec_writers:                            # stage 3 writer, by the package's cls
+#     light:    {model: sonnet, effort: medium}
+#     standard: {model: opus, effort: high}
+#     deep:     {model: opus, effort: max}
+#   writers_concurrent: 8                    # writers alive at once; 0 = no cap (a rolling cap)
+#   review: true                             # stage 2 Codex review (independent-review class); false skips it
+#   redo_when:                               # redo gate thresholds; 0 turns one off
+#     structural_findings: 1                 # at least this many structural review findings
+#     deep_packages: 3                       # at least this many deep packages
+#     interface_users: 5                     # an interface listed by at least this many packages
 
 # Non-Claude executors (pi, ...) that may be woven into the pipeline.
 # Only entries with `enabled: true` are used.
@@ -479,6 +496,7 @@ enforcement:
     concurrent: 2
     scout_calls: 15
     checker_calls: 8
+    writer_calls: 40     # tool calls per orchestra-spec-writer; Write/Edit never counted
   # Never resume (SendMessage) a worker whose last context is at least floor(0.9 x cap) tokens;
   # the cap is the longest case-insensitive substring match in resume_max_tokens_by_model,
   # else resume_max_tokens. Haiku 5.5 prices above 100k input, and cache reads count against

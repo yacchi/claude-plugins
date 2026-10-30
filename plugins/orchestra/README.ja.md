@@ -86,7 +86,8 @@ claude plugin validate .
 
 設定は 4 つの層を後勝ちで深くマージします: 組み込みの既定値 ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`。プロジェクトの設定ファイルには変えたいキーだけを書けば足ります。マージ結果は `agent-exec config` で確認できます。
 
-- **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。加えて `planner`(既定は opus/max)は振り分けを通さず直接起動されます。
+- **`tiers`** — クラス/役割(`light`、`standard`、`deep`、`review`)ごとの Claude のモデル。振り分け先が `claude` になったときに使われます。加えて `planner`(既定は opus/xhigh。骨格を書く段)は、`agent-exec plan next` の応答に従って起動され、振り分けは通しません。
+- **`planning`** — planner が書いた骨格の Codex による外部レビュー(`review`、`agent-exec plan review` で実行)、骨格を 1 度だけ書き直させる判定(`redo_when`)とその役(`redo`、初期値は opus/max)、クラスごとの仕様書き役(`spec_writers`)と同時に動かす数(`writers_concurrent`、既定 8)です。計画が少数のタスクを超える場合は 3 段で進みます。指示役は `agent-exec plan next` の応答に従って起動するだけです。まず planner が骨格を書き、次に Codex がそれをレビューし、最後にパッケージごとに `orchestra-spec-writer` が仕様書を書きます。`agent-exec plan lint` が骨格と各仕様書を検査します。
 - **`external_executors`** — pi などを実装役やレビュー役として使います。既定で有効ですが、実際に使えるかどうかで選別されるため、CLI が入っていなければすべて `claude` に振り分けられます。Claude Code の中では同梱の `agent-exec` ラッパーが既に `PATH` に載っており、`agent-exec install` は Claude Code の外のシェル向けです。推奨は `Bash(agent-exec:*)` の許可ルール 1 つを加えることです。
 - **`tools`** — 実行役のバイナリ(pi、herdr)を決まった版で orchestra 専用の状態ディレクトリに入れます(`agent-exec tools install`)。pi は既定で専用のエージェントディレクトリを使うため、個人の pi の設定はワーカーに届きません。
 - **`sandbox.network`** — herdr ホストの外向き通信を sandbox-runtime(srt)でドメイン許可リストに絞ります。遮断した接続は記録してパッケージごとに表示し、`agent-exec sandbox allow-domain` で動いたまま許可できます(既定は `api.anthropic.com` のみ)。
@@ -97,7 +98,7 @@ claude plugin validate .
 - **`usage_routing`** — サブスクリプションの残量を見たルーティング。候補の背後にあるプラン(`claude` は Claude、`openai-codex/...` のモデルで動く `pi` は ChatGPT)が 5 時間枠の 80% 以上か 7 日枠の 90% 以上を使っていれば、余裕のある次の候補に回します。降格はソフト(全候補が上限近くなら無視)で、照会はキャッシュされ、失敗しても通常どおりルーティングします。`--no-usage` か `ORCHESTRA_USAGE_ROUTING=0` で無効にでき、現在値は `agent-exec doctor` の `usage_limits` で確認できます。
 - **`enforcement.*`** — フックによる防護(`worker_vcs`、`worker_tree`、`worktree_lease`、`session_cleanup`、`turn_edits`、`opus_generalist`、オプトインの `light_class`、`opt_in`、`orchestra_merge`)。`opt_in` は、`/orchestra:run` で利用を開始するか確認に一度答えるまで、オーケストレーション用エージェントの起動を拒否します。`orchestra_merge` は `orchestra/*` ブランチを利用者のブランチへマージすることを拒否するため、`agent-exec isolate land` を使ってください。新しい 2 つの防護は既定で有効です。元からある防護には回避用のマーカーと環境変数による無効化スイッチがあり、`"off"` で個別に、`ORCHESTRA_ENFORCEMENT=off` で新しい 2 つを無効化できます。
   - `usage_guard`: 5 時間枠が 95% 以上のとき、新しい `Agent`/`Task`/`Workflow` の呼び出しを拒否します（`"off"` または `ORCHESTRA_USAGE_GUARD=off` で無効）。
-  - `fanout`: planner の子エージェントを合計 6、同時稼働 2 までに制限し、scout と checker のツール呼び出しはそれぞれ 15 回と 8 回までです（`"off"` または `ORCHESTRA_FANOUT_GUARD=off` で無効）。
+  - `fanout`: planner の子エージェントを合計 6、同時稼働 2 までに制限し、scout と checker のツール呼び出しはそれぞれ 15 回と 8 回まで、spec writer は 40 回までです（Write と Edit は数えません）（`"off"` または `ORCHESTRA_FANOUT_GUARD=off` で無効）。
   - `resume_max_tokens`（既定 200000、`resume_max_tokens_by_model` で Haiku は 100000）: コンテキストが floor(0.9 × 上限) 以上のエージェントへの `SendMessage` による再開を拒否します（Haiku は 90k、他のモデルは 180k）。代わりに、要点をまとめた引き継ぎを渡して新しいエージェントを起動してください（`"off"`、`0`、または `ORCHESTRA_RESUME_GUARD=off` で無効）。
 
 コメント付きの全項目は [`examples/orchestra.yaml`](examples/orchestra.yaml) を、マージの手順と各オプションは [`skills/run/references/config.md`](skills/run/references/config.md) を参照してください。`/setup` を使えばファイルを代わりに編集してくれます。
@@ -142,6 +143,8 @@ Copilotのモデルはpiの`github-copilot/*`、ChatGPTサブスクリプショ�
 | `agents/orchestra-deep.md` | 設計判断を伴う実装を担うワーカー(Opus) |
 | `agents/orchestra-review.md` | 使い捨ての probe で壊しにいくレビュー役。契約を引用した厳格な判定を返す(Sonnet) |
 | `agents/orchestra-delegate.md` | Workflows が使えない環境での中間管理役(Sonnet) |
+| `agents/orchestra-planner.md` | 骨格を書く planner: パッケージ、固定するインターフェース、見積もり。自分の骨格を Codex にレビューさせます(Opus/xhigh) |
+| `agents/orchestra-spec-writer.md` | 骨格から 1 パッケージの仕様書を書きます(モデルと effort は cls ごと) |
 | `agents/orchestra-scout.md` | planner の予算管理された子エージェント。範囲を絞った読解の問い 1 件に答える |
 | `agents/orchestra-checker.md` | planner の予算管理された子エージェント。引用された file:line の根拠だけを確かめる |
 | `skills/run/` | 手順書本体と、必要なときに読む参考資料(`authoring`、`gates`、`isolation`、`config`、`programme`、`external-executors`、`poc-findings`) |

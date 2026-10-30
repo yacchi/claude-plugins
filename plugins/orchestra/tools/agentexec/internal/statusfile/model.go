@@ -22,7 +22,7 @@ const (
 // PlanStatuses are the statuses a planner writes; PlanPhases its phases.
 var (
 	PlanStatuses = []string{"planning", "done", "needs-user", "failed"}
-	PlanPhases   = []string{"explore", "verify", "critique", "design", "synthesize", "reality-check", "lint", "done"}
+	PlanPhases   = []string{"explore", "verify", "critique", "design", "synthesize", "reality-check", "lint", "review", "specs", "done"}
 )
 
 // Doc is the whole of status.json.

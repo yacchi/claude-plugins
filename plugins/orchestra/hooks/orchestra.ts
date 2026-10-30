@@ -37,7 +37,7 @@ import { verdictOf } from './router/verdict.ts'
 //
 // The tool.call listener also runs three guards, one line each:
 //   usage:   holds Agent, Task and Workflow calls near the plan's 5-hour limit
-//   fan-out: caps a planner's spawns, and a scout's or checker's tool calls
+//   fan-out: caps a planner's spawns, and a scout's, checker's or spec writer's tool calls
 //   resume:  holds SendMessage to an agent whose context is already long
 
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash'])
@@ -123,7 +123,7 @@ export const register: Register = (on, options) => {
         const io = ioOf($)
         const sessionId = await io.sessionId().catch(() => '')
         if (e.agentId) {
-            const deny = await checkChildBudget(io, sessionId, e.agentId).catch(() => undefined)
+            const deny = await checkChildBudget(io, sessionId, e.agentId, tool).catch(() => undefined)
             if (deny) {
                 return { deny }
             }

@@ -47,50 +47,81 @@ func Lint(p *Plan, root string) []Warning {
 		}
 	}
 	for _, pkg := range p.Packages {
-		owned := pkg.FilesOwned
 		data, err := os.ReadFile(pkg.Spec)
 		specText, haveSpec := string(data), err == nil && utf8.Valid(data)
-		if len(owned) > maxOwnedFiles {
-			warnings = append(warnings, Warning{pkgPtr(pkg.ID),
-				"package " + pkg.ID + " owns " + strconv.Itoa(len(owned)) + " files; split into packages of 1-" +
-					strconv.Itoa(maxOwnedFiles) + " files so no single package runs for tens of minutes"})
-		}
-		specLines := 0
+		warnings = append(warnings, ownedWarnings(pkg)...)
+		warnings = append(warnings, SpecWarnings(p, pkg)...)
 		if haveSpec {
-			specLines = countLines(specText)
+			warnings = append(warnings, deletionWarnings(pkg, specText)...)
 		}
-		if specLines > maxSpecLines {
+		warnings = append(warnings, ruleWarnings(p, pkg)...)
+	}
+	return warnings
+}
+
+// LintSkeleton is Lint for a planning skeleton, which has no spec files yet:
+// the deletion check reads the package's brief, and the spec checks are left
+// to SpecWarnings once the specs exist. It also flags an interface no package
+// names, which would otherwise never be pasted into any spec.
+func LintSkeleton(p *Plan) []Warning {
+	warnings := []Warning{}
+	listed := map[string]bool{}
+	for _, pkg := range p.Packages {
+		warnings = append(warnings, ownedWarnings(pkg)...)
+		warnings = append(warnings, deletionWarnings(pkg, pkg.Brief)...)
+		warnings = append(warnings, ruleWarnings(p, pkg)...)
+		for _, id := range pkg.Interfaces {
+			listed[id] = true
+		}
+	}
+	for _, iface := range p.Interfaces {
+		if !listed[iface.ID] {
+			warnings = append(warnings, Warning{Message: "interface " + iface.ID +
+				" is used by no package; list it in the packages that produce or consume it"})
+		}
+	}
+	return warnings
+}
+
+func ownedWarnings(pkg Package) []Warning {
+	if len(pkg.FilesOwned) <= maxOwnedFiles {
+		return nil
+	}
+	return []Warning{{pkgPtr(pkg.ID),
+		"package " + pkg.ID + " owns " + strconv.Itoa(len(pkg.FilesOwned)) + " files; split into packages of 1-" +
+			strconv.Itoa(maxOwnedFiles) + " files so no single package runs for tens of minutes"}}
+}
+
+// deletionWarnings flags a package whose text (spec or brief) says it deletes
+// code while it owns only literal paths, which cannot reach the leftovers.
+func deletionWarnings(pkg Package, text string) []Warning {
+	if !deletionWords.MatchString(text) {
+		return nil
+	}
+	for _, f := range pkg.FilesOwned {
+		if strings.ContainsAny(f, "*?[") {
+			return nil
+		}
+	}
+	return []Warning{{pkgPtr(pkg.ID),
+		"deletes code but owns only literal paths; leftover references (tests, other features) will be out of reach — consider a glob"}}
+}
+
+func ruleWarnings(p *Plan, pkg Package) []Warning {
+	var warnings []Warning
+	for _, rule := range p.Rules {
+		if !Overlaps(pkg.FilesOwned, []string{rule.If}) {
+			continue
+		}
+		var missing []string
+		for _, req := range rule.Require {
+			if !Overlaps(pkg.FilesOwned, []string{req}) {
+				missing = append(missing, req)
+			}
+		}
+		if len(missing) > 0 {
 			warnings = append(warnings, Warning{pkgPtr(pkg.ID),
-				"package " + pkg.ID + " spec is " + strconv.Itoa(specLines) + " lines; split it into packages with specs of at most " +
-					strconv.Itoa(maxSpecLines) + " lines so no single package runs for tens of minutes"})
-		}
-		if haveSpec && deletionWords.MatchString(specText) {
-			literalOnly := true
-			for _, f := range owned {
-				if strings.ContainsAny(f, "*?[") {
-					literalOnly = false
-					break
-				}
-			}
-			if literalOnly {
-				warnings = append(warnings, Warning{pkgPtr(pkg.ID),
-					"deletes code but owns only literal paths; leftover references (tests, other features) will be out of reach — consider a glob"})
-			}
-		}
-		for _, rule := range p.Rules {
-			if !Overlaps(owned, []string{rule.If}) {
-				continue
-			}
-			var missing []string
-			for _, req := range rule.Require {
-				if !Overlaps(owned, []string{req}) {
-					missing = append(missing, req)
-				}
-			}
-			if len(missing) > 0 {
-				warnings = append(warnings, Warning{pkgPtr(pkg.ID),
-					"files_owned matching " + rule.If + " are missing required ownership: " + strings.Join(missing, ", ")})
-			}
+				"files_owned matching " + rule.If + " are missing required ownership: " + strings.Join(missing, ", ")})
 		}
 	}
 	return warnings

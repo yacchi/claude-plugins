@@ -51,7 +51,7 @@ func TestValidateTiersRejectsBadPlanner(t *testing.T) {
 }
 
 func TestDefaultsCarryPlanner(t *testing.T) {
-	if m, e := Tier(&Resolved{Values: Defaults()}, "planner"); m != "opus" || e != "max" {
+	if m, e := Tier(&Resolved{Values: Defaults()}, "planner"); m != "opus" || e != "xhigh" {
 		t.Fatalf("planner: %q %q", m, e)
 	}
 }

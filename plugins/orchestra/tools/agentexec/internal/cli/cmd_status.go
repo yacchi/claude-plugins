@@ -103,57 +103,87 @@ func newStatusPlanCmd() *cobra.Command {
 			}
 		}
 
-		dir := *repo
-		if dir == "" {
-			wd, err := os.Getwd()
-			if err != nil {
-				return exitf(1, "%s: %v", name, err)
-			}
-			dir = wd
-		}
-
-		now := time.Now()
-		store := statusfile.Default()
-		p, ok := store.ReadPlan(*id)
-		if !ok {
-			p = statusfile.Plan{PlanID: *id, StartedAt: now.Unix()}
-		}
-		p.Status = *status
-		if *phase != "" {
-			p.Phase = *phase
-		}
-		switch {
-		case *title != "":
-			p.Title = *title
-		case p.Title == "":
-			p.Title = *id
-		}
+		ps := planStatus{ID: *id, Status: *status, Phase: *phase, Repo: *repo, Title: *title}
 		if cmd.Flags().Changed("questions") {
-			p.Questions = *questions
+			ps.Questions = intPtr(*questions)
 		}
 		if cmd.Flags().Changed("packages") {
-			p.Packages = intPtr(*packages)
+			ps.Packages = intPtr(*packages)
 		}
 		if cmd.Flags().Changed("est-total") {
-			p.EstTotalS = intPtr(*estTotal)
+			ps.EstTotal = intPtr(*estTotal)
 		}
 		if cmd.Flags().Changed("est-critical") {
-			p.EstCriticalS = intPtr(*estCritical)
+			ps.EstCritical = intPtr(*estCritical)
 		}
-		p.Project = statusfile.Project(dir)
-		p.UpdatedAt = now.Unix()
-
-		if err := store.WritePlan(p); err != nil {
-			return exitf(1, "%s: %v", name, err)
-		}
-		if _, err := store.Rebuild(now); err != nil {
+		path, err := writePlanStatus(ps, time.Now())
+		if err != nil {
 			return exitf(1, "%s: %v", name, err)
 		}
 		return writeJSONLine(cmd.OutOrStdout(), map[string]any{
-			"path": store.Path(), "plan": *id, "status": *status,
+			"path": path, "plan": *id, "status": *status,
 		})
 	}
 	return cmd
+}
+
+// planStatus is one write of a plan's entry in the status file. Phase and
+// Title "" keep the earlier value (a new entry's title defaults to the id);
+// Repo "" is the working directory; a nil count keeps the earlier value.
+type planStatus struct {
+	ID, Status, Phase, Repo, Title             string
+	Questions, Packages, EstTotal, EstCritical *int
+}
+
+// writePlanStatus upserts the plan entry, rebuilds status.json and returns
+// the status file's path.
+func writePlanStatus(ps planStatus, now time.Time) (string, error) {
+	dir := ps.Repo
+	if dir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		dir = wd
+	}
+
+	store := statusfile.Default()
+	p, ok := store.ReadPlan(ps.ID)
+	if !ok {
+		p = statusfile.Plan{PlanID: ps.ID, StartedAt: now.Unix()}
+	}
+	p.Status = ps.Status
+	if ps.Phase != "" {
+		p.Phase = ps.Phase
+	}
+	switch {
+	case ps.Title != "":
+		p.Title = ps.Title
+	case p.Title == "":
+		p.Title = ps.ID
+	}
+	if ps.Questions != nil {
+		p.Questions = *ps.Questions
+	}
+	if ps.Packages != nil {
+		p.Packages = ps.Packages
+	}
+	if ps.EstTotal != nil {
+		p.EstTotalS = ps.EstTotal
+	}
+	if ps.EstCritical != nil {
+		p.EstCriticalS = ps.EstCritical
+	}
+	p.Project = statusfile.Project(dir)
+	p.UpdatedAt = now.Unix()
+
+	if err := store.WritePlan(p); err != nil {
+		return "", err
+	}
+	if _, err := store.Rebuild(now); err != nil {
+		return "", err
+	}
+	return store.Path(), nil
 }
 
 func newStatusCloseCmd() *cobra.Command {
