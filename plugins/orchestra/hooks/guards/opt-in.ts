@@ -26,6 +26,7 @@ const WORK = new Set([
     'orchestra-relay',
     'orchestra-wave',
     'orchestra-planner',
+    'orchestra-spec-writer',
 ])
 const GENERIC = new Set(['', 'general-purpose', 'claude'])
 const USER_ORIGINS = new Set(['composer', 'bridge', 'sdk', 'slack-ping'])

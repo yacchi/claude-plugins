@@ -86,7 +86,8 @@ Companion skills:
 
 Config is deep-merged from four layers (later wins): built-in defaults ← `~/.claude/orchestra.yaml` ← `.claude/orchestra.yaml` ← `.claude/orchestra.local.yaml`. A project file only needs the keys it changes. `agent-exec config` prints the merged result.
 
-- **`tiers`** — Claude models per class/role (`light`, `standard`, `deep`, `review`), used whenever routing resolves to `claude`, plus `planner` (default opus/max), which is spawned directly and never routed.
+- **`tiers`** — Claude models per class/role (`light`, `standard`, `deep`, `review`), used whenever routing resolves to `claude`, plus `planner` (default opus/xhigh: the skeleton stage), spawned as `agent-exec plan next` answers and never routed.
+- **`planning`** — the Codex review of a planner's skeleton (`review`, run by `agent-exec plan review`), the redo gate (`redo_when`) and the tier that redoes a skeleton once (`redo`, opus/max out of the box), and the spec writers per class (`spec_writers`) with at most `writers_concurrent` (8) running at once. Planning beyond a handful of tasks runs in three stages that `agent-exec plan next` sequences, and the instructor only spawns what it answers: the planner writes the skeleton, Codex reviews it, then one `orchestra-spec-writer` per package writes its spec; `agent-exec plan lint` checks the skeleton and each spec.
 - **`external_executors`** — pi, … as implementers or reviewers. Enabled by default but gated on real availability; with the CLI not installed, everything resolves to `claude`. Inside Claude Code the bundled `agent-exec` wrapper is already on `PATH`; `agent-exec install` is for shells outside it. The recommended setup adds one `Bash(agent-exec:*)` allow rule.
 - **`tools`** — pins executor binaries (pi, herdr) to a known version in orchestra's own state dir (`agent-exec tools install`). pi runs with its own agent dir by default, so your personal pi settings do not reach workers.
 - **`sandbox.network`** — the herdr host's outbound domain allowlist, enforced by sandbox-runtime (srt); blocked hosts are audited and surfaced per package, `agent-exec sandbox allow-domain` approves one live (default `api.anthropic.com` only).
@@ -97,7 +98,7 @@ Config is deep-merged from four layers (later wins): built-in defaults ← `~/.c
 - **`usage_routing`** — subscription-aware routing: a candidate whose plan (Claude for `claude`, ChatGPT for `pi` on `openai-codex/...`) has used at least 80% of its 5-hour or 90% of its 7-day window is demoted to the next candidate with room. The demotion is soft (when every candidate is over, the walk ignores it), the lookup is cached and fail-open, and `--no-usage` / `ORCHESTRA_USAGE_ROUTING=0` turn it off. `agent-exec doctor` shows the numbers under `usage_limits`.
 - **`enforcement.*`** — the hook guards (`worker_vcs`, `worker_tree`, `worktree_lease`, `session_cleanup`, `turn_edits`, `opus_generalist`, opt-in `light_class`, `opt_in`, `orchestra_merge`). `opt_in` denies orchestration agents until you opt in with `/orchestra:run` or answer the one ask; `orchestra_merge` denies merging an `orchestra/*` branch into your branch (use `agent-exec isolate land`). The two new guards are on by default. The original guards each have an escape marker and an environment kill switch; `"off"` disables a key, and `ORCHESTRA_ENFORCEMENT=off` disables both new guards.
   - `usage_guard` denies new `Agent`/`Task`/`Workflow` calls at or above 95% of the 5-hour window (`"off"` or `ORCHESTRA_USAGE_GUARD=off` disables).
-  - `fanout` caps planner children at 6 in total and 2 alive at once, with 15 / 8 tool calls for a scout / checker (`"off"` or `ORCHESTRA_FANOUT_GUARD=off` disables).
+  - `fanout` caps planner children at 6 in total and 2 alive at once, with 15 / 8 tool calls for a scout / checker, and 40 for a spec writer, whose Write/Edit calls are never counted (`"off"` or `ORCHESTRA_FANOUT_GUARD=off` disables).
   - `resume_max_tokens` (default 200000; `resume_max_tokens_by_model` sets Haiku to 100000) denies `SendMessage` resumes of an agent whose context is at or above floor(0.9 × cap), so Haiku resumes stop at 90k and other models at 180k; spawn a fresh agent with a compact handoff instead (`"off"`, `0`, or `ORCHESTRA_RESUME_GUARD=off` disables).
 
 See [`examples/orchestra.yaml`](examples/orchestra.yaml) for the full commented schema and [`skills/run/references/config.md`](skills/run/references/config.md) for the merge algorithm and every option. `/setup` edits the file for you.
@@ -146,6 +147,8 @@ Log in to either provider with `agent-exec pi login --provider <id>` (Claude run
 | `agents/orchestra-deep.md` | Design-sensitive implementation worker (Opus) |
 | `agents/orchestra-review.md` | Adversarial reviewer with throwaway probes; strict, contract-cited verdict (Sonnet) |
 | `agents/orchestra-delegate.md` | Middle manager for environments without Workflows (Sonnet) |
+| `agents/orchestra-planner.md` | Skeleton planner: packages, frozen interfaces, estimates; runs the Codex review of its skeleton (Opus/xhigh) |
+| `agents/orchestra-spec-writer.md` | Writes one package's spec from the skeleton (model and effort by cls) |
 | `agents/orchestra-scout.md` | Planner's budgeted child: answers one scoped reading question |
 | `agents/orchestra-checker.md` | Planner's budgeted child: checks only cited file:line evidence |
 | `skills/run/` | The playbook, plus on-demand references (`authoring`, `gates`, `isolation`, `config`, `programme`, `external-executors`, `poc-findings`) |

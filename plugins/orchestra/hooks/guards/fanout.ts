@@ -10,10 +10,14 @@ import { enforcementOf, isOff, loadEnforcement } from '../lib/config.ts'
 // full-context request, so each deny says what to do instead and never hints
 // that a retry might pass.
 //
+// The per-child budget also covers orchestra-spec-writer, which the instructor
+// spawns in stage 3 of planning, not a planner. A writer's Write and Edit are
+// never counted or denied, so a spent writer can still save its spec.
+//
 // Three caps, all configured under enforcement.fanout:
 //   children    spawns per planner (total)
 //   concurrent  live children (pending, running, waiting) per planner
-//   scout_calls / checker_calls  tool calls per child
+//   scout_calls / checker_calls / writer_calls  tool calls per child
 // `fanout: off`, ORCHESTRA_FANOUT_GUARD=off or ORCHESTRA_ENFORCEMENT=off disables both checks. There is
 // no per-call escape: a planner must not lift its own cap. Fails open.
 
@@ -22,9 +26,10 @@ export type FanoutConfig = {
     concurrent: number,
     scout_calls: number,
     checker_calls: number,
+    writer_calls: number,
 }
 
-const DEFAULTS: FanoutConfig = { children: 6, concurrent: 2, scout_calls: 15, checker_calls: 8 }
+const DEFAULTS: FanoutConfig = { children: 6, concurrent: 2, scout_calls: 15, checker_calls: 8, writer_calls: 40 }
 
 const LIVE = new Set(['pending', 'running', 'waiting'])
 
@@ -57,6 +62,7 @@ const fanoutConfig = async (io: Io, sessionId: string): Promise<FanoutConfig | u
         concurrent: positive(f.concurrent, DEFAULTS.concurrent),
         scout_calls: positive(f.scout_calls, DEFAULTS.scout_calls),
         checker_calls: positive(f.checker_calls, DEFAULTS.checker_calls),
+        writer_calls: positive(f.writer_calls, DEFAULTS.writer_calls),
     }
 }
 
@@ -106,12 +112,13 @@ export const checkFanout = async (
     }
 }
 
-// Caps the tool calls of a scout or checker child. Once its budget is spent,
-// every later call is denied too, so the child ends instead of retrying.
+// Caps the tool calls of a scout, checker or spec writer child. Once its budget
+// is spent, every later call is denied too, so the child ends instead of retrying.
 export const checkChildBudget = async (
     io: Io,
     sessionId: string,
     agentId: string,
+    tool = '',
 ): Promise<string | undefined> => {
     try {
         let type = childTypes.get(agentId)
@@ -122,20 +129,33 @@ export const checkChildBudget = async (
                 childTypes.set(agentId, type)
             }
         }
-        const role = type.endsWith('orchestra-scout') ? 'scout' : type.endsWith('orchestra-checker') ? 'checker' : ''
+        const role = type.endsWith('orchestra-scout')
+            ? 'scout'
+            : type.endsWith('orchestra-checker')
+                ? 'checker'
+                : type.endsWith('orchestra-spec-writer') ? 'writer' : ''
         if (!role) {
+            return undefined
+        }
+        // A writer saves its spec with these two tools; they are never budgeted.
+        if (role === 'writer' && (tool === 'Write' || tool === 'Edit')) {
             return undefined
         }
         const cfg = await fanoutConfig(io, sessionId)
         if (!cfg) {
             return undefined
         }
-        const budget = role === 'scout' ? cfg.scout_calls : cfg.checker_calls
+        const budget = role === 'scout' ? cfg.scout_calls : role === 'checker' ? cfg.checker_calls : cfg.writer_calls
         const used = childCalls.get(agentId) ?? 0
         if (used < budget) {
             childCalls.set(agentId, used + 1)
 
             return undefined
+        }
+
+        if (role === 'writer') {
+            return `orchestra: tool budget spent (${budget} tool calls for an orchestra-spec-writer). `
+                + 'Write the spec now with what you have (Write and Edit still work), then return.'
         }
 
         return `orchestra: tool budget spent (${budget} tool calls for an orchestra-${role}). `

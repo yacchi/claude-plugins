@@ -52,6 +52,19 @@ describe('guard wiring', () => {
         expect((await callTool($, 'wiring-scout', read)).deny).toContain('orchestra: tool budget spent')
     })
 
+    test('fan-out: a spec writer is cut off at its tool budget, but Write and Edit are never counted', async ($, on) => {
+        fakeHost(on, { sessionId: freshSession() })
+        startAgent($, 'wiring-writer', 'orchestra:orchestra-spec-writer', '/w')
+        const read = { tool: 'Read', file_path: '/w/a.ts' }
+        const write = { tool: 'Write', file_path: '/w/spec.md', content: 'x' }
+        for (let i = 0; i < 40; i++) {
+            expect((await callTool($, 'wiring-writer', read)).deny, `read ${i + 1}`).toBeUndefined()
+            expect((await callTool($, 'wiring-writer', write)).deny, `write ${i + 1}`).toBeUndefined()
+        }
+        expect((await callTool($, 'wiring-writer', read)).deny).toContain('orchestra: tool budget spent (40 tool calls for an orchestra-spec-writer)')
+        expect((await callTool($, 'wiring-writer', write)).deny).toBeUndefined()
+    })
+
     test('resume: SendMessage to an agent that already holds a long context is denied', async ($, on) => {
         fakeHost(on, {
             sessionId: freshSession(),

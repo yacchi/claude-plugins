@@ -19,8 +19,8 @@ ORCHESTRATED — anything else, and WHENEVER IN DOUBT.
   delegate to cheap workers with adversarial verifiers, take back only
   structured verdicts.
 → Decomposition beyond a handful of tasks: planner first. Do not plan it
-  yourself; spawn `orchestra:orchestra-planner` with the `model`/`effort` of
-  `tiers.planner` (`agent-exec config --json`), then run the plan it writes.
+  yourself; run `agent-exec plan next` and spawn exactly what it answers
+  (`orchestra:run` §14), then run the plan it leaves.
 
 WORKFLOW OPT-IN — judge it from the context alone; never read settings files.
 ORCHESTRATED work, the Workflow tool included, needs an opt-in the context

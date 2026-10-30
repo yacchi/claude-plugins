@@ -13,7 +13,7 @@ New in v0.73.0. This is the contract for a viewer that reads orchestra's status.
   - within 5 s of any change to its state, whether the change is its own or another process's (e.g. `wave mark`);
   - at least every 60 s while it runs (`heartbeat_s`);
   - once at its end.
-- The planner writes `~/.claude/orchestra/status/plans/<plan id>.json` with `agent-exec status plan` at phase boundaries.
+- The skeleton planner (`orchestra-planner`) writes `~/.claude/orchestra/status/plans/<plan id>.json` with `agent-exec status plan` at phase boundaries. `agent-exec plan review` and `agent-exec plan next` write the `review`, `specs` and `done` phases and the stuck `needs-user` status themselves, from the plan id the instructor passed to `plan next --id`.
 - After every write, the writer rebuilds `status.json` under the lock `~/.claude/orchestra/status/.lock`.
 
 ## Reading
@@ -57,7 +57,7 @@ agent-exec status whoami
 ```
 
 - `status show`: rebuild and print the file.
-- `status plan`: the planner's call at phase boundaries.
+- `status plan`: the skeleton planner's call at phase boundaries. `plan review` and `plan next` write their own plan entries.
 - `status close`: the instructor closes an ended run that was left in `needs`. It is refused while the run's runner is alive.
 - `status whoami`: print `{"account": <label>|null, "host": <host name up to the first ".">}`.
 
@@ -160,7 +160,7 @@ Other kinds include `escalate`, `conflict`, `self-verify`, `post-integration`, `
 | `project` | string | As in runs. |
 | `title` | string | Plan title. |
 | `status` | string | See plan statuses below. |
-| `phase` | string | `explore`, `verify`, `critique`, `design`, `synthesize`, `reality-check`, `lint` or `done`. |
+| `phase` | string | `explore`, `verify`, `critique`, `design`, `synthesize`, `reality-check`, `lint`, `review`, `specs` or `done`. |
 | `questions` | int | Count of open questions. |
 | `packages` | int | Count of packages. |
 | `est_total_s` | int or null | `null` until known. |
@@ -172,7 +172,7 @@ Other kinds include `escalate`, `conflict`, `self-verify`, `post-integration`, `
 
 | Status | Meaning |
 |---|---|
-| `planning` | Planner is working. |
+| `planning` | Planner or spec writers are working. |
 | `done` | Plan finished. |
 | `needs-user` | Open questions wait for the user. |
 | `failed` | Planning failed. |

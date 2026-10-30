@@ -53,6 +53,7 @@ var deps = map[string][]string{
 	"internal/telemetry":          {"internal/config"},
 	"internal/usage":              {"internal/ledger", "internal/telemetry", "internal/config", "internal/transcript"},
 	"internal/dispatch":           {"internal/route", "internal/readiness", "internal/cooldown", "internal/isolate", "internal/capture", "internal/ledger", "internal/telemetry", "internal/sandbox"},
+	"internal/planning":           {"internal/config", "internal/wave/plan", "internal/dispatch", "internal/isolate"},
 	"internal/slot":               {"internal/config"},
 	"internal/checks":             {"internal/config", "internal/fsutil", "internal/slot"},
 	"internal/wave/state":         {"internal/gitx", "internal/paths"},

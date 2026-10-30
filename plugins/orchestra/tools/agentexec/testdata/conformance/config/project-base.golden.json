@@ -32,7 +32,8 @@
             "checker_calls": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15
+            "scout_calls": 15,
+            "writer_calls": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -144,6 +145,33 @@
           "task_timeout": 3600,
           "user_config": "isolate"
         },
+        "planning": {
+          "redo": {
+            "effort": "max",
+            "model": "opus"
+          },
+          "redo_when": {
+            "deep_packages": 3,
+            "interface_users": 5,
+            "structural_findings": 1
+          },
+          "review": true,
+          "spec_writers": {
+            "deep": {
+              "effort": "max",
+              "model": "opus"
+            },
+            "light": {
+              "effort": "medium",
+              "model": "sonnet"
+            },
+            "standard": {
+              "effort": "high",
+              "model": "opus"
+            }
+          },
+          "writers_concurrent": 8
+        },
         "priority": {
           "deep": {
             "default": [
@@ -221,7 +249,7 @@
             "model": "haiku"
           },
           "planner": {
-            "effort": "max",
+            "effort": "xhigh",
             "model": "opus"
           },
           "review": {
@@ -311,7 +339,8 @@
             "checker_calls": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15
+            "scout_calls": 15,
+            "writer_calls": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -423,6 +452,33 @@
           "task_timeout": 3600,
           "user_config": "isolate"
         },
+        "planning": {
+          "redo": {
+            "effort": "max",
+            "model": "opus"
+          },
+          "redo_when": {
+            "deep_packages": 3,
+            "interface_users": 5,
+            "structural_findings": 1
+          },
+          "review": true,
+          "spec_writers": {
+            "deep": {
+              "effort": "max",
+              "model": "opus"
+            },
+            "light": {
+              "effort": "medium",
+              "model": "sonnet"
+            },
+            "standard": {
+              "effort": "high",
+              "model": "opus"
+            }
+          },
+          "writers_concurrent": 8
+        },
         "priority": {
           "deep": {
             "default": [
@@ -497,7 +553,7 @@
           },
           "light": "repo-root",
           "planner": {
-            "effort": "max",
+            "effort": "xhigh",
             "model": "opus"
           },
           "review": {
@@ -590,7 +646,8 @@
             "checker_calls": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15
+            "scout_calls": 15,
+            "writer_calls": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -701,6 +758,33 @@
           "startup_timeout": 90,
           "task_timeout": 3600,
           "user_config": "isolate"
+        },
+        "planning": {
+          "redo": {
+            "effort": "max",
+            "model": "opus"
+          },
+          "redo_when": {
+            "deep_packages": 3,
+            "interface_users": 5,
+            "structural_findings": 1
+          },
+          "review": true,
+          "spec_writers": {
+            "deep": {
+              "effort": "max",
+              "model": "opus"
+            },
+            "light": {
+              "effort": "medium",
+              "model": "sonnet"
+            },
+            "standard": {
+              "effort": "high",
+              "model": "opus"
+            }
+          },
+          "writers_concurrent": 8
         },
         "priority": {
           "deep": {
@@ -776,7 +860,7 @@
             "model": "haiku"
           },
           "planner": {
-            "effort": "max",
+            "effort": "xhigh",
             "model": "opus"
           },
           "review": {
@@ -869,7 +953,8 @@
             "checker_calls": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15
+            "scout_calls": 15,
+            "writer_calls": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -980,6 +1065,33 @@
           "startup_timeout": 90,
           "task_timeout": 3600,
           "user_config": "isolate"
+        },
+        "planning": {
+          "redo": {
+            "effort": "max",
+            "model": "opus"
+          },
+          "redo_when": {
+            "deep_packages": 3,
+            "interface_users": 5,
+            "structural_findings": 1
+          },
+          "review": true,
+          "spec_writers": {
+            "deep": {
+              "effort": "max",
+              "model": "opus"
+            },
+            "light": {
+              "effort": "medium",
+              "model": "sonnet"
+            },
+            "standard": {
+              "effort": "high",
+              "model": "opus"
+            }
+          },
+          "writers_concurrent": 8
         },
         "priority": {
           "deep": {
@@ -1055,7 +1167,7 @@
           },
           "light": "repo-root",
           "planner": {
-            "effort": "max",
+            "effort": "xhigh",
             "model": "opus"
           },
           "review": {
@@ -1148,7 +1260,8 @@
             "checker_calls": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15
+            "scout_calls": 15,
+            "writer_calls": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -1260,6 +1373,33 @@
           "task_timeout": 3600,
           "user_config": "isolate"
         },
+        "planning": {
+          "redo": {
+            "effort": "max",
+            "model": "opus"
+          },
+          "redo_when": {
+            "deep_packages": 3,
+            "interface_users": 5,
+            "structural_findings": 1
+          },
+          "review": true,
+          "spec_writers": {
+            "deep": {
+              "effort": "max",
+              "model": "opus"
+            },
+            "light": {
+              "effort": "medium",
+              "model": "sonnet"
+            },
+            "standard": {
+              "effort": "high",
+              "model": "opus"
+            }
+          },
+          "writers_concurrent": 8
+        },
         "priority": {
           "deep": {
             "default": [
@@ -1337,7 +1477,7 @@
             "model": "haiku"
           },
           "planner": {
-            "effort": "max",
+            "effort": "xhigh",
             "model": "opus"
           },
           "review": {
