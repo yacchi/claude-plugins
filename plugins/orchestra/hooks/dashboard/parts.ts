@@ -36,12 +36,14 @@ export const pageOf = (value: unknown): BoardPage | undefined => {
 
 export const publishPrompt = (root: string, url?: string): string => {
     const copy = `1. Copy ${root}/dashboard/dashboard.html unchanged into your scratchpad directory as ${PAGE_FILE} (one cp command).`
+    // Without the declaration the page's claude.use("db") resolves null and it shows nothing.
+    const capabilities = 'capabilities {"db": {}}'
 
     if (url === undefined) {
         return [
             'Publish the orchestra board page for this Claude account. Do exactly this and nothing else:',
             copy,
-            `2. Call the Artifact tool once: action "publish", file_path set to that copy, title "orchestra", icon "chart", pin true. I want it pinned to my claude.ai sidebar so I can open it from my phone.`,
+            `2. Call the Artifact tool once: action "publish", file_path set to that copy, ${capabilities}, title "orchestra", icon "chart", pin true. I want it pinned to my claude.ai sidebar so I can open it from my phone.`,
             '3. Reply with the page\'s URL only. Do not call ArtifactData: the orchestra plugin records the URL and fills the page itself.',
         ].join('\n')
     }
@@ -49,7 +51,7 @@ export const publishPrompt = (root: string, url?: string): string => {
     return [
         `Update my orchestra board page at ${url} to the plugin's current version. Do exactly this and nothing else:`,
         copy,
-        `2. Call the Artifact tool with action "read" and url "${url}", then with action "publish", url "${url}" and file_path set to that copy.`,
+        `2. Call the Artifact tool with action "read" and url "${url}", then with action "publish", url "${url}", file_path set to that copy and ${capabilities}.`,
         '3. Reply with the page\'s URL only. Do not call ArtifactData: the orchestra plugin fills the page itself.',
     ].join('\n')
 }

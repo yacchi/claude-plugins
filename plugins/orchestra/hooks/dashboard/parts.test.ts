@@ -42,6 +42,7 @@ test('publishPrompt names the copy source and target, and pins only a new page',
     for (const prompt of [fresh, update]) {
         expect(prompt).toContain('/root/dashboard/dashboard.html')
         expect(prompt).toContain('orchestra-dashboard.html')
+        expect(prompt).toContain('capabilities {"db": {}}')
     }
     expect(fresh).toContain('pin true')
     expect(update).not.toContain('pin true')
