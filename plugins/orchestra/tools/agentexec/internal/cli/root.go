@@ -121,6 +121,7 @@ func newRoot() *cobra.Command {
 		newHookCmd(),
 		newStatusCmd(),
 		newPlanCmd(),
+		newAdviseCmd(),
 	)
 	root.SetHelpCommand(&cobra.Command{
 		Use:    "help [command]",

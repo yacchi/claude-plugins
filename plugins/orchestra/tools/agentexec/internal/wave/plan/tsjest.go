@@ -63,7 +63,7 @@ func CheckTsJest(p *Plan, root string, skeleton bool) error {
 		}
 	}
 	if root != "" {
-		for _, rel := range typeCheckingJestConfigs(root) {
+		for _, rel := range TypeCheckingJestConfigs(root) {
 			if !ownedByPackage(p, rel) {
 				findings = append(findings, rel+": "+tsJestUnowned)
 			}
@@ -99,14 +99,14 @@ func ownedByPackage(p *Plan, rel string) bool {
 	return false
 }
 
-// typeCheckingJestConfigs returns, sorted, the repo-relative slash paths of the
+// TypeCheckingJestConfigs returns, sorted, the repo-relative slash paths of the
 // jest configs under root that type-check tests. Those are the
 // jest.config.{js,cjs,mjs,ts,json} files, the top-level "jest" object of each
 // package.json, and each JS/JSON config that a package.json script passes to a
 // jest command with --config or -c (see typeChecksText). node_modules, .git and
 // dot directories are skipped, and the walk stops descending past
 // maxJestConfigDepth. A referenced config that does not exist is ignored.
-func typeCheckingJestConfigs(root string) []string {
+func TypeCheckingJestConfigs(root string) []string {
 	found := map[string]bool{}
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || path == root {

@@ -3,11 +3,14 @@ package hookrun
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/advise"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 )
 
@@ -23,6 +26,16 @@ var sessionStartSelfGate string
 
 //go:embed assets/worker.md
 var sessionStartWorker string
+
+//go:embed assets/advice.md
+var sessionStartAdvice string
+
+// sessionStartAdvicePlaceholder is replaced by one line per advice.
+const sessionStartAdvicePlaceholder = "{{ADVICE}}"
+
+// sessionStartAdviceBudget bounds the repo lookup and walk that find the advice,
+// so a large checkout cannot hold SessionStart open.
+const sessionStartAdviceBudget = 1500 * time.Millisecond
 
 // sessionStartTreePlaceholder is replaced by the task worktree's path in the
 // worker notice.
@@ -107,9 +120,43 @@ func sessionStartContext(in map[string]any) string {
 		// the safe fallback.
 		return sessionStartSelfGate + sessionStartRouter
 	case sessionStartInstructor.MatchString(model):
-		return "<orchestra-router>\n" + sessionStartRouter
+		context := "<orchestra-router>\n" + sessionStartRouter
+		if advice := sessionStartAdviceFor(cwd); advice != "" {
+			context += "\n" + advice
+		}
+		return context
 	}
 	return ""
+}
+
+// sessionStartAdviceFor is the advice block for the repository containing cwd,
+// or "" when there is none, cwd is not in a repository, or the lookup misses
+// sessionStartAdviceBudget. The lookup runs in a goroutine so the budget holds
+// even if git or the walk blocks; a late result is dropped.
+func sessionStartAdviceFor(cwd string) string {
+	done := make(chan []advise.Advice, 1)
+	go func() {
+		repo, ok := gitx.RepoRoot(cwd)
+		if !ok {
+			done <- nil
+			return
+		}
+		done <- advise.Repo(repo)
+	}()
+	var list []advise.Advice
+	select {
+	case list = <-done:
+	case <-time.After(sessionStartAdviceBudget):
+		return ""
+	}
+	if len(list) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(list))
+	for _, a := range list {
+		lines = append(lines, fmt.Sprintf("- %s: %s. Why: %s. Fix: %s.", a.Path, a.Problem, a.Why, a.Fix))
+	}
+	return strings.Replace(sessionStartAdvice, sessionStartAdvicePlaceholder, strings.Join(lines, "\n"), 1)
 }
 
 // sessionStartField is the input's string field key, or "" when absent or not
