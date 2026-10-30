@@ -9,25 +9,11 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 )
 
-// SizeKey is the `throttle` key that sizes the pool name: `test_slots` for
-// Test, else `heavy_slots`.
-func SizeKey(name string) string {
-	if name == Test {
-		return "test_slots"
-	}
-	return "heavy_slots"
-}
-
-// Configured is the machine-wide pool name (Heavy or Test) sized by its
-// SizeKey in cfg (nil: the `auto` size). This is the one place a pool's size
-// is read, for the CLI and for every holder in this process.
+// Configured is the machine-wide pool name (Heavy or Test) sized by
+// config.PoolSize (cfg nil: the `auto` size), for the CLI and for every
+// holder in this process.
 func Configured(cfg *config.Resolved, name string) Pool {
-	auto := AutoSize(cpuCount())
-	if name == Test {
-		auto = TestAutoSize(cpuCount())
-	}
-	v, _ := cfg.Lookup("throttle", SizeKey(name))
-	return New(name, sizeOf(v, auto))
+	return New(name, config.PoolSize(cfg, name))
 }
 
 var processConfig = sync.OnceValue(func() *config.Resolved {

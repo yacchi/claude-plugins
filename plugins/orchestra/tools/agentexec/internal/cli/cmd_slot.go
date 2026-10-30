@@ -31,8 +31,8 @@ func newSlotCmd() *cobra.Command {
 		out := map[string]any{
 			"op": c.Op, "heavy": c.Heavy, "kind": kind, "pool": c.Pool(), "scope": c.Scope,
 		}
-		if capped, ok := slot.CapJestWorkers(*classified, slot.JestWorkerCap(cfg)); ok {
-			out["capped_command"] = capped
+		if prefix := config.NodeCapShellPrefix(config.PoolSize(cfg, config.PoolTest)); c.Heavy && prefix != "" {
+			out["capped_command"] = prefix + *classified
 		}
 		return writeJSONLine(cmd.OutOrStdout(), out)
 	}
@@ -138,7 +138,7 @@ func runSlotStatus(cmd *cobra.Command, asJSON bool) error {
 			continue
 		}
 		if p.Off() {
-			fmt.Fprintf(w, "%s: off (throttle.%s: 0)\n", p.Name, slot.SizeKey(name))
+			fmt.Fprintf(w, "%s: off (throttle.%s: 0)\n", p.Name, config.SizeKey(name))
 		} else {
 			fmt.Fprintf(w, "%s: %d/%d held\n", p.Name, len(leases), p.Size)
 		}

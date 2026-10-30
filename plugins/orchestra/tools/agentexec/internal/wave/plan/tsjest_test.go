@@ -171,7 +171,46 @@ func TestCheckTsJestRepoRule(t *testing.T) {
 		{"depth 6 directory is walked", `"x.go"`, map[string]string{"a/b/c/d/e/f/jest.config.js": tsJestCfg},
 			[]string{"a/b/c/d/e/f/jest.config.js: " + tsJestUnowned}},
 		{"depth 7 directory is not walked", `"x.go"`, map[string]string{"a/b/c/d/e/f/g/jest.config.js": tsJestCfg}, nil},
-		{"other extensions are ignored", `"x.go"`, map[string]string{"jest.config.json": tsJestCfg}, nil},
+		{"other extensions are ignored", `"x.go"`, map[string]string{"jest.config.yaml": tsJestCfg}, nil},
+		{"jest.config.json is walked", `"x.go"`, map[string]string{"jest.config.json": `{"preset":"ts-jest"}`},
+			[]string{"jest.config.json: " + tsJestUnowned}},
+		{"package.json jest key names ts-jest", `"x.go"`, map[string]string{
+			"package.json": `{"jest":{"preset":"ts-jest"}}`,
+		}, []string{"package.json: " + tsJestUnowned}},
+		{"package.json jest key sets isolatedModules", `"x.go"`, map[string]string{
+			"package.json": `{"jest":{"transform":{"^.+\\.ts$":["ts-jest",{"isolatedModules":true}]}}}`,
+		}, nil},
+		{"package.json devDependencies are not a jest config", `"x.go"`, map[string]string{
+			"package.json": `{"devDependencies":{"ts-jest":"29.0.0"}}`,
+		}, nil},
+		{"package.json jest key with a tsconfig that sets it", `"x.go"`, map[string]string{
+			"package.json":       `{"jest":{"preset":"ts-jest","tsconfig":"tsconfig.test.json"}}`,
+			"tsconfig.test.json": `{"compilerOptions":{"isolatedModules":true}}`,
+		}, nil},
+		{"script config is a finding under its own path", `"x.go"`, map[string]string{
+			"package.json":        `{"scripts":{"test":"jest -c config/jest.unit.js"}}`,
+			"config/jest.unit.js": tsJestCfg,
+		}, []string{"config/jest.unit.js: " + tsJestUnowned}},
+		{"--config= form in a jest segment", `"x.go"`, map[string]string{
+			"package.json":        `{"scripts":{"test":"jest --config=config/jest.unit.js"}}`,
+			"config/jest.unit.js": tsJestCfg,
+		}, []string{"config/jest.unit.js: " + tsJestUnowned}},
+		{"script config also walked is reported once", `"x.go"`, map[string]string{
+			"package.json":   `{"scripts":{"test":"jest --config=jest.config.js"}}`,
+			"jest.config.js": tsJestCfg,
+		}, []string{"jest.config.js: " + tsJestUnowned}},
+		{"script config that is missing is ignored", `"x.go"`, map[string]string{
+			"package.json": `{"scripts":{"test":"jest -c config/gone.js"}}`,
+		}, nil},
+		{"-c in a non-jest segment is ignored", `"x.go"`, map[string]string{
+			"package.json":   `{"scripts":{"lint":"eslint -c .eslintrc.json && jest"}}`,
+			".eslintrc.json": `{"x":"ts-jest"}`,
+		}, nil},
+		{"-c in a non-jest segment of a multi-segment script is ignored", `"x.go"`, map[string]string{
+			"package.json":        `{"scripts":{"ci":"eslint -c config/lint.js && jest --config config/jest.unit.js"}}`,
+			"config/lint.js":      tsJestCfg,
+			"config/jest.unit.js": `module.exports = { preset: 'ts-jest' }; // isolatedModules: true`,
+		}, nil},
 	} {
 		root := t.TempDir()
 		writeTree(t, root, tc.files)

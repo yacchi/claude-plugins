@@ -36,13 +36,14 @@ var (
 )
 
 // TreeEntries are the env entries of a process orchestra starts in tree, given
-// env (the env it would otherwise get): the PnpmStorePin of a linked worktree
-// (pnpmStoreTreePin), first so that the GVS switch stays right before the
+// env (the env it would otherwise get): the Node CPU cap of the process's test
+// pool (NodeCapEntries); the PnpmStorePin of a linked worktree
+// (pnpmStoreTreePin), before the GVS switch so that it stays right before the
 // command; PnpmGVSEnv when on and tree runs under pnpm's global virtual store
 // (PnpmGVSTree); and MISE_TRUSTED_CONFIG_PATHS with tree appended to env's
 // value when mise trusts tree (miseTrustedTree). Nil when none applies.
 func TreeEntries(on bool, tree string, env []string) []string {
-	out := pnpmStoreTreePin(tree, env)
+	out := append(NodeCapEntries(ProcessTestSlots(), env), pnpmStoreTreePin(tree, env)...)
 	if PnpmGVSTree(on, tree) {
 		warnPnpmCI(env)
 		out = append(out, PnpmGVSEnv)
@@ -57,8 +58,8 @@ func TreeEntries(on bool, tree string, env []string) []string {
 	return out
 }
 
-// WithTreeEnv is env with TreeEntries (the store pin, the GVS switch and the
-// mise trust) set: an entry replaces a variable of the same name, so each name
+// WithTreeEnv is env with TreeEntries (the Node CPU cap, the store pin, the
+// GVS switch and the mise trust) set: an entry replaces a variable of the same name, so each name
 // appears once.
 func WithTreeEnv(on bool, tree string, env []string) []string {
 	return withEntries(env, TreeEntries(on, tree, env))

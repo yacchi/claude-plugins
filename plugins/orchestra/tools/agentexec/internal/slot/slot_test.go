@@ -16,7 +16,7 @@ import (
 // heavy pool must not round down to an off pool. Only an explicit 0 is off.
 func TestTestPoolAutoIsNeverOff(t *testing.T) {
 	for _, cpus := range []int{1, 2, 3, 4, 14} {
-		if n := TestAutoSize(cpus); n < 1 {
+		if n := config.TestAutoSize(cpus); n < 1 {
 			t.Errorf("%d cpus: test pool auto size %d", cpus, n)
 		}
 	}

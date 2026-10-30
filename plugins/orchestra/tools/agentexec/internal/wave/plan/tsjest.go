@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -19,7 +20,10 @@ const (
 
 var (
 	tsJestWord = regexp.MustCompile(`\bts-jest\b`)
-	jestConfig = regexp.MustCompile(`^jest\.config\.(js|cjs|mjs|ts)$`)
+	jestWord   = regexp.MustCompile(`\bjest\b`)
+	jestConfig = regexp.MustCompile(`^jest\.config\.(js|cjs|mjs|ts|json)$`)
+	// scriptSep splits a package.json script into its shell segments.
+	scriptSep = regexp.MustCompile(`[;&|]+`)
 	// tsconfigRef matches a string literal ending in .json; exactly one group is set.
 	tsconfigRef    = regexp.MustCompile(`"([^"\n]*\.json)"|'([^'\n]*\.json)'|` + "`([^`\\n]*\\.json)`")
 	isolatedTrueJS = regexp.MustCompile(`"isolatedModules"\s*:\s*true`)
@@ -96,12 +100,14 @@ func ownedByPackage(p *Plan, rel string) bool {
 }
 
 // typeCheckingJestConfigs returns, sorted, the repo-relative slash paths of the
-// jest.config.{js,cjs,mjs,ts} files under root that mention ts-jest without
-// isolatedModules, unless a tsconfig they name sets "isolatedModules": true.
-// node_modules, .git and dot directories are skipped, and the walk stops
-// descending past maxJestConfigDepth.
+// jest configs under root that type-check tests. Those are the
+// jest.config.{js,cjs,mjs,ts,json} files, the top-level "jest" object of each
+// package.json, and each JS/JSON config that a package.json script passes to a
+// jest command with --config or -c (see typeChecksText). node_modules, .git and
+// dot directories are skipped, and the walk stops descending past
+// maxJestConfigDepth. A referenced config that does not exist is ignored.
 func typeCheckingJestConfigs(root string) []string {
-	var found []string
+	found := map[string]bool{}
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || path == root {
 			return nil
@@ -115,25 +121,109 @@ func typeCheckingJestConfigs(root string) []string {
 			}
 			return nil
 		}
-		if !jestConfig.MatchString(d.Name()) {
-			return nil
+		switch {
+		case jestConfig.MatchString(d.Name()):
+			if text, ok := readText(path); ok && typeChecksText(filepath.Dir(path), text) {
+				found[filepath.ToSlash(rel)] = true
+			}
+		case d.Name() == "package.json":
+			addPackageJSON(root, path, rel, found)
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		text := string(data)
-		if !strings.Contains(text, "ts-jest") || strings.Contains(text, "isolatedModules") {
-			return nil
-		}
-		if tsconfigSetsIsolated(filepath.Dir(path), text) {
-			return nil
-		}
-		found = append(found, filepath.ToSlash(rel))
 		return nil
 	})
-	sort.Strings(found)
-	return found
+	out := make([]string, 0, len(found))
+	for rel := range found {
+		out = append(out, rel)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// addPackageJSON records into found the jest configs that the package.json at
+// path makes: its own top-level "jest" object when that type-checks, and each
+// JS/JSON config a script passes to a jest command.
+func addPackageJSON(root, path, rel string, found map[string]bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var top map[string]json.RawMessage
+	if json.Unmarshal(data, &top) != nil {
+		return
+	}
+	dir := filepath.Dir(path)
+	if cfg := top["jest"]; len(cfg) > 0 && cfg[0] == '{' && typeChecksText(dir, string(cfg)) {
+		found[filepath.ToSlash(rel)] = true
+	}
+	var scripts map[string]string
+	if json.Unmarshal(top["scripts"], &scripts) != nil {
+		return
+	}
+	for _, script := range scripts {
+		for _, seg := range scriptSep.Split(script, -1) {
+			if !jestWord.MatchString(seg) {
+				continue
+			}
+			for _, ref := range configArgs(strings.Fields(seg)) {
+				addReferencedConfig(root, dir, ref, found)
+			}
+		}
+	}
+}
+
+// configArgs returns the path operand of each "--config <p>", "--config=<p>"
+// and "-c <p>" in a command's fields.
+func configArgs(fields []string) []string {
+	var out []string
+	for i, f := range fields {
+		switch {
+		case (f == "--config" || f == "-c") && i+1 < len(fields):
+			out = append(out, fields[i+1])
+		case strings.HasPrefix(f, "--config="):
+			out = append(out, strings.TrimPrefix(f, "--config="))
+		}
+	}
+	return out
+}
+
+// addReferencedConfig records the config ref, resolved against dir (the dir of
+// its package.json), when it is an existing JS/JSON file under root that
+// type-checks by typeChecksText.
+func addReferencedConfig(root, dir, ref string, found map[string]bool) {
+	ref = strings.Trim(ref, `'"`)
+	if ref == "" {
+		return
+	}
+	if !filepath.IsAbs(ref) {
+		ref = filepath.Join(dir, ref)
+	}
+	rel, err := filepath.Rel(root, ref)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return
+	}
+	switch filepath.Ext(ref) {
+	case ".js", ".cjs", ".mjs", ".ts", ".json":
+	default:
+		return
+	}
+	if text, ok := readText(ref); ok && typeChecksText(filepath.Dir(ref), text) {
+		found[filepath.ToSlash(rel)] = true
+	}
+}
+
+// typeChecksText reports whether jest config text, with <rootDir> bound to dir,
+// names ts-jest, never mentions isolatedModules, and names no tsconfig that
+// sets "isolatedModules": true.
+func typeChecksText(dir, text string) bool {
+	return strings.Contains(text, "ts-jest") && !strings.Contains(text, "isolatedModules") && !tsconfigSetsIsolated(dir, text)
+}
+
+func readText(path string) (string, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	return string(data), true
 }
 
 // tsconfigSetsIsolated reports whether a tsconfig named by a .json string

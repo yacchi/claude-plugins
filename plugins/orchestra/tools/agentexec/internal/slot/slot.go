@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
@@ -34,8 +35,8 @@ import (
 // The machine-wide pools: Test admits test, lint and typecheck runs, Heavy
 // every other heavy command (installs, builds) and agent-exec's worktree I/O.
 const (
-	Heavy = "heavy"
-	Test  = "test"
+	Heavy = config.PoolHeavy
+	Test  = config.PoolTest
 )
 
 // DefaultTTL is how long a lease lives when the acquirer names no TTL.
@@ -71,47 +72,6 @@ func Root() string {
 // queue behind (or hold up) the machine's real workers.
 func Enabled() bool {
 	return !testing.Testing() || os.Getenv("ORCHESTRA_SLOT_DIR") != ""
-}
-
-// AutoSize is the heavy pool's `auto` size: a third of the cores, at least 2
-// (14 cores -> 5).
-func AutoSize(cpus int) int {
-	return max(2, (cpus+1)/3)
-}
-
-// TestAutoSize is the test pool's `auto` size: half the heavy pool's, at
-// least 1 (14 cores -> 2).
-func TestAutoSize(cpus int) int {
-	return max(1, AutoSize(cpus)/2)
-}
-
-// sizeOf reads a `throttle.heavy_slots` / `test_slots` value: a
-// non-negative integer is used as is (0 = off), "off" or false is 0,
-// anything else (`auto`, unset) is auto.
-func sizeOf(v any, auto int) int {
-	switch x := v.(type) {
-	case int:
-		if x >= 0 {
-			return x
-		}
-	case int64:
-		if x >= 0 {
-			return int(x)
-		}
-	case float64:
-		if x >= 0 && x == float64(int64(x)) {
-			return int(x)
-		}
-	case bool:
-		if !x {
-			return 0
-		}
-	case string:
-		if strings.EqualFold(strings.TrimSpace(x), "off") {
-			return 0
-		}
-	}
-	return auto
 }
 
 // Pool is one named pool of Size slots (0 = off).
