@@ -23,13 +23,19 @@ const CLASSIFY_TIMEOUT_MS = 5000
 
 // What agent-exec tells of a command line: the op it names, whether it is
 // heavy, whether it runs a whole repository's or workspace's suite, and, when
-// the command should run under a worker-count cap, the capped command line.
+// the command should run under a worker-count cap or with the pnpm store
+// entries, the capped command line.
 export type CommandClass = { op: string, heavy: boolean, scope: 'full' | 'targeted', capped?: string }
 
 // The command's class, or undefined when agent-exec could not tell (missing,
-// failed, or bad output).
-export const classifyCommand = async (io: Io, command: string): Promise<CommandClass | undefined> => {
-    const r = await agentExec(io, ['slot', 'classify', `--command=${command}`], CLASSIFY_TIMEOUT_MS)
+// failed, or bad output). cwd is the directory the command runs in, which
+// decides the git tree whose pnpm store entries apply.
+export const classifyCommand = async (io: Io, command: string, cwd?: string): Promise<CommandClass | undefined> => {
+    const args = ['slot', 'classify', `--command=${command}`]
+    if (cwd) {
+        args.push(`--cwd=${cwd}`)
+    }
+    const r = await agentExec(io, args, CLASSIFY_TIMEOUT_MS)
     if (r.kind !== 'ok') {
         return undefined
     }

@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -140,6 +141,35 @@ func NodeCapShellPrefix(testSlots int) string {
 		b.WriteString("; ")
 	}
 	return b.String()
+}
+
+// PnpmGVSShellPrefix is the shell that sets, before a pnpm command run in
+// tree, the entries a process started in tree gets under the global virtual
+// store: the store pin (pnpmStoreTreePin) and PnpmGVSEnv, in the order
+// TreeEntries sets them. Values are shell-quoted when needed. "" unless tree
+// runs under the store (PnpmGVSTree).
+func PnpmGVSShellPrefix(on bool, tree string, env []string) string {
+	if !PnpmGVSTree(on, tree) {
+		return ""
+	}
+	var b strings.Builder
+	for _, kv := range append(pnpmStoreTreePin(tree, env), PnpmGVSEnv) {
+		name, value, _ := strings.Cut(kv, "=")
+		b.WriteString("export " + name + "=" + shellWord(value) + "; ")
+	}
+	return b.String()
+}
+
+// shellSafeWord matches the words a POSIX shell reads as they are.
+var shellSafeWord = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
+
+// shellWord is s as a shell word: as it is when the shell reads it so, else
+// quoted.
+func shellWord(s string) string {
+	if shellSafeWord.MatchString(s) {
+		return s
+	}
+	return shellQuote(s)
 }
 
 // shellQuote is s as one single-quoted POSIX shell word.

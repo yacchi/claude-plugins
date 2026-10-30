@@ -174,7 +174,8 @@ export const register: Register = (on, options) => {
                 const command = String(input.command ?? '')
                 isWorker = call !== undefined || await verdictOf(io, await io.sessionId().catch(() => '')) === 'worker'
                 if (isWorker) {
-                    commandClass = await classifyCommand(io, command).catch(() => undefined)
+                    const cwd = await io.sessionCwd().catch(() => '')
+                    commandClass = await classifyCommand(io, command, cwd).catch(() => undefined)
                     const deny = await checkWorkerTests(io, input, call?.agentType ?? '', commandClass)
                     if (deny) {
                         return { deny }

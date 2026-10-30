@@ -85,6 +85,21 @@ describe('classifyCommand', () => {
         expect(await classifyCommand(ioAnswering(classified(''), []), 'pnpm jest')).toEqual({ op: 'jest', heavy: true, scope: 'targeted' })
         expect(await classifyCommand(ioAnswering(classified('pnpm jest'), []), 'pnpm jest')).toEqual({ op: 'jest', heavy: true, scope: 'targeted' })
     })
+
+    test('the command\'s directory goes to classify as --cwd, and is left out when unknown', async () => {
+        const argvs: (readonly string[])[] = []
+        const io = {
+            run: async (argv: readonly string[]): Promise<ProcessRunResult> => {
+                argvs.push(argv)
+
+                return { exitCode: 0, stdout: classified(''), stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+            },
+        } as unknown as Io
+        await classifyCommand(io, 'pnpm jest', '/w/task-a')
+        await classifyCommand(io, 'pnpm jest', '')
+        expect(argvs[0]).toContain('--cwd=/w/task-a')
+        expect(argvs[1].some(a => a.startsWith('--cwd'))).toBe(false)
+    })
 })
 
 describe('withHeavySlot', () => {
