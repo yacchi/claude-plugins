@@ -11,6 +11,8 @@ import { createWriter, docIdOf, type Writer } from './writer.ts'
 
 const STORE_KEY = 'board'
 const TICK_MS = 15_000
+// Read by `agent-exec doctor` (internal/doctor), which warns on the current session's reason.
+const BLOCKED_FILE = '.claude/orchestra/dashboard/blocked.json'
 
 let timer: Timer | undefined
 let writer: Writer | undefined
@@ -80,12 +82,12 @@ async function ensure($: EngineInterface): Promise<void> {
         }
         const me = await identityFor($)
         if (page.account !== null && me.account !== null && page.account !== me.account) {
-            blocked = `the stored page belongs to ${page.account}, and this session is signed in to ${me.account}: /orchestra:board publish makes this account's page`
+            await block($, `the stored page belongs to ${page.account}, and this session is signed in to ${me.account}: /orchestra:board publish makes this account's page`)
 
             return
         }
         if (!(await $.tool.list()).some(t => t.name === 'ArtifactData')) {
-            blocked = 'the ArtifactData tool is not available here (it needs a claude.ai sign-in)'
+            await block($, 'the ArtifactData tool is not available here (it needs a claude.ai sign-in)')
 
             return
         }
@@ -97,8 +99,8 @@ async function ensure($: EngineInterface): Promise<void> {
         if (check.decision !== 'allow') {
             const why = [check.reason, check.rule && `rule ${check.rule}`, check.setting && `setting ${check.setting}`]
                 .filter(Boolean).join('; ')
-            blocked = `the permission check answers ${check.decision} for ArtifactData writes${why === '' ? '' : ` (${why})`}: `
-                + 'add "ArtifactData" to permissions.allow in this profile\'s settings.json, then run /orchestra:board'
+            await block($, `the permission check answers ${check.decision} for an ArtifactData write${why === '' ? '' : ` (${why})`}, `
+                + 'and the board writes only what never asks')
 
             return
         }
@@ -116,6 +118,7 @@ async function ensure($: EngineInterface): Promise<void> {
             void runTick($).catch(() => undefined)
         })
         void runTick($).catch(() => undefined)
+        await recordBlock($, null)
     } catch {
         decided = false
     }
@@ -130,10 +133,31 @@ async function runTick($: EngineInterface): Promise<void> {
         return
     }
     stopWriter()
-    blocked = 'claude.ai refused the write: the page is in another organization than this session\'s; /orchestra:board publish makes this account\'s page'
+    await block($, 'claude.ai refused the write: the page is in another organization than this session\'s; /orchestra:board publish makes this account\'s page')
+}
+
+// A block nobody sees leaves the board empty with no word why: it is toasted
+// once per session and left in BLOCKED_FILE for `agent-exec doctor`.
+async function block($: EngineInterface, reason: string): Promise<void> {
+    blocked = reason
     if (!toasted) {
         toasted = true
-        $.ui.toast('orchestra: the board page refused this account — /orchestra:board publish')
+        $.ui.toast(`orchestra: the board is not being written — ${reason}`)
+    }
+    await recordBlock($, reason)
+}
+
+// The session's last verdict, a null reason once its writer started.
+async function recordBlock($: EngineInterface, reason: string | null): Promise<void> {
+    try {
+        const home = (await $.env.get('HOME')) ?? ''
+        if (home === '') {
+            return
+        }
+        const session = await $.session.id()
+        await $.fs.write(`${home}/${BLOCKED_FILE}`, JSON.stringify({ session, at: Math.floor($.clock.now() / 1000), reason }))
+    } catch {
+        // the record is a report: it never breaks the board
     }
 }
 

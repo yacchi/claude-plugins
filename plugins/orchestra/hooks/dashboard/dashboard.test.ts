@@ -9,11 +9,18 @@ const board = (on: On, { page, decision = 'allow' }: { page?: Record<string, unk
     const store = new Map<string, unknown>(page ? [['board', page]] : [])
     const calls: any[] = []
     const prompts: any[] = []
+    const toasts: string[] = []
     const done = (exitCode: number, stdout = '') =>
         ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
     on('env.get', (_$, e: any) => ({ value: e.name === 'HOME' ? '/h' : undefined }))
     on('session.surfaces', () => ({ value: ['terminal'] }))
+    on('session.id', () => ({ value: 's1' }))
+    on('ui.toast', (_$, e: any) => {
+        toasts.push(e.text)
+
+        return { value: undefined }
+    })
     on('process.run', (_$, e: any) => [...e.argv].slice(4, 6).join(' ') === 'status whoami'
         ? done(0, '{"account":"Acme","host":"mbp"}')
         : done(127))
@@ -55,7 +62,7 @@ const board = (on: On, { page, decision = 'allow' }: { page?: Record<string, unk
     })
     const clock = mock.clock(on, { now: 1_000_000 })
 
-    return { calls, prompts, store, clock }
+    return { calls, prompts, toasts, files, store, clock }
 }
 
 // The kit types `$` strictly; this passes only the fields the board reads.
@@ -82,14 +89,28 @@ test('a publish of the page is captured and mirrored; another file is not', asyn
     expect(calls.some(c => c.action === 'set' && c.collection === 'status' && c.doc_id === 'mbp')).toBe(true)
 })
 
-test('a write the permission check would ask about never starts', async ($, on) => {
-    const { calls, clock } = board(on, { page: { url: 'https://claude.ai/artifact/p1', account: 'Acme' }, decision: 'ask' })
-    const answer = await runBoard($, '')
-    expect(answer.text).toContain('permissions.allow')
-    expect(answer.text).toContain('answers ask')
-    await clock.advance(15_000)
+test('a write the permission check would ask about never starts, and says so unasked', async ($, on) => {
+    const { calls, toasts, files, clock } = board(on, { page: { url: 'https://claude.ai/artifact/p1', account: 'Acme' }, decision: 'ask' })
+    await $.turn.start({ turnId: 't1', prompt: 'hi' } as never).catch(() => undefined)
+    await clock.advance(10)
     await clock.advance(15_000)
     expect(calls).toEqual([])
+    expect(toasts.length).toBe(1)
+    expect(toasts[0]).toContain('answers ask')
+    const record = JSON.parse(files.get('/h/.claude/orchestra/dashboard/blocked.json') ?? '{}')
+    expect(record.session).toBe('s1')
+    expect(record.reason).toContain('answers ask')
+    expect((await runBoard($, '')).text).toContain('answers ask')
+    expect(toasts.length).toBe(1)
+})
+
+test('a started writer clears the session\'s recorded block', async ($, on) => {
+    const { files, clock } = board(on, { page: { url: 'https://claude.ai/artifact/p1', account: 'Acme' } })
+    await runBoard($, '')
+    await clock.advance(10)
+    const record = JSON.parse(files.get('/h/.claude/orchestra/dashboard/blocked.json') ?? '{}')
+    expect(record.session).toBe('s1')
+    expect(record.reason).toBe(null)
 })
 
 test('forget deletes the stored page and stops the writes', async ($, on) => {
