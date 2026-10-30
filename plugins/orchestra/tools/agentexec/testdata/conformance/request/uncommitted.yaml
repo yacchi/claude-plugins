@@ -3,12 +3,15 @@ description: >
   integrate refuse, listing them, nothing created); include carries them into
   the assembly's baseline and land lands only the assembly's own change around
   the still-uncommitted edit; ignore starts from HEAD and land refuses while a
-  tracked file is dirty
+  tracked file is dirty (isolation.land: ask; request/auto-land covers auto)
 setup:
   git: true
   files:
     a.txt: "1\n2\n3\n4\n5\n"
     c.txt: "c\n"
+    ~/.claude/orchestra.yaml: |
+      isolation:
+        land: ask
   dirty:
     a.txt: "ONE\n2\n3\n4\n5\n"
     n.txt: "note\n"

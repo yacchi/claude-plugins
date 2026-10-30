@@ -26,6 +26,9 @@ type Answer struct {
 	Progress  Progress   `json:"progress"`
 	Approvals []Approval `json:"approvals"`
 	Machine   Machine    `json:"machine"`
+	// Land is the land the runner's end report records (merge.land), set
+	// only on a done answer.
+	Land map[string]any `json:"land,omitempty"`
 }
 
 // WaitOptions are `wave wait`'s inputs.
@@ -82,10 +85,17 @@ func Wait(o WaitOptions) Answer {
 		}
 		if status != "" {
 			pr := Compute(o.State, &snap.st, wallClock(), o.Cost)
-			return Answer{
+			a := Answer{
 				Status: status, Seq: tail.lines, Line: Line(pr), Progress: pr,
 				Approvals: o.approvals(), Machine: o.machine(),
 			}
+			if status == "done" {
+				if land := landOf(endReport(o.State)); land != nil {
+					a.Land = land
+					a.Line += " · " + landSummary(land)
+				}
+			}
+			return a
 		}
 		time.Sleep(min(poll, time.Until(deadline)))
 	}
@@ -222,25 +232,55 @@ func (t *eventTail) newNeed(needs []state.Need) bool {
 	return false
 }
 
+// endReport is the runner's end report: the last line of runner.log that
+// decodes to an object with a status. Nil when there is none.
+func endReport(statePath string) map[string]any {
+	data, _ := os.ReadFile(LogPath(statePath))
+	lines := bytes.Split(data, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		doc, err := fsutil.DecodeJSON(bytes.TrimSpace(lines[i]))
+		if err != nil {
+			continue
+		}
+		o, _ := doc.(map[string]any)
+		if s, _ := o["status"].(string); s != "" {
+			return o
+		}
+	}
+	return nil
+}
+
+// landOf is the land an end report records under its merge, nil when the
+// report has none.
+func landOf(report map[string]any) map[string]any {
+	merge, _ := report["merge"].(map[string]any)
+	land, _ := merge["land"].(map[string]any)
+	return land
+}
+
+// landSummary is the land as the wait line ends with it.
+func landSummary(land map[string]any) string {
+	status, _ := land["status"].(string)
+	switch status {
+	case "landed":
+		commit, _ := land["commit"].(string)
+		branch, _ := land["branch"].(string)
+		return "landed " + commit[:min(len(commit), 8)] + " on " + branch
+	case "ask":
+		return "land: ask"
+	}
+	return "land: " + status
+}
+
 // finalStatus is how a gone runner ended. A detached one (runner.pid)
 // printed its end report into runner.log: done or stopped from it, crashed
 // without one. Without runner.pid only the state tells: stopped when it
 // records a stop, crashed while a package is still in flight, else done.
 func finalStatus(statePath string, detached bool, snap snapshot) string {
 	if detached {
-		data, _ := os.ReadFile(LogPath(statePath))
-		lines := bytes.Split(data, []byte("\n"))
-		for i := len(lines) - 1; i >= 0; i-- {
-			doc, err := fsutil.DecodeJSON(bytes.TrimSpace(lines[i]))
-			if err != nil {
-				continue
-			}
-			o, _ := doc.(map[string]any)
-			if s, _ := o["status"].(string); s == "done" || s == "stopped" {
-				return s
-			} else if s != "" {
-				return "crashed"
-			}
+		s, _ := endReport(statePath)["status"].(string)
+		if s == "done" || s == "stopped" {
+			return s
 		}
 		return "crashed"
 	}

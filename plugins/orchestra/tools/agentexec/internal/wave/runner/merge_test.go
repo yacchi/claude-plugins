@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,12 +12,39 @@ import (
 )
 
 // newMergeRepo is a wave repo whose request workspace lives under the
-// test's temp dir, never the real state dir.
+// test's temp dir, never the real state dir. It lands in ask mode, so the
+// merge tests do not move the checkout; the land tests set auto themselves.
 func newMergeRepo(t *testing.T) *waveRepo {
 	t.Helper()
 	w := newWaveRepo(t)
 	t.Setenv("ORCHESTRA_REQUEST_ROOT", filepath.Join(w.tmp, "requests"))
+	setLandMode(t, w, "ask")
 	return w
+}
+
+// setLandMode rewrites the test home's config to isolation.land = mode.
+func setLandMode(t *testing.T, w *waveRepo, mode string) {
+	t.Helper()
+	writeFile(t, filepath.Join(w.home, ".claude", "orchestra.yaml"), "interactive_host: none\nisolation:\n  land: "+mode+"\n")
+}
+
+// withCommitMessage gives the written plan its top-level commit_message.
+func withCommitMessage(t *testing.T, w *waveRepo, msg string) {
+	t.Helper()
+	b, err := os.ReadFile(w.planPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(b, &p); err != nil {
+		t.Fatal(err)
+	}
+	p["commit_message"] = msg
+	out, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, w.planPath, string(out))
 }
 
 // mergeJSON is the report's JSON form.
@@ -190,4 +218,66 @@ func TestMergeSecondRunFindsNothingToMerge(t *testing.T) {
 	if _, err := os.Stat(w.intPath()); !os.IsNotExist(err) {
 		t.Errorf("integration tree still present: %v", err)
 	}
+}
+
+func TestLandAutoLandsOnFeatureBranch(t *testing.T) {
+	w := newMergeRepo(t)
+	setLandMode(t, w, "auto")
+	w.plan(pkgDef{id: "A"})
+	withCommitMessage(t, w, "feat: a")
+	ex := newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}})
+	rep, code := w.run(ex, func(o *Options) { o.Merge = true; o.RunID = "auto-land" })
+	eq(t, "exit", code, 0)
+	eq(t, "merge status", rep.Merge.Status, "merged")
+	if rep.Merge.Land == nil {
+		t.Fatal("no land in the report")
+	}
+	eq(t, "land status", rep.Merge.Land.Status, "landed")
+	eq(t, "land branch", rep.Merge.Land.Branch, "feature/auto-land")
+	eq(t, "land created", rep.Merge.Land.Created, true)
+	eq(t, "checkout", w.git(w.repo, "symbolic-ref", "--short", "HEAD"), "feature/auto-land")
+	eq(t, "land events", len(w.events("land")), 1)
+}
+
+func TestLandAutoWithoutMessageNeedsLand(t *testing.T) {
+	w := newMergeRepo(t)
+	setLandMode(t, w, "auto")
+	w.plan(pkgDef{id: "A"})
+	ex := newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}})
+	rep, code := w.run(ex, func(o *Options) { o.Merge = true; o.RunID = "auto-land" })
+	eq(t, "exit", code, 1)
+	if rep.Merge == nil || rep.Merge.Land == nil {
+		t.Fatalf("merge %+v has no land", rep.Merge)
+	}
+	eq(t, "land status", rep.Merge.Land.Status, "refused")
+	needs := w.state().Needs
+	if len(needs) != 1 || needs[0].Kind != "land" || needs[0].ID != nil {
+		t.Fatalf("needs %+v, want one wave-level land need", needs)
+	}
+	for _, want := range []string{"no commit message to land with", "agent-exec isolate land --request ", "--feature auto-land"} {
+		if !strings.Contains(needs[0].Detail, want) {
+			t.Errorf("need detail %q lacks %q", needs[0].Detail, want)
+		}
+	}
+	eq(t, "checkout", w.git(w.repo, "symbolic-ref", "--short", "HEAD"), "main")
+	eq(t, "feature branches", w.git(w.repo, "branch", "--list", "feature/*"), "")
+	if _, err := os.Stat(mergeAssembly(t, w)); err != nil {
+		t.Errorf("assembly removed by a refused land: %v", err)
+	}
+}
+
+func TestLandAskLeavesCheckout(t *testing.T) {
+	w := newMergeRepo(t)
+	w.plan(pkgDef{id: "A"})
+	withCommitMessage(t, w, "feat: a")
+	ex := newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}})
+	rep, code := w.run(ex, func(o *Options) { o.Merge = true; o.RunID = "auto-land" })
+	eq(t, "exit", code, 0)
+	if rep.Merge == nil || rep.Merge.Land == nil {
+		t.Fatalf("merge %+v has no land", rep.Merge)
+	}
+	eq(t, "land status", rep.Merge.Land.Status, "ask")
+	eq(t, "needs", len(rep.Needs), 0)
+	eq(t, "checkout", w.git(w.repo, "symbolic-ref", "--short", "HEAD"), "main")
+	eq(t, "feature branches", w.git(w.repo, "branch", "--list", "feature/*"), "")
 }

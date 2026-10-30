@@ -36,7 +36,7 @@ func planTestPkg(id, cls string) string {
 func planTestWrite(t *testing.T, dir, interfaces string, packages ...string) string {
 	t.Helper()
 	path := filepath.Join(dir, "plan.json")
-	text := `{"interfaces":[` + interfaces + `],"packages":[` + strings.Join(packages, ",") + `]}`
+	text := `{"commit_message":"feat: x","interfaces":[` + interfaces + `],"packages":[` + strings.Join(packages, ",") + `]}`
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}

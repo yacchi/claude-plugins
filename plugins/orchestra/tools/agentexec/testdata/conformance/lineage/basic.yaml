@@ -5,11 +5,14 @@ description: >
   assembly that still has children, integrate into the request's integration
   tree, merge reaping its integrated child and squashing into the assembly,
   the assembly's not-landed gate, land of the request's assembly removing it
-  and ending the request
+  and ending the request (isolation.land: ask; request/auto-land covers auto)
 setup:
   git: true
   files:
     a.txt: "a\n"
+    ~/.claude/orchestra.yaml: |
+      isolation:
+        land: ask
 normalize_keys: [seconds, age_days, session_idle_minutes]
 steps:
   - argv: [isolate, request, start, --into, feat]

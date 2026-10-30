@@ -286,6 +286,11 @@
         "files": [
           "b.txt"
         ],
+        "land": {
+          "reason": "isolation.land is ask: when the user asks, land it from their checkout with 'agent-exec isolate land --request <DATE>-00000000 -m <message>'",
+          "status": "ask",
+          "task": "<DATE>-00000000"
+        },
         "removed": true,
         "status": "merged",
         "task": "feat"

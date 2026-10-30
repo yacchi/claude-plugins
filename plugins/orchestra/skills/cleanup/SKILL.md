@@ -69,7 +69,7 @@ A dirty worktree is unreviewed worker output. For each one, offer the user the t
 
 ```bash
 agent-exec isolate merge --task <into> -m "<message>"  # integration tree: one commit on its assembly, then it is removed
-agent-exec isolate land --task <assembly> -m "<message>"  # assembly: take it onto your branch, only when the user asks
+agent-exec isolate land --task <assembly> -m "<message>"  # assembly: take it onto your branch (auto mode: a new feature/<slug> when on the default branch)
 agent-exec isolate diff --task <id> --names-only   # what is in there (also marks it collected)
 agent-exec isolate collect --task <id>             # "I took this out by other means"
 agent-exec isolate sweep --force                   # discard everything still dirty

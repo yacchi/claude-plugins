@@ -20,6 +20,7 @@ import (
 // commit (c.txt) past the assembly's HEAD. Both are planted through the Go API.
 func mergeTestRepo(t *testing.T) (repo, asm, feat string) {
 	t.Helper()
+	pinLandMode(t, "ask")
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	t.Setenv("GIT_AUTHOR_NAME", "Merge User")
@@ -117,6 +118,60 @@ func TestMergeSquashesIntegrationIntoAssembly(t *testing.T) {
 	}
 }
 
+func TestMergeUnderAutoLandsOnFeatureBranch(t *testing.T) {
+	repo, _, _ := mergeTestRepo(t)
+	pinLandMode(t, "auto")
+	out, code := runIsolate(t, newIsolateMergeCmd(),
+		"--task", "feat", "--repo", repo, "-m", "feat: add c")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	var res struct {
+		Status string `json:"status"`
+		Land   struct {
+			Status  string `json:"status"`
+			Branch  string `json:"branch"`
+			Created bool   `json:"created"`
+		} `json:"land"`
+	}
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if res.Status != "merged" || res.Land.Status != "landed" || res.Land.Branch != "feature/feat" || !res.Land.Created {
+		t.Errorf("result %+v", res)
+	}
+	if head := strings.TrimSpace(landGit(t, repo, "symbolic-ref", "--short", "HEAD")); head != "feature/feat" {
+		t.Errorf("HEAD %q, want feature/feat", head)
+	}
+}
+
+func TestMergeUnderAskLandsNothing(t *testing.T) {
+	repo, _, _ := mergeTestRepo(t)
+	out, code := runIsolate(t, newIsolateMergeCmd(),
+		"--task", "feat", "--repo", repo, "-m", "feat: add c")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	var res struct {
+		Status string `json:"status"`
+		Land   struct {
+			Status string `json:"status"`
+		} `json:"land"`
+	}
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("output %q: %v", out, err)
+	}
+	if res.Status != "merged" || res.Land.Status != "ask" {
+		t.Errorf("result %+v", res)
+	}
+	if head := strings.TrimSpace(landGit(t, repo, "symbolic-ref", "--short", "HEAD")); head != "main" {
+		t.Errorf("HEAD %q, want main", head)
+	}
+	if branches := strings.TrimSpace(landGit(t, repo, "branch", "--list", "feature/*")); branches != "" {
+		t.Errorf("feature branches %q, want none", branches)
+	}
+}
+
 func TestMergeNeedsMessage(t *testing.T) {
 	repo, _, _ := mergeTestRepo(t)
 	msg, code := usageErrOf(t, newIsolateMergeCmd(), "--task", "feat", "--repo", repo)
@@ -149,7 +204,9 @@ func TestMergeTextPrintsMergedLine(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, out)
 	}
 	head := strings.TrimSpace(landGit(t, asm, "rev-parse", "HEAD"))
-	want := "merged " + head[:8] + " into asm: 1 files (from feat)\n"
+	// mergeTestRepo pins isolation.land to ask, so the merge line carries the ask note.
+	want := "merged " + head[:8] + " into asm: 1 files (from feat); ask: isolation.land is ask: " +
+		"when the user asks, land it from their checkout with 'agent-exec isolate land --request asm -m <message>'\n"
 	if out != want {
 		t.Errorf("text %q, want %q", out, want)
 	}

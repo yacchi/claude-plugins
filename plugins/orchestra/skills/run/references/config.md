@@ -215,6 +215,15 @@ isolation:
   # Escape hatch, also unioned: every entry here is removed from exclude_paths
   # (e.g. keep_paths: [node_modules/] for a repo that vendors node_modules).
   keep_paths: []
+  # What a finished, green run does with its result. "auto" (the default):
+  # `wave run` lands it after its end-of-run merge (with the plan's
+  # commit_message) and `isolate merge` after a successful merge (with its -m),
+  # onto the checked-out branch, or onto a new feature/<slug> when that is the
+  # repository's default branch (main, master, origin/HEAD, init.defaultBranch);
+  # a land that cannot go ahead changes nothing and is reported (a `land` need,
+  # exit 1). Nothing is ever pushed. "ask": nothing lands by itself; land with
+  # `agent-exec isolate land` when the user asks. Any other value is an error.
+  land: auto
   # A task adding more new files than this is refused by `isolate integrate`
   # (task status "refused" with a reason, exit 7; the other tasks still land)
   # and becomes an `oversized` need in a wave run. `isolate land` refuses a

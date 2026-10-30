@@ -140,6 +140,16 @@ func validatePnpmGVS(values map[string]any) error {
 	return fmt.Errorf("invalid isolation.pnpm_global_virtual_store %v: must be true, false or \"auto\"", v)
 }
 
+// validateLand rejects isolation.land unless it is "auto" or "ask". It runs
+// once, in Resolve, like validatePnpmGVS.
+func validateLand(values map[string]any) error {
+	v := ObjectAt(values, "isolation")["land"]
+	if x, ok := v.(string); ok && (x == "auto" || x == "ask") {
+		return nil
+	}
+	return fmt.Errorf("invalid isolation.land %v: must be \"auto\" or \"ask\"", v)
+}
+
 // PnpmGVSTree reports whether processes in tree run under the global
 // virtual store: on (the setting, see PnpmGVS), tree is a linked worktree
 // (its .git is a file, so never the user's main checkout) whose root holds
@@ -389,6 +399,7 @@ func Defaults() map[string]any {
 				"CLAUDE.local.md"),
 			"exclude_paths", strs(DefaultExcludePaths...),
 			"keep_paths", []any{},
+			"land", "auto",
 			"max_added_files", int64(DefaultMaxAddedFiles),
 			"pnpm_global_virtual_store", "auto",
 		),

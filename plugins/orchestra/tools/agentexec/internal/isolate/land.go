@@ -42,13 +42,15 @@ type LandResult struct {
 	Request      string   // the request the assembly belonged to; "" when none
 	Removed      bool     // landed/empty (--task): the assembly was removed afterwards
 	RequestEnded bool     // landed/empty (--task): that removal ended the request
+	Created      bool     // set when the checkout was left on a branch this land created (feature/<slug>); normally only with landed
 }
 
 // MarshalJSON always writes "status" and "task", and "path" for a --path
-// source; landed adds "branch", "commit", "base" and "files"; empty adds
-// "branch"; a --task landed or empty adds "removed", "request",
-// "request_ended" and, when non-empty, "reason"; has-children adds
-// "children"; the others add "reason" and, when non-empty, "files".
+// source; landed adds "branch", "commit", "base" and "files", and "created"
+// when it created the branch it landed on; empty adds "branch"; a --task
+// landed or empty adds "removed", "request", "request_ended" and, when
+// non-empty, "reason"; has-children adds "children"; the others add "reason"
+// and, when non-empty, "files".
 func (r LandResult) MarshalJSON() ([]byte, error) {
 	o := map[string]any{"status": r.Status, "task": r.Task}
 	if r.Path != "" {
@@ -60,6 +62,9 @@ func (r LandResult) MarshalJSON() ([]byte, error) {
 		o["commit"] = r.Commit
 		o["base"] = r.Base
 		o["files"] = nonNil(r.Files)
+		if r.Created {
+			o["created"] = true
+		}
 	case "empty":
 		o["branch"] = r.Branch
 	default:

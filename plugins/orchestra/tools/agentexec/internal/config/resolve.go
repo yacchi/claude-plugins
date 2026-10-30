@@ -158,6 +158,9 @@ func Resolve() (*Resolved, error) {
 	if err := validatePnpmGVS(values); err != nil {
 		return nil, err
 	}
+	if err := validateLand(values); err != nil {
+		return nil, err
+	}
 	return &Resolved{Values: values, Layers: layers, Root: base}, nil
 }
 

@@ -373,3 +373,37 @@ func TestWaitGivesANeedPrecedenceOverAHeld(t *testing.T) {
 		t.Fatalf("a need and a long hold: %s", a.Status)
 	}
 }
+
+// endedRunner leaves a gone runner whose end report is log.
+func endedRunner(t *testing.T, store *state.Store, log string) {
+	t.Helper()
+	dead := exec.Command("/bin/sh", "-c", "exit 0", "wave", "run", "--state="+store.Path)
+	if err := dead.Run(); err != nil {
+		t.Fatal(err)
+	}
+	writeRecord(t, store.Path, Record{PID: dead.Process.Pid, StartedAt: time.Now().Unix(), Argv: dead.Args})
+	if err := os.WriteFile(LogPath(store.Path), []byte(log), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWaitDoneSaysWhereTheRunLanded(t *testing.T) {
+	store := newStore(t, "a")
+	endedRunner(t, store, `{"status":"done","merge":{"status":"merged","land":{"status":"landed","branch":"feature/x","commit":"1234567890abcdef","created":true}}}`+"\n")
+	a := Wait(WaitOptions{State: store.Path, MaxWait: time.Second})
+	if a.Status != "done" || a.Land["status"] != "landed" || a.Land["branch"] != "feature/x" {
+		t.Fatalf("landed report: %s %+v", a.Status, a.Land)
+	}
+	if !strings.HasSuffix(a.Line, " · landed 12345678 on feature/x") {
+		t.Fatalf("line: %s", a.Line)
+	}
+}
+
+func TestWaitDoneWithoutALandLeavesTheAnswerAlone(t *testing.T) {
+	store := newStore(t, "a")
+	endedRunner(t, store, `{"status":"done","merge":null}`+"\n")
+	a := Wait(WaitOptions{State: store.Path, MaxWait: time.Second})
+	if a.Status != "done" || a.Land != nil || strings.Contains(a.Line, "land") {
+		t.Fatalf("no land: %s %+v line %s", a.Status, a.Land, a.Line)
+	}
+}

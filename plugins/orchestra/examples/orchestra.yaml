@@ -258,6 +258,10 @@ isolation:
   # virtual store"). "auto" (the default) turns it on for pnpm 12 or later;
   # true or false forces it, per repo in its .claude/orchestra.yaml.
   # pnpm_global_virtual_store: "auto"
+  # A finished, green run lands its result on your checkout by itself, on a new
+  # feature/<slug> branch when you are on the default branch; nothing is pushed.
+  # "ask" lands only when you ask (references/isolation.md §1a).
+  # land: auto
 
 # Heavy local commands (installs, tests, typechecks, lints, builds) are
 # admitted machine-wide a few at a time: a worker's Bash command waits in the

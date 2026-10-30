@@ -1,0 +1,29 @@
+description: >
+  isolation.land auto (the default): a merge lands the request's assembly; on
+  main it first creates feature/feat and lands there, ending the request; a
+  second request merged while feature/feat is checked out lands on it without a
+  new branch
+setup:
+  git: true
+  files:
+    a.txt: "a\n"
+normalize_keys: [seconds, age_days, session_idle_minutes]
+steps:
+  - argv: [isolate, request, start, --into, feat]
+    save: {REQ: request}
+  - argv: [isolate, create, --task, t1, --parent, feat]
+    save: {T1: path}
+  - argv: [write-file, --path, "<@T1>/b.txt"]
+    stdin: "b\n"
+  - argv: [isolate, integrate, --tasks, t1, --into, feat]
+  - argv: [isolate, merge, --task, feat, -m, "feat: add b"]
+    snapshot: [<WORK>/b.txt]
+  - argv: [isolate, request, list]
+  - argv: [isolate, request, start, --into, feat2]
+  - argv: [isolate, create, --task, t2, --parent, feat2]
+    save: {T2: path}
+  - argv: [write-file, --path, "<@T2>/c.txt"]
+    stdin: "c\n"
+  - argv: [isolate, integrate, --tasks, t2, --into, feat2]
+  - argv: [isolate, merge, --task, feat2, -m, "feat: add c"]
+    snapshot: [<WORK>/c.txt]

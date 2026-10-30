@@ -80,6 +80,11 @@ func LintSkeleton(p *Plan) []Warning {
 				" is used by no package; list it in the packages that produce or consume it"})
 		}
 	}
+	// Not in Lint: its warnings are emitted as events into every wave's log,
+	// which would churn every wave-run golden.
+	if strings.TrimSpace(p.CommitMessage) == "" {
+		warnings = append(warnings, Warning{Message: "plan has no commit_message: a done run cannot land its result by itself (isolation.land: auto)"})
+	}
 	return warnings
 }
 

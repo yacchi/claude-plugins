@@ -21,18 +21,20 @@ const mergeAssemblyLockTimeout = 900 * time.Second
 type MergeResult struct {
 	Status   string // merged | empty | has-children | dirty | conflict | busy | refused | absent | error
 	Task     string
-	Assembly string   // the assembly's task id, once known
-	Commit   string   // merged: the new assembly commit
-	Files    []string // merged: changed paths; dirty/conflict/refused: the offending paths
-	Children []Child  // has-children: the children still open
-	Removed  bool     // merged/empty: the integration tree was removed afterwards
-	Reason   string   // every other status; merged/empty: why the tree was kept (only when Removed is false)
+	Assembly string      // the assembly's task id, once known
+	Commit   string      // merged: the new assembly commit
+	Files    []string    // merged: changed paths; dirty/conflict/refused: the offending paths
+	Children []Child     // has-children: the children still open
+	Removed  bool        // merged/empty: the integration tree was removed afterwards
+	Reason   string      // every other status; merged/empty: why the tree was kept (only when Removed is false)
+	Land     *LandResult // the land that followed this merge; nil when none ran
 }
 
 // MarshalJSON always writes "status" and "task", and "assembly" once known;
 // merged adds "commit", "files" and "removed"; empty adds "removed" (both
 // add "reason" when the tree was kept); has-children adds "children" and
-// "reason"; the others add "reason" and, when non-empty, "files".
+// "reason"; the others add "reason" and, when non-empty, "files". A non-nil
+// Land adds "land" with the land's own JSON.
 func (r MergeResult) MarshalJSON() ([]byte, error) {
 	o := map[string]any{"status": r.Status, "task": r.Task}
 	if r.Assembly != "" {
@@ -56,6 +58,9 @@ func (r MergeResult) MarshalJSON() ([]byte, error) {
 		if len(r.Files) > 0 {
 			o["files"] = r.Files
 		}
+	}
+	if r.Land != nil {
+		o["land"] = *r.Land
 	}
 	return fsutil.MarshalJSON(o)
 }
@@ -288,8 +293,18 @@ func mergeReapChildren(resolved, tree string) ([]Child, error) {
 	return Children(resolved, tree)
 }
 
-// FormatMergeText is the one-line text form of r.
+// FormatMergeText is the one-line text form of r; a land that followed the
+// merge is appended after "; ".
 func FormatMergeText(r MergeResult) string {
+	line := formatMergeLine(r)
+	if r.Land != nil {
+		line += "; " + FormatLandText(*r.Land)
+	}
+	return line
+}
+
+// formatMergeLine is FormatMergeText without the land that followed.
+func formatMergeLine(r MergeResult) string {
 	kept := ""
 	if !r.Removed && r.Reason != "" {
 		kept = "; " + r.Reason

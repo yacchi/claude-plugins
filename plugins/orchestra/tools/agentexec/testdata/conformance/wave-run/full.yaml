@@ -41,7 +41,8 @@ setup:
       COMMANDS:
       printf 'b\n' > b.txt
     ~/wave/plan.json: |
-      {"packages": [
+      {"commit_message": "feat: wave run",
+       "packages": [
          {"id": "A", "spec": "specs/A.md", "cls": "standard", "files_owned": ["a.txt"]},
          {"id": "B", "spec": "specs/B.md", "cls": "standard", "depends_on": ["A"], "files_owned": ["b.txt"]}
        ]}
@@ -54,7 +55,8 @@ setup:
       COMMANDS:
       printf 'b\n' > rb.txt
     ~/wave/plan-r.json: |
-      {"packages": [
+      {"commit_message": "feat: wave run",
+       "packages": [
          {"id": "RA", "spec": "specs/RA.md", "cls": "standard", "files_owned": ["ra.txt"]},
          {"id": "RB", "spec": "specs/RB.md", "cls": "standard", "depends_on": ["RA"], "files_owned": ["rb.txt"]}
        ]}
@@ -67,7 +69,8 @@ setup:
       COMMANDS:
       printf 'b\n' > fb.txt
     ~/wave/plan-f.json: |
-      {"packages": [
+      {"commit_message": "feat: wave run",
+       "packages": [
          {"id": "FA", "spec": "specs/FA.md", "cls": "standard", "files_owned": ["fa.txt"]},
          {"id": "FB", "spec": "specs/FB.md", "cls": "standard", "depends_on": ["FA"], "files_owned": ["fb.txt"]}
        ]}

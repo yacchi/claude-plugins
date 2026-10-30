@@ -3,7 +3,9 @@ description: >
   depending on A, one at a time (verify_mode final, no checks configured):
   every package is dispatched into its own worktree, integrated into --into
   in plan order, the run ends done (exit 0); state.json, the event log and
-  wave status show the result; a second run has nothing left to do (--text)
+  wave status show the result; a second run has nothing left to do (--text);
+  the done run lands the assembly on feature/wave-int (isolation.land auto,
+  the work repo on main)
 setup:
   git: true
   fakes: [pi]
@@ -43,7 +45,8 @@ setup:
       COMMANDS:
       printf 'c\n' > c.txt
     ~/wave/plan.json: |
-      {"preamble": ["preamble.md"],
+      {"commit_message": "feat: add a, b and c",
+       "preamble": ["preamble.md"],
        "packages": [
          {"id": "A", "spec": "specs/A.md", "cls": "standard", "files_owned": ["a.txt"]},
          {"id": "B", "spec": "specs/B.md", "cls": "standard", "depends_on": ["A"], "files_owned": ["b.txt"]},
