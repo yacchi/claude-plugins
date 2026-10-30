@@ -41,6 +41,7 @@ type Report struct {
 	Shim       readiness.Shim
 	Build      map[string]any
 	Config     map[string]any
+	PnpmGVS    map[string]any // nil when config did not resolve: the JSON key is omitted
 	Executors  map[string]any
 	Permission readiness.Permission
 	Ready      map[string]readiness.ExecReady
@@ -128,11 +129,17 @@ func Build(cfg *config.Resolved, cfgErr error) Report {
 		configSection["error"] = "agent-exec: " + cfgErr.Error()
 	}
 
+	var pnpmGVS map[string]any
+	if ok {
+		pnpmGVS = pnpmGVSSection(cfg)
+	}
+
 	cwd, _ := os.Getwd()
 	r := Report{
 		Shim:       ready.Shim,
 		Build:      buildInfo(),
 		Config:     configSection,
+		PnpmGVS:    pnpmGVS,
 		Executors:  ready.Executors,
 		Permission: ready.Permission,
 		Ready:      ready.Ready,
@@ -161,7 +168,7 @@ func (r Report) Object() map[string]any {
 	for _, rt := range r.Route {
 		routes[rt.Class] = rt.Object()
 	}
-	return map[string]any{
+	out := map[string]any{
 		"shim":         r.Shim,
 		"build":        r.Build,
 		"config":       r.Config,
@@ -177,6 +184,18 @@ func (r Report) Object() map[string]any {
 		"cli_network":  r.CLINetwork,
 		"hooks":        r.Hooks,
 	}
+	if r.PnpmGVS != nil {
+		out["pnpm_gvs"] = r.PnpmGVS
+	}
+	return out
+}
+
+// pnpmGVSSection is the global virtual store verdict of cfg: the setting as
+// written, whether pnpm runs with it on, and why.
+func pnpmGVSSection(cfg *config.Resolved) map[string]any {
+	setting, _ := cfg.Lookup("isolation", "pnpm_global_virtual_store")
+	on, reason := config.PnpmGVSStatus(cfg)
+	return map[string]any{"setting": setting, "on": on, "reason": reason}
 }
 
 // hooksSection is the current session's hook stamps and what is missing from

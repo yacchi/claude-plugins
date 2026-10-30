@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { ProcessRunResult } from 'claude-code'
 import { type AgentExecAnswer, callTool, fakeHost, freshSession, startAgent } from '../testing/host.ts'
 import type { Io } from './io.ts'
-import { withHeavySlot } from './slot.ts'
+import { classifyCommand, withHeavySlot } from './slot.ts'
 
 // agent-exec as the hooks see it: every command is a targeted heavy one, and
 // `slot acquire` admits with token t1.
@@ -65,15 +65,44 @@ describe('heavy slot admission', () => {
     })
 })
 
+const ioAnswering = (stdout: string, seen: string[]): Io => ({
+    run: async (argv: readonly string[]): Promise<ProcessRunResult> => {
+        seen.push(argv.slice(4, 6).join(' '))
+
+        return { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+    },
+}) as unknown as Io
+
+describe('classifyCommand', () => {
+    const classified = (capped: string) => `{"op":"jest","heavy":true,"scope":"targeted","capped_command":${JSON.stringify(capped)}}`
+
+    test('a capped command different from the input is carried', async () => {
+        const io = ioAnswering(classified('pnpm jest --maxWorkers=2'), [])
+        expect(await classifyCommand(io, 'pnpm jest')).toEqual({ op: 'jest', heavy: true, scope: 'targeted', capped: 'pnpm jest --maxWorkers=2' })
+    })
+
+    test('a capped command that is empty or the input itself is no cap', async () => {
+        expect(await classifyCommand(ioAnswering(classified(''), []), 'pnpm jest')).toEqual({ op: 'jest', heavy: true, scope: 'targeted' })
+        expect(await classifyCommand(ioAnswering(classified('pnpm jest'), []), 'pnpm jest')).toEqual({ op: 'jest', heavy: true, scope: 'targeted' })
+    })
+
+    test('the command\'s directory goes to classify as --cwd, and is left out when unknown', async () => {
+        const argvs: (readonly string[])[] = []
+        const io = {
+            run: async (argv: readonly string[]): Promise<ProcessRunResult> => {
+                argvs.push(argv)
+
+                return { exitCode: 0, stdout: classified(''), stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+            },
+        } as unknown as Io
+        await classifyCommand(io, 'pnpm jest', '/w/task-a')
+        await classifyCommand(io, 'pnpm jest', '')
+        expect(argvs[0]).toContain('--cwd=/w/task-a')
+        expect(argvs[1].some(a => a.startsWith('--cwd'))).toBe(false)
+    })
+})
+
 describe('withHeavySlot', () => {
-    const ioAnswering = (stdout: string, seen: string[]): Io => ({
-        run: async (argv: readonly string[]): Promise<ProcessRunResult> => {
-            seen.push(argv.slice(4, 6).join(' '))
-
-            return { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-        },
-    }) as unknown as Io
-
     test('the slot is released when the tool call rejects', async () => {
         const seen: string[] = []
         const io = ioAnswering('{"admitted":true,"token":"t9"}', seen)

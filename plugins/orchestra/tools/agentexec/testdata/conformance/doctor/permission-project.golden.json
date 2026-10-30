@@ -394,6 +394,11 @@
             "<WORK>/.claude/settings.local.json"
           ]
         },
+        "pnpm_gvs": {
+          "on": false,
+          "reason": "auto: pnpm version unknown (exec: \"pnpm\": executable file not found in $PATH)",
+          "setting": "auto"
+        },
         "ready": {
           "pi": {
             "missing": [],

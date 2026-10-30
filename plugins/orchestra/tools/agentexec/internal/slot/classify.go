@@ -247,42 +247,77 @@ func stripHeredocs(command string) string {
 // -m, mise exec), leaving the command that does the work.
 func unwrap(w []string) []string {
 	for len(w) > 0 {
-		head := base(w[0])
-		switch {
-		case assignRE.MatchString(w[0]):
-			w = w[1:]
-		case head == "time" || head == "exec" || head == "nohup" || head == "command":
-			if head == "command" && len(w) > 1 && (w[1] == "-v" || w[1] == "-V") {
-				return nil // a lookup, not a run
-			}
-			w = w[1:]
-		case wrapperFlags[head] != nil:
-			i := skipFlags(w, 1, wrapperFlags[head])
-			if head == "timeout" {
-				i++ // the duration
-			}
-			w = w[min(i, len(w)):]
-		case head == "npx" || head == "bunx" || head == "pnpx":
-			w = w[min(skipFlags(w, 1, runnerFlags), len(w)):]
-		case (head == "pnpm" || head == "yarn" || head == "npm" || head == "bun") && runnerVerb(w):
-			i := skipFlags(w, 1, packageManagers[head])
-			w = w[min(skipFlags(w, i+1, runnerFlags), len(w)):]
-		case (head == "uv" || head == "poetry" || head == "pipenv") && len(w) > 1 && w[1] == "run":
-			w = w[min(skipFlags(w, 2, runnerFlags), len(w)):]
-		case strings.HasPrefix(head, "python") && len(w) > 2 && w[1] == "-m":
-			w = w[2:]
-		case head == "mise" && len(w) > 1 && (w[1] == "exec" || w[1] == "x"):
-			// `mise exec go@1.26 node@24 -- go test`: the command follows --.
-			i := 2
-			for i < len(w) && w[i] != "--" {
-				i++
-			}
-			w = w[min(i+1, len(w)):]
-		default:
+		next, ok := unwrapOnce(w)
+		if !ok {
 			return w
 		}
+		w = next
 	}
 	return w
+}
+
+// unwrapOnce drops the outermost env assignment, wrapper or runner of w: one
+// layer of unwrap. false when w starts with none of them.
+func unwrapOnce(w []string) ([]string, bool) {
+	head := base(w[0])
+	switch {
+	case assignRE.MatchString(w[0]):
+		return w[1:], true
+	case head == "time" || head == "exec" || head == "nohup" || head == "command":
+		if head == "command" && len(w) > 1 && (w[1] == "-v" || w[1] == "-V") {
+			return nil, true // a lookup, not a run
+		}
+		return w[1:], true
+	case wrapperFlags[head] != nil:
+		i := skipFlags(w, 1, wrapperFlags[head])
+		if head == "timeout" {
+			i++ // the duration
+		}
+		return w[min(i, len(w)):], true
+	case head == "npx" || head == "bunx" || head == "pnpx":
+		return w[min(skipFlags(w, 1, runnerFlags), len(w)):], true
+	case (head == "pnpm" || head == "yarn" || head == "npm" || head == "bun") && runnerVerb(w):
+		i := skipFlags(w, 1, packageManagers[head])
+		return w[min(skipFlags(w, i+1, runnerFlags), len(w)):], true
+	case (head == "uv" || head == "poetry" || head == "pipenv") && len(w) > 1 && w[1] == "run":
+		return w[min(skipFlags(w, 2, runnerFlags), len(w)):], true
+	case strings.HasPrefix(head, "python") && len(w) > 2 && w[1] == "-m":
+		return w[2:], true
+	case head == "mise" && len(w) > 1 && (w[1] == "exec" || w[1] == "x"):
+		// `mise exec go@1.26 node@24 -- go test`: the command follows --.
+		i := 2
+		for i < len(w) && w[i] != "--" {
+			i++
+		}
+		return w[min(i+1, len(w)):], true
+	}
+	return w, false
+}
+
+// RunsProgram reports whether a simple command of command runs the program
+// name (a base name; a `@version` suffix is ignored): the command's own
+// program, or one that an npx, bunx, pnpx or corepack launcher runs. Each
+// layer is checked as unwrap strips it, so `pnpm exec tsc` runs pnpm as well
+// as tsc. Quoted strings and heredoc bodies are data, as in Classify.
+func RunsProgram(command, name string) bool {
+	for _, seg := range segments(command) {
+		w := strings.Fields(seg)
+		for len(w) > 0 {
+			if prog, _, _ := strings.Cut(base(w[0]), "@"); prog == name {
+				return true
+			}
+			if base(w[0]) == "corepack" {
+				w = w[1:]
+				continue
+			}
+			next, ok := unwrapOnce(w)
+			if !ok {
+				break
+			}
+			w = next
+		}
+	}
+	return false
 }
 
 // runnerVerb: `pnpm exec x`, `pnpm dlx x`, `yarn dlx x`, `npm exec x`, `bun x x`.

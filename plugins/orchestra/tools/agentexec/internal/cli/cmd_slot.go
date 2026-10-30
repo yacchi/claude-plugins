@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/slot"
 )
 
@@ -16,21 +17,31 @@ func newSlotCmd() *cobra.Command {
 	cmd := groupCommand("slot", "machine-wide admission for heavy commands")
 
 	classify := &cobra.Command{
-		Use:   "classify --command CMD",
+		Use:   "classify --command CMD [--cwd DIR]",
 		Short: "what CMD runs: heavy or not, its kind and pool, a full suite or targeted (used by the orchestra hooks)",
 		Args:  cobra.NoArgs,
 	}
 	classified := classify.Flags().String("command", "", "the command line to classify")
+	dir := classify.Flags().String("cwd", "", "the directory CMD runs in (its git tree gets the pnpm store entries for a pnpm command)")
 	_ = classify.MarkFlagRequired("command")
 	classify.RunE = func(cmd *cobra.Command, _ []string) error {
-		c, _ := classifyConfigured(*classified)
+		c, cfg := classifyConfigured(*classified)
 		var kind any
 		if c.Heavy {
 			kind = c.Kind
 		}
-		return writeJSONLine(cmd.OutOrStdout(), map[string]any{
+		out := map[string]any{
 			"op": c.Op, "heavy": c.Heavy, "kind": kind, "pool": c.Pool(), "scope": c.Scope,
-		})
+		}
+		prefix := ""
+		if c.Heavy {
+			prefix = config.NodeCapShellPrefix(config.PoolSize(cfg, config.PoolTest))
+		}
+		prefix += gvsShellPrefix(*classified, *dir)
+		if prefix != "" {
+			out["capped_command"] = prefix + *classified
+		}
+		return writeJSONLine(cmd.OutOrStdout(), out)
 	}
 	cmd.AddCommand(classify)
 
@@ -74,6 +85,21 @@ func newSlotCmd() *cobra.Command {
 	status.RunE = func(cmd *cobra.Command, _ []string) error { return runSlotStatus(cmd, *asJSON) }
 	cmd.AddCommand(status)
 	return cmd
+}
+
+// gvsShellPrefix sets the pnpm global-virtual-store entries before command
+// when it runs pnpm in dir and dir's git tree runs under the store; "" when
+// dir is empty or none of that holds.
+func gvsShellPrefix(command, dir string) string {
+	if dir == "" || !slot.RunsProgram(command, "pnpm") {
+		return ""
+	}
+	tree, ok := gitx.RepoRoot(dir)
+	if !ok {
+		return ""
+	}
+
+	return config.PnpmGVSShellPrefix(config.PnpmGVSOn(), tree, os.Environ())
 }
 
 // classifyConfigured classifies command with the extra heavy patterns of
@@ -134,7 +160,7 @@ func runSlotStatus(cmd *cobra.Command, asJSON bool) error {
 			continue
 		}
 		if p.Off() {
-			fmt.Fprintf(w, "%s: off (throttle.%s: 0)\n", p.Name, slot.SizeKey(name))
+			fmt.Fprintf(w, "%s: off (throttle.%s: 0)\n", p.Name, config.SizeKey(name))
 		} else {
 			fmt.Fprintf(w, "%s: %d/%d held\n", p.Name, len(leases), p.Size)
 		}

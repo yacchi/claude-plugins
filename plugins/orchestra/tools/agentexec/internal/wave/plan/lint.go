@@ -14,7 +14,9 @@ const (
 	maxSpecLines  = 150
 )
 
-var deletionWords = regexp.MustCompile(`(?i)削除|撤去|取り除|外す|remove|delete|drop|deprecat`)
+var (
+	deletionWords = regexp.MustCompile(`(?i)削除|撤去|取り除|外す|remove|delete|drop|deprecat`)
+)
 
 // Warning is one non-blocking lint finding; Pkg is nil for plan-level ones.
 type Warning struct {
@@ -34,9 +36,10 @@ func countLines(text string) int {
 	return n
 }
 
-// Lint returns the non-blocking ownership and sizing warnings. With a
-// non-empty root it also warns about warm_read files missing from it (they
-// may appear after integration, so this is never an error).
+// Lint returns the non-blocking ownership, sizing, deletion and rule warnings.
+// With a non-empty root it also warns about warm_read files missing from it
+// (they may appear after integration, so this is never an error). The ts-jest
+// rule is CheckTsJest, which is an error.
 func Lint(p *Plan, root string) []Warning {
 	warnings := []Warning{}
 	if root != "" {

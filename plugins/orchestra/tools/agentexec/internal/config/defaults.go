@@ -7,7 +7,6 @@ import (
 	"maps"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -15,8 +14,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"go.yaml.in/yaml/v3"
 )
 
 // DefaultQuietDomains is background traffic of Claude Code and herdr that no
@@ -44,22 +41,30 @@ const DefaultMaxAddedFiles = 500
 // between two usage notices.
 const DefaultUsageEvery = 10
 
-// PnpmGVSEnv turns pnpm's global virtual store on for one process (pnpm 12
-// reads pnpm_config_*, not npm_config_*). Every process orchestra starts in
+// PnpmGVSEnv turns pnpm's global virtual store on for one process (pnpm 10
+// reads npm_config_*, not pnpm_config_*). Every process orchestra starts in
 // a tree prepared that way must carry it: a pnpm run without it rebuilds the
 // classic layout, and one with it converts a classic layout.
 const PnpmGVSEnv = "pnpm_config_enable_global_virtual_store=true"
 
-// pnpmGVSMajor is the first pnpm major that turns the global virtual store on
-// by itself, which is what isolation.pnpm_global_virtual_store "auto" follows.
-const pnpmGVSMajor = 12
+// pnpmGVSMajor is the first pnpm major that reads pnpm_config_*, so
+// PnpmGVSEnv reaches it. isolation.pnpm_global_virtual_store "auto" turns the
+// global virtual store on for pnpm of this major and later.
+const pnpmGVSMajor = 11
+
+// pnpmProbe is one `pnpm --version` probe of a config root: the trimmed
+// output when pnpm ran, else the error that stopped it.
+type pnpmProbe struct {
+	out string
+	err error
+}
 
 // pnpmVersionRe takes the major of `pnpm --version` output ("12.0.0").
 var pnpmVersionRe = regexp.MustCompile(`^(\d+)\.\d+`)
 
 var (
 	pnpmProbeMu sync.Mutex
-	pnpmProbes  = map[string]bool{}
+	pnpmProbes  = map[string]pnpmProbe{}
 	// pnpmVersionSeam replaces the `pnpm --version` probe (a test seam). Inside
 	// a test binary "auto" is off without one, so no test depends on the pnpm
 	// on PATH.
@@ -69,30 +74,42 @@ var (
 // PnpmGVS is isolation.pnpm_global_virtual_store of cfg: true or false as
 // written, and "auto" as the pnpm of cfg's root decides (off for a nil cfg).
 func PnpmGVS(cfg *Resolved) bool {
+	on, _ := PnpmGVSStatus(cfg)
+	return on
+}
+
+// PnpmGVSStatus is PnpmGVS with the reason for its answer: the setting as
+// written, or for "auto" the pnpm version of cfg's root.
+func PnpmGVSStatus(cfg *Resolved) (on bool, reason string) {
 	v, _ := cfg.Lookup("isolation", "pnpm_global_virtual_store")
 	switch x := v.(type) {
 	case bool:
-		return x
+		if x {
+			return true, "set to true"
+		}
+		return false, "set to false"
 	case string:
-		return x == "auto" && pnpmGVSAuto(cfg.Root)
+		if x == "auto" {
+			return pnpmGVSAuto(cfg.Root)
+		}
 	}
-	return false
+	return false, "setting is not true, false or \"auto\""
 }
 
-// pnpmGVSAuto probes the pnpm that would run in root, once per root per
-// process.
-func pnpmGVSAuto(root string) bool {
+// pnpmGVSAuto decides "auto" from the pnpm that would run in root. The probe
+// runs once per root per process, so every lookup of a root gives one answer.
+func pnpmGVSAuto(root string) (bool, string) {
 	pnpmProbeMu.Lock()
 	defer pnpmProbeMu.Unlock()
 	if pnpmVersionSeam == nil && testing.Testing() {
-		return false
+		return false, "auto: not probed in tests"
 	}
-	on, ok := pnpmProbes[root]
+	p, ok := pnpmProbes[root]
 	if !ok {
-		on = pnpmMajorAtLeast(root, pnpmGVSMajor)
-		pnpmProbes[root] = on
+		p = readPnpmVersion(root)
+		pnpmProbes[root] = p
 	}
-	return on
+	return p.verdict()
 }
 
 // runPnpmVersion is `pnpm --version` in dir, so corepack and packageManager
@@ -106,23 +123,38 @@ func runPnpmVersion(dir string) ([]byte, error) {
 	return cmd.Output()
 }
 
-// pnpmMajorAtLeast reads the pnpm version of dir. A missing pnpm, a timeout,
-// or output that is not a version reads as false.
-func pnpmMajorAtLeast(dir string, major int) bool {
+// readPnpmVersion runs the pnpm version probe in dir, through the seam when
+// one is set.
+func readPnpmVersion(dir string) pnpmProbe {
 	probe := pnpmVersionSeam
 	if probe == nil {
 		probe = runPnpmVersion
 	}
 	out, err := probe(dir)
 	if err != nil {
-		return false
+		return pnpmProbe{err: err}
 	}
-	m := pnpmVersionRe.FindStringSubmatch(strings.TrimSpace(string(out)))
+	return pnpmProbe{out: strings.TrimSpace(string(out))}
+}
+
+// verdict is the "auto" answer for a probe and why. A missing pnpm, a timeout,
+// or output that is not a version leaves the global virtual store off.
+func (p pnpmProbe) verdict() (bool, string) {
+	if p.err != nil {
+		return false, "auto: pnpm version unknown (" + p.err.Error() + ")"
+	}
+	m := pnpmVersionRe.FindStringSubmatch(p.out)
 	if m == nil {
-		return false
+		return false, "auto: pnpm version unknown (" + p.out + ")"
 	}
 	n, err := strconv.Atoi(m[1])
-	return err == nil && n >= major
+	if err != nil {
+		return false, "auto: pnpm version unknown (" + p.out + ")"
+	}
+	if n >= pnpmGVSMajor {
+		return true, "auto: pnpm " + p.out + " (" + strconv.Itoa(pnpmGVSMajor) + " or later)"
+	}
+	return false, "auto: pnpm " + p.out + " is older than " + strconv.Itoa(pnpmGVSMajor)
 }
 
 // validatePnpmGVS rejects isolation.pnpm_global_virtual_store unless it is
@@ -152,43 +184,12 @@ func validateLand(values map[string]any) error {
 
 // PnpmGVSTree reports whether processes in tree run under the global
 // virtual store: on (the setting, see PnpmGVS), tree is a linked worktree
-// (its .git is a file, so never the user's main checkout) whose root holds
-// pnpm-lock.yaml, and its node_modules, when present, is not of the classic
-// layout (a clone fallback, or a tree the user installed: the env would
-// convert it).
+// (LinkedWorktree, so never the user's main checkout) and it holds at least
+// one pnpm project (PnpmProjects). A node_modules of the classic layout
+// there needs no guard: orchestra's trees are disposable, and the carry
+// rebuilds every project's node_modules under the store.
 func PnpmGVSTree(on bool, tree string) bool {
-	if !on || tree == "" || !isFile(filepath.Join(tree, ".git")) ||
-		!isFile(filepath.Join(tree, "pnpm-lock.yaml")) {
-		return false
-	}
-	nm := filepath.Join(tree, "node_modules")
-	if _, err := os.Lstat(nm); err != nil {
-		return true // nothing installed yet: the first install builds it
-	}
-	return pnpmGVSLayout(nm)
-}
-
-// pnpmGVSLayout reports whether node_modules dir was installed with the
-// global virtual store: its virtualStoreDir lies outside it (in the store's
-// links), where the classic one is node_modules/.pnpm. Unreadable reads as
-// classic.
-func pnpmGVSLayout(dir string) bool {
-	raw, err := os.ReadFile(filepath.Join(dir, ".modules.yaml"))
-	if err != nil {
-		return false
-	}
-	var meta struct {
-		VirtualStoreDir string `yaml:"virtualStoreDir"`
-	}
-	if yaml.Unmarshal(raw, &meta) != nil || meta.VirtualStoreDir == "" {
-		return false
-	}
-	v := meta.VirtualStoreDir
-	if !filepath.IsAbs(v) {
-		v = filepath.Join(dir, v)
-	}
-	rel, err := filepath.Rel(dir, v)
-	return err == nil && (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+	return on && LinkedWorktree(tree) && len(PnpmProjects(tree)) > 0
 }
 
 var (

@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/planning"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 )
@@ -150,6 +151,11 @@ func newPlanLintCmd() *cobra.Command {
 		out := cmd.OutOrStdout()
 		p, err := plan.LoadSkeleton(*planPath)
 		if err != nil {
+			return planFailure(name, err)
+		}
+		// The repo is the working directory's (plan lint takes no --repo); outside a repository the repo rule is skipped.
+		root, _ := gitx.RepoRoot("")
+		if err := plan.CheckTsJest(p, root, *pkgID == ""); err != nil {
 			return planFailure(name, err)
 		}
 

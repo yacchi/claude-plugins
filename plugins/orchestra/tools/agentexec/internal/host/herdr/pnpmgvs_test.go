@@ -74,8 +74,10 @@ func (e *env) workspaceEnvOf(x *Executor, tree string) []string {
 
 // A workspace gets the pnpm global-virtual-store switch only when its tree
 // runs under it: a linked worktree of a pnpm repository, not the user's main
-// checkout and not a classic node_modules. The isolation switches are on
-// every workspace. A linked worktree also gets the store pin, before the switch.
+// checkout. A classic node_modules in a linked tree does not keep the switch
+// off: orchestra rebuilds that node_modules under the global virtual store.
+// The isolation switches are on every workspace. A linked worktree also gets
+// the store pin, before the switch.
 func TestWorkspaceEnvCarriesThePnpmGVSSwitchOnlyForAGVSTree(t *testing.T) {
 	for _, c := range []struct {
 		label string
@@ -91,7 +93,7 @@ func TestWorkspaceEnvCarriesThePnpmGVSSwitchOnlyForAGVSTree(t *testing.T) {
 			_ = os.MkdirAll(nm, 0o755)
 			_ = os.WriteFile(filepath.Join(nm, ".modules.yaml"), []byte("virtualStoreDir: .pnpm\n"), 0o644)
 			return tree
-		}, true, false},
+		}, true, true},
 	} {
 		t.Run(c.label, func(t *testing.T) {
 			unsetPnpmStoreEnv(t)

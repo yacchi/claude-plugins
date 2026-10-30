@@ -91,3 +91,28 @@ func TestClassifyScope(t *testing.T) {
 		}
 	}
 }
+
+// RunsProgram sees the program a line runs, through the same stripping as
+// Classify: pnpm's own runner verbs, launchers, wrappers and env assignments.
+func TestRunsProgram(t *testing.T) {
+	yes := []string{
+		"pnpm install", "pnpm -C packages/a test", "pnpm exec tsc", "FOO=1 pnpm test",
+		"cd x && pnpm -v", "npx pnpm install", "npx -y pnpm@9 test", "corepack pnpm install",
+		"nice -n 5 pnpm run lint", "time pnpm -r build", "git status; pnpm test",
+	}
+	for _, command := range yes {
+		if !RunsProgram(command, "pnpm") {
+			t.Errorf("%q: pnpm not seen", command)
+		}
+	}
+	no := []string{
+		"npm install", "npx tsc", "npx tsc pnpm", "corepack enable", "corepack enable pnpm",
+		"echo pnpm test", `echo "pnpm test"`, "command -v pnpm", "ls -la", "pnpmx install",
+		"cat <<EOF\npnpm install\nEOF", "",
+	}
+	for _, command := range no {
+		if RunsProgram(command, "pnpm") {
+			t.Errorf("%q: pnpm seen", command)
+		}
+	}
+}

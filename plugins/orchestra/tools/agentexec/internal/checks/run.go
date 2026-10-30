@@ -302,7 +302,8 @@ type shellResult struct {
 }
 
 // runShell runs command via /bin/sh -c in its own session (env nil: the
-// process's own), killing the whole process group on timeout. It holds one
+// process's own) with the Node CPU cap of the test pool set
+// (config.WithNodeCap), killing the whole process group on timeout. It holds one
 // of the maxParallel check slots and one slot of a machine-wide pool (the
 // test pool for a test, lint or typecheck, else the heavy pool) while it
 // runs. A command that cannot be started is reported as output of a failed
@@ -314,7 +315,7 @@ func runShell(command, cwd string, env []string, timeout time.Duration, slotDir 
 	start := time.Now()
 	cmd := exec.Command("/bin/sh", "-c", command)
 	cmd.Dir = cwd
-	cmd.Env = env
+	cmd.Env = config.WithNodeCap(env)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

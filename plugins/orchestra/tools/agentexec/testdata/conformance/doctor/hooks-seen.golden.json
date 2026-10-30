@@ -393,6 +393,11 @@
             "<HOME>/.claude/settings.json"
           ]
         },
+        "pnpm_gvs": {
+          "on": false,
+          "reason": "auto: pnpm version unknown (exec: \"pnpm\": executable file not found in $PATH)",
+          "setting": "auto"
+        },
         "ready": {
           "pi": {
             "missing": [],
@@ -537,7 +542,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: true)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nbuild: <BUILD>\nconfig: resolved (1 layer(s) found)\n  - <HOME>/.claude/orchestra.yaml\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=true dispatch=cli binary=pi available=true\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=haiku effort=medium source=priority)\n  - standard: claude (dispatch=claude model=haiku effort=high source=priority)\n  - deep: claude (dispatch=claude model=opus effort=medium source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=medium source=priority)\nusage limits: disabled\nsandbox: mode=off backend=none enforced=false (sandbox.mode is off)\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=false (sandbox.mode is off)\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=false srt=-  network not restricted: host not sandboxed: sandbox.mode is off\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=false backend=none domains=chatgpt.com, auth.openai.com  sandbox.mode is off\nhooks: session <UUID#1>, seen module, session-start\n"
+      "stdout": "agent-exec doctor\n-----------------\nshim: installed at <HOME>/.local/bin/agent-exec (on PATH: true)\n  target: /m/plugins/marketplaces/orchestra/tools/agent-exec (marketplace-clone)\nbuild: <BUILD>\nconfig: resolved (1 layer(s) found)\n  - <HOME>/.claude/orchestra.yaml\npnpm global virtual store: off (auto: pnpm version unknown (exec: \"pnpm\": executable file not found in $PATH))\npermission rule Bash(agent-exec:*): found\n  - <HOME>/.claude/settings.json\nexecutors:\n  - pi: enabled=true dispatch=cli binary=pi available=true\nready:\n  - pi: OK\nroute (preview):\n  - light: claude (dispatch=claude model=haiku effort=medium source=priority)\n  - standard: claude (dispatch=claude model=haiku effort=high source=priority)\n  - deep: claude (dispatch=claude model=opus effort=medium source=priority)\n  - review: claude (dispatch=claude model=sonnet effort=medium source=priority)\nusage limits: disabled\nsandbox: mode=off backend=none enforced=false (sandbox.mode is off)\n  - seatbelt: ok (sandbox-exec probe ok)\n  - bwrap: unavailable (not Linux)\n  - landlock: unavailable (not Linux)\nherdr host: home=/private/tmp/orchestra-501/hx sandboxed=false (sandbox.mode is off)\nherdr host: user_config=isolate\norca host: user_config=isolate\n  network: mode=allowlist restricted=false srt=-  network not restricted: host not sandboxed: sandbox.mode is off\n  learned grants: 0 (<HOME>/.local/state/claude-orchestra/sandbox-learned.json)\nCLI executors network: mode=allowlist presets=-\n  - pi: restricted=false backend=none domains=chatgpt.com, auth.openai.com  sandbox.mode is off\nhooks: session <UUID#1>, seen module, session-start\n"
     }
   ]
 }
