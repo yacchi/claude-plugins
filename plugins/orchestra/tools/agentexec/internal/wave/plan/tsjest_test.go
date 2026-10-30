@@ -141,12 +141,18 @@ func TestCheckTsJestRepoRule(t *testing.T) {
 			map[string]string{"apps/web/jest.config.js": tsJestCfg}, nil},
 		{"directory owned", `"apps/web/"`,
 			map[string]string{"apps/web/jest.config.js": tsJestCfg}, nil},
-		{"sibling directory is not covered", `"apps/web2/"`,
+		{"a file under the config's dir does not own it", `"apps/web/src/x.ts"`,
 			map[string]string{"apps/web/jest.config.js": tsJestCfg},
 			[]string{"apps/web/jest.config.js: " + tsJestUnowned}},
-		{"directory entry without a slash is not a prefix", `"apps/web"`,
-			map[string]string{"apps/web/jest.config.js": tsJestCfg},
-			[]string{"apps/web/jest.config.js: " + tsJestUnowned}},
+		{"a parent directory entry touches the config's dir", `"apps/"`,
+			map[string]string{"apps/web/jest.config.js": tsJestCfg}, nil},
+		{"an untouched sibling directory's config is not required", `"apps/web2/"`,
+			map[string]string{"apps/web/jest.config.js": tsJestCfg}, nil},
+		{"an untouched config is not required next to a touched one", `"apps/web2/src/x.ts"`,
+			map[string]string{"apps/web/jest.config.js": tsJestCfg, "apps/web2/jest.config.js": tsJestCfg},
+			[]string{"apps/web2/jest.config.js: " + tsJestUnowned}},
+		{"a root config runs every touched file", `"apps/web/src/x.ts"`,
+			map[string]string{"jest.config.js": tsJestCfg}, []string{"jest.config.js: " + tsJestUnowned}},
 		{"no configs", `"x.go"`, map[string]string{"x.go": ""}, nil},
 		{"isolatedModules in the config", `"x.go"`, map[string]string{
 			"jest.config.ts": "export default { preset: 'ts-jest', globals: { isolatedModules: true } }\n",
@@ -168,9 +174,9 @@ func TestCheckTsJestRepoRule(t *testing.T) {
 		}, nil},
 		{"node_modules is skipped", `"x.go"`, map[string]string{"node_modules/pkg/jest.config.js": tsJestCfg}, nil},
 		{"dot directories are skipped", `"x.go"`, map[string]string{".cache/jest.config.js": tsJestCfg}, nil},
-		{"depth 6 directory is walked", `"x.go"`, map[string]string{"a/b/c/d/e/f/jest.config.js": tsJestCfg},
+		{"depth 6 directory is walked", `"a/b/c/d/e/f/g/x.go"`, map[string]string{"a/b/c/d/e/f/jest.config.js": tsJestCfg},
 			[]string{"a/b/c/d/e/f/jest.config.js: " + tsJestUnowned}},
-		{"depth 7 directory is not walked", `"x.go"`, map[string]string{"a/b/c/d/e/f/g/jest.config.js": tsJestCfg}, nil},
+		{"depth 7 directory is not walked", `"a/b/c/d/e/f/g/x.go"`, map[string]string{"a/b/c/d/e/f/g/jest.config.js": tsJestCfg}, nil},
 		{"other extensions are ignored", `"x.go"`, map[string]string{"jest.config.yaml": tsJestCfg}, nil},
 		{"jest.config.json is walked", `"x.go"`, map[string]string{"jest.config.json": `{"preset":"ts-jest"}`},
 			[]string{"jest.config.json: " + tsJestUnowned}},
@@ -190,6 +196,12 @@ func TestCheckTsJestRepoRule(t *testing.T) {
 		{"script config is a finding under its own path", `"x.go"`, map[string]string{
 			"package.json":        `{"scripts":{"test":"jest -c config/jest.unit.js"}}`,
 			"config/jest.unit.js": tsJestCfg,
+		}, []string{"config/jest.unit.js: " + tsJestUnowned}},
+		{"script config runs its package.json's dir", `"pkg/src/x.ts"`, map[string]string{
+			"pkg/package.json":     `{"scripts":{"test":"jest -c ../config/jest.unit.js"}}`,
+			"config/jest.unit.js":  tsJestCfg,
+			"other/package.json":   `{"scripts":{"test":"jest -c ../config/jest.other.js"}}`,
+			"config/jest.other.js": tsJestCfg,
 		}, []string{"config/jest.unit.js: " + tsJestUnowned}},
 		{"--config= form in a jest segment", `"x.go"`, map[string]string{
 			"package.json":        `{"scripts":{"test":"jest --config=config/jest.unit.js"}}`,
@@ -234,7 +246,7 @@ func TestCheckTsJestMessageOrder(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{"z/jest.config.js": tsJestCfg, "a/jest.config.js": tsJestCfg})
 	file := fixture(t, `{"preamble":["pre.md"],"packages":[`+
-		tsJestPkg("a", "use ts-jest", `"x.go"`)+","+tsJestPkg("b", "plain", `"lib/"`)+`]}`, "pre.md")
+		tsJestPkg("a", "use ts-jest", `"z/x.go"`)+","+tsJestPkg("b", "plain", `"a/src/"`)+`]}`, "pre.md")
 	if err := os.WriteFile(filepath.Join(filepath.Dir(file), "pre.md"), []byte("use ts-jest\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

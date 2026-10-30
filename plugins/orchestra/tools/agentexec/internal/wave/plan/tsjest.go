@@ -33,8 +33,10 @@ var (
 // every test in every worker, which exhausted host memory with a large
 // dependency. skeleton=true reads each package's brief; skeleton=false reads
 // its spec when readable, else its brief. Both read each distinct preamble.
-// With a non-empty root, each jest config under it that type-checks must be
-// owned by some package. It returns nil or an *Error listing every finding.
+// With a non-empty root, each jest config under it that type-checks and runs
+// the tests of a directory the plan touches must be owned by some package;
+// configs of untouched directories never run in this plan and are left to
+// the repo advice. It returns nil or an *Error listing every finding.
 func CheckTsJest(p *Plan, root string, skeleton bool) error {
 	var findings []string
 	for _, pkg := range p.Packages {
@@ -63,8 +65,9 @@ func CheckTsJest(p *Plan, root string, skeleton bool) error {
 		}
 	}
 	if root != "" {
-		for _, rel := range TypeCheckingJestConfigs(root) {
-			if !ownedByPackage(p, rel) {
+		configs := typeCheckingJestConfigs(root)
+		for _, rel := range sortedKeys(configs) {
+			if touchesDir(p, configs[rel]) && !ownedByPackage(p, rel) {
 				findings = append(findings, rel+": "+tsJestUnowned)
 			}
 		}
@@ -99,6 +102,21 @@ func ownedByPackage(p *Plan, rel string) bool {
 	return false
 }
 
+// touchesDir reports whether some package's files_owned lies under the
+// repo-relative slash dir ("." is the root), or is a directory entry that
+// covers dir.
+func touchesDir(p *Plan, dir string) bool {
+	for _, pkg := range p.Packages {
+		for _, f := range pkg.FilesOwned {
+			if dir == "." || strings.HasPrefix(f, dir+"/") ||
+				(strings.HasSuffix(f, "/") && strings.HasPrefix(dir+"/", f)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // TypeCheckingJestConfigs returns, sorted, the repo-relative slash paths of the
 // jest configs under root that type-check tests. Those are the
 // jest.config.{js,cjs,mjs,ts,json} files, the top-level "jest" object of each
@@ -107,7 +125,14 @@ func ownedByPackage(p *Plan, rel string) bool {
 // dot directories are skipped, and the walk stops descending past
 // maxJestConfigDepth. A referenced config that does not exist is ignored.
 func TypeCheckingJestConfigs(root string) []string {
-	found := map[string]bool{}
+	return sortedKeys(typeCheckingJestConfigs(root))
+}
+
+// typeCheckingJestConfigs maps each config TypeCheckingJestConfigs finds to
+// the repo-relative slash dir whose tests it runs: its own dir, or for a
+// config a script passes, the dir of that package.json.
+func typeCheckingJestConfigs(root string) map[string]string {
+	found := map[string]string{}
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || path == root {
 			return nil
@@ -124,16 +149,20 @@ func TypeCheckingJestConfigs(root string) []string {
 		switch {
 		case jestConfig.MatchString(d.Name()):
 			if text, ok := readText(path); ok && typeChecksText(filepath.Dir(path), text) {
-				found[filepath.ToSlash(rel)] = true
+				found[filepath.ToSlash(rel)] = filepath.ToSlash(filepath.Dir(rel))
 			}
 		case d.Name() == "package.json":
 			addPackageJSON(root, path, rel, found)
 		}
 		return nil
 	})
-	out := make([]string, 0, len(found))
-	for rel := range found {
-		out = append(out, rel)
+	return found
+}
+
+func sortedKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
 	}
 	sort.Strings(out)
 	return out
@@ -142,7 +171,7 @@ func TypeCheckingJestConfigs(root string) []string {
 // addPackageJSON records into found the jest configs that the package.json at
 // path makes: its own top-level "jest" object when that type-checks, and each
 // JS/JSON config a script passes to a jest command.
-func addPackageJSON(root, path, rel string, found map[string]bool) {
+func addPackageJSON(root, path, rel string, found map[string]string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return
@@ -152,8 +181,9 @@ func addPackageJSON(root, path, rel string, found map[string]bool) {
 		return
 	}
 	dir := filepath.Dir(path)
+	runs := filepath.ToSlash(filepath.Dir(rel))
 	if cfg := top["jest"]; len(cfg) > 0 && cfg[0] == '{' && typeChecksText(dir, string(cfg)) {
-		found[filepath.ToSlash(rel)] = true
+		found[filepath.ToSlash(rel)] = runs
 	}
 	var scripts map[string]string
 	if json.Unmarshal(top["scripts"], &scripts) != nil {
@@ -165,7 +195,7 @@ func addPackageJSON(root, path, rel string, found map[string]bool) {
 				continue
 			}
 			for _, ref := range configArgs(strings.Fields(seg)) {
-				addReferencedConfig(root, dir, ref, found)
+				addReferencedConfig(root, dir, ref, runs, found)
 			}
 		}
 	}
@@ -187,9 +217,9 @@ func configArgs(fields []string) []string {
 }
 
 // addReferencedConfig records the config ref, resolved against dir (the dir of
-// its package.json), when it is an existing JS/JSON file under root that
-// type-checks by typeChecksText.
-func addReferencedConfig(root, dir, ref string, found map[string]bool) {
+// its package.json), as running the tests of runs when it is an existing
+// JS/JSON file under root that type-checks by typeChecksText.
+func addReferencedConfig(root, dir, ref, runs string, found map[string]string) {
 	ref = strings.Trim(ref, `'"`)
 	if ref == "" {
 		return
@@ -207,7 +237,9 @@ func addReferencedConfig(root, dir, ref string, found map[string]bool) {
 		return
 	}
 	if text, ok := readText(ref); ok && typeChecksText(filepath.Dir(ref), text) {
-		found[filepath.ToSlash(rel)] = true
+		if _, walked := found[filepath.ToSlash(rel)]; !walked {
+			found[filepath.ToSlash(rel)] = runs
+		}
 	}
 }
 
