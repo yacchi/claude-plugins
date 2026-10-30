@@ -246,16 +246,23 @@ export const register: Register = (on, options) => {
         }
         const input = e as unknown as Readonly<Record<string, unknown>>
         const command = String(input.command ?? '')
+        // A worker's foreground command that agent-exec wants capped runs as
+        // the capped command line (a worker-count cap for jest); the tool
+        // input is the only thing rewritten. The main thread and background
+        // commands run as given.
+        const capped = isWorker && input.run_in_background !== true ? commandClass?.capped : undefined
+        const ran = capped === undefined ? command : capped
+        const runE = capped === undefined ? e : { ...e, command: capped } as typeof e
         // Time the command itself; the record is written without holding up
         // the result, which is returned exactly as the tool produced it.
         const run = async () => {
             const startMs = await io.now().catch(() => Date.now())
-            const result = await next(e)
+            const result = await next(runE)
             if (await $.env.get('ORCHESTRA_TRACE').catch(() => undefined) !== 'off') {
                 const endMs = await io.now().catch(() => Date.now())
                 const cwd = await io.sessionCwd().catch(() => '')
                 const isError = (result as { isError?: boolean } | undefined)?.isError === true
-                void recordWorkerBash(io, { startMs, endMs, command, cwd, isError, sessionId })
+                void recordWorkerBash(io, { startMs, endMs, command: ran, cwd, isError, sessionId })
             }
 
             return result

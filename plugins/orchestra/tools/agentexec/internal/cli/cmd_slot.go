@@ -23,14 +23,18 @@ func newSlotCmd() *cobra.Command {
 	classified := classify.Flags().String("command", "", "the command line to classify")
 	_ = classify.MarkFlagRequired("command")
 	classify.RunE = func(cmd *cobra.Command, _ []string) error {
-		c, _ := classifyConfigured(*classified)
+		c, cfg := classifyConfigured(*classified)
 		var kind any
 		if c.Heavy {
 			kind = c.Kind
 		}
-		return writeJSONLine(cmd.OutOrStdout(), map[string]any{
+		out := map[string]any{
 			"op": c.Op, "heavy": c.Heavy, "kind": kind, "pool": c.Pool(), "scope": c.Scope,
-		})
+		}
+		if capped, ok := slot.CapJestWorkers(*classified, slot.JestWorkerCap(cfg)); ok {
+			out["capped_command"] = capped
+		}
+		return writeJSONLine(cmd.OutOrStdout(), out)
 	}
 	cmd.AddCommand(classify)
 

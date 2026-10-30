@@ -26,6 +26,7 @@ Your prompt has three lines — `Plan: <plan.json>`, `Package: <id>`, `Spec: <sp
 - Frozen interfaces: each interface file your package lists, pasted unchanged inside a fenced block (the lint checks it verbatim). Never paraphrase or trim one.
 - Examples: concrete inputs and outputs, boundary values and error cases (exact messages, exit codes, JSON keys).
 - Mistakes to test for: the entry's `risks` plus any you found, each stated as the mistake a test should catch. No tests for constants, unchanged behaviour or wall-clock time; when something must not change, say "do not add tests to prove it".
+- TypeScript tests: a jest config the package writes or changes transforms only (ts-jest `isolatedModules: true`, or `@swc/jest`); never one that type-checks per test. Types are checked by `tsc --noEmit` after integration, not in the package's `verification`.
 - Dependencies: for each `depends_on` package, the names and signatures of its code this package uses.
 - Verification: the entry's `verification` command, unchanged.
 

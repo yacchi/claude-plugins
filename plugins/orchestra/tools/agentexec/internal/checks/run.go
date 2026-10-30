@@ -311,6 +311,7 @@ func runShell(command, cwd string, env []string, timeout time.Duration, slotDir 
 	release := acquireSlot(slotDir, maxParallel)
 	defer release()
 	defer holdMachineSlot(command, timeout)()
+	command = capJestOnTestPool(command, slot.ProcessJestWorkerCap())
 	start := time.Now()
 	cmd := exec.Command("/bin/sh", "-c", command)
 	cmd.Dir = cwd
@@ -383,6 +384,17 @@ func holdMachineSlot(command string, timeout time.Duration) func() {
 	}
 	c := slot.Classify(command, nil)
 	return slot.Hold(c.Pool(), c.Op, ttl)
+}
+
+// capJestOnTestPool caps the jest workers of a command that runs on the test
+// pool at n (see slot.CapJestWorkers); a command on any other pool is
+// returned as is.
+func capJestOnTestPool(command string, n int) string {
+	if slot.Classify(command, nil).Pool() != slot.Test {
+		return command
+	}
+	capped, _ := slot.CapJestWorkers(command, n)
+	return capped
 }
 
 // RerunFailedAlone re-runs the failing files output names with template

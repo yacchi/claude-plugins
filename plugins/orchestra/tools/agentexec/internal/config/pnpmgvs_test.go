@@ -112,8 +112,12 @@ func TestPnpmGVSAutoIsOffInTestsWithoutAProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
-	if PnpmGVS(gvsConfig(t.TempDir(), "auto")) {
+	on, reason := PnpmGVSStatus(gvsConfig(t.TempDir(), "auto"))
+	if on {
 		t.Error("auto is on in a test binary without a probe seam")
+	}
+	if reason != "auto: not probed in tests" {
+		t.Errorf("reason = %q, want %q", reason, "auto: not probed in tests")
 	}
 	if _, err := os.Stat(log); err == nil {
 		t.Error("pnpm ran without a probe seam")
@@ -126,18 +130,39 @@ func gvsConfig(root string, setting any) *Resolved {
 	return &Resolved{Values: values, Root: root}
 }
 
-// "auto" follows the pnpm that runs in the config root: 12 and later turn the
+// A bool setting is its own reason, whatever pnpm is installed.
+func TestPnpmGVSStatusReasonForBoolSettings(t *testing.T) {
+	cases := []struct {
+		setting any
+		on      bool
+		reason  string
+	}{
+		{setting: true, on: true, reason: "set to true"},
+		{setting: false, reason: "set to false"},
+	}
+	for _, c := range cases {
+		on, reason := PnpmGVSStatus(gvsConfig(t.TempDir(), c.setting))
+		if on != c.on || reason != c.reason {
+			t.Errorf("setting %v: got (%v, %q), want (%v, %q)", c.setting, on, reason, c.on, c.reason)
+		}
+	}
+}
+
+// "auto" follows the pnpm that runs in the config root: 11 and later turn the
 // global virtual store on, older, unparsable or missing pnpm leave it off.
 func TestPnpmGVSAutoFollowsThePnpmVersion(t *testing.T) {
 	cases := []struct {
-		name string
-		body string // fake pnpm body ("" = no pnpm on PATH)
-		want bool
+		name   string
+		body   string // fake pnpm body ("" = no pnpm on PATH)
+		want   bool
+		reason string // "" = not checked (the missing case has an exec-specific error)
 	}{
-		{name: "pnpm 12", body: "echo 12.0.0", want: true},
-		{name: "pnpm 11", body: "echo 11.9.0"},
-		{name: "pnpm 10.12.1", body: "echo 10.12.1"},
-		{name: "garbage", body: "echo nonsense"},
+		{name: "pnpm 12", body: "echo 12.0.0", want: true, reason: "auto: pnpm 12.0.0 (11 or later)"},
+		{name: "pnpm 11", body: "echo 11.0.9", want: true, reason: "auto: pnpm 11.0.9 (11 or later)"},
+		{name: "pnpm 12 prerelease", body: "echo 12.0.0-beta.1", want: true,
+			reason: "auto: pnpm 12.0.0-beta.1 (11 or later)"},
+		{name: "pnpm 10.12.1", body: "echo 10.12.1", reason: "auto: pnpm 10.12.1 is older than 11"},
+		{name: "garbage", body: "echo nonsense", reason: "auto: pnpm version unknown (nonsense)"},
 		{name: "missing", body: ""},
 	}
 	for _, c := range cases {
@@ -148,8 +173,15 @@ func TestPnpmGVSAutoFollowsThePnpmVersion(t *testing.T) {
 			} else {
 				fakePnpm(t, c.body)
 			}
-			if got := PnpmGVS(gvsConfig(t.TempDir(), "auto")); got != c.want {
-				t.Errorf("PnpmGVS = %v, want %v", got, c.want)
+			on, reason := PnpmGVSStatus(gvsConfig(t.TempDir(), "auto"))
+			if on != c.want {
+				t.Errorf("PnpmGVS = %v, want %v", on, c.want)
+			}
+			if c.reason != "" && reason != c.reason {
+				t.Errorf("reason = %q, want %q", reason, c.reason)
+			}
+			if c.body == "" && !strings.HasPrefix(reason, "auto: pnpm version unknown (") {
+				t.Errorf("missing pnpm: reason = %q, want a version-unknown reason", reason)
 			}
 		})
 	}
@@ -160,19 +192,28 @@ func TestPnpmGVSAutoFollowsThePnpmVersion(t *testing.T) {
 func TestPnpmGVSAutoProbesInTheConfigRoot(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "marker"), "")
-	fakePnpm(t, "if [ -e marker ]; then echo 12.0.0; else echo 11.0.0; fi")
+	fakePnpm(t, "if [ -e marker ]; then echo 11.0.0; else echo 10.0.0; fi")
 	if !PnpmGVS(gvsConfig(root, "auto")) {
 		t.Errorf("PnpmGVS in %s = false, want true", root)
 	}
 }
 
-// Every lookup of one root reuses the first probe.
+// Every lookup of one root reuses the first probe, reason included.
 func TestPnpmGVSAutoProbesOncePerRoot(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "probes")
-	fakePnpm(t, "echo probe >> '"+log+"'\necho 12.0.0")
+	fakePnpm(t, "echo probe >> '"+log+"'\necho 10.12.1")
 	root := t.TempDir()
-	for range 3 {
-		PnpmGVS(gvsConfig(root, "auto"))
+	var first string
+	for i := range 3 {
+		on, reason := PnpmGVSStatus(gvsConfig(root, "auto"))
+		if on {
+			t.Fatalf("lookup %d: on for pnpm 10.12.1", i)
+		}
+		if i == 0 {
+			first = reason
+		} else if reason != first {
+			t.Errorf("lookup %d reason = %q, want the first %q", i, reason, first)
+		}
 	}
 	raw, err := os.ReadFile(log)
 	if err != nil {

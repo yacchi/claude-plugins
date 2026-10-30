@@ -44,6 +44,14 @@ func FormatText(r Report) string {
 		p("config: FAILED to resolve: %s", show(get(cfg, "error")))
 	}
 
+	if len(r.PnpmGVS) > 0 {
+		state := "off"
+		if truthy(get(r.PnpmGVS, "on")) {
+			state = "on"
+		}
+		p("pnpm global virtual store: %s (%s)", state, show(get(r.PnpmGVS, "reason")))
+	}
+
 	p("permission rule %s: %s", r.Permission.Rule, map[bool]string{true: "found", false: "NOT found"}[r.Permission.Found])
 	for _, s := range r.Permission.Sources {
 		p("  - %s", s)

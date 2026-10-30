@@ -255,7 +255,7 @@ isolation:
   # carry_extra: [pkg]   # e.g. packages/core-wasm/pkg, a generated wasm package
   # pnpm repos: install worktree node_modules against pnpm's global virtual
   # store instead of cloning them (see references/isolation.md "pnpm global
-  # virtual store"). "auto" (the default) turns it on for pnpm 12 or later;
+  # virtual store"). "auto" (the default) turns it on for pnpm 11 or later;
   # true or false forces it, per repo in its .claude/orchestra.yaml.
   # pnpm_global_virtual_store: "auto"
   # A finished, green run lands its result on your checkout by itself, on a new

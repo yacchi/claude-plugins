@@ -22,8 +22,9 @@ const RELEASE_TIMEOUT_MS = 5000
 const CLASSIFY_TIMEOUT_MS = 5000
 
 // What agent-exec tells of a command line: the op it names, whether it is
-// heavy, and whether it runs a whole repository's or workspace's suite.
-export type CommandClass = { op: string, heavy: boolean, scope: 'full' | 'targeted' }
+// heavy, whether it runs a whole repository's or workspace's suite, and, when
+// the command should run under a worker-count cap, the capped command line.
+export type CommandClass = { op: string, heavy: boolean, scope: 'full' | 'targeted', capped?: string }
 
 // The command's class, or undefined when agent-exec could not tell (missing,
 // failed, or bad output).
@@ -40,6 +41,11 @@ export const classifyCommand = async (io: Io, command: string): Promise<CommandC
         const d = data as Record<string, unknown>
         if (typeof d.op !== 'string' || typeof d.heavy !== 'boolean' || (d.scope !== 'full' && d.scope !== 'targeted')) {
             return undefined
+        }
+
+        const capped = d.capped_command
+        if (typeof capped === 'string' && capped !== '' && capped !== command) {
+            return { op: d.op, heavy: d.heavy, scope: d.scope, capped }
         }
 
         return { op: d.op, heavy: d.heavy, scope: d.scope }

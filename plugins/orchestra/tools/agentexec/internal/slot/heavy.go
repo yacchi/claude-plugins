@@ -3,7 +3,6 @@ package slot
 import (
 	"context"
 	"os"
-	"runtime"
 	"sync"
 	"time"
 
@@ -23,9 +22,9 @@ func SizeKey(name string) string {
 // SizeKey in cfg (nil: the `auto` size). This is the one place a pool's size
 // is read, for the CLI and for every holder in this process.
 func Configured(cfg *config.Resolved, name string) Pool {
-	auto := AutoSize(runtime.NumCPU())
+	auto := AutoSize(cpuCount())
 	if name == Test {
-		auto = TestAutoSize(runtime.NumCPU())
+		auto = TestAutoSize(cpuCount())
 	}
 	v, _ := cfg.Lookup("throttle", SizeKey(name))
 	return New(name, sizeOf(v, auto))
