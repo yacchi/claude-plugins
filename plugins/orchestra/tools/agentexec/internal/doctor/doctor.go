@@ -14,6 +14,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/cooldown"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/hookrun"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/herdr"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
@@ -217,7 +218,25 @@ func hooksSection() map[string]any {
 	if _, ok := stamps[hookrun.EventModule]; !ok {
 		warnings = append(warnings, hooksWarnModule)
 	}
+	if reason := boardBlocked(session); reason != "" {
+		warnings = append(warnings, "orchestra's board page is not being written in this session: "+reason)
+	}
 	return map[string]any{"session": session, "seen": seen, "warnings": warnings}
+}
+
+// boardBlocked is why the hooks module's board writer did not start in
+// session, as hooks/dashboard/dashboard.ts records it; "" when it started,
+// recorded nothing, or the record is another session's.
+func boardBlocked(session string) string {
+	var v struct {
+		Session string  `json:"session"`
+		Reason  *string `json:"reason"`
+	}
+	file := filepath.Join(paths.OrchestraHome(), "dashboard", "blocked.json")
+	if fsutil.ReadJSONFile(file, &v) != nil || v.Session != session || v.Reason == nil {
+		return ""
+	}
+	return *v.Reason
 }
 
 func userConfig(cfg *config.Resolved, section string) string {
