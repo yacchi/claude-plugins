@@ -19,27 +19,26 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
-// The env must reach linked worktrees only, and never one whose installed
-// layout it would convert.
+// The env reaches linked worktrees holding a pnpm project, whatever layout
+// an existing node_modules has (the carry rebuilds it), and never a main
+// checkout.
 func TestPnpmGVSTree(t *testing.T) {
-	const gvs = "virtualStoreDir: ../../../../store/v11/links\n"
-	const classic = "virtualStoreDir: .pnpm\n"
 	cases := []struct {
-		name    string
-		on      bool
-		gitDir  bool   // .git is a directory: a main checkout
-		lock    bool   // pnpm-lock.yaml at the root
-		modules string // node_modules/.modules.yaml ("" = no node_modules)
-		want    bool
+		name   string
+		on     bool
+		gitDir bool   // .git is a directory: a main checkout
+		lock   string // pnpm-lock.yaml path below the root ("" = none)
+		want   bool
 	}{
-		{name: "fresh linked tree", on: true, lock: true, want: true},
-		{name: "gvs layout", on: true, lock: true, modules: gvs, want: true},
-		{name: "absolute store dir", on: true, lock: true, modules: "virtualStoreDir: /store/v11/links\n", want: true},
-		{name: "classic layout", on: true, lock: true, modules: classic},
-		{name: "unreadable layout", on: true, lock: true, modules: "{{"},
-		{name: "main checkout", on: true, gitDir: true, lock: true},
+		{name: "root project", on: true, lock: "pnpm-lock.yaml", want: true},
+		{name: "per-package project", on: true, lock: "packages/a/pnpm-lock.yaml", want: true},
+		{name: "classic node_modules", on: true, lock: "pnpm-lock.yaml", want: true},
+		{name: "lockfile too deep", on: true, lock: "a/b/c/pnpm-lock.yaml"},
+		{name: "lockfile in node_modules", on: true, lock: "node_modules/x/pnpm-lock.yaml"},
+		{name: "lockfile in a dot dir", on: true, lock: ".cache/pnpm-lock.yaml"},
+		{name: "main checkout", on: true, gitDir: true, lock: "pnpm-lock.yaml"},
 		{name: "no lockfile", on: true},
-		{name: "setting off", lock: true},
+		{name: "setting off", lock: "pnpm-lock.yaml"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -49,16 +48,35 @@ func TestPnpmGVSTree(t *testing.T) {
 			} else {
 				writeTestFile(t, filepath.Join(tree, ".git"), "gitdir: /repo/.git/worktrees/t\n")
 			}
-			if c.lock {
-				writeTestFile(t, filepath.Join(tree, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n")
+			if c.lock != "" {
+				writeTestFile(t, filepath.Join(tree, c.lock), "lockfileVersion: '9.0'\n")
 			}
-			if c.modules != "" {
-				writeTestFile(t, filepath.Join(tree, "node_modules", ".modules.yaml"), c.modules)
-			}
+			writeTestFile(t, filepath.Join(tree, "node_modules", ".modules.yaml"), "virtualStoreDir: .pnpm\n")
 			if got := PnpmGVSTree(c.on, tree); got != c.want {
 				t.Errorf("PnpmGVSTree = %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+// Projects are every directory holding its own lockfile, root included, in
+// sorted order; a member without one, and anything behind a symlink, is not.
+func TestPnpmProjects(t *testing.T) {
+	tree := t.TempDir()
+	outside := t.TempDir()
+	for _, f := range []string{
+		"pnpm-lock.yaml", "packages/b/pnpm-lock.yaml", "packages/a/pnpm-lock.yaml",
+		"packages/member/package.json", "apps/web/pnpm-lock.yaml",
+	} {
+		writeTestFile(t, filepath.Join(tree, f), "")
+	}
+	writeTestFile(t, filepath.Join(outside, "pnpm-lock.yaml"), "")
+	if err := os.Symlink(outside, filepath.Join(tree, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(PnpmProjects(tree), ",")
+	if want := ".,apps/web,packages/a,packages/b"; got != want {
+		t.Errorf("PnpmProjects = %q, want %q", got, want)
 	}
 }
 

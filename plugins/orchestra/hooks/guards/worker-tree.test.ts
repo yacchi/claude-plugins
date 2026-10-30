@@ -8,6 +8,8 @@ import { callTool, fakeHost, freshSession, startAgent, type HostOptions } from '
 // thread is never touched, a worker writes freely in its own worktree (one
 // nested under the main tree, as Agent isolation places it, included), the
 // path traps (symlink, `..`, sibling prefix) resolve, and doubt fails open.
+// A symbolic link into another orchestra tree (under the state root) is denied
+// too, unless the link stays in the worker's own tree.
 
 const BASE = '/w'
 const MAIN = `${BASE}/repo`
@@ -16,10 +18,13 @@ const SIBLING = `${BASE}/repo-worktrees/x`
 const NESTED = `${MAIN}/.claude/worktrees/agent-x`
 const SOLO = `${BASE}/solo`
 const NON_REPO = `${BASE}/plain`
+const HOME = `${BASE}/home`
+const OTHER = `${HOME}/.local/state/claude-orchestra/requests/r1/.work/t2`
 
 const host = (on: On, extra: Partial<HostOptions> = {}) => fakeHost(on, {
     sessionId: freshSession(),
-    dirs: [`${MAIN}/src`, `${ISO}/src`, SIBLING, NON_REPO],
+    dirs: [`${MAIN}/src`, `${ISO}/src`, SIBLING, NON_REPO, `${OTHER}/packages/x/node_modules`],
+    env: { HOME },
     files: { [`${MAIN}/src/app.ts`]: 'one', [`${ISO}/src/app.ts`]: 'one', [`${ISO}/a.ts`]: 'a' },
     links: { [`${BASE}/link`]: MAIN },
     repos: [
@@ -133,6 +138,55 @@ describe('worker-tree', () => {
             tool_name: 'Bash', tool_input: { command: `cd ${ISO}` }, tool_response: {}, tool_use_id: 't1',
         })
         expect((await callTool($, 'ag_2', write)).deny, 'after cd-ing into its worktree').toBeDefined()
+    })
+
+    test('a symbolic link into another orchestra tree is denied', async ($, on) => {
+        host(on)
+        const reason = 'Do not link into another task\'s worktree: each orchestra tree holds its own dependencies. Install them in your own tree instead (e.g. pnpm install --frozen-lockfile in the package directory), or ESCALATE if that fails.'
+        const link = `${OTHER}/packages/x/node_modules`
+        const denied = [
+            `ln -s ${link} packages/x/node_modules`,
+            `ln -sf ${link} packages/x/node_modules`,
+            `ln -sfn ${link} packages/x/node_modules`,
+            `ln --symbolic ${link} packages/x/node_modules`,
+            `mkdir -p packages/x && ln -sfn ${link} packages/x/node_modules`,
+            'ln -s ../home/.local/state/claude-orchestra/requests/r1/.work/t2/packages/x/node_modules packages/x/node_modules',
+            `ln -s ${ISO}/src ${OTHER}/src-link`,
+            `cd ${OTHER} && ln -s x y`,
+        ]
+        for (const command of denied) {
+            expect((await bash($, command)).deny, command).toBe(reason)
+        }
+        const allowed = [
+            `ln -s ${ISO}/src/app.ts ${ISO}/link`,
+            'ln -s src/app.ts link',
+            `ln ${link} ${ISO}/hard`,
+            `cln -s ${link} packages/x/node_modules`,
+            `ln -s ${BASE}/elsewhere/x ${ISO}/x`,
+        ]
+        for (const command of allowed) {
+            expect((await bash($, command)).deny, command).toBeUndefined()
+        }
+        expect((await callTool($, undefined, { tool: 'Bash', command: `ln -s ${link} x` })).deny, 'main thread').toBeUndefined()
+    })
+
+    test('a symbolic link into another orchestra tree: escapes and supervisor', async ($, on) => {
+        host(on)
+        const link = `ln -s ${OTHER}/packages/x/node_modules packages/x/node_modules`
+        expect((await bash($, `${link} [orchestra:allow-tree: shared cache]`)).deny, 'command escape').toBeUndefined()
+        expect((await bash($, link, 'link deps [orchestra:allow-tree]')).deny, 'description escape').toBeUndefined()
+        await startAgent($, 'ag_2', 'orchestra:orchestra-delegate', ISO)
+        expect((await callTool($, 'ag_2', { tool: 'Bash', command: link, description: 'x' })).deny, 'supervisor').toBeUndefined()
+    })
+
+    test('a symbolic link into another orchestra tree: kill switch', async ($, on) => {
+        host(on, { env: { HOME, ORCHESTRA_TREE_GUARD: 'off' } })
+        expect((await bash($, `ln -s ${OTHER}/packages/x/node_modules packages/x/node_modules`)).deny).toBeUndefined()
+    })
+
+    test('a symbolic link into another orchestra tree: enforcement off', async ($, on) => {
+        host(on, { agentExec: () => ({ exitCode: 0, stdout: '{"enforcement": {"worker_tree": "off"}}' }) })
+        expect((await bash($, `ln -s ${OTHER}/packages/x/node_modules packages/x/node_modules`)).deny).toBeUndefined()
     })
 
     test('kill switch: ORCHESTRA_TREE_GUARD=off', async ($, on) => {

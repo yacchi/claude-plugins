@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -28,10 +30,6 @@ var carryDirNames = []string{
 	".next", ".nuxt", ".svelte-kit", ".gradle", "Pods", ".bundle", ".dart_tool",
 }
 
-// carryScanMaxDepth covers the usual monorepo shapes
-// (packages/<pkg>/node_modules) without walking a whole large tree.
-const carryScanMaxDepth = 3
-
 // Carry methods reported by create. pnpm-gvs: node_modules came from a
 // `pnpm install` against the global virtual store instead of a copy.
 const (
@@ -50,7 +48,7 @@ var DefaultCarryFiles = []string{
 
 // DetectCarryDirs finds gitignored dependency/build directories under root
 // worth copying into a worktree: CARRY names plus extra, matched by
-// basename up to depth 3. Only ignored directories qualify (a tracked one
+// basename up to config.CarryScanMaxDepth. Only ignored directories qualify (a tracked one
 // arrives with the worktree; an untracked one would leak into the diff).
 // Relative paths, in walk order.
 func DetectCarryDirs(root string, extra []string) []string {
@@ -95,7 +93,7 @@ func DetectCarryDirs(root string, extra []string) []string {
 				found = append(found, rel)
 				continue
 			}
-			if depth < carryScanMaxDepth {
+			if depth < config.CarryScanMaxDepth {
 				walk(full, depth+1)
 			}
 		}
@@ -240,26 +238,19 @@ func copyFile(src, dst string) error {
 // CarryDependencies copies root's dependency dirs into path. A directory
 // already present in path (gtr copy patterns, a setup script, a worker's own
 // install) is left alone: copying onto it would nest the copy inside it.
-// When path runs under pnpm's global virtual store (PnpmGVSTree) the
-// node_modules dirs are installed instead of copied, and copied after all
-// when the install fails, which note reports.
+//
+// When path runs under pnpm's global virtual store (PnpmGVSTree) every pnpm
+// project of path (config.PnpmProjects) gets its node_modules rebuilt
+// instead of copied: any node_modules already under it is removed and the
+// project installed, one project at a time. A project whose install fails
+// gets its node_modules copied after all, which note reports. Otherwise the
+// copies are checked for links that dangle at their new depth
+// (repairDangling). Only a linked worktree (a disposable orchestra tree) is
+// ever rebuilt or repaired; a main checkout just gets the copies.
 func CarryDependencies(root, path string, extra []string) (carried []string, method string, present []string, note string) {
 	carried, present = []string{}, nil
 	method = carryNone
 	dirs := DetectCarryDirs(root, extra)
-	gvs := config.PnpmGVSTree(config.PnpmGVSOn(), path)
-	var nodeModules []string
-	if gvs {
-		var rest []string
-		for _, rel := range dirs {
-			if filepath.Base(rel) == "node_modules" {
-				nodeModules = append(nodeModules, rel)
-			} else {
-				rest = append(rest, rel)
-			}
-		}
-		dirs = rest
-	}
 	carry := func(rels []string) {
 		for _, rel := range rels {
 			target := filepath.Join(path, rel)
@@ -281,33 +272,211 @@ func CarryDependencies(root, path string, extra []string) (carried []string, met
 			}
 		}
 	}
-	carry(dirs)
-	if !gvs {
+	if !config.LinkedWorktree(path) {
+		carry(dirs)
 		return carried, method, present, ""
 	}
-	if err := pnpmInstallGVS(path); err != nil {
-		// What a failed install left behind would block the copy.
-		_ = os.RemoveAll(filepath.Join(path, "node_modules"))
-		for _, rel := range nodeModules {
-			_ = os.RemoveAll(filepath.Join(path, rel))
-		}
-		carry(nodeModules)
-		return carried, method, present, "pnpm install (gvs) failed, node_modules copied instead: " + err.Error()
+	projects := config.PnpmProjects(path)
+	if !config.PnpmGVSTree(config.PnpmGVSOn(), path) {
+		carry(dirs)
+		carried, note = repairDangling(path, projects, carried)
+		return carried, method, present, note
 	}
-	if method != carryFailed {
+	// Each node_modules of root inside a project belongs to its innermost
+	// project: the fallback copy of a failed install.
+	owned := map[string][]string{}
+	var rest []string
+	for _, rel := range dirs {
+		if filepath.Base(rel) == "node_modules" {
+			if p, ok := innermostProject(projects, rel); ok {
+				owned[p] = append(owned[p], rel)
+				continue
+			}
+		}
+		rest = append(rest, rel)
+	}
+	carry(rest)
+	for _, p := range projects {
+		removeNodeModules(path, p)
+	}
+	// Sequential (installs are memory-heavy), parents before the projects
+	// nested in them (sorted order), each project once.
+	var failures []string
+	for _, p := range projects {
+		err := pnpmInstall(filepath.Join(path, p), path, true)
+		if err == nil {
+			continue
+		}
+		// What a failed install left behind would block the copy.
+		removeNodeModules(path, p)
+		carry(owned[p])
+		failures = append(failures, "pnpm install (gvs) failed in "+p+", node_modules copied instead: "+err.Error())
+	}
+	if len(failures) == 0 && method != carryFailed {
 		method = carryPnpmGVS
 	}
-	return carried, method, present, ""
+	return carried, method, present, strings.Join(failures, "; ")
+}
+
+// innermostProject is the deepest of projects (paths relative to the tree,
+// "." for its root) holding rel.
+func innermostProject(projects []string, rel string) (string, bool) {
+	best, found := "", false
+	for _, p := range projects {
+		if (p == "." || rel == p || strings.HasPrefix(rel, p+string(filepath.Separator))) &&
+			(!found || len(p) > len(best) || best == ".") {
+			best, found = p, true
+		}
+	}
+	return best, found
+}
+
+// removeNodeModules removes every node_modules in tree under the project
+// directory project (relative to tree), no deeper than
+// config.CarryScanMaxDepth below tree's root. The walk follows no symlink and
+// skips dot directories; a symlinked node_modules is removed as a link, so
+// nothing outside tree is ever touched.
+func removeNodeModules(tree, project string) {
+	depth := 1
+	if project != "." {
+		depth = len(strings.Split(project, string(filepath.Separator))) + 1
+	}
+	var walk func(dir string, depth int)
+	walk = func(dir string, depth int) {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, e := range entries {
+			name := e.Name()
+			full := filepath.Join(dir, name)
+			switch {
+			case name == "node_modules":
+				removeEntry(full)
+			case e.IsDir() && depth < config.CarryScanMaxDepth && !strings.HasPrefix(name, "."):
+				walk(full, depth+1) // lstat type: a symlinked dir is not walked
+			}
+		}
+	}
+	walk(filepath.Join(tree, project), depth)
+}
+
+// removeEntry removes p without following it: a symlink goes as a link, a
+// directory with its contents (RemoveAll unlinks the links inside it).
+func removeEntry(p string) {
+	st, err := os.Lstat(p)
+	if err != nil {
+		return
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		_ = os.Remove(p)
+		return
+	}
+	_ = os.RemoveAll(p)
+}
+
+// repairDangling checks each node_modules of carried (copied into tree) for
+// links that no longer resolve: a global-virtual-store node_modules links
+// into the store by a path relative to its own depth, so a copy at another
+// depth dangles. Such a node_modules is removed, and the pnpm project
+// holding it (its innermost one of projects) reinstalled without the global
+// virtual store, once per project. carried loses what is gone for good;
+// note reports each removal that no install restored.
+func repairDangling(tree string, projects, carried []string) ([]string, string) {
+	reinstall := map[string]bool{}
+	var notes []string
+	for _, rel := range carried {
+		if filepath.Base(rel) != "node_modules" || !danglingLinks(filepath.Join(tree, rel)) {
+			continue
+		}
+		removeEntry(filepath.Join(tree, rel))
+		if p, ok := innermostProject(projects, rel); ok {
+			reinstall[p] = true
+		} else {
+			notes = append(notes, rel+" had dangling links and was removed; no pnpm project to reinstall it")
+		}
+	}
+	if len(reinstall) == 0 && len(notes) == 0 {
+		return carried, ""
+	}
+	order := make([]string, 0, len(reinstall))
+	for p := range reinstall {
+		order = append(order, p)
+	}
+	sort.Strings(order)
+	for _, p := range order {
+		if err := pnpmInstall(filepath.Join(tree, p), tree, false); err != nil {
+			notes = append(notes, "pnpm install failed in "+p+" after removing a node_modules with dangling links: "+err.Error())
+		}
+	}
+	kept := carried[:0:0]
+	for _, rel := range carried {
+		if lexists(filepath.Join(tree, rel)) {
+			kept = append(kept, rel)
+		}
+	}
+	return kept, strings.Join(notes, "; ")
+}
+
+// danglingLinks reports whether node_modules dir nm holds a symlink whose
+// target does not exist, among its top-level entries and the entries one
+// level inside its @scope directories and .bin. Deeper levels are not read.
+func danglingLinks(nm string) bool {
+	dangling := func(p string) bool {
+		st, err := os.Lstat(p)
+		if err != nil || st.Mode()&os.ModeSymlink == 0 {
+			return false
+		}
+		_, err = os.Stat(p)
+		return errors.Is(err, fs.ErrNotExist)
+	}
+	entries, err := os.ReadDir(nm)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		full := filepath.Join(nm, e.Name())
+		if dangling(full) {
+			return true
+		}
+		if !e.IsDir() || (e.Name() != ".bin" && !strings.HasPrefix(e.Name(), "@")) {
+			continue
+		}
+		inner, err := os.ReadDir(full)
+		if err != nil {
+			continue
+		}
+		for _, ie := range inner {
+			if dangling(filepath.Join(full, ie.Name())) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // pnpmInstallTimeout bounds each install attempt (the online one can hang
 // on the network).
 const pnpmInstallTimeout = 10 * time.Minute
 
-// pnpmInstallGVS installs tree's locked dependencies against the global
-// virtual store, offline first (the store usually holds every package),
-// then online. The error is the last attempt's final output line.
-func pnpmInstallGVS(tree string) error {
+// pnpmInstall installs the locked dependencies of the pnpm project at dir in
+// the orchestra tree tree, offline first (the store usually holds every
+// package), then online; with gvs against the global virtual store, else
+// with the switch removed from the env. The error is the last attempt's
+// final output line.
+func pnpmInstall(dir, tree string, gvs bool) error {
+	label := "pnpm install"
+	env := config.WithTreeEnv(false, tree, os.Environ())
+	if gvs {
+		label = "pnpm install (gvs)"
+		env = config.WithPnpmGVS(env)
+	} else {
+		name, _, _ := strings.Cut(config.PnpmGVSEnv, "=")
+		env = slices.DeleteFunc(env, func(kv string) bool {
+			n, _, _ := strings.Cut(kv, "=")
+			return n == name
+		})
+	}
 	var last error
 	for _, offline := range []bool{true, false} {
 		argv := []string{"pnpm", "install", "--frozen-lockfile"}
@@ -316,11 +485,11 @@ func pnpmInstallGVS(tree string) error {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), pnpmInstallTimeout)
 		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-		cmd.Dir = tree
-		cmd.Env = config.WithPnpmGVS(config.WithTreeEnv(false, tree, os.Environ()))
+		cmd.Dir = dir
+		cmd.Env = env
 		var out bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &out
-		end := trace.Begin(trace.KindFS, "pnpm install (gvs)", trace.Attrs{Cwd: tree, Detail: strings.Join(argv, " ")})
+		end := trace.Begin(trace.KindFS, label, trace.Attrs{Cwd: dir, Detail: strings.Join(argv, " ")})
 		err := cmd.Run()
 		end(procExit(err))
 		cancel()

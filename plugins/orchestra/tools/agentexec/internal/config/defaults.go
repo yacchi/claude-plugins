@@ -7,7 +7,6 @@ import (
 	"maps"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -15,8 +14,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"go.yaml.in/yaml/v3"
 )
 
 // DefaultQuietDomains is background traffic of Claude Code and herdr that no
@@ -187,43 +184,12 @@ func validateLand(values map[string]any) error {
 
 // PnpmGVSTree reports whether processes in tree run under the global
 // virtual store: on (the setting, see PnpmGVS), tree is a linked worktree
-// (its .git is a file, so never the user's main checkout) whose root holds
-// pnpm-lock.yaml, and its node_modules, when present, is not of the classic
-// layout (a clone fallback, or a tree the user installed: the env would
-// convert it).
+// (LinkedWorktree, so never the user's main checkout) and it holds at least
+// one pnpm project (PnpmProjects). A node_modules of the classic layout
+// there needs no guard: orchestra's trees are disposable, and the carry
+// rebuilds every project's node_modules under the store.
 func PnpmGVSTree(on bool, tree string) bool {
-	if !on || tree == "" || !isFile(filepath.Join(tree, ".git")) ||
-		!isFile(filepath.Join(tree, "pnpm-lock.yaml")) {
-		return false
-	}
-	nm := filepath.Join(tree, "node_modules")
-	if _, err := os.Lstat(nm); err != nil {
-		return true // nothing installed yet: the first install builds it
-	}
-	return pnpmGVSLayout(nm)
-}
-
-// pnpmGVSLayout reports whether node_modules dir was installed with the
-// global virtual store: its virtualStoreDir lies outside it (in the store's
-// links), where the classic one is node_modules/.pnpm. Unreadable reads as
-// classic.
-func pnpmGVSLayout(dir string) bool {
-	raw, err := os.ReadFile(filepath.Join(dir, ".modules.yaml"))
-	if err != nil {
-		return false
-	}
-	var meta struct {
-		VirtualStoreDir string `yaml:"virtualStoreDir"`
-	}
-	if yaml.Unmarshal(raw, &meta) != nil || meta.VirtualStoreDir == "" {
-		return false
-	}
-	v := meta.VirtualStoreDir
-	if !filepath.IsAbs(v) {
-		v = filepath.Join(dir, v)
-	}
-	rel, err := filepath.Rel(dir, v)
-	return err == nil && (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+	return on && LinkedWorktree(tree) && len(PnpmProjects(tree)) > 0
 }
 
 var (
