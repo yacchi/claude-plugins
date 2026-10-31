@@ -91,16 +91,19 @@ async function ensure($: EngineInterface): Promise<void> {
 
             return
         }
-        // A write the permission check would ask about would open a dialog on every tick.
+        // ArtifactData's own check asks on every write, whatever the allow rules
+        // say, and the query answers before the mode settles that ask: auto mode's
+        // classifier takes it, else one dialog covers the session's later writes.
+        // So only a deny stops the board here; a write declined later stops it in
+        // runTick.
         const check = await $.tool.check({
             tool: 'ArtifactData',
             input: { action: 'set', url: page.url, collection: 'status', doc_id: docIdOf(me.host), data: {} },
         })
-        if (check.decision !== 'allow') {
+        if (check.decision === 'deny') {
             const why = [check.reason, check.rule && `rule ${check.rule}`, check.setting && `setting ${check.setting}`]
                 .filter(Boolean).join('; ')
-            await block($, `the permission check answers ${check.decision} for an ArtifactData write${why === '' ? '' : ` (${why})`}, `
-                + 'and the board writes only what never asks')
+            await block($, `the permission check denies an ArtifactData write${why === '' ? '' : ` (${why})`}`)
 
             return
         }
@@ -129,11 +132,15 @@ async function runTick($: EngineInterface): Promise<void> {
     if (current === undefined) {
         return
     }
-    if (await current.tick() !== 'refused') {
-        return
+    const outcome = await current.tick()
+    if (outcome === 'refused') {
+        stopWriter()
+        await block($, 'claude.ai refused the write: the page is in another organization than this session\'s; /orchestra:board publish makes this account\'s page')
+    } else if (outcome === 'denied') {
+        // Retrying would put the same question again every few ticks.
+        stopWriter()
+        await block($, 'the ArtifactData write was declined at the permission check; /orchestra:board asks again')
     }
-    stopWriter()
-    await block($, 'claude.ai refused the write: the page is in another organization than this session\'s; /orchestra:board publish makes this account\'s page')
 }
 
 // A block nobody sees leaves the board empty with no word why: it is toasted
@@ -155,7 +162,7 @@ async function recordBlock($: EngineInterface, reason: string | null): Promise<v
             return
         }
         const session = await $.session.id()
-        await $.fs.write(`${home}/${BLOCKED_FILE}`, JSON.stringify({ session, at: Math.floor($.clock.now() / 1000), reason }))
+        await $.fs.write(`${home}/${BLOCKED_FILE}`, JSON.stringify({ session, at: Math.floor(await $.clock.now() / 1000), reason }))
     } catch {
         // the record is a report: it never breaks the board
     }

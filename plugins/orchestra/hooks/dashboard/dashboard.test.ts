@@ -4,12 +4,13 @@ import type { On } from 'claude-code'
 // The bottom stands for the engine: a signed-in host on a terminal, a page
 // stored under "board" when given one, the status file in place, and the
 // ArtifactData calls the writer makes recorded in `calls`.
-const board = (on: On, { page, decision = 'allow' }: { page?: Record<string, unknown>, decision?: 'allow' | 'ask' } = {}) => {
+const board = (on: On, { page, decision = 'allow', declined = false }: { page?: Record<string, unknown>, decision?: 'allow' | 'ask' | 'deny', declined?: boolean } = {}) => {
     const files = new Map<string, string>([['/h/.claude/orchestra/status.json', JSON.stringify({ summary: { ok: 1 }, runs: [] })]])
     const store = new Map<string, unknown>(page ? [['board', page]] : [])
     const calls: any[] = []
     const prompts: any[] = []
     const toasts: string[] = []
+    const asked: any[] = []
     const done = (exitCode: number, stdout = '') =>
         ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
@@ -44,7 +45,15 @@ const board = (on: On, { page, decision = 'allow' }: { page?: Record<string, unk
         return { value: undefined }
     })
     on('tool.list', () => ({ value: [{ name: 'ArtifactData', description: '', mcp: false }] }))
-    on('tool.check', () => ({ decision }))
+    // A query (no tool_use_id) gets `decision`; a real call's ask is settled
+    // by the mode: allowed, or refused when `declined`.
+    on('tool.check', (_$, e: any) => {
+        if (e.tool_use_id !== undefined) {
+            asked.push(e)
+        }
+
+        return { decision: e.tool_use_id === undefined || decision !== 'ask' ? decision : declined ? 'deny' : 'allow' }
+    })
     on('tool.call', (_$, e: any) => {
         if (e.tool === 'Artifact') {
             return { result: { url: 'https://claude.ai/artifact/p1' } }
@@ -62,7 +71,7 @@ const board = (on: On, { page, decision = 'allow' }: { page?: Record<string, unk
     })
     const clock = mock.clock(on, { now: 1_000_000 })
 
-    return { calls, prompts, toasts, files, store, clock }
+    return { calls, asked, prompts, toasts, files, store, clock }
 }
 
 // The kit types `$` strictly; this passes only the fields the board reads.
@@ -89,18 +98,42 @@ test('a publish of the page is captured and mirrored; another file is not', asyn
     expect(calls.some(c => c.action === 'set' && c.collection === 'status' && c.doc_id === 'mbp')).toBe(true)
 })
 
-test('a write the permission check would ask about never starts, and says so unasked', async ($, on) => {
-    const { calls, toasts, files, clock } = board(on, { page: { url: 'https://claude.ai/artifact/p1', account: 'Acme' }, decision: 'ask' })
+test('a write the permission check asks about still starts: the mode settles the ask', async ($, on) => {
+    const { calls, toasts, clock } = board(on, { page: { url: 'https://claude.ai/artifact/p1', account: 'Acme' }, decision: 'ask' })
+    await $.turn.start({ turnId: 't1', prompt: 'hi' } as never).catch(() => undefined)
+    await clock.advance(10)
+    await clock.advance(15_000)
+    expect(calls.some(c => c.action === 'set' && c.collection === 'status')).toBe(true)
+    expect(toasts).toEqual([])
+})
+
+test('a write the permission check denies never starts, and says so unasked', async ($, on) => {
+    const { calls, toasts, files, clock } = board(on, { page: { url: 'https://claude.ai/artifact/p1', account: 'Acme' }, decision: 'deny' })
     await $.turn.start({ turnId: 't1', prompt: 'hi' } as never).catch(() => undefined)
     await clock.advance(10)
     await clock.advance(15_000)
     expect(calls).toEqual([])
     expect(toasts.length).toBe(1)
-    expect(toasts[0]).toContain('answers ask')
+    expect(toasts[0]).toContain('denies')
     const record = JSON.parse(files.get('/h/.claude/orchestra/dashboard/blocked.json') ?? '{}')
     expect(record.session).toBe('s1')
-    expect(record.reason).toContain('answers ask')
-    expect((await runBoard($, '')).text).toContain('answers ask')
+    expect(record.at).toBe(1000)
+    expect(record.reason).toContain('denies')
+    expect((await runBoard($, '')).text).toContain('denies')
+    expect(toasts.length).toBe(1)
+})
+
+test('a declined write stops the writer instead of asking again every few ticks', async ($, on) => {
+    const { asked, toasts, clock } = board(on, { page: { url: 'https://claude.ai/artifact/p1', account: 'Acme' }, decision: 'ask', declined: true })
+    await $.turn.start({ turnId: 't1', prompt: 'hi' } as never).catch(() => undefined)
+    await clock.advance(10)
+    await clock.advance(15_000)
+    const before = asked.length
+    expect(before).toBe(1)
+    expect(toasts.length).toBe(1)
+    expect(toasts[0]).toContain('declined')
+    await clock.advance(15_000 * 10)
+    expect(asked.length).toBe(before)
     expect(toasts.length).toBe(1)
 })
 
