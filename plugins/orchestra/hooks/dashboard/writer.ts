@@ -13,7 +13,7 @@ export type WriterHost = {
     artifactData: (input: Readonly<Record<string, unknown>>) => Promise<ToolCallResult>,
 }
 export type BoardTarget = { url: string, host: string, account: string | null, home: string }
-export type TickOutcome = 'unchanged' | 'mirrored-elsewhere' | 'not-due' | 'written' | 'failed' | 'backoff' | 'refused'
+export type TickOutcome = 'unchanged' | 'mirrored-elsewhere' | 'not-due' | 'written' | 'failed' | 'backoff' | 'refused' | 'denied'
 export type Writer = { tick: () => Promise<TickOutcome> }
 
 type Obj = Record<string, unknown>
@@ -116,6 +116,11 @@ export const createWriter = (target: BoardTarget, host: WriterHost): Writer => {
             .join(' ')
         if (/another of the user's organizations/i.test(text)) {
             return 'refused'
+        }
+        // The engine refused the call before it ran: the permission check
+        // (a declined dialog, the classifier) or a hook.
+        if (answer?.deny !== undefined) {
+            return 'denied'
         }
 
         // Another session wrote this change while our set was in flight.

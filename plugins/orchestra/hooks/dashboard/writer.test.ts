@@ -164,6 +164,16 @@ describe('board writer', () => {
         expect(await writer.tick()).toBe('refused')
     })
 
+    test('a call the permission check declines is denied, not retried as a failure', async () => {
+        const h = fakeHost()
+        h.files.set(STATUS, status())
+        h.answers.push({ deny: 'The user declined this tool call' })
+        const writer = createWriter(target, h.host)
+
+        expect(await writer.tick()).toBe('denied')
+        expect(h.calls).toHaveLength(1)
+    })
+
     test('a set that loses the race to another session is mirrored elsewhere, with no backoff', async () => {
         const h = fakeHost()
         h.files.set(STATUS, status())

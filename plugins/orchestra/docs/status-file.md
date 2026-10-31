@@ -39,7 +39,7 @@ The hooks module mirrors `status.json` into the account's board page, from the u
 - Collection `status`, one document per machine. The doc id is the host name, and the data is `{schema: 1, host, status, writer: {account, at}}`.
 - `status` is `status.json` without `runs[].pid` and `runs[].state`. Both are left out of the mirror.
 - The mirror is written at most once per `heartbeat_s` (60) unless `summary.line` changed. One writer per change: the sessions on one machine take turns through a claim file under `~/.claude/orchestra/dashboard/`.
-- Only where `ArtifactData` is allowed without asking. A refusal stops the loop.
+- ArtifactData's own ask is settled by the session's mode (auto mode's classifier, or one dialog per session). A permission deny, or a declined write, stops the loop; `/orchestra:board` asks again.
 
 ## Privacy
 
