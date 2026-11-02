@@ -9,10 +9,18 @@ import { verdictOf } from '../router/verdict.ts'
 // guard is the mechanism. The main thread's orchestration agents are denied
 // until the user opts in or answers the one ask (any next user prompt).
 //
-// Guarded: the orchestra worker agents, and a generic agent (general-purpose,
-// claude, or no subagent_type) spawned in the turn that loaded the
-// `orchestra:run` skill. Never guarded: read-only Explore and Plan, other
-// plugins' agents, a subagent's own spawns, cheap and hosted-worker sessions.
+// The one exception: without an opt-in, ONE `orchestra-delegate` may run per
+// user prompt. That is the single-task shape (one request, one delegate, no
+// plan or fan-out), so it should not need the ask. A second delegate in the
+// same prompt, and every other work agent, is denied. The allowance stays
+// this narrow because a planner or a wave is the multi-task orchestration the
+// opt-in exists to confirm (see the WHY above).
+//
+// Guarded: the orchestra worker agents (the delegate only once per prompt, as
+// above), and a generic agent (general-purpose, claude, or no subagent_type)
+// spawned in the turn that loaded the `orchestra:run` skill. Never guarded:
+// read-only Explore and Plan, other plugins' agents, a subagent's own spawns,
+// cheap and hosted-worker sessions.
 //
 // No marker in the prompt or description lifts it: the model is the party
 // this constrains. Escape hatches: ORCHESTRA_ENFORCEMENT=off;
@@ -38,6 +46,8 @@ type OptInState = {
     optedIn: boolean,
     prompts: number,
     askedAt?: number,
+    // The `prompts` count at the one allowed orchestra-delegate spawn.
+    delegateAt?: number,
     skillTurn?: string,
     scanned: boolean,
 }
@@ -115,12 +125,13 @@ const optInScan = async (io: Io, s: OptInState): Promise<void> => {
 }
 
 const reason = (subagentType: string): string =>
-    'orchestra: no opt-in for orchestrated work in this session — the user has not typed '
-    + '/orchestra:run (or /run) or asked for a workflow, so do not start '
-    + `${subagentType || 'a generic agent'} or other orchestration agents yourself. `
-    + 'Reply in one line asking the user to type `/orchestra:run <the request>` '
-    + '(or to say how they want it done), then stop and wait. Once they answer, '
-    + 'spawns are allowed whatever they said. Read-only Explore and Plan agents are never blocked.'
+    'orchestra: no opt-in for orchestrated work in this session — without an opt-in only ONE '
+    + 'orchestra-delegate per user prompt may run (single-task work). '
+    + `This spawn (${subagentType || 'a generic agent'}) needs more than that, so do not start it `
+    + 'or other orchestration agents yourself. Reply in one line asking the user to type '
+    + '`/orchestra:run <the request>` or add "workflow" to the request, then stop and wait. '
+    + 'Once they answer, spawns are allowed whatever they said. '
+    + 'Explore and Plan are never blocked.'
 
 export const checkOptIn = async (
     io: Io,
@@ -156,6 +167,14 @@ export const checkOptIn = async (
             await optInScan(io, s).catch(() => undefined)
         }
         if (s.optedIn || (s.askedAt !== undefined && s.prompts > s.askedAt)) {
+            return undefined
+        }
+        // The single-task allowance: one delegate per user prompt. A second
+        // one in the same prompt falls through to the deny below, which sets
+        // the ask.
+        if (bare === 'orchestra-delegate' && s.delegateAt !== s.prompts) {
+            s.delegateAt = s.prompts
+
             return undefined
         }
         s.askedAt ??= s.prompts

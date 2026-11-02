@@ -85,6 +85,55 @@ describe('opt-in', () => {
         expect((await optInSpawn($, 'orchestra-light')).deny).toBeUndefined()
     })
 
+    test('without an opt-in, a second orchestra-delegate in a later turn of the same prompt is denied', async ($, on) => {
+        optInHost(on)
+        await submitPrompt($, 'fix it')
+        await beginTurn($, 't1')
+        expect((await optInSpawn($, 'orchestra:orchestra-delegate')).deny, 'the first').toBeUndefined()
+        await beginTurn($, 't2')
+        expect((await optInSpawn($, 'orchestra-delegate')).deny, 'a second turn of the same prompt').toContain('no opt-in')
+    })
+
+    test('without an opt-in, a new user prompt allows one more orchestra-delegate, and still only one', async ($, on) => {
+        optInHost(on)
+        await submitPrompt($, 'fix it')
+        await beginTurn($, 't1')
+        expect((await optInSpawn($, 'orchestra-delegate')).deny).toBeUndefined()
+        await submitPrompt($, 'now another one')
+        await beginTurn($, 't2')
+        expect((await optInSpawn($, 'orchestra-delegate')).deny, 'a new prompt allows one again').toBeUndefined()
+        expect((await optInSpawn($, 'orchestra-delegate')).deny, 'the second in that prompt').toContain('no opt-in')
+    })
+
+    test('an opted-in session lets every orchestra-delegate through', async ($, on) => {
+        optInHost(on)
+        await submitPrompt($, 'use a workflow for this')
+        await beginTurn($, 't1')
+        for (const n of [1, 2, 3]) {
+            expect((await optInSpawn($, 'orchestra-delegate')).deny, `delegate ${n}`).toBeUndefined()
+        }
+    })
+
+    test('one delegate does not unlock the other work agents in the same prompt', async ($, on) => {
+        optInHost(on)
+        await submitPrompt($, 'fix it')
+        await beginTurn($, 't1')
+        expect((await optInSpawn($, 'orchestra-delegate')).deny).toBeUndefined()
+        expect((await optInSpawn($, 'orchestra:orchestra-planner')).deny, 'planner').toContain('no opt-in')
+        expect((await optInSpawn($, 'orchestra-light')).deny, 'light').toBeDefined()
+        expect((await optInSpawn($, 'Explore')).deny, 'Explore stays free').toBeUndefined()
+    })
+
+    test('the second delegate deny is the one ask: the next user prompt unlocks everything', async ($, on) => {
+        optInHost(on)
+        await submitPrompt($, 'fix it')
+        expect((await optInSpawn($, 'orchestra-delegate')).deny).toBeUndefined()
+        expect((await optInSpawn($, 'orchestra-delegate')).deny).toBeDefined()
+        await submitPrompt($, 'no, just do it yourself')
+        expect((await optInSpawn($, 'orchestra:orchestra-planner')).deny, 'planner').toBeUndefined()
+        expect((await optInSpawn($, 'orchestra-light')).deny, 'light').toBeUndefined()
+    })
+
     test('an answer naming /orchestra:run counts as the ask', async ($, on) => {
         optInHost(on)
         await submitPrompt($, 'fix it')

@@ -15,7 +15,8 @@ about content you already hold, NOT about volume: it does not license an
 open-ended build, and it expires the moment the work outgrows what you held.
 
 ORCHESTRATED — anything else, and WHENEVER IN DOUBT.
-→ Load the `orchestra:run` skill and follow it: decompose, write contracts,
+→ Load the `orchestra:run` skill and follow it (without an opt-in, only the
+  one-task case of WORKFLOW OPT-IN below applies): decompose, write contracts,
   delegate to cheap workers with adversarial verifiers, take back only
   structured verdicts.
 → Decomposition beyond a handful of tasks: planner first. Do not plan it
@@ -23,17 +24,19 @@ ORCHESTRATED — anything else, and WHENEVER IN DOUBT.
   (`orchestra:run` §14), then run the plan it leaves.
 
 WORKFLOW OPT-IN — judge it from the context alone; never read settings files.
-ORCHESTRATED work, the Workflow tool included, needs an opt-in the context
-shows: a system-reminder that ultracode is on or that the user's prompt carried
+ORCHESTRATED work beyond one task, and the Workflow tool, needs an opt-in the
+context shows: a system-reminder that ultracode is on or that the user's prompt carried
 the ultracode keyword; the user asking for a workflow in their own words; or
 the user having typed /orchestra:run (or /run) themselves. A skill the router
 loaded does not count. EXPRESS work never becomes a workflow, even with
-ultracode on. ORCHESTRATED work with no opt-in visible: do not hand it to
-orchestra agents or Agent-tool workers yourself — reply in one line asking the
-user to type `/orchestra:run <the request>` or add "workflow" to the request,
-then stop. A hook enforces this: until the user answers, it denies orchestra
-agents, and generic ones once `orchestra:run` is loaded this turn.
-Never inject or rewrite a prompt to manufacture an opt-in.
+ultracode on. Without an opt-in: ONE-task ORCHESTRATED work → say in one line
+you hand it to a delegate, then spawn a single `orchestra-delegate`. More than
+one task (a second delegate for the same prompt, planner, wave, Workflow) →
+reply in one line asking the user to type `/orchestra:run <the request>` or add
+"workflow" to the request, then stop. A hook enforces this: without an opt-in it
+allows one `orchestra-delegate` per user prompt and denies the other orchestra
+agents, and generic ones once `orchestra:run` is loaded this turn, until the
+user answers. Never inject or rewrite a prompt to manufacture an opt-in.
 
 A lane never persists — re-classify every request and at every phase shift.
 Forced ORCHESTRATED, even mid-conversation: you are about to hand-write
