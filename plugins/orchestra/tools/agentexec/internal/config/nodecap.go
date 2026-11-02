@@ -147,9 +147,10 @@ func NodeCapShellPrefix(testSlots int) string {
 // tree, the entries a process started in tree gets under the global virtual
 // store: the store pin (pnpmStoreTreePin) and PnpmGVSEnv, in the order
 // TreeEntries sets them. Values are shell-quoted when needed. "" unless tree
-// runs under the store (PnpmGVSTree).
+// runs under the store (pnpmGVSSwitch), so a classic layout gets no prefix,
+// and no pin either.
 func PnpmGVSShellPrefix(on bool, tree string, env []string) string {
-	if !PnpmGVSTree(on, tree) {
+	if !pnpmGVSSwitch(on, tree) {
 		return ""
 	}
 	var b strings.Builder

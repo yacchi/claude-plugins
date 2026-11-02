@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -24,11 +25,12 @@ func writeTestFile(t *testing.T, path, content string) {
 // checkout.
 func TestPnpmGVSTree(t *testing.T) {
 	cases := []struct {
-		name   string
-		on     bool
-		gitDir bool   // .git is a directory: a main checkout
-		lock   string // pnpm-lock.yaml path below the root ("" = none)
-		want   bool
+		name     string
+		on       bool
+		gitDir   bool   // .git is a directory: a main checkout
+		unmarked bool   // a linked worktree orchestra did not prepare
+		lock     string // pnpm-lock.yaml path below the root ("" = none)
+		want     bool
 	}{
 		{name: "root project", on: true, lock: "pnpm-lock.yaml", want: true},
 		{name: "per-package project", on: true, lock: "packages/a/pnpm-lock.yaml", want: true},
@@ -37,16 +39,22 @@ func TestPnpmGVSTree(t *testing.T) {
 		{name: "lockfile in node_modules", on: true, lock: "node_modules/x/pnpm-lock.yaml"},
 		{name: "lockfile in a dot dir", on: true, lock: ".cache/pnpm-lock.yaml"},
 		{name: "main checkout", on: true, gitDir: true, lock: "pnpm-lock.yaml"},
+		{name: "user's own worktree", on: true, unmarked: true, lock: "pnpm-lock.yaml"},
 		{name: "no lockfile", on: true},
 		{name: "setting off", lock: "pnpm-lock.yaml"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tree := t.TempDir()
+			var tree string
 			if c.gitDir {
+				tree = t.TempDir()
 				writeTestFile(t, filepath.Join(tree, ".git", "HEAD"), "ref: refs/heads/main\n")
 			} else {
-				writeTestFile(t, filepath.Join(tree, ".git"), "gitdir: /repo/.git/worktrees/t\n")
+				marker := AdoptedMarker
+				if c.unmarked {
+					marker = ""
+				}
+				_, tree = linkedTree(t, marker)
 			}
 			if c.lock != "" {
 				writeTestFile(t, filepath.Join(tree, c.lock), "lockfileVersion: '9.0'\n")
@@ -54,6 +62,200 @@ func TestPnpmGVSTree(t *testing.T) {
 			writeTestFile(t, filepath.Join(tree, "node_modules", ".modules.yaml"), "virtualStoreDir: .pnpm\n")
 			if got := PnpmGVSTree(c.on, tree); got != c.want {
 				t.Errorf("PnpmGVSTree = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// linkedTree is a linked worktree of a fresh main checkout, as git lays it
+// out: the worktree's own git dir, main/.git/worktrees/w, holds a HEAD and the
+// marker (a file name, "" = none), and the tree's .git file names that dir.
+func linkedTree(t *testing.T, marker string) (main, tree string) {
+	t.Helper()
+	main = t.TempDir()
+	gitdir := filepath.Join(main, ".git", "worktrees", "w")
+	writeTestFile(t, filepath.Join(gitdir, "HEAD"), "ref: refs/heads/main\n")
+	if marker != "" {
+		writeTestFile(t, filepath.Join(gitdir, marker), "x\n")
+	}
+	tree = t.TempDir()
+	writeTestFile(t, filepath.Join(tree, ".git"), "gitdir: "+gitdir+"\n")
+	return main, tree
+}
+
+// A linked worktree is an orchestra tree when its own git dir holds a baseline
+// or adopted marker. A relative gitdir line resolves against the tree, and a
+// marker in the common git dir, shared by every worktree, does not count.
+func TestOrchestraTree(t *testing.T) {
+	cases := []struct {
+		name     string
+		marker   string // file in the worktree's own git dir
+		common   string // file in the main checkout's git dir
+		relative bool   // the gitdir line is relative to the tree
+		want     bool
+	}{
+		{name: "adopted", marker: AdoptedMarker, want: true},
+		{name: "baseline", marker: BaselineMarker, want: true},
+		{name: "relative gitdir", marker: AdoptedMarker, relative: true, want: true},
+		{name: "no marker", want: false},
+		{name: "marker in the common git dir", common: BaselineMarker, want: false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			main := t.TempDir()
+			gitdir := filepath.Join(main, ".git", "worktrees", "w")
+			writeTestFile(t, filepath.Join(gitdir, "HEAD"), "ref: refs/heads/main\n")
+			if c.marker != "" {
+				writeTestFile(t, filepath.Join(gitdir, c.marker), "x\n")
+			}
+			if c.common != "" {
+				writeTestFile(t, filepath.Join(main, ".git", c.common), "x\n")
+			}
+			tree := t.TempDir()
+			line := gitdir
+			if c.relative {
+				rel, err := filepath.Rel(tree, gitdir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				line = rel
+			}
+			writeTestFile(t, filepath.Join(tree, ".git"), "gitdir: "+line+"\n")
+			if got := OrchestraTree(tree); got != c.want {
+				t.Errorf("OrchestraTree = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// A main checkout is never an orchestra tree, marker or not, and neither is a
+// tree whose .git names no git dir, or a git dir that is missing. A marker in
+// the tree itself is not looked for.
+func TestOrchestraTreeRejectsOtherGitLayouts(t *testing.T) {
+	t.Run("main checkout", func(t *testing.T) {
+		tree := t.TempDir()
+		writeTestFile(t, filepath.Join(tree, ".git", AdoptedMarker), "x\n")
+		if OrchestraTree(tree) {
+			t.Error("main checkout is an orchestra tree")
+		}
+	})
+	cases := []struct {
+		name       string
+		dotGit     string
+		treeMarker bool // the marker sits in the tree's root
+	}{
+		{name: "no gitdir line", dotGit: "# no gitdir here\n"},
+		{name: "gitdir missing", dotGit: "gitdir: /nonexistent/orchestra/worktrees/w\n"},
+		{name: "marker in the tree itself", dotGit: "gitdir: /nonexistent/orchestra/worktrees/w\n", treeMarker: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tree := t.TempDir()
+			writeTestFile(t, filepath.Join(tree, ".git"), c.dotGit)
+			if c.treeMarker {
+				writeTestFile(t, filepath.Join(tree, AdoptedMarker), "x\n")
+			}
+			if OrchestraTree(tree) {
+				t.Errorf("OrchestraTree = true for %q", c.dotGit)
+			}
+		})
+	}
+}
+
+// A project is classic when its node_modules/.modules.yaml names
+// <project>/node_modules/.pnpm as its virtual store. A relative value resolves
+// against that node_modules, quotes are removed, and the global layout's links
+// dir, a missing node_modules or a missing key is not classic.
+func TestPnpmClassicLayout(t *testing.T) {
+	const global = "../../../../../Library/pnpm/store/v11/links"
+	cases := []struct {
+		name  string
+		files map[string]string // paths below the tree; TREE in a content is the tree's path
+		want  bool
+	}{
+		{name: "relative to the project's node_modules", files: map[string]string{
+			"packages/a/pnpm-lock.yaml":             "",
+			"packages/a/node_modules/.modules.yaml": "virtualStoreDir: .pnpm\n",
+		}, want: true},
+		{name: "absolute", files: map[string]string{
+			"pnpm-lock.yaml":             "",
+			"node_modules/.modules.yaml": "virtualStoreDir: TREE/node_modules/.pnpm\n",
+		}, want: true},
+		{name: "double-quoted absolute", files: map[string]string{
+			"pnpm-lock.yaml":             "",
+			"node_modules/.modules.yaml": "virtualStoreDir: \"TREE/node_modules/.pnpm\"\n",
+		}, want: true},
+		{name: "single-quoted relative", files: map[string]string{
+			"pnpm-lock.yaml":             "",
+			"node_modules/.modules.yaml": "virtualStoreDir: '.pnpm'\n",
+		}, want: true},
+		{name: "global links dir", files: map[string]string{
+			"pnpm-lock.yaml":             "",
+			"node_modules/.modules.yaml": "virtualStoreDir: " + global + "\n",
+		}},
+		{name: "no node_modules", files: map[string]string{
+			"pnpm-lock.yaml": "",
+		}},
+		{name: "no virtualStoreDir key", files: map[string]string{
+			"pnpm-lock.yaml":             "",
+			"node_modules/.modules.yaml": "storeDir: .pnpm\n",
+		}},
+		{name: "one classic project among several", files: map[string]string{
+			"pnpm-lock.yaml":                        "",
+			"node_modules/.modules.yaml":            "virtualStoreDir: " + global + "\n",
+			"packages/a/pnpm-lock.yaml":             "",
+			"packages/a/node_modules/.modules.yaml": "virtualStoreDir: .pnpm\n",
+		}, want: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tree := t.TempDir()
+			for p, content := range c.files {
+				writeTestFile(t, filepath.Join(tree, p), strings.ReplaceAll(content, "TREE", tree))
+			}
+			if got := PnpmClassicLayout(tree); got != c.want {
+				t.Errorf("PnpmClassicLayout = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// The switch reaches a process through TreeEntries and PnpmGVSShellPrefix
+// alike, and only in an orchestra tree that is not classic. A user's own
+// worktree gets neither the switch nor the store pin; a classic orchestra tree
+// gets no switch and no prefix, though TreeEntries still pins its store.
+func TestGVSSwitchEntryPoints(t *testing.T) {
+	cases := []struct {
+		name    string
+		marker  string // the worktree's marker ("" = the user's own worktree)
+		classic bool   // node_modules keeps its own store
+		want    bool   // the switch reaches the process
+	}{
+		{name: "orchestra tree", marker: AdoptedMarker, want: true},
+		{name: "user's own worktree", want: false},
+		{name: "classic orchestra tree", marker: BaselineMarker, classic: true, want: false},
+	}
+	env := []string{"HOME=/h"}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, tree := linkedTree(t, c.marker)
+			writeTestFile(t, filepath.Join(tree, "pnpm-lock.yaml"), "lockfileVersion: 9\n")
+			if c.classic {
+				writeTestFile(t, filepath.Join(tree, "node_modules", ".modules.yaml"), "virtualStoreDir: .pnpm\n")
+			}
+			entries := TreeEntries(true, tree, env)
+			if got := slices.Contains(entries, PnpmGVSEnv); got != c.want {
+				t.Errorf("TreeEntries carries the switch = %v, want %v", got, c.want)
+			}
+			if got, want := slices.ContainsFunc(entries, isPnpmStoreEntry), c.marker != ""; got != want {
+				t.Errorf("TreeEntries carries the store pin = %v, want %v", got, want)
+			}
+			prefix := PnpmGVSShellPrefix(true, tree, env)
+			if c.want && !strings.Contains(prefix, PnpmGVSEnv) {
+				t.Errorf("shell prefix %q lacks the switch", prefix)
+			}
+			if !c.want && prefix != "" {
+				t.Errorf("shell prefix = %q, want none", prefix)
 			}
 		})
 	}

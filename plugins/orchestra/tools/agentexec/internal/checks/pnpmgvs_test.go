@@ -18,9 +18,14 @@ func TestCommandsInAPnpmGVSTreeCarryTheSwitch(t *testing.T) {
 
 	const hasSwitch = `test "$pnpm_config_enable_global_virtual_store" = true`
 	linked := t.TempDir()
-	write(t, linked, ".git", "gitdir: /repo/.git/worktrees/t\n")
+	gitdir := t.TempDir()
+	write(t, linked, ".git", "gitdir: "+gitdir+"\n")
+	write(t, gitdir, config.BaselineMarker, "0123456789abcdef\n")
 	write(t, linked, "pnpm-lock.yaml", "")
 	write(t, linked, "pkg/a.test.ts", "")
+	unmarked, plainGitdir := t.TempDir(), t.TempDir()
+	write(t, unmarked, ".git", "gitdir: "+plainGitdir+"\n")
+	write(t, unmarked, "pnpm-lock.yaml", "")
 	main := t.TempDir()
 	write(t, main, ".git/HEAD", "ref: refs/heads/main\n")
 	write(t, main, "pnpm-lock.yaml", "")
@@ -33,6 +38,9 @@ func TestCommandsInAPnpmGVSTreeCarryTheSwitch(t *testing.T) {
 	}
 	if status, _ := RerunFailedAlone(" FAIL  pkg/a.test.ts\n", hasSwitch, linked, filepath.Join(t.TempDir(), "s"), 1, 0); status != "pass" {
 		t.Errorf("retry in the linked tree: %s", status)
+	}
+	if got := statuses(Run(unmarked, []Item{{Name: "unmarked", Run: "! " + hasSwitch}}, runOpts(t))); !reflect.DeepEqual(got, []string{"unmarked=pass"}) {
+		t.Errorf("unmarked linked worktree got the switch: %v", got)
 	}
 	if got := statuses(Run(main, []Item{{Name: "main", Run: "! " + hasSwitch}}, runOpts(t))); !reflect.DeepEqual(got, []string{"main=pass"}) {
 		t.Errorf("main checkout got the switch: %v", got)

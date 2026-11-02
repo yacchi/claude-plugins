@@ -50,6 +50,17 @@ func (e *env) linkedTree(name string) string {
 	return tree
 }
 
+// orchestraTree is a linked worktree that orchestra prepared: its own git dir
+// holds the baseline marker.
+func (e *env) orchestraTree(name string) string {
+	tree := e.linkedTree(name)
+	gitdir := strings.TrimSpace(gitRun(e.t, tree, "rev-parse", "--absolute-git-dir"))
+	if err := os.WriteFile(filepath.Join(gitdir, config.BaselineMarker), []byte("0123456789abcdef\n"), 0o644); err != nil {
+		e.t.Fatal(err)
+	}
+	return tree
+}
+
 // workspaceEnvOf opens an agent on tree and returns the --env values of the
 // workspace create it issued. The agent may fail after that; only the
 // workspace is under test.
@@ -73,10 +84,10 @@ func (e *env) workspaceEnvOf(x *Executor, tree string) []string {
 }
 
 // A workspace gets the pnpm global-virtual-store switch only when its tree
-// runs under it: a linked worktree of a pnpm repository, not the user's main
-// checkout. A classic node_modules in a linked tree does not keep the switch
-// off: orchestra rebuilds that node_modules under the global virtual store.
-// The isolation switches are on every workspace. A linked worktree also gets
+// runs under it: a worktree orchestra prepared (marked) in a pnpm repository,
+// not the user's main checkout nor an unmarked worktree. A classic
+// node_modules (virtualStoreDir .pnpm) keeps the store pin but gets no switch.
+// The isolation switches are on every workspace. An orchestra tree also gets
 // the store pin, before the switch.
 func TestWorkspaceEnvCarriesThePnpmGVSSwitchOnlyForAGVSTree(t *testing.T) {
 	for _, c := range []struct {
@@ -85,15 +96,16 @@ func TestWorkspaceEnvCarriesThePnpmGVSSwitchOnlyForAGVSTree(t *testing.T) {
 		pin   bool
 		gvs   bool
 	}{
-		{"linked worktree", func(e *env) string { return e.linkedTree("gvs") }, true, true},
+		{"linked worktree", func(e *env) string { return e.orchestraTree("gvs") }, true, true},
+		{"unmarked linked worktree", func(e *env) string { return e.linkedTree("plain") }, false, false},
 		{"main checkout", func(e *env) string { return e.repo }, false, false},
-		{"classic node_modules", func(e *env) string {
-			tree := e.linkedTree("classic")
+		{"classic node_modules keeps the pin, no switch", func(e *env) string {
+			tree := e.orchestraTree("classic")
 			nm := filepath.Join(tree, "node_modules")
 			_ = os.MkdirAll(nm, 0o755)
 			_ = os.WriteFile(filepath.Join(nm, ".modules.yaml"), []byte("virtualStoreDir: .pnpm\n"), 0o644)
 			return tree
-		}, true, true},
+		}, true, false},
 	} {
 		t.Run(c.label, func(t *testing.T) {
 			unsetPnpmStoreEnv(t)
@@ -127,7 +139,7 @@ func TestWorkspaceEnvPinsTheStoreUnlessTheUserChoseOne(t *testing.T) {
 		unsetPnpmStoreEnv(t)
 		t.Setenv(config.PnpmStorePinName, "/mine")
 		e := newEnv(t)
-		got := e.workspaceEnvOf(e.executor("{}"), e.linkedTree("own"))
+		got := e.workspaceEnvOf(e.executor("{}"), e.orchestraTree("own"))
 		for _, kv := range got {
 			if strings.HasPrefix(kv, config.PnpmStorePinName+"=") {
 				t.Errorf("workspace --env = %v, want no store pin", got)
@@ -138,7 +150,7 @@ func TestWorkspaceEnvPinsTheStoreUnlessTheUserChoseOne(t *testing.T) {
 		unsetPnpmStoreEnv(t)
 		t.Setenv("npm_config_store_dir", "/mine")
 		e := newEnv(t)
-		got := e.workspaceEnvOf(e.executor("{}"), e.linkedTree("npm"))
+		got := e.workspaceEnvOf(e.executor("{}"), e.orchestraTree("npm"))
 		if !slices.Contains(got, config.PnpmStorePinName+"=/mine") {
 			t.Errorf("workspace --env = %v, want the store pinned to /mine", got)
 		}

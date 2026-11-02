@@ -456,6 +456,23 @@ func TestAvailability(t *testing.T) {
 	}
 }
 
+// markedTree is a fake linked worktree orchestra prepared: its .git file names
+// a git dir that holds the baseline marker. With marked false the git dir has
+// no marker, as a worktree the user made.
+func markedTree(t *testing.T, marked bool) string {
+	t.Helper()
+	tree, gitdir := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(tree, ".git"), []byte("gitdir: "+gitdir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if marked {
+		if err := os.WriteFile(filepath.Join(gitdir, config.BaselineMarker), []byte("0123456789abcdef\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return tree
+}
+
 func contains(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {
@@ -473,13 +490,13 @@ func TestCommandCarriesThePnpmGVSSwitchOnlyInActiveTrees(t *testing.T) {
 		"isolation": map[string]any{"pnpm_global_virtual_store": true},
 		"orca":      map[string]any{"user_config": "inherit"},
 	})})
-	linked, main := t.TempDir(), t.TempDir()
-	for _, f := range []string{filepath.Join(linked, ".git"), filepath.Join(linked, "pnpm-lock.yaml"),
+	linked, unmarked, main := markedTree(t, true), markedTree(t, false), t.TempDir()
+	for _, f := range []string{filepath.Join(linked, "pnpm-lock.yaml"), filepath.Join(unmarked, "pnpm-lock.yaml"),
 		filepath.Join(main, ".git", "HEAD"), filepath.Join(main, "pnpm-lock.yaml")} {
 		_ = os.MkdirAll(filepath.Dir(f), 0o755)
 		_ = os.WriteFile(f, []byte("x\n"), 0o644)
 	}
-	for tree, want := range map[string]bool{linked: true, main: false} {
+	for tree, want := range map[string]bool{linked: true, unmarked: false, main: false} {
 		cmd, err := x.command(&host.Session{Worktree: tree, Extra: map[string]any{"model": "opus"}})
 		if err != nil {
 			t.Fatal(err)
@@ -490,20 +507,19 @@ func TestCommandCarriesThePnpmGVSSwitchOnlyInActiveTrees(t *testing.T) {
 	}
 }
 
-// The command's env prefix pins pnpm's store for a linked worktree, as a herdr
+// The command's env prefix pins pnpm's store for an orchestra worktree, as a herdr
 // workspace does, and leaves the user's main checkout unpinned. The HOME is the
 // test's own, so the pin is the default store under it.
-func TestCommandCarriesThePnpmStorePinOnlyInLinkedTrees(t *testing.T) {
+func TestCommandCarriesThePnpmStorePinOnlyInOrchestraTrees(t *testing.T) {
 	unsetPnpmStoreEnv(t)
 	t.Setenv("HOME", t.TempDir())
 	pin := config.PnpmStorePinName + "=" + config.PnpmStoreDir(runtime.GOOS, os.Getenv("HOME"), os.Getenv)
-	linked, main := t.TempDir(), t.TempDir()
-	for _, f := range []string{filepath.Join(linked, ".git"), filepath.Join(main, ".git", "HEAD")} {
-		_ = os.MkdirAll(filepath.Dir(f), 0o755)
-		_ = os.WriteFile(f, []byte("x\n"), 0o644)
-	}
+	linked, unmarked, main := markedTree(t, true), markedTree(t, false), t.TempDir()
+	f := filepath.Join(main, ".git", "HEAD")
+	_ = os.MkdirAll(filepath.Dir(f), 0o755)
+	_ = os.WriteFile(f, []byte("x\n"), 0o644)
 	x := New(&config.Resolved{Values: config.Defaults()})
-	for tree, want := range map[string]bool{linked: true, main: false} {
+	for tree, want := range map[string]bool{linked: true, unmarked: false, main: false} {
 		cmd, err := x.command(&host.Session{Worktree: tree, Extra: map[string]any{"model": "opus"}})
 		if err != nil {
 			t.Fatal(err)
@@ -541,8 +557,8 @@ func TestCommandMergesIsolateEnvWithThePnpmGVSSwitch(t *testing.T) {
 	x := New(&config.Resolved{Values: config.DeepMerge(config.Defaults(), map[string]any{
 		"isolation": map[string]any{"pnpm_global_virtual_store": true},
 	})})
-	linked, main := t.TempDir(), t.TempDir()
-	for _, f := range []string{filepath.Join(linked, ".git"), filepath.Join(linked, "pnpm-lock.yaml"),
+	linked, main := markedTree(t, true), t.TempDir()
+	for _, f := range []string{filepath.Join(linked, "pnpm-lock.yaml"),
 		filepath.Join(main, ".git", "HEAD"), filepath.Join(main, "pnpm-lock.yaml")} {
 		_ = os.MkdirAll(filepath.Dir(f), 0o755)
 		_ = os.WriteFile(f, []byte("x\n"), 0o644)

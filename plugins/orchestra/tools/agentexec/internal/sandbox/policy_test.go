@@ -454,17 +454,27 @@ func TestChildEnvCarriesThePnpmGVSSwitchOnlyInActiveTrees(t *testing.T) {
 		"sandbox":   map[string]any{"mode": "off"},
 		"isolation": map[string]any{"pnpm_global_virtual_store": true},
 	}}
-	linked, main := t.TempDir(), t.TempDir()
-	for _, f := range []string{filepath.Join(linked, ".git"), filepath.Join(linked, "pnpm-lock.yaml"),
-		filepath.Join(main, "pnpm-lock.yaml"), filepath.Join(main, ".git", "HEAD")} {
+	linked, unmarked, main, gitdir, plainGitdir := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	for f, body := range map[string]string{
+		filepath.Join(linked, ".git"):                "gitdir: " + gitdir + "\n",
+		filepath.Join(gitdir, config.BaselineMarker): "0123456789abcdef\n",
+		filepath.Join(linked, "pnpm-lock.yaml"):      "x\n",
+		filepath.Join(unmarked, ".git"):              "gitdir: " + plainGitdir + "\n",
+		filepath.Join(unmarked, "pnpm-lock.yaml"):    "x\n",
+		filepath.Join(main, "pnpm-lock.yaml"):        "x\n",
+		filepath.Join(main, ".git", "HEAD"):          "x\n",
+	} {
 		_ = os.MkdirAll(filepath.Dir(f), 0o755)
-		if err := os.WriteFile(f, []byte("x\n"), 0o644); err != nil {
+		if err := os.WriteFile(f, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	has := func(env []string) bool { return contains(env, config.PnpmGVSEnv) }
 	if env := ChildEnv(Prepare("pi", linked, cfg, "", ""), nil); !has(env) {
 		t.Errorf("linked tree: env %v lacks the switch", env)
+	}
+	if env := ChildEnv(Prepare("pi", unmarked, cfg, "", ""), nil); has(env) {
+		t.Errorf("unmarked linked worktree got the switch: %v", env)
 	}
 	if env := ChildEnv(Prepare("pi", main, cfg, "", ""), nil); has(env) {
 		t.Errorf("main checkout got the switch: %v", env)

@@ -238,7 +238,7 @@ isolation:
   # against pnpm's global virtual store instead of a clone of node_modules
   # (online retry, then the clone as fallback), and every process orchestra
   # starts in such a tree carries pnpm_config_enable_global_virtual_store=true.
-  # Every process orchestra starts in a linked task tree also gets
+  # Every process orchestra starts in a tree orchestra created or adopted also gets
   # pnpm_config_store_dir pinned (rules: references/external-executors.md), unless
   # the tree's .npmrc sets store-dir or its pnpm-workspace.yaml sets storeDir;
   # such a tree is left alone.

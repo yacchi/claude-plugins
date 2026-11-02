@@ -72,12 +72,12 @@ func PnpmStorePin(env []string, store string) []string {
 }
 
 // pnpmStoreTreePin is the PnpmStorePin entry for a process started in tree,
-// given env, or nil when tree gets none: tree is "", a main checkout (its
-// .git is a directory, the user's own), or a linked worktree whose project
-// chose its own store (pnpmStoreProjectChose). HOME is env's when absolute,
-// else the user's home.
+// given env, or nil when tree gets none: tree is "", not an orchestra tree
+// (OrchestraTree: a main checkout, or the user's own linked worktree, which
+// orchestra did not prepare), or a tree whose project chose its own store
+// (pnpmStoreProjectChose). HOME is env's when absolute, else the user's home.
 func pnpmStoreTreePin(tree string, env []string) []string {
-	if tree == "" || !isFile(filepath.Join(tree, ".git")) || pnpmStoreProjectChose(tree) {
+	if tree == "" || !OrchestraTree(tree) || pnpmStoreProjectChose(tree) {
 		return nil
 	}
 	home, ok := envValue(env, "HOME")

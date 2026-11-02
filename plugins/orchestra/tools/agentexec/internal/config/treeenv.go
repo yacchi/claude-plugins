@@ -37,14 +37,15 @@ var (
 
 // TreeEntries are the env entries of a process orchestra starts in tree, given
 // env (the env it would otherwise get): the Node CPU cap of the process's test
-// pool (NodeCapEntries); the PnpmStorePin of a linked worktree
+// pool (NodeCapEntries); the PnpmStorePin of an orchestra tree
 // (pnpmStoreTreePin), before the GVS switch so that it stays right before the
 // command; PnpmGVSEnv when on and tree runs under pnpm's global virtual store
-// (PnpmGVSTree); and MISE_TRUSTED_CONFIG_PATHS with tree appended to env's
-// value when mise trusts tree (miseTrustedTree). Nil when none applies.
+// (pnpmGVSSwitch: PnpmGVSTree and not a classic layout); and
+// MISE_TRUSTED_CONFIG_PATHS with tree appended to env's value when mise trusts
+// tree (miseTrustedTree). Nil when none applies.
 func TreeEntries(on bool, tree string, env []string) []string {
 	out := append(NodeCapEntries(ProcessTestSlots(), env), pnpmStoreTreePin(tree, env)...)
-	if PnpmGVSTree(on, tree) {
+	if pnpmGVSSwitch(on, tree) {
 		warnPnpmCI(env)
 		out = append(out, PnpmGVSEnv)
 	}

@@ -112,11 +112,14 @@ func TestCarryInstallsNodeModulesUnderThePnpmGlobalVirtualStore(t *testing.T) {
 	}
 }
 
-// linkedTree is a linked worktree of repo, as orchestra's trees are.
+// linkedTree is a linked worktree of repo, as orchestra's trees are: its own
+// git dir holds the baseline marker, which create/adopt write before carry.
 func linkedTree(t *testing.T, repo string) string {
 	t.Helper()
 	tree := filepath.Join(filepath.Dir(repo), "tree")
 	git(t, repo, "worktree", "add", "-q", "-b", "t", tree)
+	gitdir := strings.TrimSpace(git(t, tree, "rev-parse", "--absolute-git-dir"))
+	writeFile(t, filepath.Join(gitdir, config.BaselineMarker), "0123456789abcdef\n")
 	return tree
 }
 

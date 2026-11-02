@@ -80,9 +80,10 @@ func TestPnpmStorePin(t *testing.T) {
 	}
 }
 
-// A linked worktree gets the pin first, so the GVS switch still sits right
-// before the command. A main checkout and "" get none, and so does a tree
-// whose project chose its own store in .npmrc or pnpm-workspace.yaml.
+// An orchestra tree gets the pin first, so the GVS switch still sits right
+// before the command. A main checkout, the user's own worktree and "" get none,
+// and so does a tree whose project chose its own store in .npmrc or
+// pnpm-workspace.yaml.
 func TestTreeEntriesPinsTheStore(t *testing.T) {
 	main, linked := miseTrees(t)
 	env := []string{"HOME=/h", "PNPM_HOME=/ph"}
@@ -137,14 +138,12 @@ func TestWithTreeEnvSetsThePinOnce(t *testing.T) {
 	}
 }
 
-// miseTrees is a linked worktree with a mise config at its root, and the main
-// checkout it belongs to, as git lays them out.
+// miseTrees is an orchestra tree (a linked worktree holding the adopted
+// marker) with a mise config at its root, and the main checkout it belongs to,
+// as git lays them out.
 func miseTrees(t *testing.T) (main, linked string) {
 	t.Helper()
-	main = t.TempDir()
-	writeTestFile(t, filepath.Join(main, ".git", "HEAD"), "ref: refs/heads/main\n")
-	linked = t.TempDir()
-	writeTestFile(t, filepath.Join(linked, ".git"), "gitdir: "+filepath.Join(main, ".git", "worktrees", "l")+"\n")
+	main, linked = linkedTree(t, AdoptedMarker)
 	writeTestFile(t, filepath.Join(linked, "mise.toml"), "[env]\n")
 	return main, linked
 }
