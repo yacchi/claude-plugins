@@ -73,3 +73,9 @@ not a precedent.
 Before submitting changes:
 1. Validate marketplace JSON: `claude plugin validate .`
 2. Test plugin installation locally
+
+## Release
+
+- Release a finished `feature/*` or `hotfix/*` branch with `scripts/release.sh <branch>` (no argument = current branch).
+- It checks the preconditions, merges to `main` with `--no-ff`, pushes, and applies the new versions to installed plugins on this PC.
+- Claude Code (the `release` skill in `.claude/skills/release/`) runs it on request; the script's own tests are `scripts/release_test.sh`.
