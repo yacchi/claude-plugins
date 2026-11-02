@@ -8,7 +8,7 @@ setup:
         dir: <WORK>/custom-tel
 steps:
   - argv: [telemetry, record, --json, '{"event": "dispatch", "status": "ok"}']
-    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
   - argv: [telemetry, record, --json, '{"event": "dispatch", "status": "ok"}']
     cwd: proj
-    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl", "custom-tel/records.jsonl"]
+    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl", "custom-tel/records.jsonl"]

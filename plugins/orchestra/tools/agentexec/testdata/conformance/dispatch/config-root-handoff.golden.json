@@ -182,7 +182,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "from the other side",
-        "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
+        "answer_path": "<HOME>/.local/state/claude-orchestra/tokens/detach/<TOKEN#1>.answer.txt",
         "context_tokens": 0,
         "effort": "high",
         "executor": "pi",

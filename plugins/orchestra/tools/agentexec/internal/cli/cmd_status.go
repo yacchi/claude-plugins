@@ -16,7 +16,7 @@ import (
 var statusPlanIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 func newStatusCmd() *cobra.Command {
-	cmd := groupCommand("status", "the machine-wide status file ~/.claude/orchestra/status.json")
+	cmd := groupCommand("status", "the machine-wide status file status.json in the machine-local state dir (~/.local/state/claude-orchestra, or $XDG_STATE_HOME/claude-orchestra)")
 	cmd.AddCommand(newStatusShowCmd(), newStatusPlanCmd(), newStatusCloseCmd(), newStatusWhoamiCmd())
 	return cmd
 }

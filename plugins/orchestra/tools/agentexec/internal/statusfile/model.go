@@ -1,6 +1,6 @@
 // Package statusfile is orchestra's machine-wide status file,
-// ~/.claude/orchestra/status.json: what every wave runner and planner on this
-// machine is doing, rebuilt from one small file per run and per plan.
+// $StateDir/status.json (paths.StateDir): what every wave runner and planner
+// on this machine is doing, rebuilt from one small file per run and per plan.
 package statusfile
 
 import (

@@ -38,7 +38,7 @@ steps:
   - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-dirty]
   - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-dirty]
   - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, sub, --task, t-sub, --isolate, always]
-    snapshot: ["~/.claude/orchestra/sessions/pi-t-sub.json"]
+    snapshot: ["~/.local/state/claude-orchestra/sessions/pi-t-sub.json"]
   - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, sub, --task, t-sub, --isolate, always]
   - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, scratch, --task, t-scratch, --isolate, always]
   - argv: [dispatch, --class, light, --prompt-file, p.md, --workdir, ., --isolate, always]

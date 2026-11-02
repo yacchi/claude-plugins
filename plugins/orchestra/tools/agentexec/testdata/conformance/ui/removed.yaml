@@ -3,7 +3,7 @@ description: >
   with an error pointing at the status file
 steps:
   - argv: [ui]
-    stderr_contains: ["agent-exec: agent-exec ui was removed: wave and plan progress is written to ~/.claude/orchestra/status.json (agent-exec status show prints it; see docs/status-file.md)"]
+    stderr_contains: ["agent-exec: agent-exec ui was removed: wave and plan progress is written to the machine-wide status file status.json in the machine-local state dir (agent-exec status show prints it; see docs/status-file.md)"]
   - argv: [ui, --open, --json]
     stderr_contains: ["agent-exec ui was removed: "]
   - argv: [ui, --stop]

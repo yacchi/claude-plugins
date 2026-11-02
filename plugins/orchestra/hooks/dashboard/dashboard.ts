@@ -1,6 +1,7 @@
 import type { EngineInterface, On, Timer } from 'claude-code'
 import { agentExec } from '../lib/config.ts'
 import type { Io } from '../lib/io.ts'
+import { stateDirOf } from '../lib/paths.ts'
 import { verdictOf } from '../router/verdict.ts'
 import { type Identity, identityOf, pageOf, publishedUrlOf, publishPrompt } from './parts.ts'
 import { createWriter, docIdOf, type Writer } from './writer.ts'
@@ -11,8 +12,8 @@ import { createWriter, docIdOf, type Writer } from './writer.ts'
 
 const STORE_KEY = 'board'
 const TICK_MS = 15_000
-// Read by `agent-exec doctor` (internal/doctor), which warns on the current session's reason.
-const BLOCKED_FILE = '.claude/orchestra/dashboard/blocked.json'
+// Under the state dir. Read by `agent-exec doctor` (internal/doctor), which warns on the current session's reason.
+const BLOCKED_FILE = 'dashboard/blocked.json'
 
 let timer: Timer | undefined
 let writer: Writer | undefined
@@ -108,7 +109,7 @@ async function ensure($: EngineInterface): Promise<void> {
             return
         }
         writer = createWriter(
-            { url: page.url, host: me.host, account: me.account, home: (await $.env.get('HOME')) ?? '' },
+            { url: page.url, host: me.host, account: me.account, stateDir: await stateDir($) ?? '' },
             {
                 nowMs: () => $.clock.now(),
                 stat: async p => ({ mtimeMs: (await $.fs.stat(p)).mtimeMs }),
@@ -154,15 +155,20 @@ async function block($: EngineInterface, reason: string): Promise<void> {
     await recordBlock($, reason)
 }
 
+// The machine-local state dir (lib/paths.ts stateDirOf), undefined when unknown.
+async function stateDir($: EngineInterface): Promise<string | undefined> {
+    return stateDirOf(await $.env.get('HOME'), await $.env.get('XDG_STATE_HOME'))
+}
+
 // The session's last verdict, a null reason once its writer started.
 async function recordBlock($: EngineInterface, reason: string | null): Promise<void> {
     try {
-        const home = (await $.env.get('HOME')) ?? ''
-        if (home === '') {
+        const dir = await stateDir($)
+        if (dir === undefined) {
             return
         }
         const session = await $.session.id()
-        await $.fs.write(`${home}/${BLOCKED_FILE}`, JSON.stringify({ session, at: Math.floor(await $.clock.now() / 1000), reason }))
+        await $.fs.write(`${dir}/${BLOCKED_FILE}`, JSON.stringify({ session, at: Math.floor(await $.clock.now() / 1000), reason }))
     } catch {
         // the record is a report: it never breaks the board
     }

@@ -28,7 +28,7 @@ setup:
 steps:
   - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-claude, --isolate, cli, --json]
     save: {TOK: token}
-    snapshot: ["~/.claude/orchestra/tokens/<@TOK>.json"]
+    snapshot: ["~/.local/state/claude-orchestra/tokens/<@TOK>.json"]
   - argv: [dispatch, --token, "<@TOK>", --capture, --exhausted, pi]
   - argv: [dispatch, prepare, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-pi, --isolate, cli, --json]
     save: {TOK2: token}

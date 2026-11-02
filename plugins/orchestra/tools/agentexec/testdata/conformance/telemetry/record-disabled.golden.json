@@ -12,7 +12,7 @@
       "stdout_shape": "empty",
       "stdout": null,
       "files": {
-        "~/.claude/orchestra/telemetry/records.jsonl": null
+        "~/.local/state/claude-orchestra/telemetry/records.jsonl": null
       }
     },
     {
@@ -36,7 +36,7 @@
           },
           "shape": "json"
         },
-        "~/.claude/orchestra/telemetry/records.jsonl": null
+        "~/.local/state/claude-orchestra/telemetry/records.jsonl": null
       }
     }
   ]

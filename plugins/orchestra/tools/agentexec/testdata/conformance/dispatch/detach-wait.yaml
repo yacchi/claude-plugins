@@ -37,13 +37,13 @@ steps:
   - argv: [dispatch, wait, --token, "<@TOK>", --max-wait, "0"]
   - argv: [dispatch, wait, --token, "<@TOK>", --summary, --max-wait, "60"]
     snapshot:
-      - "~/.claude/orchestra/tokens/detach/<@TOK>.json"
-      - "~/.claude/orchestra/tokens/detach/<@TOK>.out"
-      - "~/.claude/orchestra/tokens/detach/<@TOK>.answer.txt"
+      - "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.json"
+      - "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.out"
+      - "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.answer.txt"
   - argv: [dispatch, wait, --token, "<@TOK>"]
     snapshot:
-      - "~/.claude/orchestra/tokens/detach/<@TOK>.json"
-      - "~/.claude/orchestra/tokens/detach/<@TOK>.result.json"
+      - "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.json"
+      - "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.result.json"
   - argv: [dispatch, wait, --token, "<@TOK>", --summary]
   - argv: [dispatch, --token, "<@TOK>", --detach]
   - argv: [dispatch, wait, --token, "<@TOK>", --max-wait, "60"]

@@ -67,6 +67,7 @@ const ioOf = ($: EngineInterface): Io => ({
             case 'ORCHESTRA_TURN_GUARD': return $.env.get('ORCHESTRA_TURN_GUARD')
             case 'ORCHESTRA_USAGE_GUARD': return $.env.get('ORCHESTRA_USAGE_GUARD')
             case 'ORCHESTRA_VCS_GUARD': return $.env.get('ORCHESTRA_VCS_GUARD')
+            case 'XDG_STATE_HOME': return $.env.get('XDG_STATE_HOME')
         }
     },
     run: (argv, init) => $.process.run(argv, init),

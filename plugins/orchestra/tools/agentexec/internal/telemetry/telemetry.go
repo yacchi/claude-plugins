@@ -19,12 +19,10 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
-const (
-	maxLines   = 10000
-	defaultDir = "~/.claude/orchestra/telemetry"
-)
+const maxLines = 10000
 
 var (
 	events    = []string{"run_summary", "dispatch"}
@@ -197,7 +195,7 @@ func Dir(cfg *config.Resolved) string {
 	if d, ok := cfg.String("telemetry", "dir"); ok && d != "" {
 		return fsutil.ExpandUser(d)
 	}
-	return fsutil.ExpandUser(defaultDir)
+	return paths.TelemetryDir()
 }
 
 // RecordsPath is the records file inside Dir.

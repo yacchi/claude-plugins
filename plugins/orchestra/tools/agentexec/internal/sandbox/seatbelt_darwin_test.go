@@ -60,7 +60,7 @@ func TestSeatbeltEnforcesWriteReadAndSignalRules(t *testing.T) {
 func TestSeatbeltBlocksTamperAndPiConfigWrites(t *testing.T) {
 	needSeatbelt(t)
 	h := newHome(t)
-	for _, d := range []string{h.h(".pi/agent"), h.h(".claude/orchestra")} {
+	for _, d := range []string{h.h(".pi/agent"), h.h(".claude")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -84,7 +84,7 @@ func TestSeatbeltBlocksTamperAndPiConfigWrites(t *testing.T) {
 	if canWrite(t, p, h.tree, LearnedPath()) {
 		t.Error("grant store writable")
 	}
-	if !canWrite(t, p, h.tree, h.h(".claude/orchestra/other.json")) {
+	if !canWrite(t, p, h.tree, h.h(".claude/other.json")) {
 		t.Error("allow_write ~/.claude not writable")
 	}
 	if canWrite(t, p, h.tree, h.h(".local/share/uv/tools/x")) {

@@ -114,7 +114,7 @@ orchestra のエージェント（`orchestra:*` サブエージェントと Work
 
 `orchestra` ペインには追跡中の各ウェーブの詳細を表示します。run id、統合済み/全数、経過時間、残り時間、コストに続けて、実行中のパッケージ（`id  cls→model  phase  経過/見積もり`、フェーズは 実装/検証/修正/統合/待機）、needs、次に始まるもの、直近に統合したものです。ペインは頼んだときだけ開きます。`/orchestra:progress` で開閉でき、ペイン内の「閉じる」ボタン（ホットキー `x`）でどの画面からでも閉じられます。
 
-`agent-exec` 自身（モデルも claude.ai へのログインも使いません）が 1 つのファイル `~/.claude/orchestra/status.json`（[`docs/status-file.md`](docs/status-file.md)）を最新に保ちます。どのプロファイルから動かしたものも含め、このマシンのすべてのウェーブのランナーと planner が載ります。`summary` にはリポジトリ名、パス、パッケージ名を含めないので（動いているものがあるか、run と計画の数、対応が必要な数だけです）、これだけを公開できます。表示は読み取り専用で、承認は自分のセッションで行います。ランナーが終了したときに途中だったパッケージは「中断」として出ます（`progress.interrupted`、行には `· N interrupted`）。監視役の進捗の行とプッシュ通知が、ホップごと、need ごとに状況を伝えます。
+`agent-exec` 自身（モデルも claude.ai へのログインも使いません）が 1 つのファイル `~/.local/state/claude-orchestra/status.json`（[`docs/status-file.md`](docs/status-file.md)）を最新に保ちます。どのプロファイルから動かしたものも含め、このマシンのすべてのウェーブのランナーと planner が載ります。`summary` にはリポジトリ名、パス、パッケージ名を含めないので（動いているものがあるか、run と計画の数、対応が必要な数だけです）、これだけを公開できます。表示は読み取り専用で、承認は自分のセッションで行います。ランナーが終了したときに途中だったパッケージは「中断」として出ます（`progress.interrupted`、行には `· N interrupted`）。監視役の進捗の行とプッシュ通知が、ホップごと、need ごとに状況を伝えます。
 
 トースト表示は注目すべき失敗（レビュー FAIL、`needs-permission`、`runaway`、`unavailable`、`ESCALATE`、エージェントエラー）のときと、ウェーブの新しい need ごとに 1 回だけです。このマシンのすべてのウェーブと、その前の planner の計画（いまの段、未解決の質問の数）は、上記の状態ファイルに載ります。`hud` プラグインオプション（既定はオン）で帯、ペイン、トーストを無効にできます。
 
@@ -123,7 +123,7 @@ orchestra のエージェント（`orchestra:*` サブエージェントと Work
 `/orchestra:board` は、アカウントごとに 1 つの claude.ai のページ（orchestra のダッシュボード）を扱います。Claude Code には組み込みの `/dashboard` があるため、名前を分けています。
 
 - **初回:** プロファイルで最初に `/orchestra:board` を実行すると、Claude にプラグインのページ `dashboard/dashboard.html` を claude.ai の Artifact として公開させ、サイドバーにピン留めさせます。これで、どのセッションからでも claude.ai のアプリ（スマートフォンを含む）からページを開けます。フックモジュールは、その公開で得た URL を自分のストアに記録します。ストアは Claude の設定ディレクトリにあり、ccprofile のプロファイルごと（ほぼアカウントごと）に 1 ページです。
-- **それ以降:** ページへの反映はモデルではなく、フックモジュールが行います。`~/.claude/orchestra/status.json` の内容を、そのセッションのサインインを使って ArtifactData でページに写します。各アカウントは自分のページだけを書き、ほかの組織のページには書きません。書き込みはマシンごとに 1 つのドキュメントに対して行い、要約が変わったときを除いて最短 `heartbeat_s`（既定 60 秒）に 1 回です。このマシンで変化を最初に見つけたセッションだけが書きます（`~/.claude/orchestra/dashboard/` の claim ファイルで調停します）。各 run の `pid` と `state` のパスは載せません。
+- **それ以降:** ページへの反映はモデルではなく、フックモジュールが行います。`~/.local/state/claude-orchestra/status.json` の内容を、そのセッションのサインインを使って ArtifactData でページに写します。各アカウントは自分のページだけを書き、ほかの組織のページには書きません。書き込みはマシンごとに 1 つのドキュメントに対して行い、要約が変わったときを除いて最短 `heartbeat_s`（既定 60 秒）に 1 回です。このマシンで変化を最初に見つけたセッションだけが書きます（`~/.local/state/claude-orchestra/dashboard/` の claim ファイルで調停します）。各 run の `pid` と `state` のパスは載せません。
 - **書くときの条件:** ArtifactData は `permissions.allow` に関係なく書き込みのたびに確認を求めます。この確認はほかの呼び出しと同じく決着します。auto mode では分類器が判断し、それ以外のモードではセッションで最初の 1 回だけダイアログが出ます。権限設定で拒否されているときや、その確認で断ったときは、そのセッションではボードを書きません。理由はセッションごとに 1 回 toast で知らせ、`agent-exec doctor` の hooks の警告にも出します。`/orchestra:board` で改めて確認します。ホストされたワーカーのセッションと `-p` の実行では書きません。別のアカウントが公開したページには書きません。
 - **ページの内容:** どのアカウントのページにも、マシンのすべての run と計画、各 run のアカウント、最後に書いたアカウントが表示されます。古いときは警告が出ます。表示のみで、承認は指示役のセッションで行います。
 - **操作:** `/orchestra:board` はページの URL を表示します（書けていない場合はその理由）。`/orchestra:board publish` はページを公開し直します（プラグインを更新した後など）。`/orchestra:board forget` は URL を忘れます（ページは claude.ai に残ります）。
@@ -165,6 +165,6 @@ Copilotのモデルはpiの`github-copilot/*`、ChatGPTサブスクリプショ�
 
 - [`docs/design-notes.md`](docs/design-notes.md) — ゲート、worktree による隔離、stash の代替、worktree の lease がなぜあるのか、それぞれのきっかけになった事象
 - [`docs/components.md`](docs/components.md) — エージェント、スキル、ツール、フックそれぞれの詳しい役割
-- [`docs/status-file.md`](docs/status-file.md) — マシン全体の状態ファイル `~/.claude/orchestra/status.json` の置き場所、書き込まれる時機、すべての項目
+- [`docs/status-file.md`](docs/status-file.md) — マシン全体の状態ファイル `~/.local/state/claude-orchestra/status.json` の置き場所、書き込まれる時機、すべての項目
 - [`docs/poc.md`](docs/poc.md) — PoC の測定結果と外部実行系のモデル比較
 - [`feedback/`](feedback/) — 日付ごとの利用状況の振り返り

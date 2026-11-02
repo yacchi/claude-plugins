@@ -32,10 +32,10 @@ steps:
     save: {TOK: token}
   - argv: [dispatch, --token, "<@TOK>", --capture]
     snapshot:
-      - "~/.claude/orchestra/sessions/pi-t-1.json"
-      - "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-run-1.jsonl"
+      - "~/.local/state/claude-orchestra/sessions/pi-t-1.json"
+      - "~/.local/state/claude-orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-run-1.jsonl"
   - argv: [dispatch, --token, "<@TOK>"]
-    snapshot: ["~/.claude/orchestra/sessions/pi-t-1.json"]
+    snapshot: ["~/.local/state/claude-orchestra/sessions/pi-t-1.json"]
   - argv: [dispatch, --token, "<@TOK>", --no-resume]
   - argv: [dispatch, --token, "<@TOK>", --class, light]
   - argv: [dispatch, --token, "<@TOK>", --exhausted, "pi,claude"]

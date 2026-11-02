@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/planning"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/statusfile"
 )
@@ -71,11 +72,11 @@ func TestPlanNextKeepsEveryReturnedID(t *testing.T) {
 func TestPlanNextStatusWriteFailureKeepsExit(t *testing.T) {
 	hookCmdIsolate(t)
 	// A file where the status directory belongs makes the status write fail.
-	home := os.Getenv("HOME")
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+	state := paths.StateDir()
+	if err := os.MkdirAll(state, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".claude", "orchestra"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(state, "status"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	dir := planTestDir(t)

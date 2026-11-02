@@ -19,6 +19,7 @@ export type EnvName =
     | 'ORCHESTRA_TURN_GUARD'
     | 'ORCHESTRA_USAGE_GUARD'
     | 'ORCHESTRA_VCS_GUARD'
+    | 'XDG_STATE_HOME'
 
 // One agent of the session as `$.agent.list()` reports it.
 export type AgentInfo = {

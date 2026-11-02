@@ -19,7 +19,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "path": "<HOME>/.claude/orchestra/status.json",
+        "path": "<HOME>/.local/state/claude-orchestra/status.json",
         "plan": "p1",
         "status": "planning"
       }
@@ -46,7 +46,7 @@
       "exit": 0,
       "stdout_shape": "json",
       "stdout": {
-        "path": "<HOME>/.claude/orchestra/status.json",
+        "path": "<HOME>/.local/state/claude-orchestra/status.json",
         "plan": "p1",
         "status": "needs-user"
       }

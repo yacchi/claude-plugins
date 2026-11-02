@@ -9,7 +9,7 @@ setup:
         mode: off
       telemetry:
         enabled: true
-    ~/.claude/orchestra/telemetry/records.jsonl: |
+    ~/.local/state/claude-orchestra/telemetry/records.jsonl: |
       {"event": "dispatch", "schema_version": 2, "ts": "2026-01-01T00:00:00+00:00", "os": "linux", "executor": "pi", "status": "ok", "usage": {"input_tokens": 10, "output_tokens": 20}}
       not json at all
 
@@ -21,8 +21,8 @@ steps:
   - argv: [telemetry, show, --json]
   - argv: [telemetry, archive, --out, out.tgz]
   - argv: [telemetry, record, --json, '{"event": "dispatch", "executor": "pi", "status": "ok"}']
-    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
   - argv: [telemetry, show]
   - argv: [telemetry, clear]
-    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
   - argv: [telemetry, show]

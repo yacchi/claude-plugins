@@ -1,7 +1,7 @@
 import type { Io } from '../lib/io.ts'
 import { field, isSupervisor, type WorkerCall } from '../lib/agents.ts'
 import { loadEnforcement } from '../lib/config.ts'
-import { inside, isAbsolute, join, normalize, realpath } from '../lib/paths.ts'
+import { inside, isAbsolute, join, normalize, realpath, stateDirOf } from '../lib/paths.ts'
 import { basename, hasEscape, redirections, segments, stripData, words } from '../lib/shell.ts'
 
 // A worker subagent must not write into the user's MAIN working tree while it
@@ -36,8 +36,9 @@ import { basename, hasEscape, redirections, segments, stripData, words } from '.
 // worktree holding its cwd). A worker's tree must hold its own dependencies;
 // a link into another task's tree was observed to stall the worker reading
 // through it. Relative operands follow a plain `cd` earlier in the command.
-// The state root is $HOME/.local/state/claude-orchestra: the hooks cannot read
-// XDG_STATE_HOME. This rule does not need an orchestra worktree in the session.
+// The state root is paths.StateDir() (lib/paths.ts stateDirOf: XDG_STATE_HOME
+// when absolute, else $HOME/.local/state/claude-orchestra). This rule does not
+// need an orchestra worktree in the session.
 //
 // Escape hatches: [orchestra:allow-tree(: reason)] in a Bash command or
 // description; ORCHESTRA_TREE_GUARD=off; enforcement.worker_tree: off; fail-open
@@ -175,11 +176,11 @@ const linkIntoOtherTree = async (io: Io, call: WorkerCall, steps: readonly LinkS
     if (!steps.some(isSymbolicLink) || !call.cwd) {
         return false
     }
-    const home = await io.env('HOME') ?? ''
-    if (home === '') {
+    const state = stateDirOf(await io.env('HOME'), await io.env('XDG_STATE_HOME'))
+    if (state === undefined) {
         return false
     }
-    const requests = await realpath(io, `${home}/.local/state/claude-orchestra/requests`)
+    const requests = await realpath(io, `${state}/requests`)
     const cwd = await realpath(io, call.cwd)
     if (requests === undefined || cwd === undefined) {
         return false

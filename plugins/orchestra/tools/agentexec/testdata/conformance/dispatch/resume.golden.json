@@ -75,7 +75,7 @@
         }
       },
       "files": {
-        "~/.claude/orchestra/sessions/pi-t-1.json": {
+        "~/.local/state/claude-orchestra/sessions/pi-t-1.json": {
           "content": {
             "context_tokens": 0,
             "executor": "pi",
@@ -387,7 +387,7 @@
         }
       },
       "files": {
-        "~/.claude/orchestra/sessions/pi-t-foreign.json": {
+        "~/.local/state/claude-orchestra/sessions/pi-t-foreign.json": {
           "content": {
             "context_tokens": 0,
             "executor": "pi",

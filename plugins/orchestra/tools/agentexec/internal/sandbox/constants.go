@@ -114,14 +114,6 @@ var cacheRootsRel = []string{
 	"~/.terraform.d/plugin-cache",
 }
 
-// tamperFiles no worker may write whatever the writable set says.
-var tamperFiles = []string{
-	"~/.claude/orchestra.yaml",
-	"~/.claude/orchestra.yml",
-	"~/.claude/orchestra/executor-state.json",
-	"~/.local/share/uv/tools",
-}
-
 // What pi LOADS as code or instructions on a later, unsandboxed run.
 var (
 	piDenySubdirs = []string{"extensions", "skills", "prompts", "themes", "packages",

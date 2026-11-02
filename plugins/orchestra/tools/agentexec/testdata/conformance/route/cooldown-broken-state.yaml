@@ -11,7 +11,7 @@ setup:
       exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
     ~/.claude/settings.json: |
       {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
-    ~/.claude/orchestra/executor-state.json: "{not json"
+    ~/.local/state/claude-orchestra/executor-state.json: "{not json"
     list/.claude/orchestra.yaml: |
       cooldown: {path: "<WORK>/list-state.json"}
     list-state.json: "[1, 2]"

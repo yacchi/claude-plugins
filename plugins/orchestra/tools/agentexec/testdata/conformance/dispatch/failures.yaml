@@ -33,12 +33,12 @@ setup:
 steps:
   - argv: [dispatch, --class, standard, --prompt-file, nonzero.md, --workdir, ., --task, t-n]
     snapshot:
-      - "~/.claude/orchestra/sessions/pi-t-n.json"
-      - "~/.claude/orchestra/executor-state.json"
+      - "~/.local/state/claude-orchestra/sessions/pi-t-n.json"
+      - "~/.local/state/claude-orchestra/executor-state.json"
   - argv: [dispatch, --class, standard, --prompt-file, quota.md, --workdir, ., --task, t-q]
     snapshot:
-      - "~/.claude/orchestra/sessions/pi-t-q.json"
-      - "~/.claude/orchestra/executor-state.json"
-      - "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl"
+      - "~/.local/state/claude-orchestra/sessions/pi-t-q.json"
+      - "~/.local/state/claude-orchestra/executor-state.json"
+      - "~/.local/state/claude-orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl"
   - argv: [dispatch, --class, standard, --prompt-file, ok.md, --workdir, .]
   - argv: [dispatch, --class, standard, --prompt-file, ok.md, --workdir, ., --no-cooldown]

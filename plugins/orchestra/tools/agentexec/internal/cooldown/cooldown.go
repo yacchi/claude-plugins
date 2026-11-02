@@ -14,9 +14,8 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
-
-const defaultPath = "~/.claude/orchestra/executor-state.json"
 
 // Entry is one active cooldown.
 type Entry struct {
@@ -36,7 +35,7 @@ func Enabled(cfg *config.Resolved) bool {
 func StatePath(cfg *config.Resolved) string {
 	p, _ := cfg.String("cooldown", "path")
 	if p == "" {
-		p = defaultPath
+		p = paths.CooldownPath()
 	}
 	a, err := filepath.Abs(fsutil.ExpandUser(p))
 	if err != nil {

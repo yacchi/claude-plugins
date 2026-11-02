@@ -240,7 +240,7 @@
         }
       },
       "files": {
-        "~/.claude/orchestra/sessions/pi-t-sub.json": {
+        "~/.local/state/claude-orchestra/sessions/pi-t-sub.json": {
           "content": {
             "context_tokens": 0,
             "executor": "pi",

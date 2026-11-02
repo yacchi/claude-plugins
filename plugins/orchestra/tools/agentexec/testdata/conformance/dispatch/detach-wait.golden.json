@@ -88,7 +88,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお",
-        "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
+        "answer_path": "<HOME>/.local/state/claude-orchestra/tokens/detach/<TOKEN#1>.answer.txt",
         "answer_truncated": true,
         "context_tokens": 0,
         "effort": "high",
@@ -148,15 +148,15 @@
         }
       },
       "files": {
-        "~/.claude/orchestra/tokens/detach/<@TOK>.answer.txt": {
+        "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.answer.txt": {
           "content": "あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお",
           "shape": "text"
         },
-        "~/.claude/orchestra/tokens/detach/<@TOK>.json": {
+        "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.json": {
           "content": {
             "collected": true,
             "finished": "<TS>",
-            "out": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.out",
+            "out": "<HOME>/.local/state/claude-orchestra/tokens/detach/<TOKEN#1>.out",
             "pid": "<PID>",
             "started": "<STARTED>",
             "token": "<TOKEN#1>",
@@ -164,7 +164,7 @@
           },
           "shape": "json"
         },
-        "~/.claude/orchestra/tokens/detach/<@TOK>.out": null
+        "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.out": null
       }
     },
     {
@@ -178,7 +178,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお",
-        "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
+        "answer_path": "<HOME>/.local/state/claude-orchestra/tokens/detach/<TOKEN#1>.answer.txt",
         "context_tokens": 0,
         "effort": "high",
         "executor": "pi",
@@ -237,11 +237,11 @@
         }
       },
       "files": {
-        "~/.claude/orchestra/tokens/detach/<@TOK>.json": {
+        "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.json": {
           "content": {
             "collected": true,
             "finished": "<TS>",
-            "out": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.out",
+            "out": "<HOME>/.local/state/claude-orchestra/tokens/detach/<TOKEN#1>.out",
             "pid": "<PID>",
             "started": "<STARTED>",
             "token": "<TOKEN#1>",
@@ -249,10 +249,10 @@
           },
           "shape": "json"
         },
-        "~/.claude/orchestra/tokens/detach/<@TOK>.result.json": {
+        "~/.local/state/claude-orchestra/tokens/detach/<@TOK>.result.json": {
           "content": {
             "answer": "あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお",
-            "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
+            "answer_path": "<HOME>/.local/state/claude-orchestra/tokens/detach/<TOKEN#1>.answer.txt",
             "context_tokens": 0,
             "effort": "high",
             "executor": "pi",
@@ -326,7 +326,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお",
-        "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
+        "answer_path": "<HOME>/.local/state/claude-orchestra/tokens/detach/<TOKEN#1>.answer.txt",
         "answer_truncated": true,
         "context_tokens": 0,
         "effort": "high",
@@ -414,7 +414,7 @@
       "stdout_shape": "json",
       "stdout": {
         "answer": "あいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえおあいうえお",
-        "answer_path": "<HOME>/.claude/orchestra/tokens/detach/<TOKEN#1>.answer.txt",
+        "answer_path": "<HOME>/.local/state/claude-orchestra/tokens/detach/<TOKEN#1>.answer.txt",
         "context_tokens": 0,
         "effort": "high",
         "executor": "pi",

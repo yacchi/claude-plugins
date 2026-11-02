@@ -19,14 +19,14 @@ var (
 	planIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 )
 
-// Store is the status directory under Root (normally ~/.claude/orchestra):
+// Store is the status directory under Root (normally paths.StateDir()):
 // Root/status.json, Root/status/runs/<key>.json, Root/status/plans/<plan id>.json
 // and the rebuild lock Root/status/.lock.
 type Store struct{ Root string }
 
-// Default is the store under ~/.claude/orchestra.
+// Default is the store under the machine-local state directory.
 func Default() Store {
-	return Store{Root: paths.OrchestraHome()}
+	return Store{Root: paths.StateDir()}
 }
 
 // Path is the machine-wide status.json.

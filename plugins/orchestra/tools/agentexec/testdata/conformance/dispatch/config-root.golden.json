@@ -92,7 +92,7 @@
         "token": "<TOKEN#1>"
       },
       "files": {
-        "~/.claude/orchestra/tokens/<@TOK>.json": {
+        "~/.local/state/claude-orchestra/tokens/<@TOK>.json": {
           "content": {
             "archetype": "default",
             "class": "standard",

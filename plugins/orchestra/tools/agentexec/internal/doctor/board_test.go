@@ -11,7 +11,9 @@ import (
 func TestBoardBlocked(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	dir := filepath.Join(home, ".claude", "orchestra", "dashboard")
+	state := filepath.Join(home, "state")
+	t.Setenv("XDG_STATE_HOME", state)
+	dir := filepath.Join(state, "claude-orchestra", "dashboard")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

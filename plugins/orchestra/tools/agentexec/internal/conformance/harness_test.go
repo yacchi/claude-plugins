@@ -80,7 +80,7 @@ func newSandbox(t *testing.T, sc *Scenario) *sandbox {
 		"TZ=UTC",
 		"LANG=C.UTF-8",
 		"CLAUDE_CODE_SESSION_ID=" + SessionID,
-		"ORCHESTRA_ALIVE_DIR=" + filepath.Join(s.home, ".claude", "orchestra", "alive"),
+		"ORCHESTRA_ALIVE_DIR=" + filepath.Join(s.home, ".local", "state", "claude-orchestra", "alive"),
 		// No subscription usage lookups (network, keychain): a scenario
 		// opts in with ORCHESTRA_USAGE_ROUTING=1 and a snapshot fixture.
 		"ORCHESTRA_USAGE_ROUTING=0",

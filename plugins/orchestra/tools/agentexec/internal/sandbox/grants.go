@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 // nowISOZ stamps new grants (a seam for the byte-compatibility fixtures).
@@ -53,9 +54,12 @@ func TamperPaths() []string { return tamperPaths("") }
 
 func tamperPaths(home string) []string {
 	home = homeOf(home)
-	var out []string
-	for _, p := range tamperFiles {
-		out = append(out, expand(p, home))
+	// The executor-state file is the cooldown default, under the state dir.
+	out := []string{
+		expand("~/.claude/orchestra.yaml", home),
+		expand("~/.claude/orchestra.yml", home),
+		filepath.Join(stateDir(home), paths.CooldownFile),
+		expand("~/.local/share/uv/tools", home),
 	}
 	store := learnedPath(home)
 	out = append(out, store, filepath.Dir(store))

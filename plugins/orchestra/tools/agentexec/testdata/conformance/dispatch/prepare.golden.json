@@ -27,7 +27,7 @@
         "token": "<TOKEN#1>"
       },
       "files": {
-        "~/.claude/orchestra/tokens/<@TOK>.json": {
+        "~/.local/state/claude-orchestra/tokens/<@TOK>.json": {
           "content": {
             "archetype": "default",
             "class": "standard",
@@ -71,7 +71,7 @@
         "token": "<TOKEN#2>"
       },
       "files": {
-        "~/.claude/orchestra/tokens/<@TOK2>.json": {
+        "~/.local/state/claude-orchestra/tokens/<@TOK2>.json": {
           "content": {
             "archetype": "investigation",
             "class": "light",

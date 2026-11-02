@@ -16,7 +16,7 @@ setup:
     .claude/orchestra.yaml: |
       cooldown:
         enabled: true
-    ~/.claude/orchestra/executor-state.json: |
+    ~/.local/state/claude-orchestra/executor-state.json: |
       {"pi": {"reason": "quota", "until": 4102444800.5}, "old": {"reason": "quota", "until": 1.5}}
 normalize_keys: [build]
 steps:

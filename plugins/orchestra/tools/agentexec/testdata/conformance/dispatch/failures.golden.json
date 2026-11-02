@@ -75,8 +75,8 @@
         }
       },
       "files": {
-        "~/.claude/orchestra/executor-state.json": null,
-        "~/.claude/orchestra/sessions/pi-t-n.json": null
+        "~/.local/state/claude-orchestra/executor-state.json": null,
+        "~/.local/state/claude-orchestra/sessions/pi-t-n.json": null
       }
     },
     {
@@ -153,7 +153,7 @@
         }
       },
       "files": {
-        "~/.claude/orchestra/executor-state.json": {
+        "~/.local/state/claude-orchestra/executor-state.json": {
           "content": {
             "pi": {
               "reason": "quota",
@@ -162,7 +162,7 @@
           },
           "shape": "json"
         },
-        "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl": {
+        "~/.local/state/claude-orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl": {
           "content": [
             {
               "cache_write_input_tokens": 0,
@@ -193,7 +193,7 @@
           ],
           "shape": "jsonl"
         },
-        "~/.claude/orchestra/sessions/pi-t-q.json": null
+        "~/.local/state/claude-orchestra/sessions/pi-t-q.json": null
       }
     },
     {

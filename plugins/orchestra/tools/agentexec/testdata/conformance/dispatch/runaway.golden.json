@@ -72,8 +72,8 @@
         "usage": null
       },
       "files": {
-        "~/.claude/orchestra/executor-state.json": null,
-        "~/.claude/orchestra/sessions/pi-t-w.json": {
+        "~/.local/state/claude-orchestra/executor-state.json": null,
+        "~/.local/state/claude-orchestra/sessions/pi-t-w.json": {
           "content": {
             "context_tokens": 0,
             "executor": "pi",

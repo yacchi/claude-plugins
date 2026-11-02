@@ -2,10 +2,10 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { ToolCallResult } from 'claude-code'
 import { type BoardTarget, createWriter, docIdOf, pageKeyOf, type WriterHost } from './writer.ts'
 
-const HOME = '/home/u'
-const STATUS = `${HOME}/.claude/orchestra/status.json`
-const CLAIM = `${HOME}/.claude/orchestra/dashboard/ab-12.json`
-const target: BoardTarget = { url: 'https://claude.ai/artifact/ab-12', host: 'my.host', account: 'Acme', home: HOME }
+const STATE = '/home/u/.local/state/claude-orchestra'
+const STATUS = `${STATE}/status.json`
+const CLAIM = `${STATE}/dashboard/ab-12.json`
+const target: BoardTarget = { url: 'https://claude.ai/artifact/ab-12', host: 'my.host', account: 'Acme', stateDir: STATE }
 
 // A host whose files, clock and status mtime the test sets, and whose
 // ArtifactData answers come from a queue (a function gets the call's input).

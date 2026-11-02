@@ -35,4 +35,4 @@ steps:
     snapshot:
       - inside.txt
       - ../outside.txt
-      - "~/.claude/orchestra/sessions/pi-t-p.json"
+      - "~/.local/state/claude-orchestra/sessions/pi-t-p.json"

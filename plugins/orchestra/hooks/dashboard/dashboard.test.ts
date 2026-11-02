@@ -5,7 +5,7 @@ import type { On } from 'claude-code'
 // stored under "board" when given one, the status file in place, and the
 // ArtifactData calls the writer makes recorded in `calls`.
 const board = (on: On, { page, decision = 'allow', declined = false }: { page?: Record<string, unknown>, decision?: 'allow' | 'ask' | 'deny', declined?: boolean } = {}) => {
-    const files = new Map<string, string>([['/h/.claude/orchestra/status.json', JSON.stringify({ summary: { ok: 1 }, runs: [] })]])
+    const files = new Map<string, string>([['/h/.local/state/claude-orchestra/status.json', JSON.stringify({ summary: { ok: 1 }, runs: [] })]])
     const store = new Map<string, unknown>(page ? [['board', page]] : [])
     const calls: any[] = []
     const prompts: any[] = []
@@ -115,7 +115,7 @@ test('a write the permission check denies never starts, and says so unasked', as
     expect(calls).toEqual([])
     expect(toasts.length).toBe(1)
     expect(toasts[0]).toContain('denies')
-    const record = JSON.parse(files.get('/h/.claude/orchestra/dashboard/blocked.json') ?? '{}')
+    const record = JSON.parse(files.get('/h/.local/state/claude-orchestra/dashboard/blocked.json') ?? '{}')
     expect(record.session).toBe('s1')
     expect(record.at).toBe(1000)
     expect(record.reason).toContain('denies')
@@ -141,7 +141,7 @@ test('a started writer clears the session\'s recorded block', async ($, on) => {
     const { files, clock } = board(on, { page: { url: 'https://claude.ai/artifact/p1', account: 'Acme' } })
     await runBoard($, '')
     await clock.advance(10)
-    const record = JSON.parse(files.get('/h/.claude/orchestra/dashboard/blocked.json') ?? '{}')
+    const record = JSON.parse(files.get('/h/.local/state/claude-orchestra/dashboard/blocked.json') ?? '{}')
     expect(record.session).toBe('s1')
     expect(record.reason).toBe(null)
 })
