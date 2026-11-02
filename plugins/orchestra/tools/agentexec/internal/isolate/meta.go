@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 )
@@ -21,7 +22,7 @@ import (
 const (
 	// baselineFile: the commit the worker started from; every diff is
 	// measured against it.
-	baselineFile = "orchestra-baseline"
+	baselineFile = config.BaselineMarker
 	// collectedFile: digest of the changes as last collected (diff,
 	// integrate or collect), which is what lets remove reclaim the tree.
 	collectedFile = "orchestra-collected"
@@ -35,7 +36,7 @@ const (
 	roleFile = "orchestra-role"
 	// adoptedFile: JSON {"task","session","adopted_at"} on a worktree
 	// orchestra did not create but was told to treat as a task's.
-	adoptedFile = "orchestra-adopted"
+	adoptedFile = config.AdoptedMarker
 )
 
 // RoleIntegration marks an `isolate integrate` target worktree.

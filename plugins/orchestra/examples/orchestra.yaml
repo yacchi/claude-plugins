@@ -253,7 +253,7 @@ watchdog:
 isolation:
   carry_extra: []
   # carry_extra: [pkg]   # e.g. packages/core-wasm/pkg, a generated wasm package
-  # pnpm repos: install worktree node_modules against pnpm's global virtual
+  # pnpm repos: install node_modules in orchestra's worktrees against pnpm's global virtual
   # store instead of cloning them (see references/isolation.md "pnpm global
   # virtual store"). "auto" (the default) turns it on for pnpm 11 or later;
   # true or false forces it, per repo in its .claude/orchestra.yaml.

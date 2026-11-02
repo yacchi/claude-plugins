@@ -183,13 +183,22 @@ func validateLand(values map[string]any) error {
 }
 
 // PnpmGVSTree reports whether processes in tree run under the global
-// virtual store: on (the setting, see PnpmGVS), tree is a linked worktree
-// (LinkedWorktree, so never the user's main checkout) and it holds at least
-// one pnpm project (PnpmProjects). A node_modules of the classic layout
-// there needs no guard: orchestra's trees are disposable, and the carry
-// rebuilds every project's node_modules under the store.
+// virtual store: on (the setting, see PnpmGVS), tree is an orchestra tree
+// (OrchestraTree, so never the user's main checkout or own worktree) and it
+// holds at least one pnpm project (PnpmProjects). It does not look at the
+// node_modules layout: isolate's carry runs after the baseline marker is
+// written and rebuilds every project's node_modules under the store. The
+// entry points that set the switch for a process (TreeEntries,
+// PnpmGVSShellPrefix) also skip a classic layout (pnpmGVSSwitch).
 func PnpmGVSTree(on bool, tree string) bool {
-	return on && LinkedWorktree(tree) && len(PnpmProjects(tree)) > 0
+	return on && OrchestraTree(tree) && len(PnpmProjects(tree)) > 0
+}
+
+// pnpmGVSSwitch is the global virtual store switch of a process started in
+// tree: PnpmGVSTree, and tree is not a classic layout (PnpmClassicLayout).
+// Both entry points that set the switch for a process use it.
+func pnpmGVSSwitch(on bool, tree string) bool {
+	return PnpmGVSTree(on, tree) && !PnpmClassicLayout(tree)
 }
 
 var (

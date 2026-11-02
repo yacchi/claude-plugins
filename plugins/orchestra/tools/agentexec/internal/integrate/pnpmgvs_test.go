@@ -16,8 +16,11 @@ func TestRunVerifyInAPnpmGVSTreeCarriesTheSwitch(t *testing.T) {
 	t.Cleanup(func() { config.PnpmGVSOn = was })
 
 	const hasSwitch = `test "$pnpm_config_enable_global_virtual_store" = true`
-	linked := t.TempDir()
-	for name, body := range map[string]string{".git": "gitdir: /repo/.git/worktrees/t\n", "pnpm-lock.yaml": ""} {
+	linked, gitdir := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(gitdir, config.BaselineMarker), []byte("0123456789abcdef\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{".git": "gitdir: " + gitdir + "\n", "pnpm-lock.yaml": ""} {
 		if err := os.WriteFile(filepath.Join(linked, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
