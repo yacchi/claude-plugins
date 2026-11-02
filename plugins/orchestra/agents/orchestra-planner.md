@@ -60,7 +60,7 @@ The instructor gives you: the user's goal; the user's constraints and prohibitio
 
 ## Status file (only when the instructor gave a plan id)
 
-The user follows long plans in `~/.claude/orchestra/status.json`, often from a phone. Record your progress with one Bash call of `agent-exec status plan --id <plan id> --repo <repo path> --title '<title>' --status <status> --phase <phase>` at these moments only: when you start, when a phase starts or ends, and when you finish.
+The user follows long plans in `~/.local/state/claude-orchestra/status.json`, often from a phone. Record your progress with one Bash call of `agent-exec status plan --id <plan id> --repo <repo path> --title '<title>' --status <status> --phase <phase>` at these moments only: when you start, when a phase starts or ends, and when you finish.
 
 - `<title>`: the task title you were given, else a name of at most 30 characters you make from the goal; no quotes in it.
 - `<status>`: `planning`; `needs-user` when you stop with open questions; `failed` when you cannot produce a skeleton.

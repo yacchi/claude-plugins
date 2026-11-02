@@ -65,7 +65,7 @@ func addWaveRunCommands(parent *cobra.Command) {
 	maxPackages := fl.Int("max-packages", 0, "stop after N packages")
 	budgetUSD := fl.Float64("budget-usd", 0, "start nothing new once the run's estimated cost reaches this (needs --run-id)")
 	fl.StringVar(&o.RunID, "run-id", "", "run ledger id")
-	fl.StringVar(&o.Title, "title", "", "short task title shown in ~/.claude/orchestra/status.json (default: the run id)")
+	fl.StringVar(&o.Title, "title", "", "short task title shown in the machine-wide status file (default: the run id)")
 	fl.BoolVar(&o.ResumeOnReset, "resume-on-reset", false, "resume packages after a usage-limit reset")
 	detach := fl.Bool("detach", false, "start the runner as a detached child and return at once")
 	runFormat := formatFlags(run, "json", "text")

@@ -75,7 +75,7 @@
       "stdout_shape": "empty",
       "stdout": null,
       "files": {
-        "~/.claude/orchestra/telemetry/records.jsonl": {
+        "~/.local/state/claude-orchestra/telemetry/records.jsonl": {
           "content": "{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"executor\": \"pi\", \"status\": \"ok\", \"usage\": {\"input_tokens\": 10, \"output_tokens\": 20}}\nnot json at all\n\n{\"event\": \"dispatch\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"executor\": \"claude\", \"status\": \"unavailable\", \"reason\": \"quota\"}\n[1, 2]\n{\"event\": \"run_summary\", \"schema_version\": 2, \"ts\": \"<TS>\", \"os\": \"linux\", \"task_count\": 4}\n{\"event\":\"dispatch\",\"executor\":\"pi\",\"os\":\"darwin\",\"schema_version\":2,\"status\":\"ok\",\"ts\":\"<TS>\"}\n",
           "shape": "text"
         }
@@ -99,7 +99,7 @@
       "stdout_shape": "empty",
       "stdout": null,
       "files": {
-        "~/.claude/orchestra/telemetry/records.jsonl": null
+        "~/.local/state/claude-orchestra/telemetry/records.jsonl": null
       }
     },
     {

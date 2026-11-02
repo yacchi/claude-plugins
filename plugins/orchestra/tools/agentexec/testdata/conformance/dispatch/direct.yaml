@@ -13,7 +13,7 @@ setup:
       FAKEPI-FAULT: quota
 steps:
   - argv: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md, --class, standard, --run-id, run-d]
-    snapshot: ["~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-run-d.jsonl"]
+    snapshot: ["~/.local/state/claude-orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-run-d.jsonl"]
   - argv: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md, --resume, 99999999-8888-4777-a666-555555555555]
   - argv: [dispatch, --executor, pi, --model, m-1, --effort, high, --workdir, ., --prompt-file, quota.md]
   - argv: [dispatch, --executor, pi, --model, m-1, --effort, low, --workdir, ., --prompt-file, ok.md]

@@ -390,7 +390,7 @@ func TestAliveDirFollowsTheLedger(t *testing.T) {
 	if got := AliveDirFor(cfg); got != "/data/alive" {
 		t.Errorf("ledger beside telemetry: %s", got)
 	}
-	if got := AliveDirFor(&config.Resolved{Values: config.Defaults()}); got != filepath.Join(home, ".claude", "orchestra", "alive") {
+	if got := AliveDirFor(&config.Resolved{Values: config.Defaults()}); got != filepath.Join(paths.StateDir(), "alive") {
 		t.Errorf("defaults: %s", got)
 	}
 	t.Setenv("ORCHESTRA_ALIVE_DIR", "/override")

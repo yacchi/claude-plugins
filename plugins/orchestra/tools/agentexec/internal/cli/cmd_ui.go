@@ -7,12 +7,12 @@ import "github.com/spf13/cobra"
 func newUICmd() *cobra.Command {
 	return &cobra.Command{
 		Use:                "ui",
-		Short:              "removed: see ~/.claude/orchestra/status.json",
+		Short:              "removed: see the machine-wide status file status.json (agent-exec status show)",
 		Hidden:             true,
 		Args:               cobra.ArbitraryArgs,
 		DisableFlagParsing: true,
 		RunE: func(*cobra.Command, []string) error {
-			return exitf(2, "agent-exec ui was removed: wave and plan progress is written to ~/.claude/orchestra/status.json (agent-exec status show prints it; see docs/status-file.md)")
+			return exitf(2, "agent-exec ui was removed: wave and plan progress is written to the machine-wide status file status.json in the machine-local state dir (agent-exec status show prints it; see docs/status-file.md)")
 		},
 	}
 }

@@ -1,20 +1,20 @@
-# Status file: `~/.claude/orchestra/status.json`
+# Status file: `~/.local/state/claude-orchestra/status.json`
 
 New in v0.73.0. This is the contract for a viewer that reads orchestra's status. orchestra writes the file. The orchestra hooks module mirrors it to each account's claude.ai board page (`/orchestra:board`), from the user's interactive sessions; see the README's Board section.
 
 ## Location and writers
 
-- Path: `~/.claude/orchestra/status.json`. It is based on `$HOME`, so every ccprofile profile writes the same file, whatever its `CLAUDE_CONFIG_DIR`.
+- Path: `$XDG_STATE_HOME/claude-orchestra/status.json` when `XDG_STATE_HOME` is absolute, else `~/.local/state/claude-orchestra/status.json`. It is machine-local state, not under `CLAUDE_CONFIG_DIR` and not synced between machines, so every ccprofile profile on this machine writes the same file.
 - Only `agent-exec` writes it. No model or claude.ai sign-in is involved.
 - The hooks module reads it, never writes it, to mirror it to the board page (see Board mirror).
 - orchestra never reads anything back from it. Approve and deny happen in the instructor's Claude Code session, not in a viewer.
-- Each `agent-exec wave run` writes its own entry, `~/.claude/orchestra/status/runs/<key>.json`. `<key>` is the first 16 hex characters of the SHA-1 of the real path of the run's state file. A run writes:
+- Each `agent-exec wave run` writes its own entry, `~/.local/state/claude-orchestra/status/runs/<key>.json`. `<key>` is the first 16 hex characters of the SHA-1 of the real path of the run's state file. A run writes:
   - at start;
   - within 5 s of any change to its state, whether the change is its own or another process's (e.g. `wave mark`);
   - at least every 60 s while it runs (`heartbeat_s`);
   - once at its end.
-- The skeleton planner (`orchestra-planner`) writes `~/.claude/orchestra/status/plans/<plan id>.json` with `agent-exec status plan` at phase boundaries. `agent-exec plan review` and `agent-exec plan next` write the `review`, `specs` and `done` phases and the stuck `needs-user` status themselves, from the plan id the instructor passed to `plan next --id`.
-- After every write, the writer rebuilds `status.json` under the lock `~/.claude/orchestra/status/.lock`.
+- The skeleton planner (`orchestra-planner`) writes `~/.local/state/claude-orchestra/status/plans/<plan id>.json` with `agent-exec status plan` at phase boundaries. `agent-exec plan review` and `agent-exec plan next` write the `review`, `specs` and `done` phases and the stuck `needs-user` status themselves, from the plan id the instructor passed to `plan next --id`.
+- After every write, the writer rebuilds `status.json` under the lock `~/.local/state/claude-orchestra/status/.lock`.
 
 ## Reading
 
@@ -38,7 +38,7 @@ The hooks module mirrors `status.json` into the account's board page, from the u
 
 - Collection `status`, one document per machine. The doc id is the host name, and the data is `{schema: 1, host, status, writer: {account, at}}`.
 - `status` is `status.json` without `runs[].pid` and `runs[].state`. Both are left out of the mirror.
-- The mirror is written at most once per `heartbeat_s` (60) unless `summary.line` changed. One writer per change: the sessions on one machine take turns through a claim file under `~/.claude/orchestra/dashboard/`.
+- The mirror is written at most once per `heartbeat_s` (60) unless `summary.line` changed. One writer per change: the sessions on one machine take turns through a claim file under `~/.local/state/claude-orchestra/dashboard/`.
 - ArtifactData's own ask is settled by the session's mode (auto mode's classifier, or one dialog per session). A permission deny, or a declined write, stops the loop; `/orchestra:board` asks again.
 
 ## Privacy

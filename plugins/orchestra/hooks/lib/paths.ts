@@ -53,6 +53,21 @@ export const realpath = async (io: Io, p: string): Promise<string | undefined> =
     return normalize(`${parent}/${name}`)
 }
 
+// The machine-local orchestra state directory, as agent-exec's paths.StateDir
+// resolves it: $XDG_STATE_HOME/claude-orchestra when XDG_STATE_HOME is an
+// absolute path, else $HOME/.local/state/claude-orchestra. Undefined when
+// neither is known. (No realpath: the same file either way.)
+export const stateDirOf = (home: string | undefined, xdgStateHome: string | undefined): string | undefined => {
+    if (xdgStateHome !== undefined && isAbsolute(xdgStateHome)) {
+        return normalize(`${xdgStateHome}/claude-orchestra`)
+    }
+    if (home === undefined || !isAbsolute(home)) {
+        return undefined
+    }
+
+    return normalize(`${home}/.local/state/claude-orchestra`)
+}
+
 const parts = (p: string): string[] => p.split('/').filter(s => s !== '')
 
 // Strictly inside: `parent` itself is not inside `parent`. Both already real.

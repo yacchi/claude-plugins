@@ -17,7 +17,7 @@ setup:
       exec "$AGENT_EXEC_UNDER_TEST" "$@"
     ~/.claude/settings.json: |
       {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
-    ~/.claude/orchestra/sessions/pi-t-s.json: |
+    ~/.local/state/claude-orchestra/sessions/pi-t-s.json: |
       {"executor":"pi","task":"t-s","session_id":"11111111-2222-4333-a444-555555555555","workdir":"<WORK>","updated":"2026-01-01T00:00:00Z"}
     p.md: "work\n"
 steps:

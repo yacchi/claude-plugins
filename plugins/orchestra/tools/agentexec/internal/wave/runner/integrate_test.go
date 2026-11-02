@@ -271,7 +271,7 @@ func (c *fakeClock) sleep(s float64) {
 }
 
 func (w *waveRepo) cooldownUntil(until float64) {
-	dir := filepath.Join(w.home, ".claude", "orchestra")
+	dir := filepath.Join(w.home, ".local", "state", "claude-orchestra")
 	writeFile(w.t, filepath.Join(dir, "executor-state.json"),
 		fmt.Sprintf(`{"pi": {"reason": "quota", "until": %v}}`, until))
 }

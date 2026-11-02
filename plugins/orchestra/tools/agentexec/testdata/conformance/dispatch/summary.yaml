@@ -36,11 +36,11 @@ steps:
   - argv: [dispatch, prepare, --class, standard, --prompt-file, ja.md, --workdir, .]
     save: {JA: token}
   - argv: [dispatch, --token, "<@JA>", --summary]
-    snapshot: ["~/.claude/orchestra/tokens/detach/<@JA>.answer.txt"]
+    snapshot: ["~/.local/state/claude-orchestra/tokens/detach/<@JA>.answer.txt"]
   - argv: [dispatch, prepare, --class, standard, --prompt-file, emoji.md, --workdir, .]
     save: {EM: token}
   - argv: [dispatch, --token, "<@EM>", --summary, --capture]
-    snapshot: ["~/.claude/orchestra/tokens/detach/<@EM>.answer.txt"]
+    snapshot: ["~/.local/state/claude-orchestra/tokens/detach/<@EM>.answer.txt"]
   - argv: [dispatch, prepare, --class, standard, --prompt-file, exact.md, --workdir, .]
     save: {EX: token}
   - argv: [dispatch, --token, "<@EX>", --summary]

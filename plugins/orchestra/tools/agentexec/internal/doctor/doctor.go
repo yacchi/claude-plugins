@@ -232,7 +232,7 @@ func boardBlocked(session string) string {
 		Session string  `json:"session"`
 		Reason  *string `json:"reason"`
 	}
-	file := filepath.Join(paths.OrchestraHome(), "dashboard", "blocked.json")
+	file := filepath.Join(paths.StateDir(), "dashboard", "blocked.json")
 	if fsutil.ReadJSONFile(file, &v) != nil || v.Session != session || v.Reason == nil {
 		return ""
 	}

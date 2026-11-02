@@ -14,11 +14,11 @@ setup:
 steps:
   - argv: [dispatch, prepare, --class, standard, --prompt-file, prompt.md, --workdir, ., --task, t-1, --run-id, run-1, --json]
     save: {TOK: token}
-    snapshot: ["~/.claude/orchestra/tokens/<@TOK>.json"]
+    snapshot: ["~/.local/state/claude-orchestra/tokens/<@TOK>.json"]
   - argv: [dispatch, prepare, --class, light, --prompt-file, a.md, --prompt-file, later/b.md, --workdir, sub, --archetype, investigation, --isolate, never]
     cwd: sub
     save: {TOK2: token}
-    snapshot: ["~/.claude/orchestra/tokens/<@TOK2>.json"]
+    snapshot: ["~/.local/state/claude-orchestra/tokens/<@TOK2>.json"]
   - argv: [dispatch, prepare, --prompt-file, p.md, --workdir, .]
   - argv: [dispatch, prepare, --class, light, --workdir, .]
   - argv: [dispatch, prepare, --class, light, --prompt-file, p.md]

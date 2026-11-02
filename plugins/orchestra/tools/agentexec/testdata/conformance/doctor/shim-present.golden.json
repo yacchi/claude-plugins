@@ -46,7 +46,7 @@
             },
             "cooldown": {
               "enabled": true,
-              "path": "~/.claude/orchestra/executor-state.json",
+              "path": "<HOME>/.local/state/claude-orchestra/executor-state.json",
               "seconds": {
                 "auth": 0,
                 "credits": 3600,
@@ -154,7 +154,7 @@
               "pnpm_global_virtual_store": "auto"
             },
             "ledger": {
-              "dir": "~/.claude/orchestra/runs",
+              "dir": "<HOME>/.local/state/claude-orchestra/runs",
               "enabled": true,
               "retention_days": 30
             },
@@ -260,7 +260,7 @@
               }
             },
             "telemetry": {
-              "dir": "~/.claude/orchestra/telemetry",
+              "dir": "<HOME>/.local/state/claude-orchestra/telemetry",
               "enabled": false
             },
             "throttle": {
@@ -341,7 +341,7 @@
         },
         "cooldowns": {
           "active": {},
-          "path": "<HOME>/.claude/orchestra/executor-state.json"
+          "path": "<HOME>/.local/state/claude-orchestra/executor-state.json"
         },
         "executors": {
           "pi": {
@@ -581,7 +581,7 @@
             },
             "cooldown": {
               "enabled": true,
-              "path": "~/.claude/orchestra/executor-state.json",
+              "path": "<HOME>/.local/state/claude-orchestra/executor-state.json",
               "seconds": {
                 "auth": 0,
                 "credits": 3600,
@@ -689,7 +689,7 @@
               "pnpm_global_virtual_store": "auto"
             },
             "ledger": {
-              "dir": "~/.claude/orchestra/runs",
+              "dir": "<HOME>/.local/state/claude-orchestra/runs",
               "enabled": true,
               "retention_days": 30
             },
@@ -795,7 +795,7 @@
               }
             },
             "telemetry": {
-              "dir": "~/.claude/orchestra/telemetry",
+              "dir": "<HOME>/.local/state/claude-orchestra/telemetry",
               "enabled": false
             },
             "throttle": {
@@ -876,7 +876,7 @@
         },
         "cooldowns": {
           "active": {},
-          "path": "<HOME>/.claude/orchestra/executor-state.json"
+          "path": "<HOME>/.local/state/claude-orchestra/executor-state.json"
         },
         "executors": {
           "pi": {

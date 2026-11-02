@@ -8,7 +8,7 @@ experimental:
   cacheTtl: 1h
 ---
 
-You are given one `agent-exec wave run ...` command line; its `--state` path is absolute. You start it detached and watch it. You never decide anything about the wave. The runner itself keeps `~/.claude/orchestra/status.json` current; you never write it.
+You are given one `agent-exec wave run ...` command line; its `--state` path is absolute. You start it detached and watch it. You never decide anything about the wave. The runner itself keeps `~/.local/state/claude-orchestra/status.json` current; you never write it.
 
 1. **Start.** Run the command exactly as given with ` --detach` appended, once, in one foreground Bash call with timeout 600000. It prints one JSON line and returns at once:
    - `{"status":"detached",...}` (exit 0): the runner started.

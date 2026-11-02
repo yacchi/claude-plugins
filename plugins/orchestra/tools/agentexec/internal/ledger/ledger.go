@@ -14,6 +14,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 var (
@@ -170,7 +171,7 @@ func Dir(cfg *config.Resolved) string {
 	}
 	tdir, _ := cfg.String("telemetry", "dir")
 	if tdir == "" {
-		tdir = "~/.claude/orchestra/telemetry"
+		tdir = paths.TelemetryDir()
 	}
 	return filepath.Join(filepath.Dir(fsutil.ExpandUser(tdir)), "runs")
 }

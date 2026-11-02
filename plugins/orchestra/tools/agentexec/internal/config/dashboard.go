@@ -10,6 +10,6 @@ func checkRemovedDashboard(path string, layer map[string]any) error {
 		return nil
 	}
 	return fmt.Errorf("%s: the dashboard key was removed in orchestra 0.73.0: nothing about the dashboard is configured any more. "+
-		"Since 0.74.0 the orchestra hooks module mirrors ~/.claude/orchestra/status.json to one claude.ai page per account; "+
+		"Since 0.74.0 the orchestra hooks module mirrors the machine-local status.json (agent-exec status show prints its path) to one claude.ai page per account; "+
 		"run /orchestra:board in a Claude Code session to publish it. Delete the dashboard key from this file", path)
 }

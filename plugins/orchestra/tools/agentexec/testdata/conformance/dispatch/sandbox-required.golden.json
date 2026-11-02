@@ -68,7 +68,7 @@
       },
       "files": {
         "spawned.txt": null,
-        "~/.claude/orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl": {
+        "~/.local/state/claude-orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/no.run.jsonl": {
           "content": {
             "cls": "standard",
             "executor": "pi",
@@ -78,7 +78,7 @@
           },
           "shape": "json"
         },
-        "~/.claude/orchestra/sessions/pi-t-r.json": null
+        "~/.local/state/claude-orchestra/sessions/pi-t-r.json": null
       }
     }
   ]

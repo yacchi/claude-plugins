@@ -24,14 +24,10 @@ func expandUser(p string) string {
 	return p
 }
 
-// OrchestraHome is ~/.claude/orchestra.
-func OrchestraHome() string {
-	return filepath.Join(Home(), ".claude", "orchestra")
-}
-
 // StateDir is the machine-local state directory: $XDG_STATE_HOME/claude-orchestra
 // when XDG_STATE_HOME is absolute, else ~/.local/state/claude-orchestra,
-// symlinks resolved as far as the path exists.
+// symlinks resolved as far as the path exists. Every runtime file of
+// orchestra lives under it.
 func StateDir() string {
 	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" && filepath.IsAbs(xdg) {
 		return RealPath(filepath.Join(xdg, "claude-orchestra"))
@@ -39,14 +35,33 @@ func StateDir() string {
 	return RealPath(filepath.Join(RealPath(Home()), ".local", "state", "claude-orchestra"))
 }
 
+// LedgerDir is the default run ledger: $StateDir/runs. Its siblings tokens/,
+// sessions/ and check-slots/ follow it wherever ledger.dir points.
+func LedgerDir() string {
+	return filepath.Join(StateDir(), "runs")
+}
+
+// TelemetryDir is the default telemetry directory: $StateDir/telemetry.
+func TelemetryDir() string {
+	return filepath.Join(StateDir(), "telemetry")
+}
+
+// CooldownFile is the executor-state file's name, in StateDir by default.
+const CooldownFile = "executor-state.json"
+
+// CooldownPath is the default cooldown state file: $StateDir/executor-state.json.
+func CooldownPath() string {
+	return filepath.Join(StateDir(), CooldownFile)
+}
+
 // AliveDir holds the per-session heartbeat files: $ORCHESTRA_ALIVE_DIR, else
-// ~/.claude/orchestra/alive. (Callers holding a config may follow a
-// relocated ledger dir instead.)
+// $StateDir/alive. (Callers holding a config may follow a relocated ledger
+// dir instead.)
 func AliveDir() string {
 	if v := os.Getenv("ORCHESTRA_ALIVE_DIR"); v != "" {
 		return expandUser(v)
 	}
-	return filepath.Join(OrchestraHome(), "alive")
+	return filepath.Join(StateDir(), "alive")
 }
 
 // ClaudeConfigDir is $CLAUDE_CONFIG_DIR, else ~/.claude.

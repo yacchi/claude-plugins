@@ -30,5 +30,5 @@ setup:
 steps:
   - argv: [dispatch, --class, standard, --prompt-file, p.md, --workdir, ., --task, t-w]
     snapshot:
-      - "~/.claude/orchestra/sessions/pi-t-w.json"
-      - "~/.claude/orchestra/executor-state.json"
+      - "~/.local/state/claude-orchestra/sessions/pi-t-w.json"
+      - "~/.local/state/claude-orchestra/executor-state.json"

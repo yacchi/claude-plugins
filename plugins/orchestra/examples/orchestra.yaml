@@ -176,7 +176,7 @@ external_executors:
 # user|project|local]` instead of hand-editing.
 telemetry:
   enabled: false
-  dir: ~/.claude/orchestra/telemetry
+  dir: ~/.local/state/claude-orchestra/telemetry
 
 # Persisted, time-decaying executor cooldown. Entries are written automatically
 # when `agent-exec dispatch` parses
@@ -184,7 +184,7 @@ telemetry:
 # gate. `0` means no cooldown.
 cooldown:
   enabled: true
-  path: ~/.claude/orchestra/executor-state.json
+  path: ~/.local/state/claude-orchestra/executor-state.json
   seconds:
     rate-limit: 900
     quota: 3600

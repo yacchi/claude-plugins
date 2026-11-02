@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 )
 
 // DefaultQuietDomains is background traffic of Claude Code and herdr that no
@@ -380,7 +382,7 @@ func Defaults() map[string]any {
 		),
 		"cooldown", obj(
 			"enabled", true,
-			"path", "~/.claude/orchestra/executor-state.json",
+			"path", paths.CooldownPath(),
 			"seconds", obj("rate-limit", int64(900), "quota", int64(3600), "credits", int64(3600),
 				"auth", int64(0), "nonzero-exit", int64(0), "sandbox", int64(0)),
 		),
@@ -401,8 +403,8 @@ func Defaults() map[string]any {
 				"quiet_domains", strs(DefaultQuietDomains...),
 			),
 		),
-		"telemetry", obj("enabled", false, "dir", "~/.claude/orchestra/telemetry"),
-		"ledger", obj("enabled", true, "dir", "~/.claude/orchestra/runs", "retention_days", int64(30)),
+		"telemetry", obj("enabled", false, "dir", paths.TelemetryDir()),
+		"ledger", obj("enabled", true, "dir", paths.LedgerDir(), "retention_days", int64(30)),
 		"isolation", obj(
 			"carry_extra", []any{},
 			"carry_files", strs(".claude/settings.local.json", ".claude/orchestra.local.yaml",

@@ -50,7 +50,7 @@ func heartbeatDir() string {
 
 // AliveDirFor is the heartbeat directory for cfg: $ORCHESTRA_ALIVE_DIR, else
 // "alive" beside the run ledger directory (so relocating the ledger moves
-// the heartbeats with it), else ~/.claude/orchestra/alive.
+// the heartbeats with it), else $StateDir/alive.
 func AliveDirFor(cfg *config.Resolved) string {
 	if os.Getenv("ORCHESTRA_ALIVE_DIR") != "" || cfg == nil {
 		return paths.AliveDir()
@@ -61,7 +61,7 @@ func AliveDirFor(cfg *config.Resolved) string {
 	} else {
 		telemetry, _ := cfg.String("telemetry", "dir")
 		if telemetry == "" {
-			telemetry = "~/.claude/orchestra/telemetry"
+			telemetry = paths.TelemetryDir()
 		}
 		ledger = filepath.Join(filepath.Dir(fsutil.ExpandUser(telemetry)), "runs")
 	}

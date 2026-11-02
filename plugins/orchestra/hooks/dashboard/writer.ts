@@ -1,6 +1,6 @@
 import type { ToolCallResult } from 'claude-code'
 
-// Mirrors `~/.claude/orchestra/status.json` into one ArtifactData document of
+// Mirrors the machine-local `status.json` (the state dir, lib/paths.ts) into one ArtifactData document of
 // the account's board page. The hooks module writes it, never a model. Every
 // session on this machine runs a writer; a claim file per page makes one of
 // them write each change.
@@ -12,7 +12,7 @@ export type WriterHost = {
     write: (path: string, text: string) => Promise<void>,
     artifactData: (input: Readonly<Record<string, unknown>>) => Promise<ToolCallResult>,
 }
-export type BoardTarget = { url: string, host: string, account: string | null, home: string }
+export type BoardTarget = { url: string, host: string, account: string | null, stateDir: string }
 export type TickOutcome = 'unchanged' | 'mirrored-elsewhere' | 'not-due' | 'written' | 'failed' | 'backoff' | 'refused' | 'denied'
 export type Writer = { tick: () => Promise<TickOutcome> }
 
@@ -82,8 +82,8 @@ const answerFailed = (answer: Answer, shape: 'db_read' | 'db_write'): boolean =>
 }
 
 export const createWriter = (target: BoardTarget, host: WriterHost): Writer => {
-    const statusPath = `${target.home}/.claude/orchestra/status.json`
-    const claimPath = `${target.home}/.claude/orchestra/dashboard/${pageKeyOf(target.url)}.json`
+    const statusPath = `${target.stateDir}/status.json`
+    const claimPath = `${target.stateDir}/dashboard/${pageKeyOf(target.url)}.json`
     const docId = docIdOf(target.host)
 
     let lastMtime: number | undefined

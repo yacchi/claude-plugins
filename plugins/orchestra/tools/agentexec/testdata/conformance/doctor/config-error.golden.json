@@ -38,7 +38,7 @@
         },
         "cooldowns": {
           "active": {},
-          "path": "<HOME>/.claude/orchestra/executor-state.json"
+          "path": "<HOME>/.local/state/claude-orchestra/executor-state.json"
         },
         "executors": {},
         "herdr_host": {

@@ -14,7 +14,7 @@ setup:
       exec "/m/plugins/marketplaces/orchestra/tools/agent-exec" "$@"
     ~/.claude/settings.json: |
       {"permissions": {"allow": ["Bash(agent-exec:*)"]}}
-    ~/.claude/orchestra/executor-state.json: |
+    ~/.local/state/claude-orchestra/executor-state.json: |
       {"pi": {"reason": "quota", "until": 4102444800.5}, "old": {"reason": "quota", "until": 1.5}, "bad": 3, "worse": {"reason": "quota"}}
     off/.claude/orchestra.yaml: |
       cooldown: {enabled: false}

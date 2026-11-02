@@ -22,8 +22,8 @@ steps:
         "classes": {"light": 2, "x": 1}, "executors_used": {"pi": 1, "claude": "no"},
         "rounds": {"1": 2, "a": 3, "02": 4}, "external_enabled": {"pi": true, "x": false},
         "sandbox_denials": 2, "sandbox_granted": true}
-    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
   - argv: [telemetry, record, --file, in.json]
-    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
   - argv: [telemetry, record, --json, '{"event": "dispatch", "status": "nope", "usage": {"input_tokens": 0}}']
-    snapshot: ["~/.claude/orchestra/telemetry/records.jsonl"]
+    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
