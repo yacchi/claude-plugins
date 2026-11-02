@@ -154,11 +154,14 @@ func TestSessionStartSources(t *testing.T) {
 	}
 }
 
-func TestSessionStartRouterHasNoLoophole(t *testing.T) {
+func TestSessionStartRouterPinsOptInInvariant(t *testing.T) {
 	stampsTempState(t)
 	got := sessionStartContextOf(t, sessionStartInput(t, "loop", "startup", "claude-opus-5", t.TempDir()))
 	if !strings.Contains(got, "A hook enforces this") {
 		t.Errorf("router lacks the hook-enforcement sentence:\n%s", got)
+	}
+	if !strings.Contains(got, "one `orchestra-delegate`") {
+		t.Errorf("router lacks the one-delegate rule without an opt-in:\n%s", got)
 	}
 	if strings.Contains(got, "Small ORCHESTRATED work") {
 		t.Errorf("router still carries the opt-in loophole:\n%s", got)
