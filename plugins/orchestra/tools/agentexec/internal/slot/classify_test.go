@@ -116,3 +116,24 @@ func TestRunsProgram(t *testing.T) {
 		}
 	}
 }
+
+// The Node CPU cap prefix is applied only when a heavy command may start
+// Node: a Go or Python run must not get NODE_OPTIONS spliced in front.
+func TestClassifyNode(t *testing.T) {
+	cases := map[string]bool{
+		"go test -count=1 ./internal/app/": false,
+		"go vet ./... && go test ./...":    false,
+		"uv run pytest -x":                 false,
+		"cargo test":                       false,
+		"pnpm test":                        true,
+		"npx vitest run src":               true,
+		"make test":                        true,
+		"go test ./... && pnpm test":       true,
+		"git status":                       false,
+	}
+	for command, want := range cases {
+		if got := Classify(command, nil).Node; got != want {
+			t.Errorf("Classify(%q).Node = %v, want %v", command, got, want)
+		}
+	}
+}
