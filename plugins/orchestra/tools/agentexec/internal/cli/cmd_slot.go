@@ -34,7 +34,7 @@ func newSlotCmd() *cobra.Command {
 			"op": c.Op, "heavy": c.Heavy, "kind": kind, "pool": c.Pool(), "scope": c.Scope,
 		}
 		prefix := ""
-		if c.Heavy {
+		if c.Heavy && c.Node {
 			prefix = config.NodeCapShellPrefix(config.PoolSize(cfg, config.PoolTest))
 		}
 		prefix += gvsShellPrefix(*classified, *dir)
