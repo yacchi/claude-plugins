@@ -14,7 +14,8 @@ import (
 // session itself; every deletion of the tree closes a session still
 // recorded first, so no removal path leaves a live worker (and its peer /
 // Remote Control entry) in a directory that is gone. Closing never blocks
-// or fails a removal.
+// or fails a removal. Closing a session also forgets the stamps of the
+// worker that ran in it.
 
 // hostSessionFile: JSON hostref.Ref of the session a host opened in the
 // tree.
@@ -38,8 +39,18 @@ func WriteHostSession(wt string, ref hostref.Ref) error {
 	return os.WriteFile(p, append(b, '\n'), 0o644)
 }
 
-// ClearHostSession forgets the hosted session of wt (its host closed it).
-func ClearHostSession(wt string) error { return removeMarkers(wt, hostSessionFile) }
+// ClearHostSession forgets the hosted session of wt and the stamps of the
+// worker in it: the host that opened the session has closed it, so that
+// worker is gone, and its windows must not keep the tree busy.
+func ClearHostSession(wt string) error {
+	return removeMarkers(wt, hostSessionFile, leaseFile, activityFile)
+}
+
+// ClearActivity forgets the activity stamp of wt. An integrated tree's last
+// Bash call (a read such as cmp included) is no work in progress, so the
+// runner forgets it before its end-of-run merge. The lease stays: a fresh
+// writer lease must still keep its tree.
+func ClearActivity(wt string) error { return removeMarkers(wt, activityFile) }
 
 func readHostSession(wt string) (hostref.Ref, bool) {
 	p, err := markerPath(wt, hostSessionFile)

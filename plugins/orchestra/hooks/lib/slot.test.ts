@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { ProcessRunResult } from 'claude-code'
 import { type AgentExecAnswer, callTool, fakeHost, freshSession, startAgent } from '../testing/host.ts'
 import type { Io } from './io.ts'
-import { classifyCommand, guardResult, withHeavySlot } from './slot.ts'
+import { classifyCommand, ensureWatcher, guardResult, withHeavySlot } from './slot.ts'
 
 // agent-exec as the hooks see it: every command is a targeted heavy one, and
 // `slot acquire` admits with token t1.
@@ -82,46 +82,44 @@ const ioAnswering = (stdout: string, seen: string[]): Io => ({
 }) as unknown as Io
 
 describe('classifyCommand', () => {
-    const classified = (capped: string) => `{"op":"jest","heavy":true,"scope":"targeted","capped_command":${JSON.stringify(capped)}}`
-
-    test('a capped command different from the input is carried', async () => {
-        const io = ioAnswering(classified('pnpm jest --maxWorkers=2'), [])
-        expect(await classifyCommand(io, 'pnpm jest')).toEqual({ op: 'jest', heavy: true, scope: 'targeted', capped: 'pnpm jest --maxWorkers=2' })
-    })
-
-    test('a capped command that is empty or the input itself is no cap', async () => {
-        expect(await classifyCommand(ioAnswering(classified(''), []), 'pnpm jest')).toEqual({ op: 'jest', heavy: true, scope: 'targeted' })
-        expect(await classifyCommand(ioAnswering(classified('pnpm jest'), []), 'pnpm jest')).toEqual({ op: 'jest', heavy: true, scope: 'targeted' })
-    })
-
-    test('the command\'s directory goes to classify as --cwd, and is left out when unknown', async () => {
-        const argvs: (readonly string[])[] = []
+    test('the argv is slot classify with the command alone; a caller\'s directory never reaches agent-exec', async () => {
+        const seen: string[][] = []
         const io = {
             run: async (argv: readonly string[]): Promise<ProcessRunResult> => {
-                argvs.push(argv)
+                seen.push(argv.slice(4))
 
-                return { exitCode: 0, stdout: classified(''), stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+                return { exitCode: 0, stdout: '{"op":"jest","heavy":true,"scope":"targeted"}', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
             },
         } as unknown as Io
         await classifyCommand(io, 'pnpm jest', '/w/task-a')
-        await classifyCommand(io, 'pnpm jest', '')
-        expect(argvs[0]).toContain('--cwd=/w/task-a')
-        expect(argvs[1].some(a => a.startsWith('--cwd'))).toBe(false)
+        expect(seen).toEqual([['slot', 'classify', '--command=pnpm jest']])
     })
 
-    test('the guard prefix and token are carried without a cap, and only with a well-formed token', async () => {
-        const prefix = '/x/agent-exec proc guard --root $$ --token 0123456789abcdef </dev/null >/dev/null 2>&1; '
-        const guarded = (token: string, guardPrefix = prefix) =>
-            `{"op":"jest","heavy":true,"scope":"targeted","guard_prefix":${JSON.stringify(guardPrefix)},"guard_token":${JSON.stringify(token)}}`
-        expect(await classifyCommand(ioAnswering(guarded('0123456789abcdef'), []), 'pnpm jest')).toEqual({
-            op: 'jest',
-            heavy: true,
-            scope: 'targeted',
-            guard: { prefix, token: '0123456789abcdef' },
-        })
-        expect(await classifyCommand(ioAnswering(guarded('abc1234'), []), 'pnpm jest')).not.toHaveProperty('guard')
-        expect(await classifyCommand(ioAnswering(guarded('0123456789abcde;'), []), 'pnpm jest')).not.toHaveProperty('guard')
-        expect(await classifyCommand(ioAnswering(guarded('0123456789abcdef', ''), []), 'pnpm jest')).not.toHaveProperty('guard')
+    test('an answer with stale cap or guard fields is reduced to op, heavy and scope', async () => {
+        const stale = '{"op":"jest","heavy":true,"scope":"targeted","kind":"test","pool":"test","capped_command":"pnpm jest --maxWorkers=2","guard_prefix":"/x/agent-exec proc guard --root $$ --token 0123456789abcdef; ","guard_token":"0123456789abcdef"}'
+        const r = await classifyCommand(ioAnswering(stale, []), 'pnpm jest')
+        expect(r).toEqual({ op: 'jest', heavy: true, scope: 'targeted' })
+        expect(Object.keys(r ?? {}).sort()).toEqual(['heavy', 'op', 'scope'])
+    })
+
+    test('an answer missing or mistyping op, heavy or scope, or not an object, gives nothing', async () => {
+        const answers = [
+            '{"heavy":true,"scope":"targeted"}',
+            '{"op":"jest","heavy":"true","scope":"targeted"}',
+            '{"op":"jest","heavy":true,"scope":"all"}',
+            '{"op":1,"heavy":true,"scope":"full"}',
+            'null',
+            'not json',
+        ]
+        for (const stdout of answers) {
+            expect(await classifyCommand(ioAnswering(stdout, []), 'pnpm jest'), stdout).toBeUndefined()
+        }
+    })
+
+    test('a failed or missing agent-exec gives nothing, even with a valid body', async () => {
+        const body = '{"op":"jest","heavy":true,"scope":"targeted"}'
+        expect(await classifyCommand(ioExiting(1, body, []), 'pnpm jest')).toBeUndefined()
+        expect(await classifyCommand(ioExiting(127, body, []), 'pnpm jest')).toBeUndefined()
     })
 })
 
@@ -136,24 +134,51 @@ const ioExiting = (exitCode: number, stdout: string, seen: string[]): Io => ({
 describe('guardResult', () => {
     const reason = 'process guard: 312 processes under pid 4242 (limit 200)'
     const text = `orchestra: agent-exec's process guard killed this command: ${reason}. Its process tree outgrew this machine (a fork bomb, or too many test workers at once). Run it again with fewer workers (e.g. jest --maxWorkers=2, vitest --maxWorkers=2) through the package's test script, and never start a test runner from node -e.`
+    const killed = `{"killed":true,"mem_bytes":1,"procs":312,"reason":${JSON.stringify(reason)},"root":4242}`
 
-    test('a killed command\'s record is asked for by token and reported in full', async () => {
+    test('a kill since the command started is reported in full, asked by --since', async () => {
         const seen: string[] = []
-        const killed = `{"killed":true,"mem_bytes":1,"procs":312,"reason":${JSON.stringify(reason)},"root":4242}`
-        expect(await guardResult(ioExiting(0, killed, seen), '0123456789abcdef')).toBe(text)
-        expect(seen).toEqual(['proc guard-result --token=0123456789abcdef'])
+        expect(await guardResult(ioExiting(0, killed, seen), 1730000000123)).toBe(text)
+        expect(seen).toEqual(['proc guard-result --since=1730000000123'])
+    })
+
+    test('a fractional start is floored and a negative one clamped to zero', async () => {
+        const seen: string[] = []
+        await guardResult(ioExiting(0, '{"killed":false}', seen), 12.9)
+        await guardResult(ioExiting(0, '{"killed":false}', seen), -5)
+        expect(seen).toEqual(['proc guard-result --since=12', 'proc guard-result --since=0'])
     })
 
     test('no kill, a record without a reason, or a non-object answers nothing', async () => {
         const answers = ['{"killed":false}', '{"killed":true}', '{"killed":"true","reason":"x"}', 'null', 'not json']
         for (const stdout of answers) {
-            expect(await guardResult(ioExiting(0, stdout, []), '0123456789abcdef')).toBeUndefined()
+            expect(await guardResult(ioExiting(0, stdout, []), 1)).toBeUndefined()
         }
     })
 
     test('agent-exec missing or failed answers nothing and never throws', async () => {
-        expect(await guardResult(ioExiting(127, '', []), '0123456789abcdef')).toBeUndefined()
-        expect(await guardResult(ioExiting(1, '', []), '0123456789abcdef')).toBeUndefined()
+        expect(await guardResult(ioExiting(127, '', []), 1)).toBeUndefined()
+        expect(await guardResult(ioExiting(1, '', []), 1)).toBeUndefined()
+    })
+
+    test('a run that rejects answers nothing and never throws', async () => {
+        const io = { run: async () => { throw new Error('spawn failed') } } as unknown as Io
+        expect(await guardResult(io, 1)).toBeUndefined()
+    })
+})
+
+describe('ensureWatcher', () => {
+    test('runs proc watch and resolves nothing, whatever agent-exec answers', async () => {
+        const seen: string[] = []
+        expect(await ensureWatcher(ioExiting(0, 'started', seen))).toBeUndefined()
+        expect(await ensureWatcher(ioExiting(1, '', seen))).toBeUndefined()
+        expect(await ensureWatcher(ioExiting(127, '', seen))).toBeUndefined()
+        expect(seen).toEqual(['proc watch', 'proc watch', 'proc watch'])
+    })
+
+    test('a run that rejects resolves nothing and never throws', async () => {
+        const io = { run: async () => { throw new Error('spawn failed') } } as unknown as Io
+        expect(await ensureWatcher(io)).toBeUndefined()
     })
 })
 

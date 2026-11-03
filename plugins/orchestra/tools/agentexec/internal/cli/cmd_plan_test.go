@@ -134,6 +134,9 @@ func TestPlanLintExitCodes(t *testing.T) {
 		{"unknown package", func(t *testing.T) string {
 			return planTestWrite(t, planTestDir(t), planTestIface, planTestPkg("a", "light"))
 		}, []string{"--package", "zz"}, 2},
+		{"over-loaded skeleton", func(t *testing.T) string {
+			return planCLIOverloaded(t)
+		}, nil, 3},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -143,6 +146,51 @@ func TestPlanLintExitCodes(t *testing.T) {
 				t.Errorf("plan lint exit = %d, want %d", code, c.want)
 			}
 		})
+	}
+}
+
+// planCLIWriteLines writes a file of n lines at path.
+func planCLIWriteLines(t *testing.T, path string, n int) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(strings.Repeat("x\n", n)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// planCLIOverloaded is a skeleton whose one package lists interfaces i and j
+// of 50 lines each: 100 + the 60-line spec body is over the 150-line limit.
+func planCLIOverloaded(t *testing.T) string {
+	t.Helper()
+	dir := planTestDir(t)
+	planCLIWriteLines(t, filepath.Join(dir, "i.txt"), 50)
+	planCLIWriteLines(t, filepath.Join(dir, "j.txt"), 50)
+	pkg := strings.Replace(planTestPkg("a", "light"), `"interfaces":["i"]`, `"interfaces":["i","j"]`, 1)
+	return planTestWrite(t, dir, planTestIface+`,{"id":"j","path":"j.txt"}`, pkg)
+}
+
+func TestPlanCLIWaveLintOverloaded(t *testing.T) {
+	hookCmdIsolate(t)
+	plan := planCLIOverloaded(t)
+	if err := os.WriteFile(filepath.Join(filepath.Dir(plan), "specs", "a.md"), []byte("spec\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, errb, code := planDirRun(t, "wave", "lint", "--plan", plan)
+	if code != 3 {
+		t.Fatalf("wave lint exit = %d, want 3", code)
+	}
+	if !strings.Contains(errb, "wave lint: package a lists 100 interface lines") {
+		t.Errorf("stderr %q does not name the over-loaded package", errb)
+	}
+}
+
+func TestPlanCLIReviewMaxWaitCap(t *testing.T) {
+	hookCmdIsolate(t)
+	_, errb, code := planDirRun(t, "plan", "review", "--plan", filepath.Join(t.TempDir(), "plan.json"), "--max-wait", "171")
+	if code != 2 {
+		t.Fatalf("plan review exit = %d, want 2", code)
+	}
+	if !strings.Contains(errb, "--max-wait must be at most 170 seconds") {
+		t.Errorf("stderr %q does not refuse the 171 s wait", errb)
 	}
 }
 

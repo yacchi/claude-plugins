@@ -85,3 +85,82 @@ func TestAFailedOrHungCloseNeverStopsTheRemoval(t *testing.T) {
 		})
 	}
 }
+
+// hostedWorkerStamps writes the fresh lease and activity stamps of a worker
+// running in tree as the main thread of its own session (no agent fields).
+func hostedWorkerStamps(t *testing.T, tree string) {
+	t.Helper()
+	t.Setenv("ORCHESTRA_LEASE_WINDOW", "120")
+	t.Setenv("ORCHESTRA_ACTIVITY_WINDOW", "600")
+	seen := float64(time.Now().UnixNano()) / 1e9
+	lease := fmt.Sprintf(`{"agent_id":"","agent_type":"","last_seen":%f,"since":%f}`, seen, seen)
+	if err := writeMarker(tree, leaseFile, lease); err != nil {
+		t.Fatal(err)
+	}
+	activity := fmt.Sprintf(`{"agent_id":"","agent_type":"","last_seen":%f,"command":"go test ./..."}`, seen)
+	if err := writeMarker(tree, activityFile, activity); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClearHostSessionForgetsTheWorkersStamps(t *testing.T) {
+	repo := newRepo(t)
+	tree := create(t, repo, "a", "")
+	bin, _ := fakeHost(t, "")
+	recordHerdr(t, tree, bin)
+	hostedWorkerStamps(t, tree)
+	if inUse(repo, "a", tree) == "" {
+		t.Fatal("fresh stamps do not keep the tree busy")
+	}
+
+	if err := ClearHostSession(tree); err != nil {
+		t.Fatalf("ClearHostSession: %v", err)
+	}
+	for _, name := range []string{hostSessionFile, leaseFile, activityFile} {
+		p, err := markerPath(tree, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if exists(p) {
+			t.Errorf("%s still exists", name)
+		}
+	}
+	if got := inUse(repo, "a", tree); got != "" {
+		t.Errorf("tree still busy after its session closed: %q", got)
+	}
+	if err := ClearHostSession(tree); err != nil {
+		t.Errorf("second ClearHostSession: %v", err)
+	}
+}
+
+func TestClearActivityKeepsLeaseAndHost(t *testing.T) {
+	repo := newRepo(t)
+	tree := create(t, repo, "a", "")
+	bin, _ := fakeHost(t, "")
+	recordHerdr(t, tree, bin)
+	hostedWorkerStamps(t, tree)
+
+	if err := ClearActivity(tree); err != nil {
+		t.Fatalf("ClearActivity: %v", err)
+	}
+	activity, err := markerPath(tree, activityFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists(activity) {
+		t.Errorf("activity stamp still exists")
+	}
+	lease, err := markerPath(tree, leaseFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists(lease) {
+		t.Errorf("lease was removed")
+	}
+	if _, ok := readHostSession(tree); !ok {
+		t.Errorf("host session was removed")
+	}
+	if err := ClearActivity(tree); err != nil {
+		t.Errorf("second ClearActivity: %v", err)
+	}
+}

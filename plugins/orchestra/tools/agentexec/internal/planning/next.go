@@ -193,7 +193,23 @@ func nextDecide(cfg *config.Resolved, planPath string, in NextInput, now time.Ti
 		}
 	}
 
-	if step, ok, err := nextEscalations(abs, p, st, inFlight); ok || err != nil {
+	// A bare call re-issues the writers still in flight, exactly as issued, so a
+	// caller that lost their answer gets the prompts back instead of a wait.
+	var reissue []Writer
+	if len(in.Returned) == 0 && in.Answers == "" {
+		for _, pkg := range p.Packages {
+			if !inFlight[pkg.ID] {
+				continue
+			}
+			if rec := st.Specs[pkg.ID]; rec.Writer != nil {
+				reissue = append(reissue, *rec.Writer)
+			} else {
+				reissue = append(reissue, nextWriter(abs, pkg, P.SpecWriters[pkg.Cls], nil))
+			}
+		}
+	}
+
+	if step, ok, err := nextEscalations(abs, p, st, inFlight, reissue); ok || err != nil {
 		return step, err
 	}
 
@@ -245,23 +261,11 @@ func nextDecide(cfg *config.Resolved, planPath string, in NextInput, now time.Ti
 	if P.WritersConcurrent > 0 {
 		limit = min(limit, max(0, P.WritersConcurrent-len(running)))
 	}
-	var writers []Writer
+	writers := reissue
 	for _, n := range needs[:limit] {
-		st.Specs[n.pkg.ID] = SpecRecord{Hash: n.hash, Attempts: n.attempts + 1, InFlight: true, IssuedAt: now.Unix()}
-		tier := P.SpecWriters[n.pkg.Cls]
-		prompt := "Plan: " + abs + "\nPackage: " + n.pkg.ID + "\nSpec: " + n.pkg.Spec
-		for _, r := range n.reasons {
-			prompt += "\nFix: " + r
-		}
-		writers = append(writers, Writer{
-			ID:          n.pkg.ID,
-			Cls:         n.pkg.Cls,
-			Model:       tier.Model,
-			Effort:      tier.Effort,
-			Spec:        n.pkg.Spec,
-			Description: "spec " + n.pkg.ID,
-			Prompt:      prompt,
-		})
+		w := nextWriter(abs, n.pkg, P.SpecWriters[n.pkg.Cls], n.reasons)
+		st.Specs[n.pkg.ID] = SpecRecord{Hash: n.hash, Attempts: n.attempts + 1, InFlight: true, IssuedAt: now.Unix(), Writer: &w}
+		writers = append(writers, w)
 	}
 	if len(writers) > 0 {
 		return Step{Step: "specs", Plan: abs, Agent: WriterAgent, Writers: writers, Reasons: []string{},
@@ -296,9 +300,26 @@ func nextDecide(cfg *config.Resolved, planPath string, in NextInput, now time.Ti
 		Packages: len(full.Packages), EstTotal: total, EstCritical: critical}, nil
 }
 
+// nextWriter builds the writer entry plan next issues for pkg.
+func nextWriter(abs string, pkg plan.Package, tier config.PlanningTier, reasons []string) Writer {
+	prompt := "Plan: " + abs + "\nPackage: " + pkg.ID + "\nSpec: " + pkg.Spec
+	for _, r := range reasons {
+		prompt += "\nFix: " + r
+	}
+	return Writer{
+		ID:          pkg.ID,
+		Cls:         pkg.Cls,
+		Model:       tier.Model,
+		Effort:      tier.Effort,
+		Spec:        pkg.Spec,
+		Description: "spec " + pkg.ID,
+		Prompt:      prompt,
+	}
+}
+
 // nextEscalations handles <spec stem>.escalate.md files left by spec writers;
 // ok is false when there are none.
-func nextEscalations(abs string, p *plan.Plan, st *State, inFlight map[string]bool) (Step, bool, error) {
+func nextEscalations(abs string, p *plan.Plan, st *State, inFlight map[string]bool, reissue []Writer) (Step, bool, error) {
 	type escalation struct{ id, path, stem string }
 	var found []escalation
 	for _, pkg := range p.Packages {
@@ -310,6 +331,12 @@ func nextEscalations(abs string, p *plan.Plan, st *State, inFlight map[string]bo
 	}
 	if len(found) == 0 {
 		return Step{}, false, nil
+	}
+	if len(inFlight) > 0 && len(reissue) > 0 {
+		// No new writer while escalations wait: the revision changes the skeleton.
+		total, critical := plan.Estimate(p)
+		return Step{Step: "specs", Plan: abs, Agent: WriterAgent, Writers: reissue, Reasons: []string{},
+			Packages: len(p.Packages), EstTotal: total, EstCritical: critical}, true, nil
 	}
 	if len(inFlight) > 0 {
 		return Step{Step: "wait", Plan: abs,

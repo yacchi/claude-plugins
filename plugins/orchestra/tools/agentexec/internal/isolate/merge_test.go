@@ -87,6 +87,43 @@ func TestMergeSquashesIntoAssemblyAndRemovesTheTree(t *testing.T) {
 	}
 }
 
+func TestMergeTakesTheTreeOfAClosedHostedSession(t *testing.T) {
+	repo, asm, feat, t1 := mergeTrees(t)
+	mergeIntegrate(t, repo, t1, "t1", feat, "a.txt", "one\nTWO\nthree\nfour\nfive\n")
+	bin, log := fakeHost(t, "")
+	recordHerdr(t, t1, bin)
+	hostedWorkerStamps(t, t1)
+	asmHead := mergeHead(t, asm)
+
+	res := mergeRun(t, repo, "feat", "feat: change two")
+	if res.Status != "has-children" || len(res.Children) != 1 || res.Children[0].Task != "t1" {
+		t.Fatalf("busy merge: %+v", res)
+	}
+	if got := mergeHead(t, asm); got != asmHead {
+		t.Errorf("assembly HEAD moved to %s", got)
+	}
+	if !exists(feat) || !exists(t1) {
+		t.Errorf("feat or t1 was removed")
+	}
+	if got := logged(log); got != "" {
+		t.Errorf("a busy tree's session was closed: %q", got)
+	}
+
+	if err := ClearHostSession(t1); err != nil {
+		t.Fatalf("ClearHostSession: %v", err)
+	}
+	res = mergeRun(t, repo, "feat", "feat: change two")
+	if res.Status != "merged" || !res.Removed {
+		t.Fatalf("merge after the session closed: %+v", res)
+	}
+	if exists(feat) || exists(t1) {
+		t.Errorf("feat or t1 still exists")
+	}
+	if got := readFile(t, filepath.Join(asm, "a.txt")); got != "one\nTWO\nthree\nfour\nfive\n" {
+		t.Errorf("assembly a.txt = %q", got)
+	}
+}
+
 func TestMergeKeepsTreeWithUnintegratedChild(t *testing.T) {
 	repo, asm, feat, t1 := mergeTrees(t)
 	t2 := plantTree(t, feat, "t2", "", feat)

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
@@ -152,4 +153,54 @@ func TestWaveStateRefusesTempState(t *testing.T) {
 		t.Errorf("state dir under the temp root was created (stat err %v)", err)
 	}
 	waveRunReqAssertNoTree(t, repo, root)
+}
+
+func TestWaveIntoResolve(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cases := []struct {
+		name, plan, runID, into, want string
+	}{
+		{"defaults to the plan directory", "/a/plans/20261103-abc/plan.json", "", "", "prog-20261103-abc"},
+		{"run id beats the directory", "/a/plans/p1/plan.json", "r9", "", "prog-r9"},
+		{"explicit into beats the run id", "/a/plans/p1/plan.json", "r9", "mine", "mine"},
+		{"explicit into beats the directory", "/a/plans/p1/plan.json", "", "mine", "mine"},
+		{"relative plan uses its directory", "sub/plan.json", "", "", "prog-sub"},
+	}
+	for _, c := range cases {
+		got, err := waveIntoResolve(c.plan, c.runID, c.into)
+		if err != nil || got != c.want {
+			t.Errorf("%s: waveIntoResolve = %q, %v; want %q", c.name, got, err, c.want)
+		}
+	}
+}
+
+func TestWaveIntoNotRequired(t *testing.T) {
+	repo := waveRunReqRepo(t, true)
+	root := os.Getenv(isolate.RequestRootEnv)
+	plan := filepath.Join(t.TempDir(), "p.json")
+	out, code, msg := waveStateRun(t, "--plan", plan, "--repo", repo, "--uncommitted", "ignore")
+	if code != 2 {
+		t.Fatalf("exit %d, want 2 (the plan error): %s", code, out)
+	}
+	if strings.Contains(msg, `"into"`) {
+		t.Errorf("msg %q: --into is still required", msg)
+	}
+	var rep map[string]any
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("output %q is not the runner's report: %v", out, err)
+	}
+	if rep["kind"] != "plan" {
+		t.Errorf("report: %v, want kind plan", rep)
+	}
+	waveRunReqAssertNoTree(t, repo, root)
+}
+
+func TestWavePlanStillRequired(t *testing.T) {
+	_, code, msg := waveStateRun(t, "--into", "x")
+	if code == 0 {
+		t.Fatal("exit 0 without --plan, want nonzero")
+	}
+	if !strings.Contains(msg, "plan") {
+		t.Errorf("msg %q, want it to name --plan", msg)
+	}
 }

@@ -207,10 +207,10 @@ await check('(f) every agent() call in the script states model and effort', asyn
   }
 })
 
-await check('(g) run-end relay reports the run usage for args.runId', async () => {
+await check('(g) run-end relay ends the run with agent-exec run-end for args.runId', async () => {
   const { calls } = await run([base('t1')])
   const cleanup = calls.find(c => c.label === 'cleanup')
-  assert(cleanup && cleanup.prompt.includes('agent-exec usage --run run-1'), 'cleanup relay lacks usage report for runId')
+  assert(cleanup && cleanup.prompt.includes('agent-exec run-end --run run-1'), 'cleanup relay lacks agent-exec run-end for runId')
 })
 
 await check('(h) missing args, runId or tasks refuses with zero agent() calls', async () => {

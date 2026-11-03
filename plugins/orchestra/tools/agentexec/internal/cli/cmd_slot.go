@@ -2,18 +2,13 @@ package cli
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/slot"
 )
 
@@ -21,32 +16,25 @@ func newSlotCmd() *cobra.Command {
 	cmd := groupCommand("slot", "machine-wide admission for heavy commands")
 
 	classify := &cobra.Command{
-		Use:   "classify --command CMD [--cwd DIR]",
+		Use:   "classify --command CMD",
 		Short: "what CMD runs: heavy or not, its kind and pool, a full suite or targeted (used by the orchestra hooks)",
 		Args:  cobra.NoArgs,
 	}
 	classified := classify.Flags().String("command", "", "the command line to classify")
-	dir := classify.Flags().String("cwd", "", "the directory CMD runs in (its git tree gets the pnpm store entries for a pnpm command)")
+	classify.Flags().String("cwd", "", "removed")
+	_ = classify.Flags().MarkHidden("cwd")
 	_ = classify.MarkFlagRequired("command")
 	classify.RunE = func(cmd *cobra.Command, _ []string) error {
-		c, cfg := classifyConfigured(*classified)
+		if cmd.Flags().Changed("cwd") {
+			return exitf(2, "slot classify --cwd was removed in orchestra 0.93.0: classify no longer builds command lines; a tree's pnpm store entries reach its commands through the session env")
+		}
+		c, _ := classifyConfigured(*classified)
 		var kind any
 		if c.Heavy {
 			kind = c.Kind
 		}
 		out := map[string]any{
 			"op": c.Op, "heavy": c.Heavy, "kind": kind, "pool": c.Pool(), "scope": c.Scope,
-		}
-		if c.Heavy {
-			slotGuardAdd(out)
-		}
-		prefix := ""
-		if c.Heavy && c.Node {
-			prefix = config.NodeCapShellPrefix(config.PoolSize(cfg, config.PoolTest))
-		}
-		prefix += gvsShellPrefix(*classified, *dir)
-		if prefix != "" {
-			out["capped_command"] = prefix + *classified
 		}
 		return writeJSONLine(cmd.OutOrStdout(), out)
 	}
@@ -92,40 +80,6 @@ func newSlotCmd() *cobra.Command {
 	status.RunE = func(cmd *cobra.Command, _ []string) error { return runSlotStatus(cmd, *asJSON) }
 	cmd.AddCommand(status)
 	return cmd
-}
-
-// slotGuardAdd adds the token and the shell prefix that starts `proc guard`
-// on the command's own shell ($$). Without a resolvable executable the
-// command runs unguarded, so neither key is added.
-func slotGuardAdd(out map[string]any) {
-	exe, err := os.Executable()
-	if err != nil {
-		return
-	}
-	exe, err = filepath.EvalSymlinks(exe)
-	if err != nil {
-		return
-	}
-	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	token := hex.EncodeToString(b)
-	out["guard_token"] = token
-	out["guard_prefix"] = sandbox.ShellQuote(exe) + " proc guard --root $$ --token " + token + " </dev/null >/dev/null 2>&1; "
-}
-
-// gvsShellPrefix sets the pnpm global-virtual-store entries before command
-// when it runs pnpm in dir and dir's git tree runs under the store; "" when
-// dir is empty or none of that holds.
-func gvsShellPrefix(command, dir string) string {
-	if dir == "" || !slot.RunsProgram(command, "pnpm") {
-		return ""
-	}
-	tree, ok := gitx.RepoRoot(dir)
-	if !ok {
-		return ""
-	}
-
-	return config.PnpmGVSShellPrefix(config.PnpmGVSOn(), tree, os.Environ())
 }
 
 // classifyConfigured classifies command with the extra heavy patterns of

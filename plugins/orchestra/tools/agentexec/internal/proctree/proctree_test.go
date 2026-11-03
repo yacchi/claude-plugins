@@ -352,3 +352,115 @@ func TestCoreKillTreeErrors(t *testing.T) {
 	}
 	coreNoSignals(t, sigs)
 }
+
+func TestCoreChildren(t *testing.T) {
+	cases := []struct {
+		name  string
+		t     Table
+		owner int
+		want  []int
+	}{
+		{
+			"grandchild, group member and pid 1 left out",
+			Table{{5000001, 5000000, 5000001, 0}, {5000003, 5000001, 5000003, 0}, {5000002, 5000001, 5000002, 0}, {5000004, 5000002, 5000002, 0}, {1, 5000001, 1, 0}, {5000009, 1, 5000001, 0}},
+			5000001,
+			[]int{5000002, 5000003},
+		},
+		{"owner and pid 1 left out", Table{{0, 0, 0, 0}, {1, 0, 1, 0}}, 0, nil},
+		{"nil table", nil, 5000001, nil},
+	}
+	for _, c := range cases {
+		if got := Children(c.t, c.owner); !slices.Equal(got, c.want) {
+			t.Errorf("%s: Children = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestCoreMeasureIn(t *testing.T) {
+	tbl := Table{
+		{5000003, 5000002, 5000002, 20},
+		{5000002, coreRoot, 5000002, 10},
+		{coreRoot, 5000000, coreRoot, 100},
+		{5000004, 1, coreRoot, 30},
+		{5000006, 1, 5000005, 50},
+		{5000005, coreRoot, 5000005, 40},
+		{5000010, 1, 5000010, 1000},
+		{1, 0, 1, 7},
+	}
+	if u, ok := MeasureIn(tbl, coreRoot); !ok || u != (Usage{Root: coreRoot, Procs: 5, Mem: 250}) {
+		t.Errorf("MeasureIn(root) = %+v, %v", u, ok)
+	}
+	if u, ok := MeasureIn(tbl, 5000099); ok || u != (Usage{}) {
+		t.Errorf("MeasureIn(missing) = %+v, %v; want zero, false", u, ok)
+	}
+}
+
+// coreProtectTable is the table of TestCoreKillChildTreeProtects' owner
+// scenario: the owner's parent, the owner and its other child share the
+// child's process group, as does an orphan.
+var coreProtectTable = Table{
+	{5000000, 1, 5000002, 0},
+	{5000001, 5000000, 5000002, 0},
+	{5000002, 5000001, 5000002, 0},
+	{5000003, 5000002, 5000002, 0},
+	{5000004, 5000001, 5000002, 0},
+	{5000005, 1, 5000002, 0},
+}
+
+func TestCoreKillChildTreeProtects(t *testing.T) {
+	sigs := coreSignals(t, nil)
+	calls := coreSnapshots(t, coreSeq(coreProtectTable))
+	n, err := KillChildTree(5000001, 5000002)
+	if n != 2 || err != nil || *calls != 2 {
+		t.Errorf("KillChildTree = %d, %v after %d calls", n, err, *calls)
+	}
+	coreWantSignals(t, sigs, []coreSig{
+		{5000003, syscall.SIGSTOP}, {5000005, syscall.SIGSTOP},
+		{5000003, syscall.SIGKILL}, {5000005, syscall.SIGKILL},
+	})
+}
+
+func TestCoreKillChildTreeRescan(t *testing.T) {
+	sigs := coreSignals(t, nil)
+	r1 := Table{
+		{5000001, 5000000, 5000001, 0},
+		{5000002, 5000001, 5000002, 0},
+		{5000003, 5000002, 5000002, 0},
+	}
+	// 5000007 is a child the owner forks into the child's group during the
+	// freeze; it must never be signalled.
+	r2 := append(slices.Clone(r1),
+		Proc{5000007, 5000001, 5000002, 0},
+		Proc{5000008, 5000003, 5000002, 0},
+	)
+	calls := coreSnapshots(t, coreSeq(r1, r2))
+	n, err := KillChildTree(5000001, 5000002)
+	if n != 2 || err != nil || *calls != 3 {
+		t.Errorf("KillChildTree = %d, %v after %d calls", n, err, *calls)
+	}
+	coreWantSignals(t, sigs, []coreSig{
+		{5000003, syscall.SIGSTOP}, {5000008, syscall.SIGSTOP},
+		{5000003, syscall.SIGKILL}, {5000008, syscall.SIGKILL},
+	})
+}
+
+func TestCoreKillChildTreeErrors(t *testing.T) {
+	sigs := coreSignals(t, nil)
+	cases := []struct {
+		name string
+		step func(int) (Table, error)
+		want error
+	}{
+		{"nil", nil, ErrUnsupported},
+		{"boom", func(int) (Table, error) { return nil, coreBoom }, coreBoom},
+		{"nochild", coreSeq(Table{{5000001, 5000000, 5000001, 0}}), ErrNoRoot},
+	}
+	for _, c := range cases {
+		coreSnapshots(t, c.step)
+		n, err := KillChildTree(5000001, 5000002)
+		if n != 0 || err != c.want {
+			t.Errorf("%s: KillChildTree = %d, %v; want 0, %v", c.name, n, err, c.want)
+		}
+	}
+	coreNoSignals(t, sigs)
+}

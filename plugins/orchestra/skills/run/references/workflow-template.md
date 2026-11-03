@@ -58,7 +58,7 @@ Refusal and size-gate outcomes, both returned without any dispatch:
 A run that starts returns `{ results, runEnd }`:
 
 - `results`: one entry per task, in `tasks` order. Each carries `pass`, `rounds`, and `allowLarge` when it was set, plus the verdict fields the review returned.
-- `runEnd`: the text of the cleanup step (the `agent-exec isolate integrate` of the passing tasks into `<runId>`, `agent-exec isolate sweep` and `agent-exec usage --run <runId>`), verbatim. Report cost from it. The passing tasks now sit in integration tree `<runId>`: gate it, then `agent-exec isolate merge --task <runId> -m "<subject>"`; land only on the user's request.
+- `runEnd`: the text of the cleanup step (the `agent-exec isolate integrate` of the passing tasks into `<runId>`, then `agent-exec run-end --run <runId>`: sweep, cost report and run summary), verbatim. Report cost from its `== usage` section. The passing tasks now sit in integration tree `<runId>`: gate it, then `agent-exec isolate merge --task <runId> -m "<subject>"`; land only on the user's request.
 
 ## 4. The relay protocol
 

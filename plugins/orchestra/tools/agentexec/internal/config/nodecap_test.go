@@ -244,21 +244,66 @@ func TestNodeEvalForkedChildWithoutEvalFlagRuns(t *testing.T) {
 	}
 }
 
-// The shell prefix survives a preload path that needs quoting and keeps the
-// shell's own NODE_OPTIONS after the require.
-func TestNodeCapShellPrefixQuoting(t *testing.T) {
+// The prefix is empty with the test pool off, and otherwise one line.
+func TestNodeCapShellPrefixLine(t *testing.T) {
 	nodeCapState(t)
-	t.Setenv("NODE_OPTIONS", "--trace-warnings")
-	prefix := NodeCapShellPrefix(1)
-	out, err := exec.Command("/bin/sh", "-c", prefix+`printf '%s|%s' "$ORCHESTRA_NODE_CPUS" "$NODE_OPTIONS"`).Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := NodeCapEntries(1, []string{"NODE_OPTIONS=--trace-warnings"})
-	if got := string(out); got != strings.TrimPrefix(want[0], NodeCPUsEnv+"=")+"|"+strings.TrimPrefix(want[1], "NODE_OPTIONS=") {
-		t.Errorf("shell saw %q, want entries %q", got, want)
-	}
 	if p := NodeCapShellPrefix(0); p != "" {
 		t.Errorf("test pool off: prefix %q", p)
+	}
+	if p := NodeCapShellPrefix(1); strings.Count(p, "\n") != 0 || !strings.HasSuffix(p, "; ") {
+		t.Errorf("prefix %q: want one line ending in \"; \"", p)
+	}
+}
+
+// The prefix runs in each shell before every command: it sets the CPU count,
+// adds the require once in front of the shell's own NODE_OPTIONS, and exits 0.
+func TestNodeCapShellPrefixInShells(t *testing.T) {
+	nodeCapState(t)
+	prefix := NodeCapShellPrefix(1)
+	require := NodeCapRequire(NodeCapPreloadPath())
+	shells := []struct {
+		name string
+		args []string
+	}{
+		{"sh", nil},
+		{"bash", nil},
+		{"zsh", []string{"-f"}},
+	}
+	cases := []struct {
+		name  string
+		extra []string // NODE_OPTIONS as the shell starts, when set
+		times int      // how many times the prefix runs in a row
+		want  string
+	}{
+		{"unset", nil, 1, "0|15|" + require},
+		{"unset twice", nil, 2, "0|15|" + require},
+		{"keeps own options", []string{"NODE_OPTIONS=--a  --b"}, 1, "0|15|" + require + " --a  --b"},
+		{"keeps own options twice", []string{"NODE_OPTIONS=--a  --b"}, 2, "0|15|" + require + " --a  --b"},
+		{"already has require", []string{"NODE_OPTIONS=" + require}, 1, "0|15|" + require},
+		{"require after other options", []string{"NODE_OPTIONS=--x " + require}, 1, "0|15|--x " + require},
+	}
+	const report = `printf '%s|%s|%s' "$?" "$ORCHESTRA_NODE_CPUS" "$NODE_OPTIONS"`
+	for _, sh := range shells {
+		t.Run(sh.name, func(t *testing.T) {
+			path, err := exec.LookPath(sh.name)
+			if err != nil {
+				t.Skipf("%s not installed: %v", sh.name, err)
+			}
+			for _, c := range cases {
+				t.Run(c.name, func(t *testing.T) {
+					script := strings.Repeat(prefix, c.times) + report
+					args := append(append([]string{}, sh.args...), "-c", script)
+					cmd := exec.Command(path, args...)
+					cmd.Env = append([]string{"PATH=" + os.Getenv("PATH")}, c.extra...)
+					out, err := cmd.Output()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if got := string(out); got != c.want {
+						t.Errorf("%s: got %q, want %q", sh.name, got, c.want)
+					}
+				})
+			}
+		})
 	}
 }

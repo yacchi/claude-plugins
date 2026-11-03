@@ -50,7 +50,7 @@ func addWaveRunCommands(parent *cobra.Command) {
 	fl := run.Flags()
 	fl.StringVar(&o.Plan, "plan", "", "plan path")
 	fl.StringVar(&o.State, "state", "", "state.json path (default: state.json beside --plan)")
-	fl.StringVar(&o.Into, "into", "", "integration task id")
+	fl.StringVar(&o.Into, "into", "", "integration task id (default: prog-<run id>, else prog-<plan directory name>)")
 	fl.StringVar(&o.Repo, "repo", "", "repository path (default cwd)")
 	fl.StringVar(&o.Uncommitted, "uncommitted", "", "include|ignore: what the request's assembly does with your uncommitted changes when this run creates it")
 	maxInFlight := fl.String("max-in-flight", "auto", "packages dispatched at once (N, or auto: every startable one)")
@@ -70,9 +70,7 @@ func addWaveRunCommands(parent *cobra.Command) {
 	fl.BoolVar(&o.ResumeOnReset, "resume-on-reset", false, "resume packages after a usage-limit reset")
 	detach := fl.Bool("detach", false, "start the runner as a detached child and return at once")
 	runFormat := formatFlags(run, "json", "text")
-	for _, name := range []string{"plan", "into"} {
-		_ = run.MarkFlagRequired(name)
-	}
+	_ = run.MarkFlagRequired("plan")
 	run.RunE = func(cmd *cobra.Command, _ []string) error {
 		bad := func(format string, args ...any) error {
 			return exitf(2, "wave run: "+format, args...)
@@ -85,6 +83,10 @@ func addWaveRunCommands(parent *cobra.Command) {
 			return exitf(1, "wave run: %s", err)
 		}
 		o.State = s
+		o.Into, err = waveIntoResolve(o.Plan, o.RunID, o.Into)
+		if err != nil {
+			return exitf(1, "wave run: %s", err)
+		}
 		if err := paths.RefuseTemp("--plan", o.Plan); err != nil {
 			return bad("%s", err)
 		}
@@ -212,6 +214,24 @@ func waveStateResolve(plan, state string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(filepath.Dir(abs), "state.json"), nil
+}
+
+// waveIntoResolve is the --into a run uses: the flag as given, else
+// prog-<run id> when --run-id is set, else prog-<base name of the plan's
+// directory> (the plan id for a plan `plan next` made). The detached runner
+// re-runs the same command line, so it derives the same value.
+func waveIntoResolve(plan, runID, into string) (string, error) {
+	if into != "" {
+		return into, nil
+	}
+	if runID != "" {
+		return "prog-" + runID, nil
+	}
+	abs, err := filepath.Abs(plan)
+	if err != nil {
+		return "", err
+	}
+	return "prog-" + filepath.Base(filepath.Dir(abs)), nil
 }
 
 // runWaveDetach re-runs this command line without --detach as a detached

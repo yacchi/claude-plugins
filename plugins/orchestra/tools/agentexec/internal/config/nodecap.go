@@ -124,23 +124,19 @@ func envOrProcess(env []string) []string {
 	return env
 }
 
-// NodeCapShellPrefix is the shell that sets the NodeCapEntries of testSlots
-// before a command, the NODE_OPTIONS require put before the shell's own:
-// `export ORCHESTRA_NODE_CPUS=<N>; export NODE_OPTIONS='--require
-// "<preload>" '"${NODE_OPTIONS:-}"; `. "" when there are no entries.
+// NodeCapShellPrefix is the shell line that sets the NodeCapEntries of
+// testSlots before a command. It may run before every command, even twice
+// in a row, and always exits 0: the require goes before the shell's own
+// NODE_OPTIONS only when that does not already hold it, so it never stacks.
+// "" when there are no entries.
 func NodeCapShellPrefix(testSlots int) string {
-	var b strings.Builder
-	for _, kv := range NodeCapEntries(testSlots, nil) {
-		name, value, _ := strings.Cut(kv, "=")
-		b.WriteString("export " + name + "=")
-		if name == NodeOptionsEnv {
-			b.WriteString(shellQuote(value+" ") + `"${NODE_OPTIONS:-}"`)
-		} else {
-			b.WriteString(value) // the CPU count: digits only
-		}
-		b.WriteString("; ")
+	entries := NodeCapEntries(testSlots, nil)
+	if entries == nil {
+		return ""
 	}
-	return b.String()
+	n := strings.TrimPrefix(entries[0], NodeCPUsEnv+"=")
+	q := shellQuote(strings.TrimPrefix(entries[1], NodeOptionsEnv+"="))
+	return "export " + NodeCPUsEnv + "=" + n + `; case "${NODE_OPTIONS:-}" in *` + q + `*) ;; *) export NODE_OPTIONS=` + q + `"${NODE_OPTIONS:+ $NODE_OPTIONS}" ;; esac; `
 }
 
 // PnpmGVSShellPrefix is the shell that sets, before a pnpm command run in

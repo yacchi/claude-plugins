@@ -15,40 +15,7 @@
         "telemetry",
         "record",
         "--json",
-        "{not json"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null
-    },
-    {
-      "argv": [
-        "telemetry",
-        "record",
-        "--json",
-        "[]"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null
-    },
-    {
-      "argv": [
-        "telemetry",
-        "record",
-        "--json",
-        "{\"status\": \"ok\"}"
-      ],
-      "exit": 2,
-      "stdout_shape": "empty",
-      "stdout": null
-    },
-    {
-      "argv": [
-        "telemetry",
-        "record",
-        "--json",
-        "{\"event\": \"nope\"}"
+        "{\"event\": \"dispatch\"}"
       ],
       "exit": 2,
       "stdout_shape": "empty",
@@ -59,7 +26,7 @@
         "telemetry",
         "record",
         "--file",
-        "bad.json"
+        "x"
       ],
       "exit": 2,
       "stdout_shape": "empty",
@@ -68,9 +35,18 @@
     {
       "argv": [
         "telemetry",
-        "record",
-        "--file",
-        "missing.json"
+        "run-summary"
+      ],
+      "exit": 2,
+      "stdout_shape": "empty",
+      "stdout": null
+    },
+    {
+      "argv": [
+        "telemetry",
+        "run-summary",
+        "--run",
+        "bad id"
       ],
       "exit": 2,
       "stdout_shape": "empty",

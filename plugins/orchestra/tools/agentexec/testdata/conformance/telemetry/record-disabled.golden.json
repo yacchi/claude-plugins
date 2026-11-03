@@ -4,34 +4,67 @@
     {
       "argv": [
         "telemetry",
-        "record",
-        "--json",
-        "{\"event\": \"dispatch\", \"status\": \"ok\"}"
+        "run-summary",
+        "--run",
+        "run-x"
       ],
       "exit": 0,
-      "stdout_shape": "empty",
-      "stdout": null,
+      "stdout_shape": "json",
+      "stdout": {
+        "reason": "telemetry is off (telemetry.enabled is not true)",
+        "recorded": false
+      },
       "files": {
+        "custom-tel/records.jsonl": null,
         "~/.local/state/claude-orchestra/telemetry/records.jsonl": null
       }
     },
     {
       "argv": [
         "telemetry",
-        "record",
-        "--json",
-        "{\"event\": \"dispatch\", \"status\": \"ok\"}"
+        "run-summary",
+        "--run",
+        "run-x"
       ],
       "exit": 0,
-      "stdout_shape": "empty",
-      "stdout": null,
+      "stdout_shape": "json",
+      "stdout": {
+        "record": {
+          "classes": {
+            "light": 1
+          },
+          "event": "run_summary",
+          "executors_used": {
+            "pi": 1
+          },
+          "fail": 0,
+          "fallbacks": 0,
+          "lane": "orchestrated",
+          "os": "<OS>",
+          "pass": 1,
+          "schema_version": 2,
+          "task_count": 1,
+          "ts": "<TS>"
+        },
+        "recorded": true
+      },
       "files": {
         "custom-tel/records.jsonl": {
           "content": {
-            "event": "dispatch",
+            "classes": {
+              "light": 1
+            },
+            "event": "run_summary",
+            "executors_used": {
+              "pi": 1
+            },
+            "fail": 0,
+            "fallbacks": 0,
+            "lane": "orchestrated",
             "os": "<OS>",
+            "pass": 1,
             "schema_version": 2,
-            "status": "ok",
+            "task_count": 1,
             "ts": "<TS>"
           },
           "shape": "json"

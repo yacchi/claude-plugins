@@ -55,10 +55,11 @@ type Review struct {
 
 // SpecRecord is what plan next issued for one package's spec.
 type SpecRecord struct {
-	Hash     string `json:"hash"`      // EntryHash of the package when issued
-	Attempts int    `json:"attempts"`  // writers issued for this hash
-	InFlight bool   `json:"in_flight"` // issued and not reported back with --returned
-	IssuedAt int64  `json:"issued_at"` // unix seconds
+	Hash     string  `json:"hash"`             // EntryHash of the package when issued
+	Attempts int     `json:"attempts"`         // writers issued for this hash
+	InFlight bool    `json:"in_flight"`        // issued and not reported back with --returned
+	IssuedAt int64   `json:"issued_at"`        // unix seconds
+	Writer   *Writer `json:"writer,omitempty"` // the writer exactly as issued; nil in state from before 0.93.0
 }
 
 // State is <plan stem>.planning.json.

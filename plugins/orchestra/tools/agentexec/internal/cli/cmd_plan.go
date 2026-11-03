@@ -113,7 +113,7 @@ func newPlanReviewCmd() *cobra.Command {
 	}
 	planPath := cmd.Flags().String("plan", "", "plan.json path")
 	repo := cmd.Flags().String("repo", "", "the repository the reviewer reads (default: the plan's repo)")
-	maxWait := cmd.Flags().Int("max-wait", 540, "seconds to wait for a running review before reporting it running")
+	maxWait := cmd.Flags().Int("max-wait", 150, "seconds to wait for a running review before reporting it running (at most 170)")
 	resolved := cmd.Flags().Bool("resolved", false, "mark the accepted review resolved so plan next moves on")
 	_ = cmd.MarkFlagRequired("plan")
 
@@ -121,6 +121,9 @@ func newPlanReviewCmd() *cobra.Command {
 		name := cmdName(cmd)
 		if *maxWait < 0 {
 			return exitf(2, "%s: --max-wait must be 0 or more", name)
+		}
+		if *maxWait > 170 {
+			return exitf(2, "%s: --max-wait must be at most 170 seconds (Claude Code moves a foreground Bash call to the background after 180 s); use 150, the default", name)
 		}
 		cfg, err := loadConfig()
 		if err != nil {
@@ -183,6 +186,11 @@ func newPlanLintCmd() *cobra.Command {
 		root, _ := gitx.RepoRoot("")
 		if err := plan.CheckTsJest(p, root, *pkgID == ""); err != nil {
 			return planFailure(name, err)
+		}
+		if *pkgID == "" {
+			if err := plan.CheckInterfaceLoad(p); err != nil {
+				return planFailure(name, err)
+			}
 		}
 
 		if *pkgID == "" {

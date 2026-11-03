@@ -2,10 +2,12 @@ package runner
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
@@ -280,4 +282,147 @@ func TestLandAskLeavesCheckout(t *testing.T) {
 	eq(t, "needs", len(rep.Needs), 0)
 	eq(t, "checkout", w.git(w.repo, "symbolic-ref", "--short", "HEAD"), "main")
 	eq(t, "feature branches", w.git(w.repo, "branch", "--list", "feature/*"), "")
+}
+
+// collectIntegratedStamp writes a stamp file into tree's git dir.
+func collectIntegratedStamp(t *testing.T, tree, name, body string) {
+	t.Helper()
+	gitDir := strings.TrimSpace(mustGitRun(t, tree, "rev-parse", "--absolute-git-dir"))
+	writeFile(t, filepath.Join(gitDir, name), body)
+}
+
+// mustGitRun is gitRun for places that cannot call t.Fatal (the runner's
+// goroutines): it reports through t.Errorf and returns "".
+func mustGitRun(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := gitRun(dir, args...)
+	if err != nil {
+		t.Errorf("git %v: %v", args, err)
+	}
+	return out
+}
+
+// collectIntegratedNow is the wall clock in the stamps' seconds.
+func collectIntegratedNow() float64 { return float64(time.Now().Unix()) }
+
+// TestCollectIntegratedMergesUncollectedBusyTree: A is integrated, its tree
+// is uncollected and carries a fresh activity stamp (a `cmp` in it). The end
+// merge still goes through and the tree goes with it.
+func TestCollectIntegratedMergesUncollectedBusyTree(t *testing.T) {
+	w := newMergeRepo(t)
+	w.plan(pkgDef{id: "A", owned: []string{"a.txt"}}, pkgDef{id: "B", owned: []string{"b.txt"}, dependsOn: []string{"A"}})
+	ex := newFake(t, map[string][]round{
+		"A": {edit(map[string]string{"a.txt": "a\n"})}, "B": {edit(map[string]string{"b.txt": "b\n"})},
+	})
+	var treeA string
+	ex.onStart = func(pid string, s spec) {
+		if pid != "B" {
+			return
+		}
+		tree, _, ok := isolate.ResolveWorktree(w.repo, "pkg-A", "")
+		if !ok {
+			t.Errorf("A's tree did not resolve")
+			return
+		}
+		treeA = tree
+		// dispatch makes a package tree the integration tree's child (its
+		// workdir is the integration tree); the fake creates it bare.
+		if err := isolate.WriteParent(tree, s.Workdir); err != nil {
+			t.Errorf("WriteParent: %v", err)
+		}
+		if err := isolate.ClearCollected(tree); err != nil {
+			t.Errorf("ClearCollected: %v", err)
+		}
+		collectIntegratedStamp(t, tree, "orchestra-activity.json",
+			fmt.Sprintf(`{"agent_id":"i1","agent_type":"instructor","last_seen":%v,"command":"cmp a.txt b.txt"}`, collectIntegratedNow()))
+	}
+	rep, code := w.run(ex, func(o *Options) { o.Merge = true; o.Title = "feat: ab" })
+	if treeA == "" {
+		t.Fatal("onStart never resolved A's tree")
+	}
+	eq(t, "exit", code, 0)
+	eq(t, "status", rep.Status, "done")
+	if rep.Merge == nil {
+		t.Fatal("no merge in the report")
+	}
+	eq(t, "merge status", rep.Merge.Status, "merged")
+
+	assembly := mergeAssembly(t, w)
+	for rel, want := range map[string]string{"a.txt": "a\n", "b.txt": "b\n"} {
+		if got, _ := readFile(filepath.Join(assembly, rel)); got != want {
+			t.Errorf("assembly %s = %q, want %q", rel, got, want)
+		}
+	}
+	if _, err := os.Stat(treeA); !os.IsNotExist(err) {
+		t.Errorf("A's tree still present after the merge: %v", err)
+	}
+}
+
+// TestCollectIntegratedKeepsLeasedTree: a fresh writer lease keeps its tree,
+// so the merge is refused rather than the live writer's tree being taken.
+func TestCollectIntegratedKeepsLeasedTree(t *testing.T) {
+	w := newMergeRepo(t)
+	w.plan(pkgDef{id: "A", owned: []string{"a.txt"}}, pkgDef{id: "B", owned: []string{"b.txt"}, dependsOn: []string{"A"}})
+	ex := newFake(t, map[string][]round{
+		"A": {edit(map[string]string{"a.txt": "a\n"})}, "B": {edit(map[string]string{"b.txt": "b\n"})},
+	})
+	var treeA string
+	ex.onStart = func(pid string, s spec) {
+		if pid != "B" {
+			return
+		}
+		tree, _, ok := isolate.ResolveWorktree(w.repo, "pkg-A", "")
+		if !ok {
+			t.Errorf("A's tree did not resolve")
+			return
+		}
+		treeA = tree
+		// dispatch makes a package tree the integration tree's child (its
+		// workdir is the integration tree); the fake creates it bare.
+		if err := isolate.WriteParent(tree, s.Workdir); err != nil {
+			t.Errorf("WriteParent: %v", err)
+		}
+		if err := isolate.ClearCollected(tree); err != nil {
+			t.Errorf("ClearCollected: %v", err)
+		}
+		collectIntegratedStamp(t, tree, "orchestra-lease.json",
+			fmt.Sprintf(`{"agent_id":"w1","agent_type":"worker","last_seen":%v,"since":%v}`, collectIntegratedNow(), collectIntegratedNow()))
+	}
+	rep, _ := w.run(ex, func(o *Options) { o.Merge = true; o.Title = "feat: ab" })
+	if treeA == "" {
+		t.Fatal("onStart never resolved A's tree")
+	}
+	if rep.Merge == nil {
+		t.Fatal("no merge in the report")
+	}
+	eq(t, "merge status", rep.Merge.Status, "has-children")
+	if !isDir(treeA) {
+		t.Errorf("A's leased tree was taken: %s is gone", treeA)
+	}
+}
+
+// TestCollectIntegratedSkipsGoneTree: a missing integrated tree is no error
+// and no need; the merge goes ahead.
+func TestCollectIntegratedSkipsGoneTree(t *testing.T) {
+	w := newMergeRepo(t)
+	w.plan(pkgDef{id: "A", owned: []string{"a.txt"}}, pkgDef{id: "B", owned: []string{"b.txt"}, dependsOn: []string{"A"}})
+	ex := newFake(t, map[string][]round{
+		"A": {edit(map[string]string{"a.txt": "a\n"})}, "B": {edit(map[string]string{"b.txt": "b\n"})},
+	})
+	ex.onStart = func(pid string, _ spec) {
+		if pid != "B" {
+			return
+		}
+		if _, err := isolate.Remove(w.repo, "pkg-A", true, ""); err != nil {
+			t.Errorf("Remove: %v", err)
+		}
+	}
+	rep, code := w.run(ex, func(o *Options) { o.Merge = true; o.Title = "feat: ab" })
+	eq(t, "exit", code, 0)
+	eq(t, "status", rep.Status, "done")
+	if rep.Merge == nil {
+		t.Fatal("no merge in the report")
+	}
+	eq(t, "merge status", rep.Merge.Status, "merged")
+	eq(t, "needs", len(rep.Needs), 0)
 }

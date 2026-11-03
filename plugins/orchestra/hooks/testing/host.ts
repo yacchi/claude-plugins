@@ -23,6 +23,8 @@ export type HostOptions = {
     env?: Readonly<Record<string, string>>,
     now?: number,
     agentExec?: (args: readonly string[]) => AgentExecAnswer,
+    // The base answer of a tool call, when it gives one; undefined answers `{ result: 'ran' }`.
+    toolCall?: (call: Readonly<Record<string, unknown>>) => { result?: unknown, context?: string[] } | undefined,
     model?: string,
     root?: string,
     messages?: readonly unknown[],
@@ -69,7 +71,8 @@ export const fakeHost = (on: On, options: HostOptions) => {
     const runs: string[][] = []
     const logs: string[] = []
     const commands: string[] = []
-    const session = { model: options.model ?? '', root: options.root ?? options.cwd ?? '/' }
+    const inputs: Readonly<Record<string, unknown>>[] = []
+    const session ={ model: options.model ?? '', root: options.root ?? options.cwd ?? '/' }
     const agents = new Map<string, Registered>()
     registry = agents
     const addDir = (d: string): void => {
@@ -242,12 +245,13 @@ export const fakeHost = (on: On, options: HostOptions) => {
         return { value: undefined }
     })
     on('tool.call', (_$, e) => {
+        inputs.push(e as unknown as Readonly<Record<string, unknown>>)
         const command = (e as unknown as Readonly<Record<string, unknown>>).command
         if (typeof command === 'string') {
             commands.push(command)
         }
 
-        return { result: 'ran' }
+        return options.toolCall?.(e as unknown as Readonly<Record<string, unknown>>) ?? { result: 'ran' }
     })
     on('turn.start', (_$, e) => ({ turnId: e.turnId }))
     on('turn.complete', () => ({ text: '' }))
@@ -281,12 +285,12 @@ export const fakeHost = (on: On, options: HostOptions) => {
     const clock = mock.clock(on, { now: options.now ?? 1_000_000 })
     mock.env(on, options.env ?? {})
 
-    return { files, runs, logs, clock, commands }
+    return { files, runs, logs, clock, commands, inputs }
 }
 
 // The kit types `$` per tool and event; these pass only the fields the
 // guards read.
-export type CallResult = { deny?: string, result?: unknown }
+export type CallResult = { deny?: string, result?: unknown, context?: string[] }
 
 // A tool call made inside subagent `agentId` (the main thread when undefined).
 // The calling loop is recorded for the session.cwd stub while the call runs.

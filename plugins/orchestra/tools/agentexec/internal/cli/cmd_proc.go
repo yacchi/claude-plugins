@@ -1,219 +1,174 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/proctree"
 )
 
-// procGuardMaxAge bounds both a watcher's life and how long a trip record
-// is kept: a command that outlives a day is not a runaway worth killing, and
-// a record nobody read in a day belongs to a command that is long gone.
-const procGuardMaxAge = 24 * time.Hour
-
-// procGuardTokenPattern keeps the token safe to use in a file name: the
-// record path is built from it, so anything with a separator is refused.
-var procGuardTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{8,64}$`)
-
-// procGuardRecord is the trip record guard-result reads back. It is written
-// before the first signal, so the hook finds it for every command that was
-// killed.
-type procGuardRecord struct {
-	At       int64  `json:"at"`
-	MemBytes int64  `json:"mem_bytes"`
-	Procs    int    `json:"procs"`
-	Reason   string `json:"reason"`
-	Root     int    `json:"root"`
-	Token    string `json:"token"`
-}
-
-// The seams. Tests replace them and restore them with t.Cleanup. procGuardStart
+// The seams. Tests replace them and restore them with t.Cleanup. procCmdStart
 // never starts a watcher from inside a test binary, which would re-run the
 // tests instead.
 var (
-	procGuardStart = func(exe string, args []string) error {
+	procCmdOwner = os.Getppid
+	procCmdHeld  = procWatchHeld
+	procCmdServe = procWatchServe
+	procCmdStart = func(exe string, args []string) error {
 		if testing.Testing() {
-			return errors.New("proc guard: watcher not started under test")
+			return errors.New("proc watch: watcher not started under test")
 		}
-		c := procGuardWatcher(exe, args)
+		c := procCmdWatcher(exe, args)
 		if err := c.Start(); err != nil {
 			return err
 		}
 		return c.Process.Release()
 	}
-	procGuardLimits = proctree.DefaultLimits
-	procGuardKill   = proctree.KillTree
 )
 
-func newProcCmd() *cobra.Command {
-	cmd := groupCommand("proc", "process-tree guards (used by the orchestra hooks)")
+// procCmdRecord is the kill record the watcher writes before its first signal.
+// guard-result decodes it by the frozen JSON keys.
+type procCmdRecord struct {
+	AtMS     int64  `json:"at_ms"`
+	Owner    int    `json:"owner"`
+	Root     int    `json:"root"`
+	Procs    int    `json:"procs"`
+	MemBytes int64  `json:"mem_bytes"`
+	Reason   string `json:"reason"`
+}
 
-	guard := &cobra.Command{
-		Use:   "guard --root PID --token TOKEN",
-		Short: "watch the process tree under the shell PID and kill it on a trip (used by the orchestra hooks)",
+func newProcCmd() *cobra.Command {
+	cmd := groupCommand("proc", "process-tree watcher (used by the orchestra hooks)")
+
+	watch := &cobra.Command{
+		Use:   "watch",
+		Short: "start this Claude Code process's process-tree watcher (used by the orchestra hooks)",
 		Args:  cobra.NoArgs,
 	}
-	root := guard.Flags().Int("root", 0, "the shell pid whose tree is watched (must be > 1)")
-	token := guard.Flags().String("token", "", "the guard token the record is keyed by")
-	watch := guard.Flags().Bool("watch", false, "run the watcher in this process (internal)")
-	_ = guard.Flags().MarkHidden("watch")
-	guard.RunE = func(cmd *cobra.Command, _ []string) error {
-		if *root <= 1 {
-			return exitf(2, "%s: --root must be a pid > 1", cmdName(cmd))
+	serve := watch.Flags().Bool("serve", false, "run the watcher in this process (internal)")
+	_ = watch.Flags().MarkHidden("serve")
+	owner := watch.Flags().Int("owner", 0, "the Claude Code pid the watcher serves (internal)")
+	_ = watch.Flags().MarkHidden("owner")
+	watch.RunE = func(_ *cobra.Command, _ []string) error {
+		if *serve {
+			if *owner > 1 {
+				_ = procCmdServe(*owner)
+			}
+			return nil
 		}
-		if err := procGuardCheckToken(cmd, *token); err != nil {
-			return err
-		}
-		if *watch {
-			procGuardWatch(*root, *token)
+		o := procCmdOwner()
+		if o <= 1 || procCmdHeld(o) {
 			return nil
 		}
 		exe, err := os.Executable()
 		if err != nil {
 			return nil
 		}
-		// Unguarded is better than failing the command: the start error is
-		// dropped on purpose.
-		_ = procGuardStart(exe, []string{"proc", "guard", "--root", strconv.Itoa(*root), "--token", *token, "--watch"})
+		// The start error is dropped on purpose: unguarded beats a failed hook.
+		_ = procCmdStart(exe, []string{"proc", "watch", "--serve", "--owner", strconv.Itoa(o)})
 		return nil
 	}
-	cmd.AddCommand(guard)
+	cmd.AddCommand(watch)
 
 	result := &cobra.Command{
-		Use:   "guard-result --token TOKEN",
-		Short: "print whether the guard killed the command with this token, and remove its record (used by the orchestra hooks)",
+		Use:   "guard-result --since MS",
+		Short: "print whether the watcher killed a child of this Claude Code process since MS (used by the orchestra hooks)",
 		Args:  cobra.NoArgs,
 	}
-	resultToken := result.Flags().String("token", "", "the guard token the record is keyed by")
+	since := result.Flags().String("since", "", "epoch milliseconds; the oldest kill time to report")
+	_ = result.Flags().String("token", "", "removed in orchestra 0.93.0")
+	_ = result.Flags().MarkHidden("token")
 	result.RunE = func(cmd *cobra.Command, _ []string) error {
-		if err := procGuardCheckToken(cmd, *resultToken); err != nil {
-			return err
+		if cmd.Flags().Changed("token") {
+			return exitf(2, "proc guard-result --token was removed in orchestra 0.93.0: ask with --since <epoch ms>")
 		}
-		procGuardResult(cmd, *resultToken)
+		if *since == "" {
+			return exitf(2, "%s: --since is required (epoch milliseconds)", cmdName(cmd))
+		}
+		ms, err := strconv.ParseInt(*since, 10, 64)
+		if err != nil || ms < 0 {
+			return exitf(2, "%s: --since must be a non-negative integer of epoch milliseconds", cmdName(cmd))
+		}
+		procCmdResult(cmd.OutOrStdout(), procCmdOwner(), ms)
 		return nil
 	}
 	cmd.AddCommand(result)
+
+	// Removed in 0.93.0. DisableFlagParsing keeps cobra from rejecting the old
+	// flags before the message.
+	removed := &cobra.Command{
+		Use:                "guard",
+		Hidden:             true,
+		DisableFlagParsing: true,
+		Args:               cobra.ArbitraryArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return exitf(2, "proc guard was removed in orchestra 0.93.0: the process guard no longer runs as a command prefix; the hooks start one watcher per Claude Code process with 'agent-exec proc watch'")
+		},
+	}
+	cmd.AddCommand(removed)
 	return cmd
 }
 
-// procGuardCheckToken refuses a bad token before any path is built from it:
-// the record path is made from the token, so a separator would escape the
-// record directory.
-func procGuardCheckToken(cmd *cobra.Command, token string) error {
-	if !procGuardTokenPattern.MatchString(token) {
-		return exitf(2, "%s: --token must match %s", cmdName(cmd), procGuardTokenPattern)
-	}
-	return nil
-}
-
-func procGuardDir() string {
-	return filepath.Join(paths.StateDir(), "procguard")
-}
-
-func procGuardRecordPath(token string) string {
-	return filepath.Join(procGuardDir(), token+".json")
-}
-
-// procGuardWatcher is the detached watcher process. Its stdio stays nil, so
+// procCmdWatcher is the detached watcher process. Its stdio stays nil, so
 // it reads and writes /dev/null: it must not hold the shell's pipes, or the
 // Bash call would wait for an end-of-file that never comes.
-func procGuardWatcher(exe string, args []string) *exec.Cmd {
+func procCmdWatcher(exe string, args []string) *exec.Cmd {
 	c := exec.Command(exe, args...)
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	return c
 }
 
-// procGuardWatch runs in the watcher process. It prints nothing; the trip
-// record is its only output.
-func procGuardWatch(root int, token string) {
-	procGuardExpire(time.Now())
-	ctx, cancel := context.WithTimeout(context.Background(), procGuardMaxAge)
-	defer cancel()
-	u, text, ok := proctree.Wait(ctx, root, procGuardLimits(), proctree.DefaultInterval)
-	if ok {
-		procGuardTrip(root, token, u, text)
-	}
-}
-
-// procGuardExpire removes the records older than procGuardMaxAge. Errors are
-// ignored: a stale file that survives one sweep is removed by the next.
-func procGuardExpire(now time.Time) {
-	entries, err := os.ReadDir(procGuardDir())
-	if err != nil {
-		return
-	}
-	cutoff := now.Add(-procGuardMaxAge)
-	for _, e := range entries {
-		if !e.Type().IsRegular() {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil || !info.ModTime().Before(cutoff) {
-			continue
-		}
-		_ = os.Remove(filepath.Join(procGuardDir(), e.Name()))
-	}
-}
-
-// procGuardTrip writes the record and then kills the tree. The order is the
-// point: guard-result runs only after the Bash call returned, which needs the
-// command's processes dead, so the record is already there for every kill.
-// The shell itself is spared (includeRoot false) so the command's shell
-// finishes as usual.
-func procGuardTrip(root int, token string, u proctree.Usage, text string) {
-	if err := os.MkdirAll(procGuardDir(), 0o755); err == nil {
-		rec := procGuardRecord{
-			At:       time.Now().Unix(),
-			MemBytes: u.Mem,
-			Procs:    u.Procs,
-			Reason:   text,
-			Root:     root,
-			Token:    token,
-		}
-		if data, err := fsutil.MarshalJSON(rec); err == nil {
-			_ = fsutil.AtomicWriteFile(procGuardRecordPath(token), data, 0o644)
-		}
-	}
-	// A failed record write does not stop the kill: the trip still happened.
-	_, _ = procGuardKill(root, false)
-}
-
-// procGuardResult reads and removes the record. It never waits or polls: the
-// record either exists by now or never will.
-func procGuardResult(cmd *cobra.Command, token string) {
-	path := procGuardRecordPath(token)
-	out := cmd.OutOrStdout()
-	data, err := os.ReadFile(path)
+// procCmdResult prints the newest kill record of owner whose at_ms is at or
+// after since. Records are never removed: the 24 h expiry of the watcher
+// owns their lifetime. Unreadable files are skipped, not reported.
+func procCmdResult(out io.Writer, owner int, since int64) {
+	entries, err := os.ReadDir(procWatchDir())
 	if err != nil {
 		_ = writeJSONLine(out, map[string]any{"killed": false})
 		return
 	}
-	var rec procGuardRecord
-	if err := json.Unmarshal(data, &rec); err != nil {
-		_ = os.Remove(path)
+	prefix := strconv.Itoa(owner) + "-"
+	var best procCmdRecord
+	found := false
+	for _, e := range entries {
+		name := e.Name()
+		if !e.Type().IsRegular() || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(procWatchDir(), name))
+		if err != nil {
+			continue
+		}
+		var rec procCmdRecord
+		if err := json.Unmarshal(data, &rec); err != nil {
+			continue
+		}
+		if rec.Owner != owner || rec.AtMS < since {
+			continue
+		}
+		// ReadDir sorts by name, so on an equal at_ms the later name wins.
+		if !found || rec.AtMS >= best.AtMS {
+			best = rec
+			found = true
+		}
+	}
+	if !found {
 		_ = writeJSONLine(out, map[string]any{"killed": false})
 		return
 	}
 	_ = writeJSONLine(out, map[string]any{
 		"killed":    true,
-		"mem_bytes": rec.MemBytes,
-		"procs":     rec.Procs,
-		"reason":    rec.Reason,
-		"root":      rec.Root,
+		"mem_bytes": best.MemBytes,
+		"procs":     best.Procs,
+		"reason":    best.Reason,
+		"root":      best.Root,
 	})
-	_ = os.Remove(path)
 }

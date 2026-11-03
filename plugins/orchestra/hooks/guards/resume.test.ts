@@ -15,6 +15,7 @@ type Options = {
     contextFails?: boolean,
     enforcement?: Readonly<Record<string, unknown>>,
     env?: Readonly<Record<string, string>>,
+    handoff?: string | null,
 }
 
 const fakeIo = (options: Options = {}) => {
@@ -33,7 +34,7 @@ const fakeIo = (options: Options = {}) => {
 
             const limit = options.limit === undefined ? 100000 : options.limit
 
-            return out(0, options.contextStdout ?? JSON.stringify({ context_tokens: options.contextTokens ?? null, model: 'claude-test', limit, transcript: null }))
+            return out(0, options.contextStdout ?? JSON.stringify({ context_tokens: options.contextTokens ?? null, model: 'claude-test', limit, transcript: null, handoff: options.handoff ?? null }))
         }
 
         return out(127)
@@ -120,5 +121,39 @@ describe('resume guard', () => {
         const { io, runs } = fakeIo({ agents: [agent(id)], contextTokens: 500000, env: { ORCHESTRA_ENFORCEMENT: 'off' } })
         expect(await checkResume(io, { to: id }, session())).toBeUndefined()
         expect(runs).toEqual([])
+    })
+
+    test('a handoff file in the context reading is named in the deny, the escape still works, and tokens below the limit allow', async () => {
+        const id = 'ag_handoff'
+        const handoff = '/state/handoffs/s1/ag_h.md'
+        const { io } = fakeIo({ agents: [agent(id)], contextTokens: 120000, handoff })
+        const denied = await checkResume(io, { to: id }, session())
+        expect(denied).toContain('give it the handoff file /state/handoffs/s1/ag_h.md (written when this agent returned')
+        expect(denied).toContain('Spawn a fresh agent of the same type instead')
+        expect(denied).toContain('[orchestra:allow-resume: <reason>]')
+        expect(denied?.startsWith('orchestra: this agent already holds ~120k tokens of context (limit 100k,')).toBe(true)
+
+        const escaped = fakeIo({ agents: [agent(id)], contextTokens: 120000, handoff })
+        const message = 'continue [orchestra:allow-resume: the history is the review]'
+        expect(await checkResume(escaped.io, { to: id, message }, session())).toBeUndefined()
+        expect(await checkResume(escaped.io, { to: id, message }, session())).toContain('give it the handoff file /state/handoffs/s1/ag_h.md')
+
+        const below = fakeIo({ agents: [agent(id)], contextTokens: 99999, handoff })
+        expect(await checkResume(below.io, { to: id }, session())).toBeUndefined()
+    })
+
+    test('without a handoff string the deny keeps the summary-handoff text', async () => {
+        const id = 'ag_no_handoff'
+        const summary = 'Spawn a fresh agent instead with a compact handoff: the goal, what was done and verified, what failed and why, the exact next step, and the files to read.'
+        for (const handoff of [null, '']) {
+            const { io } = fakeIo({ agents: [agent(id)], contextTokens: 120000, handoff })
+            const denied = await checkResume(io, { to: id }, session())
+            expect(denied).toContain(summary)
+            expect(denied).not.toContain('handoff file')
+        }
+        const numeric = fakeIo({ agents: [agent(id)], contextStdout: JSON.stringify({ context_tokens: 120000, limit: 100000, handoff: 5 }) })
+        const denied = await checkResume(numeric.io, { to: id }, session())
+        expect(denied).toContain(summary)
+        expect(denied).not.toContain('handoff file')
     })
 })

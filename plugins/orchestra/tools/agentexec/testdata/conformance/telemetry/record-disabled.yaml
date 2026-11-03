@@ -1,4 +1,4 @@
-description: a disabled telemetry (the default) records nothing, and a custom dir is honored
+description: telemetry off (the default) records nothing; a project config turns it on and its custom dir is honored
 normalize_keys: [os]
 setup:
   files:
@@ -6,9 +6,13 @@ setup:
       telemetry:
         enabled: true
         dir: <WORK>/custom-tel
+    "~/.local/state/claude-orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-run-x.jsonl": |
+      {"event":"dispatch","status":"ok","cls":"light","executor":"pi"}
+    "runs/00000000-0000-4000-8000-0000000c0f0e/001-run-x.jsonl": |
+      {"event":"dispatch","status":"ok","cls":"light","executor":"pi"}
 steps:
-  - argv: [telemetry, record, --json, '{"event": "dispatch", "status": "ok"}']
-    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
-  - argv: [telemetry, record, --json, '{"event": "dispatch", "status": "ok"}']
+  - argv: [telemetry, run-summary, --run, run-x]
+    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl", "custom-tel/records.jsonl"]
+  - argv: [telemetry, run-summary, --run, run-x]
     cwd: proj
     snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl", "custom-tel/records.jsonl"]

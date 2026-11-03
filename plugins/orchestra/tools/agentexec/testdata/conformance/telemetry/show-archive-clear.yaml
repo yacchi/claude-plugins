@@ -20,8 +20,6 @@ steps:
   - argv: [telemetry, show]
   - argv: [telemetry, show, --json]
   - argv: [telemetry, archive, --out, out.tgz]
-  - argv: [telemetry, record, --json, '{"event": "dispatch", "executor": "pi", "status": "ok"}']
-    snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
   - argv: [telemetry, show]
   - argv: [telemetry, clear]
     snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]

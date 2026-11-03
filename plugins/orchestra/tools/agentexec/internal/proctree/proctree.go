@@ -34,9 +34,9 @@ var (
 	PhysicalMemory func() int64
 )
 
-// Signal sends sig to the one process pid. KillTree sends every signal
-// through it, so tests replace it with a recorder (restored with t.Cleanup)
-// and never signal a made-up pid.
+// Signal sends sig to the one process pid. KillTree and KillChildTree send
+// every signal through it, so tests replace it with a recorder (restored with
+// t.Cleanup) and never signal a made-up pid.
 var Signal = func(pid int, sig syscall.Signal) error { return syscall.Kill(pid, sig) }
 
 // Usage is the tree under Root: Procs counts Root's descendants (Root itself
@@ -105,16 +105,40 @@ func Measure(root int) (Usage, error) {
 	if err != nil {
 		return Usage{}, err
 	}
-	byPID, members := coreTree(t, root)
-	r, ok := byPID[root]
+	u, ok := MeasureIn(t, root)
 	if !ok {
 		return Usage{}, ErrNoRoot
 	}
-	u := Usage{Root: root, Procs: len(members), Mem: r.Mem}
+	return u, nil
+}
+
+// MeasureIn sums the tree under root in t exactly as Measure does on a fresh
+// Snapshot (Procs: root's descendants; Mem: root plus descendants); ok is
+// false when root is not in t. Measure becomes Snapshot + MeasureIn.
+func MeasureIn(t Table, root int) (u Usage, ok bool) {
+	byPID, members := coreTree(t, root)
+	r, ok := byPID[root]
+	if !ok {
+		return Usage{}, false
+	}
+	u = Usage{Root: root, Procs: len(members), Mem: r.Mem}
 	for _, pid := range members {
 		u.Mem += byPID[pid].Mem
 	}
-	return u, nil
+	return u, true
+}
+
+// Children are the pids in t whose PPID is owner, ascending; owner itself
+// and pids <= 1 are left out.
+func Children(t Table, owner int) []int {
+	var out []int
+	for _, p := range t {
+		if p.PPID == owner && p.PID != owner && p.PID > 1 {
+			out = append(out, p.PID)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // Wait measures the tree under root at once, then once every every
@@ -158,8 +182,25 @@ func Wait(ctx context.Context, root int, l Limits, every time.Duration) (Usage, 
 // SIGSTOP first, kills with SIGKILL and resumes with SIGCONT whatever it
 // stopped but could not kill. It returns how many SIGKILLs succeeded; an
 // error when a SIGKILL failed other than with ESRCH, or ErrUnsupported,
-// ErrNoRoot or Snapshot's error before anything was signalled.
+// ErrNoRoot or Snapshot's error before anything was signalled. KillChildTree
+// shares this body.
 func KillTree(root int, includeRoot bool) (int, error) {
+	return coreKill(root, includeRoot, 0)
+}
+
+// KillChildTree kills the tree under child, child itself spared, as
+// KillTree(child, false) does (SIGSTOP freeze passes, SIGKILL, SIGCONT for
+// what was stopped but not killed), and never signals owner, an ancestor of
+// owner, or any other pid whose PPID is owner, in any pass. It returns and
+// errors as KillTree: ErrUnsupported, ErrNoRoot when child is not in the
+// table, else the count of successful SIGKILLs.
+func KillChildTree(owner, child int) (int, error) {
+	return coreKill(child, false, owner)
+}
+
+// coreKill is the body of KillTree and KillChildTree; owner > 0 adds the
+// owner protection of coreKillable to every scan.
+func coreKill(root int, includeRoot bool, owner int) (int, error) {
 	if Snapshot == nil {
 		return 0, ErrUnsupported
 	}
@@ -170,7 +211,7 @@ func KillTree(root int, includeRoot bool) (int, error) {
 	if !slices.ContainsFunc(t, func(p Proc) bool { return p.PID == root }) {
 		return 0, ErrNoRoot
 	}
-	s := coreKillable(t, root, includeRoot)
+	s := coreKillable(t, root, includeRoot, owner)
 	inS := make(map[int]bool, len(s))
 	for _, pid := range s {
 		inS[pid] = true
@@ -193,7 +234,7 @@ func KillTree(root int, includeRoot bool) (int, error) {
 			break
 		}
 		added := false
-		for _, pid := range coreKillable(nt, root, false) {
+		for _, pid := range coreKillable(nt, root, false, owner) {
 			if !inS[pid] {
 				inS[pid] = true
 				s = append(s, pid)
@@ -268,23 +309,37 @@ func coreTree(t Table, root int) (byPID map[int]Proc, members []int) {
 	return byPID, members
 }
 
-// coreKillable is what KillTree may signal in t: the members under root,
-// plus root when includeRoot and root is in t, minus the protected pids,
-// ascending. Protected are pid <= 1, this process, its ancestors in t, every
-// process of this process's group, and root unless includeRoot: killing any
-// of them would take the guard itself (or the machine) down.
-func coreKillable(t Table, root int, includeRoot bool) []int {
-	byPID, members := coreTree(t, root)
-	protected := map[int]bool{}
-	self := os.Getpid()
-	protected[self] = true
-	for cur := self; ; {
+// coreProtectChain marks pid and its ancestors in byPID, walking PPIDs up and
+// stopping at a pid not in byPID, at PPID <= 1, or at a PPID already marked.
+func coreProtectChain(byPID map[int]Proc, pid int, protected map[int]bool) {
+	protected[pid] = true
+	for cur := pid; ; {
 		p, ok := byPID[cur]
 		if !ok || p.PPID <= 1 || protected[p.PPID] {
 			break
 		}
 		protected[p.PPID] = true
 		cur = p.PPID
+	}
+}
+
+// coreKillable is what KillTree may signal in t: the members under root,
+// plus root when includeRoot and root is in t, minus the protected pids,
+// ascending. Protected are pid <= 1, this process, its ancestors in t, every
+// process of this process's group, and root unless includeRoot: killing any
+// of them would take the guard itself (or the machine) down. owner > 0
+// (KillChildTree) also protects the owner, its ancestors and every child of
+// the owner in t, so a tree that shares the child's process group cannot pull
+// them in.
+func coreKillable(t Table, root int, includeRoot bool, owner int) []int {
+	byPID, members := coreTree(t, root)
+	protected := map[int]bool{}
+	coreProtectChain(byPID, os.Getpid(), protected)
+	if owner > 0 {
+		coreProtectChain(byPID, owner, protected)
+		for _, pid := range Children(t, owner) {
+			protected[pid] = true
+		}
 	}
 	pgrp := syscall.Getpgrp()
 	for _, p := range t {

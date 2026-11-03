@@ -2,86 +2,81 @@ package cli
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
 	"testing"
-
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 )
 
-// slotGuardClassify runs `slot classify` on command and decodes its one
-// JSON line.
-func slotGuardClassify(t *testing.T, command string) map[string]any {
+// slotClassifyRun runs `slot classify` with args and returns its stdout and
+// exit code.
+func slotClassifyRun(t *testing.T, args ...string) (string, int) {
 	t.Helper()
 	hookCmdIsolate(t)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	out, code := hookCmdRun(t, "", "slot", "classify", "--command", command)
+	return hookCmdRun(t, "", append([]string{"slot", "classify"}, args...)...)
+}
+
+// slotClassifyKeys is the complete key set of a classify line; nothing that
+// would tell the hooks how to rewrite the command may appear in it.
+var slotClassifyKeys = []string{"op", "heavy", "kind", "pool", "scope"}
+
+func TestSlotClassifyPrintsOnlyTheFiveKeys(t *testing.T) {
+	for _, command := range []string{"pnpm test", "go test ./internal/x/...", "ls"} {
+		out, code := slotClassifyRun(t, "--command", command)
+		if code != 0 {
+			t.Fatalf("slot classify %q: exit %d", command, code)
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(out), &m); err != nil {
+			t.Fatalf("slot classify %q: output %q: %v", command, out, err)
+		}
+		if len(m) != len(slotClassifyKeys) {
+			t.Errorf("slot classify %q: keys = %v, want exactly %v", command, m, slotClassifyKeys)
+		}
+		for _, key := range slotClassifyKeys {
+			if _, ok := m[key]; !ok {
+				t.Errorf("slot classify %q: missing key %q: %v", command, key, m)
+			}
+		}
+	}
+}
+
+func TestSlotClassifyHeavyNodeLine(t *testing.T) {
+	out, code := slotClassifyRun(t, "--command", "pnpm test")
 	if code != 0 {
-		t.Fatalf("slot classify %q: exit %d", command, code)
+		t.Fatalf("exit %d", code)
 	}
 	var m map[string]any
 	if err := json.Unmarshal([]byte(out), &m); err != nil {
-		t.Fatalf("slot classify %q: output %q: %v", command, out, err)
-	}
-	return m
-}
-
-func TestSlotGuardHeavyCommandGetsTokenAndPrefix(t *testing.T) {
-	out := slotGuardClassify(t, "go test ./internal/x/...")
-	if out["heavy"] != true {
-		t.Fatalf("heavy = %v, want true", out["heavy"])
-	}
-	token, ok := out["guard_token"].(string)
-	if !ok || !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(token) {
-		t.Fatalf("guard_token = %v, want 16 lowercase hex characters", out["guard_token"])
-	}
-	exe, err := os.Executable()
-	if err != nil {
 		t.Fatal(err)
 	}
-	exe, err = filepath.EvalSymlinks(exe)
-	if err != nil {
+	if m["heavy"] != true || m["kind"] != "test" {
+		t.Errorf("pnpm test: heavy = %v, kind = %v; want true, test", m["heavy"], m["kind"])
+	}
+}
+
+func TestSlotClassifyLightCommandHasNullKind(t *testing.T) {
+	out, code := slotClassifyRun(t, "--command", "ls")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
 		t.Fatal(err)
 	}
-	want := sandbox.ShellQuote(exe) + " proc guard --root $$ --token " + token + " </dev/null >/dev/null 2>&1; "
-	if out["guard_prefix"] != want {
-		t.Errorf("guard_prefix = %v, want %q", out["guard_prefix"], want)
+	if m["heavy"] != false {
+		t.Errorf("heavy = %v, want false", m["heavy"])
 	}
-	capped, _ := out["capped_command"].(string)
-	if strings.Contains(capped, "proc guard") || strings.Contains(capped, want) {
-		t.Errorf("capped_command carries the guard prefix: %q", capped)
+	if m["kind"] != nil {
+		t.Errorf("kind = %v, want null", m["kind"])
 	}
 }
 
-func TestSlotGuardTokensDiffer(t *testing.T) {
-	a := slotGuardClassify(t, "go test ./internal/x/...")
-	b := slotGuardClassify(t, "go test ./internal/x/...")
-	ta, _ := a["guard_token"].(string)
-	tb, _ := b["guard_token"].(string)
-	if ta == "" || tb == "" {
-		t.Fatalf("missing guard_token: %v, %v", a["guard_token"], b["guard_token"])
-	}
-	if ta == tb {
-		t.Errorf("two classify calls share guard_token %q", ta)
-	}
-	if pa, _ := a["guard_prefix"].(string); !strings.Contains(pa, " --token "+ta+" ") {
-		t.Errorf("first guard_prefix %q does not carry its token %q", pa, ta)
-	}
-	if pb, _ := b["guard_prefix"].(string); !strings.Contains(pb, " --token "+tb+" ") {
-		t.Errorf("second guard_prefix %q does not carry its token %q", pb, tb)
-	}
-}
-
-func TestSlotGuardLightCommandHasNoKeys(t *testing.T) {
-	out := slotGuardClassify(t, "ls")
-	if out["heavy"] != false {
-		t.Fatalf("heavy = %v, want false", out["heavy"])
-	}
-	for _, key := range []string{"guard_token", "guard_prefix"} {
-		if _, ok := out[key]; ok {
-			t.Errorf("light command has key %q: %v", key, out[key])
+func TestSlotClassifyRejectsCwd(t *testing.T) {
+	for _, args := range [][]string{
+		{"--command", "go test ./...", "--cwd", "/tmp"},
+		{"--command", "go test ./...", "--cwd", ""},
+	} {
+		if _, code := slotClassifyRun(t, args...); code != 2 {
+			t.Errorf("slot classify %v: exit %d, want 2", args, code)
 		}
 	}
 }

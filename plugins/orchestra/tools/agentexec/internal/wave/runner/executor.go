@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/checks"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/dispatch"
@@ -30,9 +31,9 @@ type StartLocker interface {
 	SetStartLock(l sync.Locker)
 }
 
-// DispatchPollSeconds is one `dispatch wait` poll: short enough that no
-// single call nears a foreground ceiling; Dispatch keeps polling.
-const DispatchPollSeconds = 300
+// DispatchPollSeconds is one `dispatch wait` poll: `dispatch wait`'s own
+// default, which its 170 s ceiling admits; Dispatch keeps polling.
+const DispatchPollSeconds = int(dispatch.DefaultMaxWait / time.Second)
 
 // CliExecutor dispatches through `agent-exec dispatch prepare` and
 // `dispatch --token ... --detach`, then polls `dispatch wait`, so a long
