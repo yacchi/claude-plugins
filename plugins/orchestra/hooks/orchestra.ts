@@ -8,6 +8,7 @@ import { checkOpusGeneralist } from './guards/opus-generalist.ts'
 import { checkOptIn, noteAnswer, noteSkill, noteUserPrompt } from './guards/opt-in.ts'
 import { checkResume } from './guards/resume.ts'
 import { checkUsage, usageAdvice } from './guards/usage.ts'
+import { checkWorkerNode } from './guards/worker-node.ts'
 import { checkWorkerTests } from './guards/worker-tests.ts'
 import { checkWorkerTree } from './guards/worker-tree.ts'
 import { checkWorkerVcs } from './guards/worker-vcs.ts'
@@ -18,7 +19,7 @@ import { type WorkerCall, workerCall } from './lib/agents.ts'
 import { agentExec } from './lib/config.ts'
 import { checkDependencyEdit } from './lib/dependency-edit.ts'
 import type { EnvName, Io } from './lib/io.ts'
-import { type CommandClass, classifyCommand, withHeavySlot } from './lib/slot.ts'
+import { type CommandClass, classifyCommand, guardResult, withHeavySlot } from './lib/slot.ts'
 import { recordWorkerBash } from './lib/trace.ts'
 import { noteTurn, turnOf } from './router/turns.ts'
 import { turnEditsNudge } from './router/turn-edits.ts'
@@ -35,10 +36,12 @@ import { verdictOf } from './router/verdict.ts'
 // of them run where cc-plugin-sec-default is seated; the router text itself
 // is a SessionStart command hook (`agent-exec hook session-start`).
 //
-// The tool.call listener also runs three guards, one line each:
+// The tool.call listener also runs five guards, one line each:
 //   usage:   holds Agent, Task and Workflow calls near the plan's 5-hour limit
 //   fan-out: caps a planner's spawns, and a scout's, checker's or spec writer's tool calls
 //   resume:  holds SendMessage to an agent whose context is already long
+//   node:    denies a worker's Bash that replaces NODE_OPTIONS or runs a test runner from node -e
+//   process: runs every guarded Bash command under agent-exec's process guard and reports a kill
 
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash'])
 const AGENT_TOOLS = new Set(['Agent', 'Task'])
@@ -133,16 +136,18 @@ export const register: Register = (on, options) => {
         // that call's own result.
         let advice: string | undefined
         let call: WorkerCall | undefined
-        // A worker's Bash call: a subagent's, or the main thread of a session
-        // a wave hosts. Its command is classified once, for the full-suite
-        // guard and for slot admission.
+        // Every Bash call is classified once: a worker's class feeds the
+        // full-suite guard, slot admission and the capped rewrite, and every
+        // thread's feeds the process guard. A worker is a subagent, or the main
+        // thread of a session a wave hosts.
         let isWorker = false
         let commandClass: CommandClass | undefined
         if (WRITE_TOOLS.has(tool)) {
             // Only subagent calls are guarded; the main thread is never denied
-            // (except a wave-hosted worker session's, for dependency edits and
-            // full test suites, and anyone's shell launch of long-running
-            // orchestra work or merge of an orchestra branch).
+            // (except a wave-hosted worker session's, for dependency edits, full
+            // test suites, NODE_OPTIONS replacement and node -e test runners,
+            // and anyone's shell launch of long-running orchestra work or merge
+            // of an orchestra branch).
             call = await workerCall(io, e)
             if (tool === 'Bash') {
                 // Long-running launches, and merging an orchestra branch
@@ -175,8 +180,20 @@ export const register: Register = (on, options) => {
                 const command = String(input.command ?? '')
                 isWorker = call !== undefined || await verdictOf(io, await io.sessionId().catch(() => '')) === 'worker'
                 if (isWorker) {
-                    const cwd = await io.sessionCwd().catch(() => '')
-                    commandClass = await classifyCommand(io, command, cwd).catch(() => undefined)
+                    // A throw counts as no deny: the guard fails open.
+                    let deny: string | undefined
+                    try {
+                        deny = checkWorkerNode(command, String(input.description ?? ''))
+                    } catch {
+                        deny = undefined
+                    }
+                    if (deny) {
+                        return { deny }
+                    }
+                }
+                const cwd = await io.sessionCwd().catch(() => '')
+                commandClass = await classifyCommand(io, command, cwd).catch(() => undefined)
+                if (isWorker) {
                     const deny = await checkWorkerTests(io, input, call?.agentType ?? '', commandClass)
                     if (deny) {
                         return { deny }
@@ -251,10 +268,14 @@ export const register: Register = (on, options) => {
         // A worker's foreground command that agent-exec wants capped runs as
         // the capped command line (a worker-count cap for jest); the tool
         // input is the only thing rewritten. The main thread and background
-        // commands run as given.
-        const capped = isWorker && input.run_in_background !== true ? commandClass?.capped : undefined
-        const ran = capped === undefined ? command : capped
-        const runE = capped === undefined ? e : { ...e, command: capped } as typeof e
+        // commands run as given. A guarded command runs behind agent-exec's
+        // process guard prefix, which the trace and the slot never see.
+        const background = input.run_in_background === true
+        const capped = isWorker && !background ? commandClass?.capped : undefined
+        const base = capped ?? command
+        const guard = commandClass?.guard
+        const launched = guard ? guard.prefix + base : base
+        const runE = launched === command ? e : { ...e, command: launched } as typeof e
         // Time the command itself; the record is written without holding up
         // the result, which is returned exactly as the tool produced it.
         const run = async () => {
@@ -264,7 +285,7 @@ export const register: Register = (on, options) => {
                 const endMs = await io.now().catch(() => Date.now())
                 const cwd = await io.sessionCwd().catch(() => '')
                 const isError = (result as { isError?: boolean } | undefined)?.isError === true
-                void recordWorkerBash(io, { startMs, endMs, command: ran, cwd, isError, sessionId })
+                void recordWorkerBash(io, { startMs, endMs, command: base, cwd, isError, sessionId })
             }
 
             return result
@@ -273,10 +294,18 @@ export const register: Register = (on, options) => {
         // before it starts; one agent-exec classified as not heavy skips the
         // acquire (an unclassified one still asks). The instructor's own main
         // thread never waits, and a background command is not admitted: it
-        // would release at once while it runs on.
-        const admit = isWorker && input.run_in_background !== true && commandClass?.heavy !== false
+        // would release at once while it runs on. The process guard applies to
+        // the main thread and background commands all the same.
+        const admit = isWorker && !background && commandClass?.heavy !== false
+        const result = await (admit ? withHeavySlot(io, command, run) : run())
+        if (!guard || background) {
+            return result
+        }
+        // Asked after the command has run, and also when it failed: a command
+        // the guard killed usually is an error.
+        const text = await guardResult(io, guard.token).catch(() => undefined)
 
-        return admit ? withHeavySlot(io, command, run) : run()
+        return text ? { ...result, context: [...(result.context ?? []), text] } : result
     }).catch(($, e, next) => next(e))
 
     // A subagent's every turn ends here; its lease is retaken on its next write.

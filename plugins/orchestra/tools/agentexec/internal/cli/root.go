@@ -118,6 +118,7 @@ func newRoot() *cobra.Command {
 		newSandboxExecCmd(),
 		newTraceCmd(),
 		newSlotCmd(),
+		newProcCmd(),
 		newHookCmd(),
 		newStatusCmd(),
 		newPlanCmd(),

@@ -212,6 +212,51 @@ func TestMiseTrustAppendsToTheExistingValue(t *testing.T) {
 	}
 }
 
+// mise prints a checkout under $HOME as "~/...", so the trust of such a
+// checkout is read through HOME. Only a leading "~/" is expanded: "~user/"
+// stays a path of its own, and an unknown HOME grants nothing.
+func TestMiseHomeAbbreviatedCheckout(t *testing.T) {
+	cases := []struct {
+		name    string
+		home    func(main string) string
+		output  func(rel string) string
+		granted bool
+	}{
+		{"checkout under home",
+			func(main string) string { return filepath.Dir(main) },
+			func(rel string) string { return "~/" + rel + ": trusted\n" }, true},
+		{"config file under home",
+			func(main string) string { return filepath.Dir(main) },
+			func(rel string) string { return "~/" + rel + "/mise.toml: trusted\n" }, true},
+		{"home-abbreviated untrusted",
+			func(main string) string { return filepath.Dir(main) },
+			func(rel string) string { return "~/" + rel + ": untrusted\n" }, false},
+		{"other user's home",
+			func(main string) string { return filepath.Dir(main) },
+			func(rel string) string { return "~someone/" + rel + ": trusted\n" }, false},
+		{"another dir under home",
+			func(main string) string { return filepath.Dir(main) },
+			func(rel string) string { return "~/elsewhere: trusted\n" }, false},
+		{"home unknown",
+			func(main string) string { return "" },
+			func(rel string) string { return "~/" + rel + ": trusted\n" }, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			main, linked := miseTrees(t)
+			t.Setenv("HOME", c.home(main))
+			out := c.output(filepath.Base(main))
+			setMiseShow(t, func(dir string) ([]byte, error) { return []byte(out), nil })
+			got := slices.ContainsFunc(TreeEntries(false, linked, nil), func(kv string) bool {
+				return kv == MiseTrustedEnv+"="+linked
+			})
+			if got != c.granted {
+				t.Errorf("entry granted = %v, want %v", got, c.granted)
+			}
+		})
+	}
+}
+
 // Inside a test binary the probe is off without a seam: mise is not run, and
 // no tree gets the entry.
 func TestMiseProbeIsOffInTestsWithoutASeam(t *testing.T) {

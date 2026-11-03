@@ -43,7 +43,7 @@ describe('worker-tests', () => {
     test('the instructor\'s main thread is never denied', async ($, on) => {
         const h = host(on)
         expect(await callTool($, undefined, { tool: 'Bash', command: FULL, description: 'full suite' })).toEqual({ result: 'ran' })
-        expect(h.runs.some(r => r[4] === 'slot')).toBe(false)
+        expect(h.runs.some(r => r[4] === 'slot' && r[5] === 'acquire')).toBe(false)
     })
 
     test('the main thread of a session a wave hosts is a worker', async ($, on) => {

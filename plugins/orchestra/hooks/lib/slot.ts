@@ -20,12 +20,17 @@ const ACQUIRE_TIMEOUT_MS = 600_000
 const MAX_WAIT = '540s'
 const RELEASE_TIMEOUT_MS = 5000
 const CLASSIFY_TIMEOUT_MS = 5000
+const GUARD_RESULT_TIMEOUT_MS = 5000
+// A guard token is what agent-exec mints (16 hex characters); the bound keeps
+// anything else off the shell line the prefix is spliced into.
+const GUARD_TOKEN = /^[A-Za-z0-9_-]{8,64}$/
 
 // What agent-exec tells of a command line: the op it names, whether it is
-// heavy, whether it runs a whole repository's or workspace's suite, and, when
-// the command should run under a worker-count cap or with the pnpm store
-// entries, the capped command line.
-export type CommandClass = { op: string, heavy: boolean, scope: 'full' | 'targeted', capped?: string }
+// heavy, whether it runs a whole repository's or workspace's suite, when the
+// command should run under a worker-count cap or with the pnpm store entries
+// the capped command line, and, when the command is heavy, the process guard's
+// prefix (run before the command in the same shell) and its token.
+export type CommandClass = { op: string, heavy: boolean, scope: 'full' | 'targeted', capped?: string, guard?: { prefix: string, token: string } }
 
 // The command's class, or undefined when agent-exec could not tell (missing,
 // failed, or bad output). cwd is the directory the command runs in, which
@@ -50,11 +55,45 @@ export const classifyCommand = async (io: Io, command: string, cwd?: string): Pr
         }
 
         const capped = d.capped_command
-        if (typeof capped === 'string' && capped !== '' && capped !== command) {
-            return { op: d.op, heavy: d.heavy, scope: d.scope, capped }
+        const isCapped = typeof capped === 'string' && capped !== '' && capped !== command
+        const prefix = d.guard_prefix
+        const token = d.guard_token
+        const guard = typeof prefix === 'string' && prefix !== '' && typeof token === 'string' && GUARD_TOKEN.test(token)
+            ? { prefix, token }
+            : undefined
+
+        return {
+            op: d.op,
+            heavy: d.heavy,
+            scope: d.scope,
+            ...(isCapped ? { capped } : {}),
+            ...(guard ? { guard } : {}),
+        }
+    } catch {
+        return undefined
+    }
+}
+
+// The process guard's report of a command it killed, or undefined when it
+// killed none (or agent-exec could not tell). Asked once, after the guarded Bash
+// call returned: agent-exec writes the record before it kills anything, so it
+// never has to be polled for.
+export const guardResult = async (io: Io, token: string): Promise<string | undefined> => {
+    try {
+        const r = await agentExec(io, ['proc', 'guard-result', `--token=${token}`], GUARD_RESULT_TIMEOUT_MS)
+        if (r.kind !== 'ok') {
+            return undefined
+        }
+        const data: unknown = JSON.parse(r.stdout)
+        if (typeof data !== 'object' || data === null) {
+            return undefined
+        }
+        const d = data as Record<string, unknown>
+        if (d.killed !== true || typeof d.reason !== 'string') {
+            return undefined
         }
 
-        return { op: d.op, heavy: d.heavy, scope: d.scope }
+        return `orchestra: agent-exec's process guard killed this command: ${d.reason}. Its process tree outgrew this machine (a fork bomb, or too many test workers at once). Run it again with fewer workers (e.g. jest --maxWorkers=2, vitest --maxWorkers=2) through the package's test script, and never start a test runner from node -e.`
     } catch {
         return undefined
     }

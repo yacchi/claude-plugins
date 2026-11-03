@@ -152,6 +152,8 @@ func (e *Executor) waitResult(ctx context.Context, s *host.Session, resultPath s
 	if name == "" {
 		return nil, host.Need(host.KindStalled, "agent is no longer registered")
 	}
+	// The pane's shell is the root of everything the worker starts.
+	guardRoot := treeGuardLookup(e, ctx, s)
 	deadline := e.now().Add(timeout)
 	grace := e.cfg.Seconds("idle_grace", 300)
 	var (
@@ -165,6 +167,15 @@ func (e *Executor) waitResult(ctx context.Context, s *host.Session, resultPath s
 		data, resErr := host.ReadResultErr(resultPath)
 		if data != nil {
 			return data, nil
+		}
+		if guardRoot > 1 {
+			need, keep := treeGuardCheck(guardRoot)
+			if need != nil {
+				return nil, need
+			}
+			if !keep {
+				guardRoot = 0
+			}
 		}
 		status, err := e.status(ctx, name, "")
 		if err != nil {

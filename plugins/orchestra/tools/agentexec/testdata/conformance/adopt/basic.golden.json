@@ -531,6 +531,7 @@
       "stdout": {
         "branches": [],
         "dry_run": true,
+        "plans": [],
         "pruned": false,
         "repo": "<WORK>",
         "status": "ok",
@@ -645,6 +646,7 @@
       "stdout": {
         "branches": [],
         "dry_run": false,
+        "plans": [],
         "pruned": true,
         "repo": "<WORK>",
         "status": "ok",
@@ -1009,6 +1011,7 @@
       "stdout": {
         "branches": [],
         "dry_run": false,
+        "plans": [],
         "pruned": true,
         "repo": "<WORK>",
         "status": "ok",

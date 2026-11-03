@@ -112,7 +112,9 @@ type ToolInfo struct {
 
 // Runaway is the trip report (`runaway` in a dispatch result).
 type Runaway struct {
-	Reason string // wall | idle | tool-idle | repeat
+	Reason string // wall | idle | tool-idle | repeat | process-tree
+	// Detail is the trip text of a process-tree runaway, "" otherwise.
+	Detail string
 	// ElapsedS is the time spent in the budget that tripped (idle: since
 	// the last record; wall/repeat: since start), RuntimeS since start,
 	// both measured at the trip and rounded to 0.01 s.
@@ -130,13 +132,17 @@ func (r *Runaway) Object() map[string]any {
 			"args_preview": r.LastTool.ArgsPreview,
 		}
 	}
-	return map[string]any{
+	m := map[string]any{
 		"reason":       r.Reason,
 		"elapsed_s":    r.ElapsedS,
 		"runtime_s":    r.RuntimeS,
 		"last_tool":    last,
 		"repeat_count": int64(r.RepeatCount),
 	}
+	if r.Detail != "" {
+		m["detail"] = r.Detail
+	}
+	return m
 }
 
 // Watchdog observes one child.

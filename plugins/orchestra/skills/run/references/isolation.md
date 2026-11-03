@@ -66,7 +66,11 @@ worktree, or a tree deliberately kept because it was dirty has nothing else to
 clean it up. It prunes stale worktree records first, applies the same review gate
 as `isolate remove` (so uncollected work is reported, never destroyed), skips the
 running session's own trees unless `--include-current`, and deletes `orchestra/*`
-branches that outlived their worktree only with `--branches`.
+branches that outlived their worktree only with `--branches`. It also reclaims
+plan directories (`<state dir>/plans/<plan id>/`) idle for 7 days that no live
+runner holds, whatever `--repo` is: they are listed under the JSON key `plans`
+(`--dry-run` only reports them) and as one `plans:` text line, and a plan error
+exits 1 like a worktree error.
 
 The gate reads anything it cannot verify as uncollected: a diff that errors, or a
 missing baseline marker, keeps the tree (`--force` discards). A tree with

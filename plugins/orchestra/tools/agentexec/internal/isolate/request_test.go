@@ -84,6 +84,35 @@ func TestNewRequestIDUsesSessionAndFirstFreeSuffix(t *testing.T) {
 	}
 }
 
+// An ended request whose assembly's detached rm is still running leaves only
+// the renamed-aside trash behind; the session's next request reuses the id.
+func TestNewRequestIDReusesWorkspaceHoldingOnlyTrash(t *testing.T) {
+	root := requestRootPin(t)
+	requestRootClock(t)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", sessA)
+	dir := filepath.Join(root, "20261028-aaaaaaaa")
+	trash := filepath.Join(dir, ".work"+trashMarker+"1-2", "sub")
+	if err := os.MkdirAll(trash, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(trash, "f"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".work", "work"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := newRequestID(root); got != "20261028-aaaaaaaa" {
+		t.Fatalf("newRequestID() beside trash only = %q; want 20261028-aaaaaaaa", got)
+	}
+	// Anything else in it, a stray file a user left, keeps the id taken.
+	if err := os.WriteFile(filepath.Join(dir, ".work", "work", "note"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := newRequestID(root); got != "20261028-aaaaaaaa-2" {
+		t.Fatalf("newRequestID() beside a stray file = %q; want 20261028-aaaaaaaa-2", got)
+	}
+}
+
 func TestNewRequestIDOutsideSessionIsLocal(t *testing.T) {
 	root := requestRootPin(t)
 	requestRootClock(t)

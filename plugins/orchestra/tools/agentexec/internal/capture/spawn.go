@@ -6,13 +6,16 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"os/exec"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
 	"unicode/utf8"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/proctree"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/watchdog"
@@ -21,6 +24,32 @@ import (
 // srtTick is the interval of the network ticks (blocked-host tailing,
 // learned-domain push) of a CLI run under srt.
 const srtTick = time.Second
+
+// The process-tree guard's seams: tests swap them and restore them with
+// t.Cleanup, so the shared proctree constants stay as they are.
+var (
+	treeGuardLimits   = proctree.DefaultLimits
+	treeGuardInterval = proctree.DefaultInterval
+	treeGuardKill     = proctree.KillTree
+)
+
+// treeGuardWatch waits until the process tree under pid (the child, which
+// leads its own session) outgrows its limits, then kills the tree and reports
+// the trip as a process-tree runaway. It returns nil when the tree never trips
+// before ctx ends or the tree is gone. start is when the child started.
+func treeGuardWatch(ctx context.Context, pid int, start time.Time) *watchdog.Runaway {
+	_, text, ok := proctree.Wait(ctx, pid, treeGuardLimits(), treeGuardInterval)
+	if !ok {
+		return nil
+	}
+	s := math.Round(time.Since(start).Seconds()*100) / 100
+	killed, err := treeGuardKill(pid, true)
+	detail := text + "; killed the executor's process tree (" + strconv.Itoa(killed) + " processes)"
+	if err != nil && !errors.Is(err, proctree.ErrNoRoot) {
+		detail += "; " + err.Error()
+	}
+	return &watchdog.Runaway{Reason: "process-tree", Detail: detail, ElapsedS: s, RuntimeS: s}
+}
 
 // spawnOptions are one capture spawn's inputs.
 type spawnOptions struct {
@@ -56,7 +85,9 @@ type spawnResult struct {
 // deadlock. stdout is read on the calling goroutine one record per "\n"
 // (a trailing "\r" stripped; U+2028/U+2029 never split), with no limit on
 // a record's length. The child leads its own session: the watchdog and a
-// cancelled ctx end its whole process group, grandchildren included.
+// cancelled ctx end its whole process group, grandchildren included. The
+// child's tree is measured every proctree.DefaultInterval and killed as a
+// process-tree runaway when it outgrows proctree.DefaultLimits().
 //
 // Under backend srt the child gets srt's control pipe as fd 3, srt's debug
 // lines are split out of the shared stderr into the run's log (never into
@@ -118,6 +149,17 @@ func spawn(ctx context.Context, o spawnOptions) (spawnResult, error) {
 		return spawnResult{}, err
 	}
 	pgid := cmd.Process.Pid
+
+	// The tree guard runs for every spawn, watchdog or not: a runaway tree
+	// is stopped whatever the caller asked for.
+	treeStart := time.Now()
+	treeCtx, treeStop := context.WithCancel(ctx)
+	treeDone := make(chan struct{})
+	var treeRunaway *watchdog.Runaway
+	go func() {
+		defer close(treeDone)
+		treeRunaway = treeGuardWatch(treeCtx, pgid, treeStart)
+	}()
 
 	exited := make(chan struct{})
 	var state *os.ProcessState
@@ -215,6 +257,8 @@ func spawn(ctx context.Context, o spawnOptions) (spawnResult, error) {
 	}
 	stdoutR.Close()
 	<-exited
+	treeStop()
+	<-treeDone
 	<-cancelled
 	wg.Wait()
 	if o.Watchdog != nil {
@@ -233,6 +277,9 @@ func spawn(ctx context.Context, o spawnOptions) (spawnResult, error) {
 	}
 	if o.Watchdog != nil {
 		res.Runaway = o.Watchdog.Result()
+	}
+	if res.Runaway == nil {
+		res.Runaway = treeRunaway
 	}
 	if run != nil {
 		finished = true

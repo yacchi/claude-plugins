@@ -335,7 +335,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
 // files_owned (non-empty array of repo-relative paths the worker may change,
 // its test files included; a trailing '/' is a directory prefix), est_seconds
 // (your estimate of worker time, integer) and probeDir (where the probe
-// author writes - outside every worktree, e.g. your scratch dir) - all three
+// author writes - outside every worktree: <probes>/<task id> under the `probes` path of `agent-exec plan dir --id <runId>`, never /tmp) - all three
 // checked by sizeGate() below before anything is dispatched. Escape hatches,
 // each a non-empty reason string: allowLarge (skips the size limits, logged
 // and echoed in the task's result), noProbes (skips the probe author).

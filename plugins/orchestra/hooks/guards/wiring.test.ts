@@ -77,3 +77,137 @@ describe('guard wiring', () => {
         expect(held.deny).toContain('orchestra: this agent already holds')
     })
 })
+
+// The Bash listener's two command guards: the worker node guard denies before
+// classification, and every classified command runs behind the process guard
+// prefix (a foreground one also asks for its verdict once it has run).
+const PREFIX = '/x/agent-exec proc guard --root $$ --token 0123456789abcdef </dev/null >/dev/null 2>&1; '
+const TOKEN = '0123456789abcdef'
+const REASON = 'process guard: 312 processes under pid 4242 (limit 200)'
+const CAPPED = 'pnpm test -- --maxWorkers=2'
+const NODE_OPTIONS_REPLACED = 'NODE_OPTIONS=--no-experimental-strip-types pnpm test'
+
+type Classify = { op?: string, scope?: 'full' | 'targeted', capped?: boolean, guarded?: boolean }
+
+const classified = ({ op = 'jest', scope = 'targeted', capped = false, guarded = false }: Classify) => JSON.stringify({
+    op,
+    heavy: true,
+    scope,
+    ...(capped ? { capped_command: CAPPED } : {}),
+    ...(guarded ? { guard_prefix: PREFIX, guard_token: TOKEN } : {}),
+})
+
+describe('process and node guard wiring', () => {
+    test('a worker\'s NODE_OPTIONS replacement is denied before it is classified or run', async ($, on) => {
+        const h = fakeHost(on, { sessionId: freshSession() })
+        startAgent($, 'ag_node', 'orchestra:orchestra-light', '/w')
+        const r = await callTool($, 'ag_node', { tool: 'Bash', command: NODE_OPTIONS_REPLACED, description: 'run tests' })
+        expect(r.deny).toContain('replaces NODE_OPTIONS')
+        expect(h.commands).toEqual([])
+        expect(h.runs.some(r => r[4] === 'slot' && r[5] === 'classify')).toBe(false)
+    })
+
+    test('the same command on the main thread is not denied and runs as given', async ($, on) => {
+        const h = fakeHost(on, { sessionId: freshSession() })
+        const r = await callTool($, undefined, { tool: 'Bash', command: NODE_OPTIONS_REPLACED, description: 'run tests' })
+        expect(r.deny).toBeUndefined()
+        expect(h.commands).toEqual([NODE_OPTIONS_REPLACED])
+    })
+
+    test('a main-thread command agent-exec guards runs behind the prefix, and a kill is reported on its result', async ($, on) => {
+        let asked: number | undefined
+        const h = fakeHost(on, {
+            sessionId: freshSession(),
+            agentExec: args => {
+                if (args[0] === 'slot' && args[1] === 'classify') {
+                    return { exitCode: 0, stdout: classified({ guarded: true }) }
+                }
+                if (args[0] === 'proc') {
+                    asked = h.commands.length
+
+                    return { exitCode: 0, stdout: JSON.stringify({ killed: true, reason: REASON }) }
+                }
+
+                return { exitCode: 0, stdout: args[0] === 'config' ? '{"enforcement": {}}' : '' }
+            },
+        })
+        const r = await callTool($, undefined, { tool: 'Bash', command: 'pnpm test', description: 'run tests' }) as { deny?: string, result?: unknown, context?: string[] }
+        expect(r.deny).toBeUndefined()
+        expect(r.context).toHaveLength(1)
+        expect(r.context?.[0]).toContain(`agent-exec's process guard killed this command: ${REASON}`)
+        expect(h.commands).toEqual([PREFIX + 'pnpm test'])
+        expect(asked).toBe(1)
+        expect(h.runs.some(r => r[4] === 'slot' && r[5] === 'acquire')).toBe(false)
+        expect(h.runs.filter(r => r[4] === 'slot' && r[5] === 'classify')).toHaveLength(1)
+    })
+
+    test('a main-thread command the process guard did not kill returns the tool result unchanged', async ($, on) => {
+        fakeHost(on, {
+            sessionId: freshSession(),
+            agentExec: args => args[0] === 'slot' && args[1] === 'classify'
+                ? { exitCode: 0, stdout: classified({ guarded: true }) }
+                : args[0] === 'proc'
+                    ? { exitCode: 0, stdout: '{"killed":false}' }
+                    : { exitCode: 0, stdout: args[0] === 'config' ? '{"enforcement": {}}' : '' },
+        })
+        expect(await callTool($, undefined, { tool: 'Bash', command: 'pnpm test', description: 'run tests' })).toEqual({ result: 'ran' })
+    })
+
+    test('the main thread\'s full suite is classified but not denied', async ($, on) => {
+        fakeHost(on, {
+            sessionId: freshSession(),
+            agentExec: args => args[0] === 'slot' && args[1] === 'classify'
+                ? { exitCode: 0, stdout: classified({ op: 'go test', scope: 'full', guarded: true }) }
+                : { exitCode: 0, stdout: args[0] === 'config' ? '{"enforcement": {}}' : '' },
+        })
+        const r = await callTool($, undefined, { tool: 'Bash', command: 'go test ./...', description: 'full suite' }) as { deny?: string }
+        expect(r.deny).toBeUndefined()
+    })
+
+    test('a worker\'s capped command runs as the capped line behind the prefix; the slot asks for the command as given', async ($, on) => {
+        const h = fakeHost(on, {
+            sessionId: freshSession(),
+            agentExec: args => args[0] === 'slot' && args[1] === 'classify'
+                ? { exitCode: 0, stdout: classified({ capped: true, guarded: true }) }
+                : { exitCode: 0, stdout: args[0] === 'config' ? '{"enforcement": {}}' : '' },
+        })
+        startAgent($, 'ag_cap', 'orchestra:orchestra-light', '/w')
+        await callTool($, 'ag_cap', { tool: 'Bash', command: 'pnpm test', description: 'run tests' })
+        expect(h.commands).toEqual([PREFIX + CAPPED])
+        expect(h.runs.find(r => r[4] === 'slot' && r[5] === 'acquire')?.[6]).toBe('--command=pnpm test')
+        expect(h.runs.some(r => r[4] === 'trace' && r.join(' ').includes(PREFIX))).toBe(false)
+    })
+
+    test('a worker\'s capped command without a guard runs as the capped line alone', async ($, on) => {
+        const h = fakeHost(on, {
+            sessionId: freshSession(),
+            agentExec: args => args[0] === 'slot' && args[1] === 'classify'
+                ? { exitCode: 0, stdout: classified({ capped: true }) }
+                : { exitCode: 0, stdout: args[0] === 'config' ? '{"enforcement": {}}' : '' },
+        })
+        startAgent($, 'ag_cap2', 'orchestra:orchestra-light', '/w')
+        await callTool($, 'ag_cap2', { tool: 'Bash', command: 'pnpm test', description: 'run tests' })
+        expect(h.commands).toEqual([CAPPED])
+    })
+
+    test('a background command runs behind the prefix, is not admitted and is not asked for a verdict', async ($, on) => {
+        const h = fakeHost(on, {
+            sessionId: freshSession(),
+            agentExec: args => args[0] === 'slot' && args[1] === 'classify'
+                ? { exitCode: 0, stdout: classified({ capped: true, guarded: true }) }
+                : { exitCode: 0, stdout: args[0] === 'config' ? '{"enforcement": {}}' : '' },
+        })
+        startAgent($, 'ag_bg', 'orchestra:orchestra-light', '/w')
+        await callTool($, 'ag_bg', { tool: 'Bash', command: 'pnpm test', description: 'run tests', run_in_background: true })
+        expect(h.commands).toEqual([PREFIX + 'pnpm test'])
+        expect(h.runs.some(r => r[4] === 'proc')).toBe(false)
+        expect(h.runs.some(r => r[4] === 'slot' && r[5] === 'acquire')).toBe(false)
+    })
+
+    test('a command agent-exec does not guard runs as given, with no verdict asked', async ($, on) => {
+        const h = fakeHost(on, { sessionId: freshSession() })
+        expect(await callTool($, undefined, { tool: 'Bash', command: 'ls', description: 'list' })).toEqual({ result: 'ran' })
+        expect(h.commands).toEqual(['ls'])
+        expect(h.runs.some(r => r[4] === 'proc')).toBe(false)
+    })
+})

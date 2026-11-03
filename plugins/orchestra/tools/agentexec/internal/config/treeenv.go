@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
 // MiseTrustedEnv is the mise setting that lists the config paths mise trusts
@@ -154,7 +156,9 @@ func miseTrustedCheckout(dir string) bool {
 // miseShowTrusts parses `mise trust --show` in dir: trusted when every line
 // reads "<path>: trusted" and at least one of those paths lies under dir. The
 // listing also names the user's global config, so a trusted line outside dir
-// does not count. Any error, or a line that reads otherwise, is untrusted.
+// does not count. mise prints a path under $HOME as "~/...", so each path is
+// expanded before it is compared with dir. Any error, or a line that reads
+// otherwise, is untrusted.
 func miseShowTrusts(dir string) bool {
 	probe := MiseShowSeam
 	if probe == nil {
@@ -177,7 +181,7 @@ func miseShowTrusts(dir string) bool {
 		if !ok {
 			return false
 		}
-		under = under || isUnder(dir, path)
+		under = under || isUnder(dir, fsutil.ExpandUser(path))
 	}
 	return under
 }

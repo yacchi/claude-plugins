@@ -189,7 +189,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>\n  skipped      clean            0.0d      <WT>/22222222-clean  (newer than --older-than 0.5 day(s))\n  skipped      dirty            0.0d      <WT>/22222222-dirty  (newer than --older-than 0.5 day(s))\n  skipped      done             0.0d      <WT>/22222222-done  (newer than --older-than 0.5 day(s))\nsummary: removed 0, would-remove 0, dirty 0, has-children 0, skipped 3, external 0, errors 0, branches 0 orphan / 0 deleted\n"
+      "stdout": "sweep <WORK>\n  skipped      clean            0.0d      <WT>/22222222-clean  (newer than --older-than 0.5 day(s))\n  skipped      dirty            0.0d      <WT>/22222222-dirty  (newer than --older-than 0.5 day(s))\n  skipped      done             0.0d      <WT>/22222222-done  (newer than --older-than 0.5 day(s))\nsummary: removed 0, would-remove 0, dirty 0, has-children 0, skipped 3, external 0, errors 0, branches 0 orphan / 0 deleted\nplans: 0 removed\n"
     },
     {
       "argv": [
@@ -202,7 +202,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>  (dry-run)\n  would-remove clean            0.0d      <WT>/22222222-clean\n  dirty        dirty            0.0d      <WT>/22222222-dirty  (worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force)\n  would-remove done             0.0d      <WT>/22222222-done\nsummary: removed 0, would-remove 2, dirty 1, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n  inspect: agent-exec isolate diff --task <id>   |   discard: agent-exec isolate sweep --force\n"
+      "stdout": "sweep <WORK>  (dry-run)\n  would-remove clean            0.0d      <WT>/22222222-clean\n  dirty        dirty            0.0d      <WT>/22222222-dirty  (worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force)\n  would-remove done             0.0d      <WT>/22222222-done\nsummary: removed 0, would-remove 2, dirty 1, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n  inspect: agent-exec isolate diff --task <id>   |   discard: agent-exec isolate sweep --force\nplans: 0 would be removed\n"
     },
     {
       "argv": [
@@ -217,6 +217,7 @@
       "stdout": {
         "branches": [],
         "dry_run": true,
+        "plans": [],
         "pruned": false,
         "repo": "<WORK>",
         "status": "ok",
@@ -282,7 +283,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>\n  removed      clean            0.0d      <WT>/22222222-clean\n  dirty        dirty            0.0d      <WT>/22222222-dirty  (worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force)\n  removed      done             0.0d      <WT>/22222222-done\nsummary: removed 2, would-remove 0, dirty 1, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n  inspect: agent-exec isolate diff --task <id>   |   discard: agent-exec isolate sweep --force\n"
+      "stdout": "sweep <WORK>\n  removed      clean            0.0d      <WT>/22222222-clean\n  dirty        dirty            0.0d      <WT>/22222222-dirty  (worktree holds 1 changed file(s) not yet collected; collect the diff or pass --force)\n  removed      done             0.0d      <WT>/22222222-done\nsummary: removed 2, would-remove 0, dirty 1, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n  inspect: agent-exec isolate diff --task <id>   |   discard: agent-exec isolate sweep --force\nplans: 0 removed\n"
     },
     {
       "argv": [
@@ -296,7 +297,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>  (dry-run)\n  would-remove dirty            0.0d      <WT>/22222222-dirty\nsummary: removed 0, would-remove 1, dirty 0, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
+      "stdout": "sweep <WORK>  (dry-run)\n  would-remove dirty            0.0d      <WT>/22222222-dirty\nsummary: removed 0, would-remove 1, dirty 0, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\nplans: 0 would be removed\n"
     },
     {
       "argv": [
@@ -311,7 +312,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>\n  removed      dirty            0.0d      <WT>/22222222-dirty\nsummary: removed 1, would-remove 0, dirty 0, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
+      "stdout": "sweep <WORK>\n  removed      dirty            0.0d      <WT>/22222222-dirty\nsummary: removed 1, would-remove 0, dirty 0, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\nplans: 0 removed\n"
     },
     {
       "argv": [

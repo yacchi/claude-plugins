@@ -2,11 +2,14 @@ package config
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // nodeCapState points the state dir (where the preload is written) at a
@@ -114,6 +117,130 @@ func TestNodeCapPreloadInNode(t *testing.T) {
 	real := run("bogus", "-e", `console.log(require("os").availableParallelism() === require("os").cpus().length)`)
 	if real != "true" {
 		t.Errorf("invalid ORCHESTRA_NODE_CPUS changed os: %q", real)
+	}
+}
+
+// nodeEvalForkScript forks itself exactly once and reports the child. The
+// NODE_EVAL_DEPTH variable bounds it: a child that runs this script without
+// the preload's stop prints and ends, it never forks again.
+const nodeEvalForkScript = `if (process.env.NODE_EVAL_DEPTH) { console.log("child ran"); process.exit(0) }
+const c = require("child_process").fork(process.env.NODE_EVAL_CHILD || "x", [], {
+    execArgv: process.env.NODE_EVAL_CHILD ? [] : [...process.execArgv],
+    silent: true, env: {...process.env, NODE_EVAL_DEPTH: "1"} })
+let o = "", e = ""
+c.stdout.on("data", d => o += d); c.stderr.on("data", d => e += d)
+c.on("close", code => console.log(JSON.stringify({code: code ?? -1, stdout: o, stderr: e})))
+""`
+
+type nodeEvalChild struct {
+	Code   int    `json:"code"`
+	Stdout string `json:"stdout"`
+	Stderr string `json:"stderr"`
+}
+
+// nodeEvalRun runs node with args under the preload (nodeCapState must be
+// set up) and returns the JSON the top-level script printed. The shell's
+// NODE_OPTIONS and cap variable are left out, so only the preload is in play.
+func nodeEvalRun(t *testing.T, node string, extraEnv []string, args ...string) nodeEvalChild {
+	t.Helper()
+	drop := []string{NodeOptionsEnv + "=", NodeCPUsEnv + "=", "NODE_EVAL_DEPTH=", "NODE_EVAL_CHILD="}
+	var env []string
+	for _, kv := range os.Environ() {
+		kept := true
+		for _, p := range drop {
+			if strings.HasPrefix(kv, p) {
+				kept = false
+			}
+		}
+		if kept {
+			env = append(env, kv)
+		}
+	}
+	env = append(env, NodeCapEntries(1, nil)[1])
+	env = append(env, extraEnv...)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, node, args...)
+	cmd.Env = env
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if err != nil {
+		stderr := ""
+		if ee, ok := err.(*exec.ExitError); ok {
+			stderr = string(ee.Stderr)
+		}
+		t.Fatalf("node %q: %v\nstdout: %s\nstderr: %s", args, err, out, stderr)
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	last := ""
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			last = lines[i]
+			break
+		}
+	}
+	var got nodeEvalChild
+	if err := json.Unmarshal([]byte(last), &got); err != nil {
+		t.Fatalf("node %q: parse %q: %v\nstdout: %s", args, last, err, out)
+	}
+	return got
+}
+
+// A forked child whose execArgv holds an eval flag stops before it runs the
+// eval script again. The cap variable is unset or invalid in some cases: the
+// stop does not depend on it.
+func TestNodeEvalForkedChildStops(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not on PATH")
+	}
+	nodeCapState(t)
+	cases := []struct {
+		name string
+		env  []string
+		args []string
+		flag string
+	}{
+		{"-e", nil, []string{"-e", nodeEvalForkScript}, "-e"},
+		{"--eval", nil, []string{"--eval", nodeEvalForkScript}, "--eval"},
+		{"--eval=", nil, []string{"--eval=" + nodeEvalForkScript}, "--eval"},
+		{"-p", nil, []string{"-p", nodeEvalForkScript}, "-p"},
+		{"--print", nil, []string{"--print", nodeEvalForkScript}, "--print"},
+		{"-pe", nil, []string{"-pe", nodeEvalForkScript}, "-pe"},
+		{"-e bogus cap", []string{NodeCPUsEnv + "=bogus"}, []string{"-e", nodeEvalForkScript}, "-e"},
+		{"-e capped", []string{NodeCPUsEnv + "=3"}, []string{"-e", nodeEvalForkScript}, "-e"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := nodeEvalRun(t, node, c.env, c.args...)
+			want := nodeEvalChild{
+				Code:   1,
+				Stdout: "",
+				Stderr: "orchestra: refusing to start a forked child of 'node " + c.flag + "': it would run the eval script again and multiply (a fork bomb). Run the test runner through the package's test script, not node -e.\n",
+			}
+			if got != want {
+				t.Errorf("child = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
+// The stop is for eval flags only: a forked child without one still runs, and
+// the cap still applies to it.
+func TestNodeEvalForkedChildWithoutEvalFlagRuns(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not on PATH")
+	}
+	nodeCapState(t)
+	child := filepath.Join(t.TempDir(), "child.js")
+	if err := os.WriteFile(child, []byte(`console.log(require("os").availableParallelism())`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := nodeEvalRun(t, node, []string{NodeCPUsEnv + "=3", "NODE_EVAL_CHILD=" + child}, "-e", nodeEvalForkScript)
+	want := nodeEvalChild{Code: 0, Stdout: "3\n", Stderr: ""}
+	if got != want {
+		t.Errorf("child = %+v, want %+v", got, want)
 	}
 }
 

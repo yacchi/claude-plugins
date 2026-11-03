@@ -68,6 +68,7 @@ export const fakeHost = (on: On, options: HostOptions) => {
     const links = new Map<string, string>(Object.entries(options.links ?? {}))
     const runs: string[][] = []
     const logs: string[] = []
+    const commands: string[] = []
     const session = { model: options.model ?? '', root: options.root ?? options.cwd ?? '/' }
     const agents = new Map<string, Registered>()
     registry = agents
@@ -240,7 +241,14 @@ export const fakeHost = (on: On, options: HostOptions) => {
 
         return { value: undefined }
     })
-    on('tool.call', () => ({ result: 'ran' }))
+    on('tool.call', (_$, e) => {
+        const command = (e as unknown as Readonly<Record<string, unknown>>).command
+        if (typeof command === 'string') {
+            commands.push(command)
+        }
+
+        return { result: 'ran' }
+    })
     on('turn.start', (_$, e) => ({ turnId: e.turnId }))
     on('turn.complete', () => ({ text: '' }))
     on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
@@ -273,7 +281,7 @@ export const fakeHost = (on: On, options: HostOptions) => {
     const clock = mock.clock(on, { now: options.now ?? 1_000_000 })
     mock.env(on, options.env ?? {})
 
-    return { files, runs, logs, clock }
+    return { files, runs, logs, clock, commands }
 }
 
 // The kit types `$` per tool and event; these pass only the fields the

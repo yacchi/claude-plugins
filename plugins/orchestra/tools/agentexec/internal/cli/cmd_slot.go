@@ -2,14 +2,18 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/slot"
 )
 
@@ -32,6 +36,9 @@ func newSlotCmd() *cobra.Command {
 		}
 		out := map[string]any{
 			"op": c.Op, "heavy": c.Heavy, "kind": kind, "pool": c.Pool(), "scope": c.Scope,
+		}
+		if c.Heavy {
+			slotGuardAdd(out)
 		}
 		prefix := ""
 		if c.Heavy {
@@ -85,6 +92,25 @@ func newSlotCmd() *cobra.Command {
 	status.RunE = func(cmd *cobra.Command, _ []string) error { return runSlotStatus(cmd, *asJSON) }
 	cmd.AddCommand(status)
 	return cmd
+}
+
+// slotGuardAdd adds the token and the shell prefix that starts `proc guard`
+// on the command's own shell ($$). Without a resolvable executable the
+// command runs unguarded, so neither key is added.
+func slotGuardAdd(out map[string]any) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return
+	}
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	token := hex.EncodeToString(b)
+	out["guard_token"] = token
+	out["guard_prefix"] = sandbox.ShellQuote(exe) + " proc guard --root $$ --token " + token + " </dev/null >/dev/null 2>&1; "
 }
 
 // gvsShellPrefix sets the pnpm global-virtual-store entries before command
