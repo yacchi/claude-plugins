@@ -41,6 +41,14 @@ var heavyPrograms = map[string]string{
 	"biome": KindTest, "ruff": KindTest, "golangci-lint": KindTest, "esbuild": KindBuild,
 }
 
+// Heavy programs that never start Node themselves: a line whose heavy
+// commands are all of these gets no Node CPU cap. Anything else (a package
+// manager, make, a heavy_extra match) may start Node and keeps the cap.
+var nodeFreePrograms = map[string]bool{
+	"go": true, "cargo": true, "pytest": true, "tox": true, "mypy": true, "ruff": true,
+	"golangci-lint": true, "pip": true, "pip3": true, "uv": true, "bundle": true, "poetry": true,
+}
+
 // Programs heavy only with one of these subcommands (first word that is not
 // a flag), and the subcommand's kind.
 var heavySubcommands = map[string]map[string]string{
@@ -130,6 +138,9 @@ type Class struct {
 	// Scope is ScopeFull when any test run of the line covers a whole
 	// repository or workspace, else ScopeTargeted.
 	Scope string
+	// Node is true when any heavy command of the line may start Node (its
+	// program is not in nodeFreePrograms); false when none is heavy.
+	Node bool
 }
 
 // Pool is the name of the machine-wide pool the line is admitted on: the
@@ -177,6 +188,9 @@ func Classify(command string, extra []*regexp.Regexp) Class {
 		}
 		if kind == KindBuild {
 			c.Kind = KindBuild
+		}
+		if !nodeFreePrograms[base(words[0])] {
+			c.Node = true
 		}
 		if kind == KindTest && fullRun(words, movedIn) {
 			c.Scope = ScopeFull
