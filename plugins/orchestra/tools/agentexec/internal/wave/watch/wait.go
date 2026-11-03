@@ -10,9 +10,10 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
-// DefaultMaxWait is `wave wait`'s default window, under the Bash tool's
-// 600 s limit.
-const DefaultMaxWait = 560 * time.Second
+// DefaultMaxWait is `wave wait`'s default window, well under the 180 s after
+// which Claude Code moves a foreground Bash call to the background (the cap
+// is 170 s, see cmd_wave_wait.go).
+const DefaultMaxWait = 150 * time.Second
 
 // readLockTimeout bounds the wait for the runner's state lock; past it the
 // files are read unlocked.

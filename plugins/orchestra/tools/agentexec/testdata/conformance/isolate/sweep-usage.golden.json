@@ -32,6 +32,7 @@
       "exit": 1,
       "stdout_shape": "json",
       "stdout": {
+        "plans": [],
         "reason": "not a git repository",
         "status": "error"
       }
@@ -46,7 +47,7 @@
       ],
       "exit": 1,
       "stdout_shape": "text",
-      "stdout": "sweep error  not a git repository\n"
+      "stdout": "sweep error  not a git repository\nplans: 0 removed\n"
     },
     {
       "argv": [
@@ -59,6 +60,7 @@
       "stdout": {
         "branches": [],
         "dry_run": true,
+        "plans": [],
         "pruned": false,
         "repo": "<WORK>",
         "status": "ok",
@@ -87,7 +89,7 @@
       ],
       "exit": 0,
       "stdout_shape": "text",
-      "stdout": "sweep <WORK>\nsummary: removed 0, would-remove 0, dirty 0, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\n"
+      "stdout": "sweep <WORK>\nsummary: removed 0, would-remove 0, dirty 0, has-children 0, skipped 0, external 0, errors 0, branches 0 orphan / 0 deleted\nplans: 0 removed\n"
     }
   ]
 }

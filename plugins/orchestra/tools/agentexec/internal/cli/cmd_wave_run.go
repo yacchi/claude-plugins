@@ -20,6 +20,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host/orca"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/runner"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/watch"
 )
@@ -48,8 +49,8 @@ func addWaveRunCommands(parent *cobra.Command) {
 	var o runner.Options
 	fl := run.Flags()
 	fl.StringVar(&o.Plan, "plan", "", "plan path")
-	fl.StringVar(&o.State, "state", "", "state.json path")
-	fl.StringVar(&o.Into, "into", "", "integration task id")
+	fl.StringVar(&o.State, "state", "", "state.json path (default: state.json beside --plan)")
+	fl.StringVar(&o.Into, "into", "", "integration task id (default: prog-<run id>, else prog-<plan directory name>)")
 	fl.StringVar(&o.Repo, "repo", "", "repository path (default cwd)")
 	fl.StringVar(&o.Uncommitted, "uncommitted", "", "include|ignore: what the request's assembly does with your uncommitted changes when this run creates it")
 	maxInFlight := fl.String("max-in-flight", "auto", "packages dispatched at once (N, or auto: every startable one)")
@@ -69,14 +70,29 @@ func addWaveRunCommands(parent *cobra.Command) {
 	fl.BoolVar(&o.ResumeOnReset, "resume-on-reset", false, "resume packages after a usage-limit reset")
 	detach := fl.Bool("detach", false, "start the runner as a detached child and return at once")
 	runFormat := formatFlags(run, "json", "text")
-	for _, name := range []string{"plan", "state", "into"} {
-		_ = run.MarkFlagRequired(name)
-	}
+	_ = run.MarkFlagRequired("plan")
 	run.RunE = func(cmd *cobra.Command, _ []string) error {
 		bad := func(format string, args ...any) error {
 			return exitf(2, "wave run: "+format, args...)
 		}
 		changed := cmd.Flags().Changed
+		// Refused before anything else runs: a plan or state under a temporary
+		// root is wiped by a reboot, and the preflight below may create a tree.
+		s, err := waveStateResolve(o.Plan, o.State)
+		if err != nil {
+			return exitf(1, "wave run: %s", err)
+		}
+		o.State = s
+		o.Into, err = waveIntoResolve(o.Plan, o.RunID, o.Into)
+		if err != nil {
+			return exitf(1, "wave run: %s", err)
+		}
+		if err := paths.RefuseTemp("--plan", o.Plan); err != nil {
+			return bad("%s", err)
+		}
+		if err := paths.RefuseTemp("--state", o.State); err != nil {
+			return bad("%s", err)
+		}
 		// A done run merges its integration tree into the request's assembly.
 		o.Merge = true
 		switch o.Uncommitted {
@@ -185,6 +201,39 @@ func runWaveRun(out, errw io.Writer, o runner.Options, text bool) error {
 	return nil
 }
 
+// waveStateResolve is the --state a run uses: the flag as given, or else
+// state.json beside the absolute --plan. A plan's state lives in its plan
+// directory, which survives a reboot, so the default never points at a
+// temporary root.
+func waveStateResolve(plan, state string) (string, error) {
+	if state != "" {
+		return state, nil
+	}
+	abs, err := filepath.Abs(plan)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(abs), "state.json"), nil
+}
+
+// waveIntoResolve is the --into a run uses: the flag as given, else
+// prog-<run id> when --run-id is set, else prog-<base name of the plan's
+// directory> (the plan id for a plan `plan next` made). The detached runner
+// re-runs the same command line, so it derives the same value.
+func waveIntoResolve(plan, runID, into string) (string, error) {
+	if into != "" {
+		return into, nil
+	}
+	if runID != "" {
+		return "prog-" + runID, nil
+	}
+	abs, err := filepath.Abs(plan)
+	if err != nil {
+		return "", err
+	}
+	return "prog-" + filepath.Base(filepath.Dir(abs)), nil
+}
+
 // runWaveDetach re-runs this command line without --detach as a detached
 // runner (its end report goes to runner.log as JSON, where `wave wait`
 // reads it). Exit 2 when one already runs the state.
@@ -211,9 +260,12 @@ func runWaveDetach(out io.Writer, statePath string) error {
 }
 
 // detachedArgs is a `wave run --detach` command line as the detached
-// runner gets it: --detach and the output switch dropped, --state absolute.
+// runner gets it: --detach and the output switch dropped. The runner's argv
+// always carries --state=<statePath>, whether the flag was given or defaulted,
+// so the runner never has to derive the state from its own --plan.
 func detachedArgs(args []string, statePath string) []string {
 	var out []string
+	hasState := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		name, _, _ := strings.Cut(a, "=")
@@ -221,6 +273,7 @@ func detachedArgs(args []string, statePath string) []string {
 		case "--detach", "--json", "--text":
 			continue
 		case "--state":
+			hasState = true
 			if a == name {
 				i++ // the value is the next argument
 			}
@@ -228,6 +281,9 @@ func detachedArgs(args []string, statePath string) []string {
 			continue
 		}
 		out = append(out, a)
+	}
+	if !hasState {
+		out = append(out, "--state="+statePath)
 	}
 	return out
 }

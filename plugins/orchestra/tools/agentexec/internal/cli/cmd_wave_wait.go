@@ -20,13 +20,16 @@ func newWaveWaitCmd() *cobra.Command {
 	}
 	fl := wait.Flags()
 	statePath := fl.String("state", "", "state.json path")
-	maxWait := fl.Float64("max-wait", watch.DefaultMaxWait.Seconds(), "seconds to wait at most")
+	maxWait := fl.Float64("max-wait", watch.DefaultMaxWait.Seconds(), "seconds to wait at most (at most 170)")
 	since := fl.Int("since", 0, "seq of the previous answer: needs and changes recorded before it are not new")
 	untilChange := fl.Bool("until-change", false, "also answer \"changed\" on any event a viewer sees (status, dispatch, integrate, need, stop, start-held, start-resumed) after --since")
 	_ = wait.MarkFlagRequired("state")
 	wait.RunE = func(cmd *cobra.Command, _ []string) error {
 		if !finiteNonNegative(*maxWait) {
 			return exitf(2, "wave wait: --max-wait must be a non-negative number of seconds")
+		}
+		if *maxWait > 170 {
+			return exitf(2, "wave wait: --max-wait must be at most 170 seconds (Claude Code moves a foreground Bash call to the background after 180 s); use 150, the default")
 		}
 		if *since < 0 {
 			return exitf(2, "wave wait: --since must not be negative")

@@ -8,12 +8,10 @@ package telemetry
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"slices"
 	"sort"
 	"strings"
 
@@ -49,6 +47,9 @@ var (
 
 // ErrRejected is Sanitize's error for a record without a valid event.
 var ErrRejected = errors.New("telemetry: record rejected")
+
+// ErrDisabled is Write's error when telemetry.enabled is not the boolean true.
+var ErrDisabled = errors.New("telemetry: disabled")
 
 func oneOf(v any, allowed []string) (string, bool) {
 	s, ok := v.(string)
@@ -209,39 +210,47 @@ func Enabled(cfg *config.Resolved) bool {
 	return b
 }
 
+// Write sanitizes rec, appends it as one line to the records file subject to
+// a hard line cap, and returns the record exactly as written. Errors:
+// ErrDisabled, ErrRejected, or the I/O error.
+func Write(rec map[string]any, cfg *config.Resolved) (map[string]any, error) {
+	if !Enabled(cfg) {
+		return nil, ErrDisabled
+	}
+	clean, err := Sanitize(rec)
+	if err != nil {
+		return nil, ErrRejected
+	}
+	dir := Dir(cfg)
+	if err := os.MkdirAll(dir, 0o777); err != nil {
+		return nil, err
+	}
+	line, err := fsutil.MarshalJSON(clean)
+	if err != nil {
+		return nil, err
+	}
+	path := RecordsPath(cfg)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o666)
+	if err != nil {
+		return nil, err
+	}
+	_, werr := f.Write(append(line, '\n'))
+	cerr := f.Close()
+	if werr != nil {
+		return nil, werr
+	}
+	if cerr != nil {
+		return nil, cerr
+	}
+	enforceCap(path)
+	return clean, nil
+}
+
 // Append sanitizes rec and appends it as one line to the records file,
 // subject to a hard line cap. It never fails the caller: a disabled
 // telemetry, a rejected record or any I/O error means nothing is written.
 func Append(rec map[string]any, cfg *config.Resolved) {
-	if !Enabled(cfg) || rec == nil {
-		return
-	}
-	raw := map[string]any{}
-	for _, k := range slices.Sorted(maps.Keys(rec)) {
-		raw[k] = rec[k]
-	}
-	clean, err := Sanitize(raw)
-	if err != nil {
-		return
-	}
-	dir := Dir(cfg)
-	if os.MkdirAll(dir, 0o777) != nil {
-		return
-	}
-	line, err := fsutil.MarshalJSON(clean)
-	if err != nil {
-		return
-	}
-	path := filepath.Join(dir, "records.jsonl")
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o666)
-	if err != nil {
-		return
-	}
-	_, werr := f.Write(append(line, '\n'))
-	f.Close()
-	if werr == nil {
-		enforceCap(path)
-	}
+	_, _ = Write(rec, cfg)
 }
 
 // enforceCap keeps only the newest maxLines lines of path.

@@ -1,4 +1,4 @@
-description: record input errors exit 2 and write nothing
+description: telemetry record is removed (exit 2 with the removal message) and run-summary rejects a missing or malformed --run
 setup:
   files:
     ~/.claude/orchestra.yaml: |
@@ -9,9 +9,10 @@ setup:
     bad.json: "{not json"
 steps:
   - argv: [telemetry, record]
-  - argv: [telemetry, record, --json, "{not json"]
-  - argv: [telemetry, record, --json, "[]"]
-  - argv: [telemetry, record, --json, '{"status": "ok"}']
-  - argv: [telemetry, record, --json, '{"event": "nope"}']
-  - argv: [telemetry, record, --file, bad.json]
-  - argv: [telemetry, record, --file, missing.json]
+    stderr_contains: ["telemetry record was removed in orchestra 0.93.0"]
+  - argv: [telemetry, record, --json, '{"event": "dispatch"}']
+    stderr_contains: ["telemetry record was removed in orchestra 0.93.0"]
+  - argv: [telemetry, record, --file, x]
+    stderr_contains: ["telemetry record was removed in orchestra 0.93.0"]
+  - argv: [telemetry, run-summary]
+  - argv: [telemetry, run-summary, --run, "bad id"]

@@ -3,9 +3,11 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 )
 
 // Home is $HOME.
@@ -33,6 +35,66 @@ func StateDir() string {
 		return RealPath(filepath.Join(xdg, "claude-orchestra"))
 	}
 	return RealPath(filepath.Join(RealPath(Home()), ".local", "state", "claude-orchestra"))
+}
+
+// PlansDir is StateDir()/plans: one directory per plan id. Plans, specs,
+// answers and wave state live here, not in /tmp, because a reboot wipes
+// temporary directories and with them a run's whole plan.
+func PlansDir() string {
+	return filepath.Join(StateDir(), "plans")
+}
+
+// PlanDir is PlansDir()/id.
+func PlanDir(id string) string {
+	return filepath.Join(PlansDir(), id)
+}
+
+// TempRootsSeam replaces the list of temporary roots TempRoot compares
+// against (a test seam).
+var TempRootsSeam func() []string
+
+// tempRoots is the list TempRoot compares against. Inside a test binary the
+// default list is empty, so tests that do not set the seam refuse nothing.
+func tempRoots() []string {
+	if TempRootsSeam != nil {
+		return TempRootsSeam()
+	}
+	if testing.Testing() {
+		return nil
+	}
+	return []string{"/tmp", "/private/tmp", os.TempDir()}
+}
+
+// TempRoot is the temporary root p lies under: "/tmp", "/private/tmp" or
+// os.TempDir() ($TMPDIR), returned as that root is written in the list; ""
+// when none. A relative p is made absolute first; both sides are compared
+// with RealPath (so /tmp and /var/folders read as /private/...), at a path
+// separator boundary (p equal to the root counts; /tmpfoo is not under /tmp).
+func TempRoot(p string) string {
+	abs := RealPath(p)
+	for _, root := range tempRoots() {
+		if root == "" {
+			continue
+		}
+		r := RealPath(root)
+		if r == "/" {
+			continue
+		}
+		if abs == r || strings.HasPrefix(abs, r+"/") {
+			return root
+		}
+	}
+	return ""
+}
+
+// RefuseTemp is nil unless p lies under a temporary root; then an error
+// naming the flag, the path, the root and the plan directory to use instead.
+func RefuseTemp(flag, p string) error {
+	root := TempRoot(p)
+	if root == "" {
+		return nil
+	}
+	return fmt.Errorf("%s %s is under %s, which a reboot wipes; keep plans, specs, answers and wave state in the plan directory %s/<plan id>/ (agent-exec plan dir --id <plan id> prints it)", flag, p, root, PlansDir())
 }
 
 // LedgerDir is the default run ledger: $StateDir/runs. Its siblings tokens/,

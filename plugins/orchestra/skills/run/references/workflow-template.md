@@ -18,7 +18,7 @@ Fallback, when that name does not resolve (plugin not registered in this session
 Workflow({ scriptPath: '<plugin root>/workflows/pipeline.js', args: { runId, tasks } })
 ```
 
-To change the protocol for one run, copy `<plugin root>/workflows/pipeline.js` to the session scratchpad, edit the copy, and run the copy with `scriptPath`. Do not edit the installed plugin file for a single run.
+To change the protocol for one run, copy `<plugin root>/workflows/pipeline.js` into the run's plan directory (the `dir` that `agent-exec plan dir --id <runId>` prints), edit the copy, and run the copy with `scriptPath`. Do not edit the installed plugin file for a single run.
 
 ## 2. The args contract
 
@@ -39,7 +39,7 @@ Each task object:
 | `verifierPrompt` | yes | What the reviewer must re-check and which implementation mistakes to probe for. |
 | `files_owned` | yes | Non-empty array of repo-relative paths the worker may change, its test files included. A trailing `/` is a directory prefix. At most 3 entries. |
 | `est_seconds` | yes | Integer estimate of worker time. At most 300. |
-| `probeDir` | yes, unless `noProbes` | Scratch directory outside every worktree where the probe author writes throwaway tests. |
+| `probeDir` | yes, unless `noProbes` | Directory `<probes>/<task id>`, where `<probes>` is the `probes` path that `agent-exec plan dir --id <runId>` prints. Outside every worktree, never under /tmp or $TMPDIR. The probe author writes throwaway tests there. |
 | `allowLarge` | no | Non-empty reason string. Waives the `est_seconds` and `files_owned` limits. Logged and echoed in the task result. |
 | `noProbes` | no | Non-empty reason string. Skips the probe author. Logged. |
 | `workdir` | no | Working directory for the dispatch, when it is a subdirectory of the repo. |
@@ -58,7 +58,7 @@ Refusal and size-gate outcomes, both returned without any dispatch:
 A run that starts returns `{ results, runEnd }`:
 
 - `results`: one entry per task, in `tasks` order. Each carries `pass`, `rounds`, and `allowLarge` when it was set, plus the verdict fields the review returned.
-- `runEnd`: the text of the cleanup step (the `agent-exec isolate integrate` of the passing tasks into `<runId>`, `agent-exec isolate sweep` and `agent-exec usage --run <runId>`), verbatim. Report cost from it. The passing tasks now sit in integration tree `<runId>`: gate it, then `agent-exec isolate merge --task <runId> -m "<subject>"`; land only on the user's request.
+- `runEnd`: the text of the cleanup step (the `agent-exec isolate integrate` of the passing tasks into `<runId>`, then `agent-exec run-end --run <runId>`: sweep, cost report and run summary), verbatim. Report cost from its `== usage` section. The passing tasks now sit in integration tree `<runId>`: gate it, then `agent-exec isolate merge --task <runId> -m "<subject>"`; land only on the user's request.
 
 ## 4. The relay protocol
 

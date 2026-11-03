@@ -98,30 +98,178 @@ func nextWriterIDs(step Step) []string {
 	return ids
 }
 
-func TestNextInFlightWritersAreNotReissuedUntilTimeout(t *testing.T) {
+// nextRecordEqual reports whether two records agree on every field, Writer included.
+func nextRecordEqual(a, b SpecRecord) bool {
+	return a.Hash == b.Hash && a.Attempts == b.Attempts && a.InFlight == b.InFlight && a.IssuedAt == b.IssuedAt &&
+		(a.Writer == nil) == (b.Writer == nil) && (a.Writer == nil || *a.Writer == *b.Writer)
+}
+
+func TestNextBareCallReissuesInFlightWriters(t *testing.T) {
 	cfg := nextTestConfig(8)
 	planPath := nextTestPlan(t, "a", "b")
 	nextReviewed(t, planPath, 1, "accept")
 
-	step, _ := nextRun(t, cfg, planPath, NextInput{}, nextNow)
-	if step.Step != "specs" || !slices.Equal(nextWriterIDs(step), []string{"a", "b"}) {
-		t.Fatalf("first call = %s %v, want specs [a b]", step.Step, nextWriterIDs(step))
+	first, st := nextRun(t, cfg, planPath, NextInput{}, nextNow)
+	if first.Step != "specs" || !slices.Equal(nextWriterIDs(first), []string{"a", "b"}) {
+		t.Fatalf("first call = %s %v, want specs [a b]", first.Step, nextWriterIDs(first))
 	}
-	if w := step.Writers[0]; w.Model != "sonnet" || w.Effort != "medium" {
+	if w := first.Writers[0]; w.Model != "sonnet" || w.Effort != "medium" {
 		t.Errorf("light writer at %s/%s, want sonnet/medium", w.Model, w.Effort)
 	}
+	before := st.Specs
 
-	step, _ = nextRun(t, cfg, planPath, NextInput{}, nextNow.Add(time.Minute))
-	if step.Step != "wait" || len(step.Writers) != 0 {
-		t.Fatalf("second call = %s %v, want wait with no writers", step.Step, nextWriterIDs(step))
+	step, st := nextRun(t, cfg, planPath, NextInput{}, nextNow.Add(time.Minute))
+	if step.Step != "specs" || !slices.Equal(step.Writers, first.Writers) {
+		t.Fatalf("second call = %s %+v, want specs identical to the first", step.Step, step.Writers)
+	}
+	for _, id := range []string{"a", "b"} {
+		if !nextRecordEqual(before[id], st.Specs[id]) {
+			t.Errorf("record %s changed by a re-issue: %+v -> %+v", id, before[id], st.Specs[id])
+		}
 	}
 
-	step, st := nextRun(t, cfg, planPath, NextInput{}, nextNow.Add(WriterTimeout+time.Second))
+	step, st = nextRun(t, cfg, planPath, NextInput{}, nextNow.Add(WriterTimeout+time.Second))
 	if step.Step != "specs" || !slices.Equal(nextWriterIDs(step), []string{"a", "b"}) {
 		t.Fatalf("after WriterTimeout = %s %v, want specs [a b]", step.Step, nextWriterIDs(step))
 	}
 	if st.Specs["a"].Attempts != 2 {
 		t.Errorf("attempts after timeout = %d, want 2", st.Specs["a"].Attempts)
+	}
+}
+
+func TestNextReissuedWriterKeepsFixLines(t *testing.T) {
+	cfg := nextTestConfig(8)
+	planPath := nextTestPlan(t, "a", "b")
+	nextReviewed(t, planPath, 1, "accept")
+	nextRun(t, cfg, planPath, NextInput{}, nextNow)
+	nextSpec(t, planPath, "a")
+	nextSpec(t, planPath, "b")
+	if step, _ := nextRun(t, cfg, planPath, NextInput{Returned: []string{"a", "b"}}, nextNow.Add(time.Minute)); step.Step != "done" {
+		t.Fatalf("all specs written = %s %v, want done", step.Step, step.Reasons)
+	}
+
+	nextWrite(t, filepath.Join(filepath.Dir(planPath), "i.txt"), "func J() int")
+	for _, id := range []string{"a", "b"} {
+		nextWrite(t, filepath.Join(filepath.Dir(planPath), "specs", id+".md"), "func J() int\n")
+	}
+	first, _ := nextRun(t, cfg, planPath, NextInput{}, nextNow.Add(2*time.Minute))
+	if first.Step != "specs" || !slices.Equal(nextWriterIDs(first), []string{"a", "b"}) {
+		t.Fatalf("after interface change = %s %v, want specs [a b]", first.Step, nextWriterIDs(first))
+	}
+
+	again, st := nextRun(t, cfg, planPath, NextInput{}, nextNow.Add(3*time.Minute))
+	if !slices.Equal(again.Writers, first.Writers) {
+		t.Fatalf("re-issued writers = %+v, want the first issue %+v", again.Writers, first.Writers)
+	}
+	for _, w := range again.Writers {
+		if n := strings.Count(w.Prompt, "\nFix: "); n != 1 {
+			t.Errorf("re-issued %s prompt has %d Fix lines, want 1", w.ID, n)
+		}
+	}
+	if st.Specs["a"].Attempts != 1 {
+		t.Errorf("attempts after re-issue = %d, want 1", st.Specs["a"].Attempts)
+	}
+}
+
+func TestNextReissuedWritersComeFirstAndCountTowardCap(t *testing.T) {
+	planPath := nextTestPlan(t, "a", "b", "c")
+	nextReviewed(t, planPath, 1, "accept")
+
+	step, _ := nextRun(t, nextTestConfig(2), planPath, NextInput{}, nextNow)
+	if !slices.Equal(nextWriterIDs(step), []string{"a", "b"}) {
+		t.Fatalf("first call under cap 2 = %v, want [a b]", nextWriterIDs(step))
+	}
+	step, _ = nextRun(t, nextTestConfig(2), planPath, NextInput{}, nextNow.Add(time.Minute))
+	if !slices.Equal(nextWriterIDs(step), []string{"a", "b"}) {
+		t.Fatalf("bare call under cap 2 = %v, want [a b] with c not issued", nextWriterIDs(step))
+	}
+
+	// Only b stays in flight: a and c are as if plan next had never issued them.
+	_, st := nextRun(t, nextTestConfig(8), planPath, NextInput{}, nextNow.Add(2*time.Minute))
+	delete(st.Specs, "a")
+	delete(st.Specs, "c")
+	if err := Save(planPath, st); err != nil {
+		t.Fatal(err)
+	}
+	step, _ = nextRun(t, nextTestConfig(2), planPath, NextInput{}, nextNow.Add(3*time.Minute))
+	if step.Step != "specs" || !slices.Equal(nextWriterIDs(step), []string{"b", "a"}) {
+		t.Fatalf("with only b in flight = %s %v, want specs [b a] (b re-issued first, c past the cap)", step.Step, nextWriterIDs(step))
+	}
+}
+
+func TestNextReturnedCallWaitsForOthersInFlight(t *testing.T) {
+	cfg := nextTestConfig(8)
+	planPath := nextTestPlan(t, "a", "b")
+	nextReviewed(t, planPath, 1, "accept")
+	nextRun(t, cfg, planPath, NextInput{}, nextNow)
+	nextSpec(t, planPath, "a")
+
+	step, _ := nextRun(t, cfg, planPath, NextInput{Returned: []string{"a"}}, nextNow.Add(time.Minute))
+	if step.Step != "wait" || len(step.Writers) != 0 ||
+		!slices.Equal(step.Reasons, []string{"1 spec writers still running: b"}) {
+		t.Fatalf("returned a = %s %v %v, want wait with no writers", step.Step, nextWriterIDs(step), step.Reasons)
+	}
+}
+
+func TestNextBareCallWithEscalationReissuesWriters(t *testing.T) {
+	cfg := nextTestConfig(8)
+	planPath := nextTestPlan(t, "a", "b")
+	nextReviewed(t, planPath, 1, "accept")
+	first, _ := nextRun(t, cfg, planPath, NextInput{}, nextNow)
+	esc := filepath.Join(filepath.Dir(planPath), "specs", "a.escalate.md")
+	nextWrite(t, esc, "split it")
+
+	step, st := nextRun(t, cfg, planPath, NextInput{}, nextNow.Add(time.Minute))
+	if step.Step != "specs" || !slices.Equal(step.Writers, first.Writers) {
+		t.Fatalf("bare call with escalation = %s %v, want specs identical to the first", step.Step, nextWriterIDs(step))
+	}
+	if _, err := os.Stat(esc); err != nil || st.Revisions != 0 {
+		t.Fatalf("escalation file present %v, revisions %d; want it kept and no revision", err == nil, st.Revisions)
+	}
+
+	step, _ = nextRun(t, cfg, planPath, NextInput{Returned: []string{"a"}}, nextNow.Add(2*time.Minute))
+	if step.Step != "wait" || !slices.Equal(step.Reasons, []string{"waiting for 1 spec writers before revising for escalations"}) {
+		t.Fatalf("returned a = %s %v, want wait for escalations", step.Step, step.Reasons)
+	}
+
+	stem := strings.TrimSuffix(filepath.Join(filepath.Dir(planPath), "specs", "a.md"), ".md")
+	step, _ = nextRun(t, cfg, planPath, NextInput{Returned: []string{"b"}}, nextNow.Add(3*time.Minute))
+	renamed := stem + ".escalated-1.md"
+	if step.Step != "skeleton" || !slices.Equal(step.Reasons, []string{"a: " + renamed}) {
+		t.Fatalf("returned b = %s %v, want skeleton [a: %s]", step.Step, step.Reasons, renamed)
+	}
+}
+
+func TestNextLegacyInFlightWriterRebuiltWithoutFix(t *testing.T) {
+	cfg := nextTestConfig(8)
+	planPath := nextTestPlan(t, "a", "b")
+	nextReviewed(t, planPath, 1, "accept")
+	st, err := Load(planPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issued := nextNow.Unix()
+	st.Specs["b"] = SpecRecord{Hash: "x", Attempts: 1, InFlight: true, IssuedAt: issued}
+	if err := Save(planPath, st); err != nil {
+		t.Fatal(err)
+	}
+
+	step, st := nextRun(t, cfg, planPath, NextInput{}, nextNow.Add(time.Minute))
+	if step.Step != "specs" || !slices.Equal(nextWriterIDs(step), []string{"b", "a"}) {
+		t.Fatalf("bare call = %s %v, want specs [b a]", step.Step, nextWriterIDs(step))
+	}
+	dir := filepath.Dir(planPath)
+	specB := filepath.Join(dir, "specs", "b.md")
+	want := Writer{
+		ID: "b", Cls: "light", Model: "sonnet", Effort: "medium", Spec: specB, Description: "spec b",
+		Prompt: "Plan: " + planPath + "\nPackage: b\nSpec: " + specB,
+	}
+	if step.Writers[0] != want {
+		t.Errorf("rebuilt writer = %+v, want %+v", step.Writers[0], want)
+	}
+	rec := st.Specs["b"]
+	if rec.Writer != nil || rec.Attempts != 1 || rec.IssuedAt != issued || !rec.InFlight {
+		t.Errorf("legacy record after re-issue = %+v, want unchanged with no writer", rec)
 	}
 }
 

@@ -20,22 +20,17 @@ const ACQUIRE_TIMEOUT_MS = 600_000
 const MAX_WAIT = '540s'
 const RELEASE_TIMEOUT_MS = 5000
 const CLASSIFY_TIMEOUT_MS = 5000
+const GUARD_RESULT_TIMEOUT_MS = 5000
+const WATCHER_TIMEOUT_MS = 3000
 
 // What agent-exec tells of a command line: the op it names, whether it is
-// heavy, whether it runs a whole repository's or workspace's suite, and, when
-// the command should run under a worker-count cap or with the pnpm store
-// entries, the capped command line.
-export type CommandClass = { op: string, heavy: boolean, scope: 'full' | 'targeted', capped?: string }
+// heavy, and whether it runs a whole repository's or workspace's suite.
+export type CommandClass = { op: string, heavy: boolean, scope: 'full' | 'targeted' }
 
 // The command's class, or undefined when agent-exec could not tell (missing,
-// failed, or bad output). cwd is the directory the command runs in, which
-// decides the git tree whose pnpm store entries apply.
-export const classifyCommand = async (io: Io, command: string, cwd?: string): Promise<CommandClass | undefined> => {
-    const args = ['slot', 'classify', `--command=${command}`]
-    if (cwd) {
-        args.push(`--cwd=${cwd}`)
-    }
-    const r = await agentExec(io, args, CLASSIFY_TIMEOUT_MS)
+// failed, or bad output).
+export const classifyCommand = async (io: Io, command: string): Promise<CommandClass | undefined> => {
+    const r = await agentExec(io, ['slot', 'classify', `--command=${command}`], CLASSIFY_TIMEOUT_MS)
     if (r.kind !== 'ok') {
         return undefined
     }
@@ -49,14 +44,44 @@ export const classifyCommand = async (io: Io, command: string, cwd?: string): Pr
             return undefined
         }
 
-        const capped = d.capped_command
-        if (typeof capped === 'string' && capped !== '' && capped !== command) {
-            return { op: d.op, heavy: d.heavy, scope: d.scope, capped }
-        }
-
         return { op: d.op, heavy: d.heavy, scope: d.scope }
     } catch {
         return undefined
+    }
+}
+
+// The process guard's report of a command it killed since `sinceMs` (when the
+// command started), or undefined when it killed none (or agent-exec could not
+// tell). Asked once, after a foreground command returned: agent-exec writes the
+// record before it kills anything, so it never has to be polled for.
+export const guardResult = async (io: Io, sinceMs: number): Promise<string | undefined> => {
+    try {
+        const r = await agentExec(io, ['proc', 'guard-result', `--since=${Math.max(0, Math.floor(sinceMs))}`], GUARD_RESULT_TIMEOUT_MS)
+        if (r.kind !== 'ok') {
+            return undefined
+        }
+        const data: unknown = JSON.parse(r.stdout)
+        if (typeof data !== 'object' || data === null) {
+            return undefined
+        }
+        const d = data as Record<string, unknown>
+        if (d.killed !== true || typeof d.reason !== 'string') {
+            return undefined
+        }
+
+        return `orchestra: agent-exec's process guard killed this command: ${d.reason}. Its process tree outgrew this machine (a fork bomb, or too many test workers at once). Run it again with fewer workers (e.g. jest --maxWorkers=2, vitest --maxWorkers=2) through the package's test script, and never start a test runner from node -e.`
+    } catch {
+        return undefined
+    }
+}
+
+// Starts, or finds running, the one detached process watcher of this Claude
+// Code process. Fired, not awaited, at every main-loop turn start.
+export const ensureWatcher = async (io: Io): Promise<void> => {
+    try {
+        await agentExec(io, ['proc', 'watch'], WATCHER_TIMEOUT_MS)
+    } catch {
+        // Fails open: a missing watcher only means no kill report.
     }
 }
 

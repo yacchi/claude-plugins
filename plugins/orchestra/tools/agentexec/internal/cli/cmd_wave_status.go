@@ -155,6 +155,9 @@ func runWaveLint(out io.Writer, planPath string, asJSON bool) error {
 		root, _ := gitx.RepoRoot("")
 		err = plan.CheckTsJest(p, root, false)
 	}
+	if err == nil {
+		err = plan.CheckInterfaceLoad(p)
+	}
 	if err != nil {
 		var pe *plan.Error
 		if errors.As(err, &pe) {

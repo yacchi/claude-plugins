@@ -25,11 +25,16 @@ const resumeEscaped = new Set<string>()
 // `name [ref]` names the agent `name`; the `[ref]` is the teammate-ref suffix.
 const targetName = (to: string): string => to.replace(/ \[[^\]]*\]$/, '')
 
-const reason = (tokens: number, limit: number): string => {
+// With a handoff file (written when the agent returned), the deny names it so the
+// replacement starts from that file instead of a summary the instructor composes.
+const reason = (tokens: number, limit: number, handoff?: string): string => {
     const k = Math.round(tokens / 1000)
     const l = Math.round(limit / 1000)
+    const next = handoff
+        ? `Spawn a fresh agent of the same type instead and give it the handoff file ${handoff} (written when this agent returned: its goal, its answer, the commands that failed and the files to read) plus the exact next step.`
+        : 'Spawn a fresh agent instead with a compact handoff: the goal, what was done and verified, what failed and why, the exact next step, and the files to read.'
 
-    return `orchestra: this agent already holds ~${k}k tokens of context (limit ${l}k, enforcement.resume_max_tokens / resume_max_tokens_by_model); every resumed turn re-reads all of it, and cache reads count against the plan. Spawn a fresh agent instead with a compact handoff: the goal, what was done and verified, what failed and why, the exact next step, and the files to read. Resume only when the history itself is the value, with [orchestra:allow-resume: <reason>] in the message (once per agent).`
+    return `orchestra: this agent already holds ~${k}k tokens of context (limit ${l}k, enforcement.resume_max_tokens / resume_max_tokens_by_model); every resumed turn re-reads all of it, and cache reads count against the plan. ${next} Resume only when the history itself is the value, with [orchestra:allow-resume: <reason>] in the message (once per agent).`
 }
 
 // The `to` of a SendMessage, or undefined when the call is not checked.
@@ -73,7 +78,7 @@ export const checkResume = async (
         if (typeof data !== 'object' || data === null) {
             return undefined
         }
-        const { context_tokens: tokens, limit } = data as Record<string, unknown>
+        const { context_tokens: tokens, limit, handoff } = data as Record<string, unknown>
         // a null limit means the guard is off for this model (or unknown): allow
         if (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0) {
             return undefined
@@ -87,7 +92,7 @@ export const checkResume = async (
             return undefined
         }
 
-        return reason(tokens, limit)
+        return reason(tokens, limit, typeof handoff === 'string' && handoff !== '' ? handoff : undefined)
     } catch {
         // an unexpected failure allows the call: a hook must never block the session
         return undefined

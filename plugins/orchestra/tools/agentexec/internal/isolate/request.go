@@ -120,14 +120,46 @@ func requestComponent() string {
 }
 
 // newRequestID is today's date and the session component, with a numeric
-// suffix when that workspace already exists.
+// suffix when that workspace is still taken.
 func newRequestID(root string) string {
 	base := requestNow().Format("20060102") + "-" + requestComponent()
 	id := base
-	for n := 2; lexists(filepath.Join(root, id)); n++ {
+	for n := 2; requestIDTaken(filepath.Join(root, id)); n++ {
 		id = fmt.Sprintf("%s-%d", base, n)
 	}
 	return id
+}
+
+// requestIDTaken is whether dir is in use. An ended request's workspace whose
+// last assembly is still being deleted by its detached rm holds nothing but
+// that renamed-aside trash: it is free, or the next request of the session
+// would get a suffixed id only because the rm had not finished yet.
+func requestIDTaken(dir string) bool {
+	if !lexists(dir) {
+		return false
+	}
+	if lexists(filepath.Join(dir, requestFile)) {
+		return true
+	}
+	return !requestOnlyTrash(dir)
+}
+
+// requestOnlyTrash is whether dir holds nothing but removal trash, directly
+// or in subdirectories that do.
+func requestOnlyTrash(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), trashMarker) {
+			continue
+		}
+		if !e.IsDir() || !requestOnlyTrash(filepath.Join(dir, e.Name())) {
+			return false
+		}
+	}
+	return true
 }
 
 // withRequests runs fn with the request root locked and the open requests

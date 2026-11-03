@@ -1,15 +1,20 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/watch"
 )
 
 // touchHeartbeat records that this session is orchestrating (see the root's
@@ -254,15 +259,72 @@ func newIsolateSweepCmd() *cobra.Command {
 		if err != nil {
 			return usageErr(cmd, err)
 		}
-		if err := writeResult(cmd.OutOrStdout(), f.is("text"), r, func() string {
-			return isolate.FormatSweepText(r)
+		plans := watch.SweepPlans(paths.PlansDir(), time.Now(), opts.DryRun)
+		out, err := sweepPlansJSON(r, plans)
+		if err != nil {
+			return err
+		}
+		if err := writeResult(cmd.OutOrStdout(), f.is("text"), out, func() string {
+			return isolate.FormatSweepText(r) + "\n" + sweepPlansText(plans, opts.DryRun)
 		}); err != nil {
 			return err
 		}
-		if r.Status == "error" || r.Summary.Errors > 0 {
+		if r.Status == "error" || r.Summary.Errors > 0 || sweepPlansFailed(plans) {
 			return &ExitError{Code: 1}
 		}
 		return nil
 	}
 	return cmd
+}
+
+// sweepPlansJSON is the sweep's JSON object: the keys isolate.SweepResult
+// marshals, plus "plans" (always an array, never null).
+func sweepPlansJSON(r isolate.SweepResult, plans []watch.PlanSweep) (map[string]json.RawMessage, error) {
+	if plans == nil {
+		plans = []watch.PlanSweep{}
+	}
+	data, err := fsutil.MarshalJSON(r)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]json.RawMessage{}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	list, err := fsutil.MarshalJSON(plans)
+	if err != nil {
+		return nil, err
+	}
+	out["plans"] = list
+	return out, nil
+}
+
+// sweepPlansText is the plan part of the sweep's --text: a count line and one
+// line per plan directory that could not be swept.
+func sweepPlansText(plans []watch.PlanSweep, dryRun bool) string {
+	status, label := "removed", "removed"
+	if dryRun {
+		status, label = "would-remove", "would be removed"
+	}
+	n := 0
+	lines := []string{}
+	for _, p := range plans {
+		switch p.Status {
+		case status:
+			n++
+		case "error":
+			lines = append(lines, fmt.Sprintf("plan error: %s: %s", p.Dir, p.Reason))
+		}
+	}
+	return strings.Join(append([]string{fmt.Sprintf("plans: %d %s", n, label)}, lines...), "\n")
+}
+
+// sweepPlansFailed reports whether any plan directory could not be swept.
+func sweepPlansFailed(plans []watch.PlanSweep) bool {
+	for _, p := range plans {
+		if p.Status == "error" {
+			return true
+		}
+	}
+	return false
 }

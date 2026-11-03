@@ -41,14 +41,6 @@ var heavyPrograms = map[string]string{
 	"biome": KindTest, "ruff": KindTest, "golangci-lint": KindTest, "esbuild": KindBuild,
 }
 
-// Heavy programs that never start Node themselves: a line whose heavy
-// commands are all of these gets no Node CPU cap. Anything else (a package
-// manager, make, a heavy_extra match) may start Node and keeps the cap.
-var nodeFreePrograms = map[string]bool{
-	"go": true, "cargo": true, "pytest": true, "tox": true, "mypy": true, "ruff": true,
-	"golangci-lint": true, "pip": true, "pip3": true, "uv": true, "bundle": true, "poetry": true,
-}
-
 // Programs heavy only with one of these subcommands (first word that is not
 // a flag), and the subcommand's kind.
 var heavySubcommands = map[string]map[string]string{
@@ -138,9 +130,6 @@ type Class struct {
 	// Scope is ScopeFull when any test run of the line covers a whole
 	// repository or workspace, else ScopeTargeted.
 	Scope string
-	// Node is true when any heavy command of the line may start Node (its
-	// program is not in nodeFreePrograms); false when none is heavy.
-	Node bool
 }
 
 // Pool is the name of the machine-wide pool the line is admitted on: the
@@ -188,9 +177,6 @@ func Classify(command string, extra []*regexp.Regexp) Class {
 		}
 		if kind == KindBuild {
 			c.Kind = KindBuild
-		}
-		if !nodeFreePrograms[base(words[0])] {
-			c.Node = true
 		}
 		if kind == KindTest && fullRun(words, movedIn) {
 			c.Scope = ScopeFull
@@ -306,32 +292,6 @@ func unwrapOnce(w []string) ([]string, bool) {
 		return w[min(i+1, len(w)):], true
 	}
 	return w, false
-}
-
-// RunsProgram reports whether a simple command of command runs the program
-// name (a base name; a `@version` suffix is ignored): the command's own
-// program, or one that an npx, bunx, pnpx or corepack launcher runs. Each
-// layer is checked as unwrap strips it, so `pnpm exec tsc` runs pnpm as well
-// as tsc. Quoted strings and heredoc bodies are data, as in Classify.
-func RunsProgram(command, name string) bool {
-	for _, seg := range segments(command) {
-		w := strings.Fields(seg)
-		for len(w) > 0 {
-			if prog, _, _ := strings.Cut(base(w[0]), "@"); prog == name {
-				return true
-			}
-			if base(w[0]) == "corepack" {
-				w = w[1:]
-				continue
-			}
-			next, ok := unwrapOnce(w)
-			if !ok {
-				break
-			}
-			w = next
-		}
-	}
-	return false
 }
 
 // runnerVerb: `pnpm exec x`, `pnpm dlx x`, `yarn dlx x`, `npm exec x`, `bun x x`.

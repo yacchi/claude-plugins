@@ -3,6 +3,7 @@ package cli
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,9 +12,16 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/ledger"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/telemetry"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
+
+// telemetryRunRemoved is what `telemetry record` says now: records are derived
+// from a run, never handed in.
+const telemetryRunRemoved = "telemetry record was removed in orchestra 0.93.0: a run's summary comes from 'agent-exec run-end --run <id>' (or 'agent-exec telemetry run-summary --run <id>'), and dispatch records are written by dispatch itself"
 
 func newTelemetryCmd() *cobra.Command {
 	tel := groupCommand("telemetry", "anonymized, opt-in telemetry")
@@ -33,22 +41,17 @@ func newTelemetryCmd() *cobra.Command {
 		cmd.RunE = func(cmd *cobra.Command, _ []string) error { return runToggle(cmd, *scope, enabled) }
 	}
 
-	record := sub("record", "append an anonymized telemetry record")
-	jsonFlag := record.Flags().String("json", "", "the record as a JSON string")
-	fileFlag := record.Flags().String("file", "", "a file holding the record")
-	record.MarkFlagsOneRequired("json", "file")
-	record.MarkFlagsMutuallyExclusive("json", "file")
-	record.RunE = func(cmd *cobra.Command, _ []string) error {
-		data := []byte(*jsonFlag)
-		if cmd.Flags().Changed("file") {
-			b, err := os.ReadFile(*fileFlag)
-			if err != nil {
-				return exitf(2, "telemetry record: %v", err)
-			}
-			data = b
-		}
-		return runRecord(data)
-	}
+	// record is removed: any call, with any arguments or flags, gets the removal
+	// message (flags are not parsed, so cobra cannot reject them first).
+	record := sub("record", "removed in orchestra 0.93.0 (use telemetry run-summary)")
+	record.Args = cobra.ArbitraryArgs
+	record.DisableFlagParsing = true
+	record.RunE = func(*cobra.Command, []string) error { return exitf(2, "%s", telemetryRunRemoved) }
+
+	rs := sub("run-summary", "derive and record the run_summary telemetry record of one run")
+	runID := rs.Flags().String("run", "", "run id")
+	_ = rs.MarkFlagRequired("run")
+	rs.RunE = func(cmd *cobra.Command, _ []string) error { return telemetryRunSummary(cmd, *runID) }
 
 	show := sub("show", "print recorded telemetry")
 	showJSON := show.Flags().Bool("json", false, "raw JSONL")
@@ -81,17 +84,82 @@ func runToggle(cmd *cobra.Command, scope string, enabled bool) error {
 	return nil
 }
 
-func runRecord(data []byte) error {
-	v, err := fsutil.DecodeJSON(data)
+// telemetryRunSummary derives the run_summary record of run id from its wave
+// state, its plan and its ledger dispatch records, and appends it. Exactly one
+// JSON line goes to stdout on every path past the id check.
+func telemetryRunSummary(cmd *cobra.Command, id string) error {
+	if !ledger.RunIDPattern.MatchString(id) {
+		return exitf(2, "telemetry run-summary: invalid --run: %s", id)
+	}
+	cfg := configOrDefaults()
+	var dispatches []map[string]any
+	for _, path := range ledger.SelectedPaths(ledger.Dir(cfg), []string{id}, nil) {
+		dispatches = append(dispatches, ledger.ReadFile(path)...)
+	}
+	tasks, err := telemetryRunTasks(paths.PlanDir(id))
 	if err != nil {
-		return exitf(2, "telemetry record: invalid JSON input")
+		return telemetryRunFail(cmd, err.Error())
 	}
-	rec, ok := v.(map[string]any)
-	if ev := rec["event"]; !ok || (ev != "run_summary" && ev != "dispatch") {
-		return exitf(2, `telemetry record: "event" must be "run_summary" or "dispatch"`)
+	if len(tasks) == 0 && len(dispatches) == 0 {
+		return telemetryRunFail(cmd, "run "+id+" has no dispatch records and no wave state")
 	}
-	telemetry.Append(rec, configOrDefaults())
-	return nil
+	rec, err := telemetry.Write(telemetry.RunSummary(tasks, dispatches), cfg)
+	switch {
+	case err == nil:
+		return writeJSONLine(cmd.OutOrStdout(), map[string]any{"recorded": true, "record": rec})
+	case errors.Is(err, telemetry.ErrDisabled):
+		return writeJSONLine(cmd.OutOrStdout(), map[string]any{
+			"recorded": false,
+			"reason":   "telemetry is off (telemetry.enabled is not true)",
+		})
+	default:
+		return telemetryRunFail(cmd, err.Error())
+	}
+}
+
+// telemetryRunFail prints the not-recorded line and exits 1.
+func telemetryRunFail(cmd *cobra.Command, reason string) error {
+	if err := writeJSONLine(cmd.OutOrStdout(), map[string]any{"recorded": false, "reason": reason}); err != nil {
+		return err
+	}
+	return &ExitError{Code: 1}
+}
+
+// telemetryRunTasks reads the wave under dir (plan.json and state.json). A
+// directory without both files is no wave: nil tasks, no error.
+func telemetryRunTasks(dir string) ([]telemetry.RunTask, error) {
+	planPath := filepath.Join(dir, "plan.json")
+	statePath := filepath.Join(dir, "state.json")
+	for _, p := range []string{planPath, statePath} {
+		if _, err := os.Stat(p); err != nil {
+			return nil, nil
+		}
+	}
+	p, err := plan.Load(planPath)
+	if err != nil {
+		return nil, err
+	}
+	store, err := state.Open(statePath)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := store.Load()
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]telemetry.RunTask, 0, len(p.Packages))
+	for _, pkg := range p.Packages {
+		task := telemetry.RunTask{Cls: pkg.Cls}
+		if sp, ok := snap.Packages[pkg.ID]; ok && sp != nil {
+			task.Status = sp.Status
+			task.Attempts = sp.Attempts
+			if sp.Executor != nil {
+				task.Executor = *sp.Executor
+			}
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, nil
 }
 
 func runShow(cmd *cobra.Command, asJSON bool) error {

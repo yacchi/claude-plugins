@@ -332,6 +332,7 @@
       "stdout": {
         "branches": [],
         "dry_run": true,
+        "plans": [],
         "pruned": false,
         "repo": "<WORK>",
         "status": "ok",

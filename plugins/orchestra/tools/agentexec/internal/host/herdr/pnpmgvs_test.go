@@ -184,10 +184,11 @@ func TestServerEnvCarriesNoWorkspaceEnv(t *testing.T) {
 func TestWorkspaceEnvCarriesTheMiseTrustOfItsTree(t *testing.T) {
 	t.Setenv("MISE_TRUSTED_CONFIG_PATHS", "/keep")
 	was := config.MiseShowSeam
-	config.MiseShowSeam = func(dir string) ([]byte, error) { return []byte(dir + "/mise.toml: trusted\n"), nil }
+	config.MiseShowSeam = func(dir string) ([]byte, error) { return []byte("~/" + filepath.Base(dir) + ": trusted\n"), nil }
 	t.Cleanup(func() { config.MiseShowSeam = was })
 
 	e := newEnv(t)
+	t.Setenv("HOME", e.tmp)
 	e.scenario(map[string]any{}, true)
 	tree := e.linkedTree("mise")
 	_ = os.WriteFile(filepath.Join(tree, "mise.toml"), []byte("[env]\n"), 0o644)

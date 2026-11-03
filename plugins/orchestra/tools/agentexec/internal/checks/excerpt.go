@@ -29,6 +29,12 @@ var (
 		regexp.MustCompile(`^` + pyS + `*FAIL` + pyS + `+(.+?)(?:` + pyS + `+>` + pyS + `+|` + pyS + `+|$)`),
 		regexp.MustCompile(`^` + pyS + `*FAILED` + pyS + `+(` + pyNotS + `+?)(?:::` + pyNotS + `+)(?:` + pyS + `|$)`),
 	}
+
+	// Go test output: a panic stops the package binary, so its later tests never run.
+	goPanicTestRE = regexp.MustCompile("^[\t ]*--- FAIL: (\\S+)")
+	goPanicLineRE = regexp.MustCompile("^panic: ")
+	goPanicFailRE = regexp.MustCompile("^FAIL[\t ]+(\\S+)[\t ]+\\S")
+	goPanicOkRE   = regexp.MustCompile("^ok[\t ]+(\\S+)")
 )
 
 const (
@@ -140,15 +146,47 @@ func clip(text string, limit int) string {
 }
 
 // FailureExcerpt is the part of a failed command's output worth handing to a
-// fixer: failure anchors with a few lines of context first, then the tail,
-// at most 4000 characters.
+// fixer: Go test panics named first, then failure anchors with a few lines of
+// context, then the tail, at most 4000 characters.
 func FailureExcerpt(text string) string { return excerptLimit(text, 4000) }
+
+// goPanicSummary names each Go package whose test binary panicked. A panic
+// stops the binary, so the package's later tests did not run; a gate report
+// that shows only the panic reads as one failure, not as a cut-off run.
+func goPanicSummary(lines []string) []string {
+	var out []string
+	var lastFail, test string
+	panicked := false
+	for _, line := range lines {
+		switch {
+		case goPanicOkRE.MatchString(line):
+			lastFail, test, panicked = "", "", false
+		case goPanicFailRE.MatchString(line):
+			if panicked {
+				name := test
+				if name == "" {
+					name = "a test"
+				}
+				pkg := goPanicFailRE.FindStringSubmatch(line)[1]
+				out = append(out, name+" panicked; later tests in "+pkg+" did not run")
+			}
+			lastFail, test, panicked = "", "", false
+		case goPanicLineRE.MatchString(line) && !panicked:
+			panicked = true
+			test = lastFail
+		case goPanicTestRE.MatchString(line) && !panicked:
+			lastFail = goPanicTestRE.FindStringSubmatch(line)[1]
+		}
+	}
+	return out
+}
 
 func excerptLimit(text string, limit int) string {
 	if text == "" {
 		return ""
 	}
 	lines := collapseMarkup(fsutil.SplitLines(ansiRE.ReplaceAllString(text, "")))
+	head := goPanicSummary(lines)
 	var picked []int
 	seen := map[int]bool{}
 	budget := limit * 2 / 3
@@ -188,7 +226,15 @@ func excerptLimit(text string, limit int) string {
 	} else {
 		body = strings.Join(lines[max(len(lines)-tailLines*2, 0):], "\n")
 	}
-	return clip(body, limit)
+	if len(head) == 0 {
+		return clip(body, limit)
+	}
+	h := strings.Join(head, "\n")
+	rest := limit - utf8.RuneCountInString(h) - 1
+	if rest <= 0 {
+		return clip(h, limit)
+	}
+	return h + "\n" + clip(body, rest)
 }
 
 // ParseFailedFiles returns the ordered, unique test files named by common

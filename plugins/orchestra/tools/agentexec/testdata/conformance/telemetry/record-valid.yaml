@@ -1,6 +1,7 @@
 description: >
-  record sanitizes to the allowlist (free text, unknown keys and bad values
-  dropped), appends one line per record, from --json and from --file
+  run-summary derives the record from the wave state and plan (r1), from the
+  dispatches alone when the plan dir has state.json but no plan.json (r2), and
+  refuses a run with neither (r3); a bad or missing --run is exit 2
 normalize_keys: [os]
 setup:
   files:
@@ -9,21 +10,28 @@ setup:
         mode: off
       telemetry:
         enabled: true
-    in.json: '{"event": "run_summary", "lane": "express", "task_count": 3, "pass": 2, "fail": 1, "path": "/secret", "fallbacks": -1}'
+    ~/.local/state/claude-orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/001-r1.jsonl: |
+      {"executor":"pi","model":"m-1","cls":"standard","status":"ok","input_tokens":100,"output_tokens":20,"api_duration_ms":1500}
+      {"executor":"claude","model":"haiku","cls":"light","status":"unavailable","input_tokens":5}
+    ~/.local/state/claude-orchestra/plans/r1/plan.json: |
+      {"packages":[{"id":"a","spec":"specs/a.md","cls":"standard","files_owned":["a.go"]},{"id":"b","spec":"specs/b.md","cls":"light","files_owned":["b.go"]},{"id":"c","spec":"specs/c.md","cls":"deep","files_owned":["c.go"]}]}
+    ~/.local/state/claude-orchestra/plans/r1/specs/a.md: "a\n"
+    ~/.local/state/claude-orchestra/plans/r1/specs/b.md: "b\n"
+    ~/.local/state/claude-orchestra/plans/r1/specs/c.md: "c\n"
+    ~/.local/state/claude-orchestra/plans/r1/state.json: |
+      {"version":1,"plan":"<HOME>/.local/state/claude-orchestra/plans/r1/plan.json","packages":{"a":{"status":"integrated","attempts":1,"executor":"pi"},"b":{"status":"failed","attempts":2,"executor":"haiku"}}}
+    ~/.local/state/claude-orchestra/runs/00000000-0000-4000-8000-0000000c0f0e/002-r2.jsonl: |
+      {"executor":"pi","cls":"light","status":"ok"}
+      {"executor":"claude","cls":"deep","status":"error","output_tokens":7}
+      {"executor":"pi","cls":"light","status":"unavailable"}
+    ~/.local/state/claude-orchestra/plans/r2/state.json: |
+      {"version":1,"packages":{}}
 steps:
-  - argv:
-      - telemetry
-      - record
-      - --json
-      - >-
-        {"event": "dispatch", "status": "ok", "reason": "quota", "cls": "deep",
-        "executor": "pi", "resumed": true, "prompt": "secret", "orchestra_version": "1.2.3",
-        "usage": {"input_tokens": 5, "output_tokens": 7, "bogus": 3},
-        "classes": {"light": 2, "x": 1}, "executors_used": {"pi": 1, "claude": "no"},
-        "rounds": {"1": 2, "a": 3, "02": 4}, "external_enabled": {"pi": true, "x": false},
-        "sandbox_denials": 2, "sandbox_granted": true}
+  - argv: [telemetry, run-summary, --run, r1]
     snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
-  - argv: [telemetry, record, --file, in.json]
+  - argv: [telemetry, run-summary, --run, r2]
     snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
-  - argv: [telemetry, record, --json, '{"event": "dispatch", "status": "nope", "usage": {"input_tokens": 0}}']
+  - argv: [telemetry, run-summary, --run, r3]
     snapshot: ["~/.local/state/claude-orchestra/telemetry/records.jsonl"]
+  - argv: [telemetry, run-summary]
+  - argv: [telemetry, run-summary, --run, "bad id"]

@@ -343,6 +343,9 @@ func newDispatchWaitCmd() *cobra.Command {
 		if !dispatch.TokenPattern.MatchString(*token) {
 			return exitf(2, "dispatch wait: invalid token: %s", *token)
 		}
+		if *maxWait > 170 {
+			return exitf(2, "dispatch wait: --max-wait must be at most 170 seconds (Claude Code moves a foreground Bash call to the background after 180 s); use 150, the default")
+		}
 		wait := time.Duration(*maxWait) * time.Second
 		out, code := dispatch.Wait(cfg, *token, wait, *summary)
 		if *summary {

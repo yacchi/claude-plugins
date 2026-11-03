@@ -106,9 +106,9 @@ class RelayFailureError extends Error {
 }
 
 // Wait-hop budget: each `dispatch wait` blocks up to its default --max-wait
-// (560s), so 60 hops is ~9h - longer than any real package, short enough
+// (150s), so 216 hops is ~9h - longer than any real package, short enough
 // that a stuck run surfaces the same day.
-const MAX_WAIT_HOPS = 60
+const MAX_WAIT_HOPS = 216
 // Consecutive unparsable wait replies retried before giving up. A garbled
 // reply is retried as another WAIT hop, never as a re-dispatch: `wait` is
 // idempotent, a second dispatch of finished work is not.
@@ -224,7 +224,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
   // relay's Bash tool enforces (commonly ~600s), so it never runs inside one
   // relay call. The START hop's `--detach` launches it as a background child
   // and returns at once; each WAIT hop (inside awaitDispatch) blocks up to
-  // 560s and returns either {"status":"running",...} or the final result.
+  // 150s and returns either {"status":"running",...} or the final result.
   // Re-issuing --detach for the same token is idempotent, so a garbled start
   // reply is retried once as a start hop before falling through to waiting.
   const startCmd = 'agent-exec dispatch --token ' + dispatchToken + commonFlags + ' --capture --detach'
@@ -335,7 +335,7 @@ async function dispatchClass(cls, promptText, opts = {}) {
 // files_owned (non-empty array of repo-relative paths the worker may change,
 // its test files included; a trailing '/' is a directory prefix), est_seconds
 // (your estimate of worker time, integer) and probeDir (where the probe
-// author writes - outside every worktree, e.g. your scratch dir) - all three
+// author writes - outside every worktree: <probes>/<task id> under the `probes` path of `agent-exec plan dir --id <runId>`, never /tmp) - all three
 // checked by sizeGate() below before anything is dispatched. Escape hatches,
 // each a non-empty reason string: allowLarge (skips the size limits, logged
 // and echoed in the task's result), noProbes (skips the probe author).
@@ -811,18 +811,18 @@ const results = await pipeline(tasks, async (task) => {
 // `agent-exec isolate land` on the user's request under ask). Nothing here can
 // discard an unread verdict: the sweep applies the same review gate as `isolate
 // remove`, so any tree still holding uncollected work survives and is reported.
-// Await every agent working in a surviving tree before this call. Fold the telemetry emission (§10) into this same relay call when
-// telemetry is enabled, rather than spending a second agent on it.
+// Await every agent working in a surviving tree before this call. `agent-exec run-end`
+// does the sweep, the cost report and the run summary in one command, so the relay needs no second command.
 const passed = results.filter(r => r && r.pass === true).map(r => r.id)
 const integrate = passed.length
   ? 'agent-exec isolate integrate --tasks ' + shellQuote(passed.join(',')) +
     ' --into ' + shellQuote(RUN_ID) + ' --on-conflict skip --text; '
   : ''
 const runEnd = await agent(
-  'Run `' + integrate + 'agent-exec isolate sweep --include-current --text; agent-exec usage --run ' + RUN_ID +
-    ' --text` as ONE foreground Bash call with timeout 120000. Print its stdout verbatim - nothing else.',
+  'Run `' + integrate + 'agent-exec run-end --run ' + RUN_ID +
+    '` as ONE foreground Bash call with timeout 120000. Print its stdout verbatim - nothing else.',
   { label: 'cleanup', model: 'haiku', effort: 'low' },
 )
 
-// The integrate and usage text must reach the instructor (SKILL §5 reports cost from it), so it rides in the return value; log() only reaches the user.
+// The integrate and run-end text (sweep, usage, run summary) must reach the instructor (SKILL §5 reports cost from it), so it rides in the return value; log() only reaches the user.
 return { results, runEnd }

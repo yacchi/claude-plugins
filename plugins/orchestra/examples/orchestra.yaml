@@ -164,9 +164,11 @@ external_executors:
 # A class with no list here routes to `claude` (the `tiers.<name>` model) only;
 # `external_executors.*.classes` is not read by routing.
 # Opt-in, anonymized telemetry. Default OFF. When enabled, `agent-exec
-# dispatch` self-logs one sanitized `dispatch` record per dispatch, and the
-# instructor emits one `run_summary` record per orchestration (via a cheap
-# haiku relay, never the instructor itself). Redaction is enforced by an
+# dispatch` self-logs one sanitized `dispatch` record per dispatch, and
+# `agent-exec run-end --run <id>` derives and writes one `run_summary` record
+# at the end of a run (from the ledger and the wave state; the instructor never
+# writes it). `agent-exec telemetry run-summary --run <id>` is the equivalent.
+# Redaction is enforced by an
 # ALLOWLIST inside `agent-exec` itself, not by trusting callers — only
 # enumerated categorical values and non-negative integers can ever be stored,
 # so it is structurally impossible for a telemetry record to contain prompts,

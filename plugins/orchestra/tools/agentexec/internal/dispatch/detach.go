@@ -28,9 +28,10 @@ import (
 // SummaryAnswerChars is how many code points of `answer` a --summary keeps.
 const SummaryAnswerChars = 400
 
-// DefaultMaxWait is `dispatch wait`'s default polling window, under a relay's
-// Bash limit.
-const DefaultMaxWait = 560 * time.Second
+// DefaultMaxWait is `dispatch wait`'s default polling window. It stays under
+// Claude Code's 180 s move of a foreground Bash call to the background, after
+// which the caller never gets the answer as its tool result.
+const DefaultMaxWait = 150 * time.Second
 
 // relayRawChars is how much of an unparsable child output a relay-failed
 // result keeps (its tail, in code points).

@@ -277,6 +277,7 @@ func Run(ctx context.Context, o Options, d Deps) (Report, int) {
 	}()
 	rep := r.report()
 	if r.opts.Merge && rep.Status == "done" && len(rep.Needs) == 0 && len(rep.Pending) == 0 && len(rep.Blocked) == 0 {
+		r.collectIntegrated()
 		m := r.mergeIntegration()
 		r.landAssembly(&m)
 		// a merge or land that failed adds a need, so the report is built again
@@ -324,6 +325,28 @@ func (r *runner) mergeIntegration() isolate.MergeResult {
 		r.need("", "merge", isolate.FormatMergeText(res))
 	}
 	return res
+}
+
+// collectIntegrated collects every integrated package's tree and clears its
+// activity stamp before the merge. An integrated package's work is already in
+// the integration tree, so its own tree only blocks the merge: a tree handed
+// back with `wave mark ready` was never collected, and a read such as `cmp`
+// stamps activity. A fresh writer lease still keeps its tree.
+func (r *runner) collectIntegrated() {
+	st := r.store.Snapshot()
+	for _, pkg := range r.plan.Packages {
+		ps := st.Packages[pkg.ID]
+		if ps == nil || ps.Status != "integrated" {
+			continue
+		}
+		tree, _, ok := isolate.ResolveWorktree(r.root, r.task(pkg.ID), "")
+		if !ok {
+			continue
+		}
+		// Errors are ignored on purpose: the merge reports whatever still blocks.
+		_, _ = isolate.Collect(r.root, r.task(pkg.ID), "")
+		_ = isolate.ClearActivity(tree)
+	}
 }
 
 // landAssembly lands the merged assembly on the checkout as isolation.land
