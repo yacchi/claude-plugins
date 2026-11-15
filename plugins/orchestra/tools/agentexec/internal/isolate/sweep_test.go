@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -370,11 +371,14 @@ func TestHeartbeatTouch(t *testing.T) {
 	if st, err := os.Stat(path); err != nil || time.Since(st.ModTime()) > time.Minute {
 		t.Fatalf("not refreshed: %v", err)
 	}
-	if st, _ := os.Stat(dir); st.Mode().Perm() != 0o700 {
+	if st, _ := os.Stat(dir); runtime.GOOS != "windows" && st.Mode().Perm() != 0o700 { // no POSIX bits on Windows
 		t.Errorf("dir mode %v", st.Mode().Perm())
 	}
 	// An unwritable location is silently skipped.
-	SetAliveDir("/dev/null/alive")
+	// (Below a regular file: /dev/null/alive would be created on Windows.)
+	blocker := filepath.Join(t.TempDir(), "file")
+	writeFile(t, blocker, "")
+	SetAliveDir(filepath.Join(blocker, "alive"))
 	HeartbeatTouch("")
 }
 
@@ -386,8 +390,9 @@ func TestAliveDirFollowsTheLedger(t *testing.T) {
 	if got := AliveDirFor(cfg); got != filepath.Join(home, "elsewhere", "alive") {
 		t.Errorf("relocated ledger: %s", got)
 	}
-	cfg = &config.Resolved{Values: map[string]any{"telemetry": map[string]any{"dir": "/data/telemetry"}}}
-	if got := AliveDirFor(cfg); got != "/data/alive" {
+	data := filepath.Join(t.TempDir(), "data") // absolute on every OS
+	cfg = &config.Resolved{Values: map[string]any{"telemetry": map[string]any{"dir": filepath.Join(data, "telemetry")}}}
+	if got := AliveDirFor(cfg); got != filepath.Join(data, "alive") {
 		t.Errorf("ledger beside telemetry: %s", got)
 	}
 	if got := AliveDirFor(&config.Resolved{Values: config.Defaults()}); got != filepath.Join(paths.StateDir(), "alive") {

@@ -161,7 +161,8 @@ func TestRequestListDropsRequestWhoseAssemblyWasRemoved(t *testing.T) {
 		t.Fatalf("start: exit %d: %s", code, out)
 	}
 	asm := requestCmdJSON(t, out)["assembly"].(string)
-	if out, code := runIsolate(t, newIsolateRequestCmd(), "list"); code != 0 || !strings.Contains(out, asm) {
+	asmJSON, _ := json.Marshal(asm) // as list writes it: a Windows path's backslashes escaped
+	if out, code := runIsolate(t, newIsolateRequestCmd(), "list"); code != 0 || !strings.Contains(out, string(asmJSON)) {
 		t.Fatalf("list before removal: exit %d: %s", code, out)
 	}
 	landGit(t, repo, "worktree", "remove", "--force", asm)

@@ -8,6 +8,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 func writeTestFile(t *testing.T, path, content string) {
@@ -273,11 +276,13 @@ func TestPnpmProjects(t *testing.T) {
 		writeTestFile(t, filepath.Join(tree, f), "")
 	}
 	writeTestFile(t, filepath.Join(outside, "pnpm-lock.yaml"), "")
-	if err := os.Symlink(outside, filepath.Join(tree, "linked")); err != nil {
-		t.Fatal(err)
+	if testenv.CanSymlink() { // without symlinks there is simply no "linked" entry to skip
+		if err := os.Symlink(outside, filepath.Join(tree, "linked")); err != nil {
+			t.Fatal(err)
+		}
 	}
 	got := strings.Join(PnpmProjects(tree), ",")
-	if want := ".,apps/web,packages/a,packages/b"; got != want {
+	if want := filepath.FromSlash(".,apps/web,packages/a,packages/b"); got != want {
 		t.Errorf("PnpmProjects = %q, want %q", got, want)
 	}
 }
@@ -316,11 +321,30 @@ func probePnpm(t *testing.T) {
 func fakePnpm(t *testing.T, body string) {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "pnpm"), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writePnpmScript(t, dir, body)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	probePnpm(t)
+}
+
+// writePnpmScript writes a pnpm running the sh body into dir. Windows cannot
+// execute a shebang file, so there it is pnpm.sh behind a pnpm.cmd shim
+// (which is what a real pnpm install looks like there).
+func writePnpmScript(t *testing.T, dir, body string) {
+	t.Helper()
+	script := []byte("#!/bin/sh\n" + body + "\n")
+	if os.PathSeparator != '\\' {
+		if err := os.WriteFile(filepath.Join(dir, "pnpm"), script, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pnpm.sh"), script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	shim := "@\"" + procx.ShellPath() + "\" \"%~dp0pnpm.sh\" %*\r\n"
+	if err := os.WriteFile(filepath.Join(dir, "pnpm.cmd"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Inside a test binary "auto" is off without a probe seam, whatever pnpm is
@@ -328,9 +352,7 @@ func fakePnpm(t *testing.T, body string) {
 func TestPnpmGVSAutoIsOffInTestsWithoutAProbe(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "probes")
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "pnpm"), []byte("#!/bin/sh\necho probe >> '"+log+"'\necho 12.0.0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writePnpmScript(t, dir, "echo probe >> '"+log+"'\necho 12.0.0")
 	t.Setenv("PATH", dir)
 	on, reason := PnpmGVSStatus(gvsConfig(t.TempDir(), "auto"))
 	if on {

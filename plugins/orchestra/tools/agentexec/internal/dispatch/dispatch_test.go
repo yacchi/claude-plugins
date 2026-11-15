@@ -1,9 +1,11 @@
 package dispatch
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // testConfig is the defaults with the ledger (and so tokens/, sessions/)
@@ -57,11 +60,17 @@ func TestPrepareRoundTripAndPermissions(t *testing.T) {
 		t.Fatalf("token %q", token)
 	}
 	fi, err := os.Stat(filepath.Join(TokenDir(cfg), token+".json"))
-	if err != nil || fi.Mode().Perm() != 0o600 {
-		t.Fatalf("spec file mode: %v %v", fi.Mode(), err)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if di, _ := os.Stat(TokenDir(cfg)); di.Mode().Perm() != 0o700 {
-		t.Fatalf("token dir mode %v", di.Mode())
+	// Windows has no POSIX permission bits to check.
+	if runtime.GOOS != "windows" {
+		if fi.Mode().Perm() != 0o600 {
+			t.Fatalf("spec file mode: %v", fi.Mode())
+		}
+		if di, _ := os.Stat(TokenDir(cfg)); di.Mode().Perm() != 0o700 {
+			t.Fatalf("token dir mode %v", di.Mode())
+		}
 	}
 	got, err := LoadToken(cfg, token)
 	if err != nil {
@@ -82,7 +91,8 @@ func TestPrepareRoundTripAndPermissions(t *testing.T) {
 func TestLoadTokenRejectsBadTokensAndSpecs(t *testing.T) {
 	cfg := testConfig(t)
 	dir := TokenDir(cfg)
-	good := `{"class":"light","archetype":"default","workdir":"/w","run_id":null,"isolate":"never","task":null,"prompt_files":["/w/p.md"]}`
+	prompt, _ := json.Marshal(filepath.Join(t.TempDir(), "p.md")) // absolute on every OS
+	good := `{"class":"light","archetype":"default","workdir":"/w","run_id":null,"isolate":"never","task":null,"prompt_files":[` + string(prompt) + `]}`
 	mustWrite(t, filepath.Join(dir, "dsp-000000000001.json"), good)
 	if _, err := LoadToken(cfg, "dsp-000000000001"); err != nil {
 		t.Fatalf("a spec without config_root still loads: %v", err)
@@ -91,7 +101,7 @@ func TestLoadTokenRejectsBadTokensAndSpecs(t *testing.T) {
 		"dsp-000000000002": `{"class":"light"`,
 		"dsp-000000000003": `["not", "an", "object"]`,
 		"dsp-000000000004": strings.Replace(good, `"isolate":"never"`, `"isolate":"sometimes"`, 1),
-		"dsp-000000000005": strings.Replace(good, `"/w/p.md"`, `"p.md"`, 1),
+		"dsp-000000000005": strings.Replace(good, string(prompt), `"p.md"`, 1),
 		"dsp-000000000006": strings.Replace(good, `"task":null,`, ``, 1),
 		"dsp-000000000007": strings.Replace(good, `"run_id":null`, `"run_id":7`, 1),
 		"dsp-000000000008": strings.Replace(good, `"class":"light"`, `"class":null`, 1),
@@ -103,10 +113,14 @@ func TestLoadTokenRejectsBadTokensAndSpecs(t *testing.T) {
 		}
 	}
 	// A symlinked spec is never followed.
-	if err := os.Symlink(filepath.Join(dir, "dsp-000000000001.json"), filepath.Join(dir, "dsp-00000000000a.json")); err != nil {
-		t.Fatal(err)
+	invalid := []string{"dsp-XYZ", "../tokens/dsp-000000000001", "dsp-000000000001.json", "", "dsp-ffffffffffff"}
+	if testenv.CanSymlink() {
+		if err := os.Symlink(filepath.Join(dir, "dsp-000000000001.json"), filepath.Join(dir, "dsp-00000000000a.json")); err != nil {
+			t.Fatal(err)
+		}
+		invalid = append(invalid, "dsp-00000000000a")
 	}
-	for _, token := range []string{"dsp-00000000000a", "dsp-XYZ", "../tokens/dsp-000000000001", "dsp-000000000001.json", "", "dsp-ffffffffffff"} {
+	for _, token := range invalid {
 		if _, err := LoadToken(cfg, token); err != ErrInvalidToken {
 			t.Errorf("%q: err %v, want ErrInvalidToken", token, err)
 		}
@@ -128,7 +142,7 @@ func TestSessionStore(t *testing.T) {
 		t.Fatalf("read back %+v, %v", got, ok)
 	}
 	fi, _ := os.Stat(filepath.Join(SessionDir(cfg), "pi-t-1.json"))
-	if fi.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 { // no POSIX bits on Windows
 		t.Fatalf("record mode %v", fi.Mode())
 	}
 	for _, content := range []string{"", "{", `{"executor":"pi"}`, `[1]`,
@@ -150,9 +164,7 @@ func TestSessionStore(t *testing.T) {
 func TestSameWorkdirResolvesSymlinks(t *testing.T) {
 	real := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(real, link); err != nil {
-		t.Fatal(err)
-	}
+	testenv.Symlink(t, real, link)
 	if !sameWorkdir(real, link) {
 		t.Error("a symlink to the same tree is the same workdir")
 	}

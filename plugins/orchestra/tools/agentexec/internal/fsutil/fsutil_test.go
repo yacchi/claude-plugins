@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -58,7 +59,8 @@ func TestAtomicWriteFileReplacesAndLeavesNoTemp(t *testing.T) {
 	if string(got) != "new" {
 		t.Fatalf("content = %q", got)
 	}
-	if st, _ := os.Stat(path); st.Mode().Perm() != 0o600 {
+	// Windows has no permission bits: Stat reports 0666 (0444 read-only).
+	if st, _ := os.Stat(path); runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
 		t.Fatalf("perm = %v", st.Mode().Perm())
 	}
 	entries, _ := os.ReadDir(dir)

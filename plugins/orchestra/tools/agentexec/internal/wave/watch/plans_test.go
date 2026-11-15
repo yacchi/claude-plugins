@@ -5,10 +5,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // sweepPlansAge sets the modification time of every entry under root to
@@ -20,8 +21,7 @@ func sweepPlansAge(t *testing.T, root string, mtime time.Time) {
 			return err
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
-			tv := unix.NsecToTimeval(mtime.UnixNano())
-			return unix.Lutimes(path, []unix.Timeval{tv, tv})
+			return lutimes(path, mtime)
 		}
 		return os.Chtimes(path, mtime, mtime)
 	})
@@ -153,9 +153,7 @@ func TestSweepPlansIgnoresFilesAndLinksInDir(t *testing.T) {
 	outside := t.TempDir()
 	sweepPlansWrite(t, filepath.Join(outside, "target.txt"), "x")
 	sweepPlansWrite(t, filepath.Join(root, "loose.txt"), "x")
-	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
-		t.Fatal(err)
-	}
+	testenv.Symlink(t, outside, filepath.Join(root, "link"))
 	sweepPlansAge(t, root, now.Add(-8*24*time.Hour))
 	sweepPlansAge(t, outside, now.Add(-8*24*time.Hour))
 
@@ -181,9 +179,7 @@ func TestSweepPlansSymlinkNotFollowed(t *testing.T) {
 	sub := filepath.Join(root, "plan")
 	sweepPlansWrite(t, filepath.Join(sub, "own.txt"), "x")
 	link := filepath.Join(sub, "link")
-	if err := os.Symlink(outside, link); err != nil {
-		t.Fatal(err)
-	}
+	testenv.Symlink(t, outside, link)
 	sweepPlansAge(t, sub, now.Add(-8*24*time.Hour))
 
 	got := SweepPlans(root, now, false)
@@ -225,10 +221,20 @@ func TestSweepPlansRemoveError(t *testing.T) {
 	sub := filepath.Join(root, "a")
 	sweepPlansWrite(t, filepath.Join(sub, "f.txt"), "x")
 	sweepPlansAge(t, sub, now.Add(-8*24*time.Hour))
-	if err := os.Chmod(root, 0o555); err != nil {
-		t.Fatal(err)
+	if runtime.GOOS == "windows" {
+		// A read-only directory does not stop a removal on Windows; a file
+		// held open (without delete sharing) does.
+		f, err := os.Open(filepath.Join(sub, "f.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = f.Close() })
+	} else {
+		if err := os.Chmod(root, 0o555); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(root, 0o755) })
 	}
-	t.Cleanup(func() { _ = os.Chmod(root, 0o755) })
 
 	got := SweepPlans(root, now, false)
 	if len(got) != 1 || got[0].Status != "error" || got[0].Reason == "" {

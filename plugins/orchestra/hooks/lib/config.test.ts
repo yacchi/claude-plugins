@@ -73,3 +73,49 @@ test('agentExec maps a rejected run to failed', async ($, on) => {
 
     expect(await agentExec(io, ['x'], 1000)).toEqual({ kind: 'failed' })
 })
+
+// Windows (told by a drive-letter plugin root): Claude Code's PATH has no sh,
+// so the probe runs through Git for Windows' bin/sh.exe, found from
+// `git --exec-path`; the launcher path takes `/`. Without Git it falls back to
+// `sh` on PATH. (The fallback first: a found sh.exe is kept per module load.)
+const windowsIo = (gitExecPath: string | undefined, present: readonly string[]) => {
+    const calls: { argv: readonly string[], init?: ProcessRunInit }[] = []
+    const io = {
+        run: async (argv: readonly string[], init?: ProcessRunInit) => {
+            calls.push({ argv, init })
+            const exec = argv[0] === 'git' && argv[1] === '--exec-path'
+            const stdout = exec ? `${gitExecPath ?? ''}\n` : '{}'
+
+            return { exitCode: exec && gitExecPath === undefined ? 1 : 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+        },
+        exists: async (path: string) => present.includes(path),
+        pluginRoot: () => 'C:\\p\\orchestra',
+    } as Io
+
+    return { io, calls }
+}
+
+test('agentExec on Windows without Git falls back to sh on PATH', async ($, on) => {
+    const { io, calls } = windowsIo(undefined, [])
+
+    expect(await agentExec(io, ['config'], 1000)).toEqual({ kind: 'ok', stdout: '{}' })
+
+    const probe = calls.find(c => c.argv[3] === 'agent-exec')
+    expect(probe?.argv[0]).toEqual('sh')
+    expect(probe?.init?.env).toEqual({ ORCHESTRA_AGENT_EXEC: 'C:/p/orchestra/bin/agent-exec' })
+})
+
+test('agentExec on Windows runs the probe through Git\'s sh.exe', async ($, on) => {
+    const { io, calls } = windowsIo('C:/Program Files/Git/mingw64/libexec/git-core', ['C:/Program Files/Git/bin/sh.exe'])
+
+    await agentExec(io, ['config', '--json'], 5000)
+
+    const probe = calls.find(c => c.argv[3] === 'agent-exec')
+    expect(probe?.argv[0]).toEqual('C:/Program Files/Git/bin/sh.exe')
+    expect(probe?.argv.slice(4)).toEqual(['config', '--json'])
+    expect(probe?.init?.env).toEqual({ ORCHESTRA_AGENT_EXEC: 'C:/p/orchestra/bin/agent-exec' })
+
+    const again = windowsIo(undefined, [])
+    await agentExec(again.io, ['config'], 1000)
+    expect(again.calls.map(c => c.argv[0]), 'the found sh.exe is kept').toEqual(['C:/Program Files/Git/bin/sh.exe'])
+})

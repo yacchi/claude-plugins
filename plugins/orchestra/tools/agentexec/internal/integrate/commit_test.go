@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -44,6 +45,11 @@ func commitShim(t *testing.T, message, action string) {
 		"done\nexec \"$real\" \"$@\"\n")
 	if err := os.Chmod(filepath.Join(dir, "git"), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		// Windows cannot exec a shebang script: git.exe is this test binary,
+		// which hands the script to sh (see TestMain).
+		shimExe(t, filepath.Join(dir, "git"))
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

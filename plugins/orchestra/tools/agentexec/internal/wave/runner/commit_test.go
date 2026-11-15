@@ -2,12 +2,15 @@ package runner
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -23,11 +26,51 @@ func gitShim(t *testing.T, message, action string) {
 	path := filepath.Join(dir, "git")
 	writeFile(t, path, "#!/bin/sh\nn=$#\nfor a in \"$@\"; do\n"+
 		"  if [ \"$a\" = '"+message+"' ]; then "+action+"; fi\n"+
-		"  set -- \"$@\" \"$a\"\ndone\nshift $n\nexec '"+real+"' \"$@\"\n")
+		"  set -- \"$@\" \"$a\"\ndone\nshift $n\nexec '"+filepath.ToSlash(real)+"' \"$@\"\n")
 	if err := os.Chmod(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if runtime.GOOS == "windows" {
+		windowsGitShim(t, dir, path)
+	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// windowsGitShim builds dir/git.exe, which hands its arguments to the
+// script at path through sh: Windows cannot exec a shebang script, and a
+// git.cmd would let cmd.exe eat the ^ of HEAD^{commit}. MSYS globbing and path
+// conversion are off so sh passes the arguments to the real git unchanged.
+func windowsGitShim(t *testing.T, dir, path string) {
+	t.Helper()
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "go.mod"), "module gitshim\n\ngo 1.21\n")
+	writeFile(t, filepath.Join(src, "main.go"), fmt.Sprintf(`package main
+
+import (
+	"errors"
+	"os"
+	"os/exec"
+)
+
+func main() {
+	cmd := exec.Command(%q, append([]string{%q}, os.Args[1:]...)...)
+	cmd.Env = append(os.Environ(), "MSYS=noglob", "MSYS_NO_PATHCONV=1", "MSYS2_ARG_CONV_EXCL=*")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.ExitCode())
+		}
+		os.Exit(127)
+	}
+}
+`, procx.ShellPath(), filepath.ToSlash(path)))
+	build := exec.Command("go", "build", "-o", filepath.Join(dir, "git.exe"), ".")
+	build.Dir = src
+	build.Env = append(os.Environ(), "GOFLAGS=", "GOWORK=off")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build the git shim: %v\n%s", err, out)
+	}
 }
 
 // integrateNeedOfB runs A then B, B's integrate commit tampered with by
@@ -44,8 +87,12 @@ func integrateNeedOfB(t *testing.T, action, excerpt string) {
 	eq(t, "exit", code, 1)
 	eqJSON(t, "integrated", rep.Integrated, []string{"A"})
 	eqJSON(t, "needs", w.needKinds(), []kindOf{{"B", "integrate"}})
+	needs := w.state().Needs
+	if len(needs) == 0 {
+		t.FailNow()
+	}
 	var detail struct{ Excerpt, Tree string }
-	if err := json.Unmarshal([]byte(w.state().Needs[0].Detail), &detail); err != nil {
+	if err := json.Unmarshal([]byte(needs[0].Detail), &detail); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(detail.Excerpt, excerpt) {

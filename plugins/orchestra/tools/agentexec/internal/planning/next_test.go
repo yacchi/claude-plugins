@@ -376,7 +376,11 @@ func TestNextAnswersResetCurrentReview(t *testing.T) {
 	if step.Step != "skeleton" || st.Review != nil {
 		t.Fatalf("with answers = %s, review %+v; want skeleton and no review", step.Step, st.Review)
 	}
-	if !strings.HasPrefix(step.Note, "The user answered your open questions in /") {
+	wantAbs, err := filepath.Abs("answers.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(step.Note, "The user answered your open questions in "+wantAbs+";") {
 		t.Errorf("answers note = %q", step.Note)
 	}
 

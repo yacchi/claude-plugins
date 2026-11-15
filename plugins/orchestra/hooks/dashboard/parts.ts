@@ -1,4 +1,5 @@
 import type { ToolCallResult } from 'claude-code'
+import { basenameOf } from '../lib/paths.ts'
 
 export const PAGE_FILE = 'orchestra-dashboard.html'
 export type Identity = { account: string | null, host: string }
@@ -68,7 +69,7 @@ export const publishedUrlOf = (
         return undefined
     }
     const path = input.file_path
-    if (typeof path !== 'string' || path.split('/').pop() !== PAGE_FILE) {
+    if (typeof path !== 'string' || basenameOf(path) !== PAGE_FILE) {
         return undefined
     }
 

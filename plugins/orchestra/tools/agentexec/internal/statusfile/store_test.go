@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 func TestRunKeyFollowsSymlinks(t *testing.T) {
+	testenv.MustSymlink(t)
 	dir := t.TempDir()
 	state := filepath.Join(dir, "state.json")
 	if err := os.WriteFile(state, []byte("{}"), 0o644); err != nil {

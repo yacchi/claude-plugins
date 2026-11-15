@@ -70,7 +70,7 @@ func ProjectBase() string {
 			break
 		}
 		parent := filepath.Dir(current)
-		if parent == current || !strings.HasPrefix(current+"/", top+"/") {
+		if parent == current || !withinDir(current, top) {
 			break
 		}
 		current = parent
@@ -256,4 +256,11 @@ func yamlKey(k any) string {
 		return "null"
 	}
 	return fmt.Sprint(k)
+}
+
+// withinDir reports whether p is dir or lies below it (case-insensitive on
+// Windows, where Rel compares so).
+func withinDir(p, dir string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

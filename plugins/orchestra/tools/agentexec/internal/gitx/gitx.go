@@ -181,7 +181,7 @@ func RepoRoot(path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	root := strings.TrimSpace(out)
+	root := filepath.FromSlash(strings.TrimSpace(out)) // git prints forward slashes on Windows
 	return root, root != ""
 }
 
@@ -270,7 +270,7 @@ func WorktreeList(root string) ([]Worktree, error) {
 		case strings.TrimSpace(line) == "":
 			flush()
 		case strings.HasPrefix(line, "worktree "):
-			cur.Path = strings.TrimSpace(line[len("worktree "):])
+			cur.Path = filepath.FromSlash(strings.TrimSpace(line[len("worktree "):]))
 		case strings.HasPrefix(line, "branch "):
 			cur.Branch = strings.TrimPrefix(strings.TrimSpace(line[len("branch "):]), "refs/heads/")
 		case strings.HasPrefix(line, "HEAD "):
@@ -303,5 +303,5 @@ func GitDir(worktree string) (string, error) {
 	if dir == "" {
 		return "", errors.New("git rev-parse --absolute-git-dir printed nothing")
 	}
-	return dir, nil
+	return filepath.FromSlash(dir), nil
 }

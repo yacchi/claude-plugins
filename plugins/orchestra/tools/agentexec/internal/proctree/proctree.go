@@ -37,7 +37,7 @@ var (
 // Signal sends sig to the one process pid. KillTree and KillChildTree send
 // every signal through it, so tests replace it with a recorder (restored with
 // t.Cleanup) and never signal a made-up pid.
-var Signal = func(pid int, sig syscall.Signal) error { return syscall.Kill(pid, sig) }
+var Signal = sysSignal
 
 // Usage is the tree under Root: Procs counts Root's descendants (Root itself
 // excluded); Mem sums the Mem of Root and of its descendants, in bytes.
@@ -224,7 +224,7 @@ func coreKill(root int, includeRoot bool, owner int) (int, error) {
 	sent := 0
 	for range coreFreezePasses {
 		for _, pid := range s[sent:] {
-			if Signal(pid, syscall.SIGSTOP) == nil {
+			if Signal(pid, sigStop) == nil {
 				stopped[pid] = true
 			}
 		}
@@ -269,7 +269,7 @@ func coreKill(root int, includeRoot bool, owner int) (int, error) {
 	// Nothing is left stopped: a process we froze but could not kill would
 	// otherwise hang forever.
 	for _, pid := range resume {
-		_ = Signal(pid, syscall.SIGCONT)
+		_ = Signal(pid, sigCont)
 	}
 	if failed > 0 {
 		return killed, fmt.Errorf("proctree: could not kill %d of %d processes: %w", failed, len(s), first)
@@ -341,7 +341,7 @@ func coreKillable(t Table, root int, includeRoot bool, owner int) []int {
 			protected[pid] = true
 		}
 	}
-	pgrp := syscall.Getpgrp()
+	pgrp := sysGetpgrp()
 	for _, p := range t {
 		if p.PGID == pgrp {
 			protected[p.PID] = true

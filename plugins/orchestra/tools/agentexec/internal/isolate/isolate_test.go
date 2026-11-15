@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 func TestSanitizeTaskID(t *testing.T) {
@@ -78,8 +80,12 @@ func TestCarryDir(t *testing.T) {
 	srcRoot := t.TempDir()
 	src := filepath.Join(srcRoot, "deps")
 	writeFile(t, filepath.Join(src, "sub", "f.txt"), "content")
-	if err := os.Symlink("sub/f.txt", filepath.Join(src, "link")); err != nil {
-		t.Fatal(err)
+	// Without symlink rights (Windows, no Developer Mode) only content is carried.
+	links := testenv.CanSymlink()
+	if links {
+		if err := os.Symlink("sub/f.txt", filepath.Join(src, "link")); err != nil {
+			t.Fatal(err)
+		}
 	}
 	dstRoot := filepath.Join(t.TempDir(), "deeper", "dst")
 	if err := CarryDir(srcRoot, dstRoot, "deps"); err != nil {
@@ -89,7 +95,7 @@ func TestCarryDir(t *testing.T) {
 	if readFile(t, filepath.Join(dst, "sub", "f.txt")) != "content" {
 		t.Fatal("content not copied")
 	}
-	if link, err := os.Readlink(filepath.Join(dst, "link")); err != nil || link != "sub/f.txt" {
+	if link, err := os.Readlink(filepath.Join(dst, "link")); links && (err != nil || link != "sub/f.txt") {
 		t.Fatalf("symlink not kept as a link: %q %v", link, err)
 	}
 	// A failed clone onto an existing directory must not wipe it.

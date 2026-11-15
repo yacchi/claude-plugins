@@ -7,8 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // homeCase is a throwaway $HOME so grants never touch the real store.
@@ -54,6 +57,7 @@ func denialPaths(ds []Denial) []string {
 }
 
 func TestDetectDenialsRealShapes(t *testing.T) {
+	testenv.SkipOnWindows(t, "denial lines come from the Unix backends and name POSIX paths")
 	h := newHome(t)
 	target := h.h(".pub-cache/probe")
 	shapes := map[string]string{
@@ -80,6 +84,7 @@ func TestDetectDenialsRealShapes(t *testing.T) {
 }
 
 func TestDetectDenialsSourcesAndFilters(t *testing.T) {
+	testenv.SkipOnWindows(t, "denial lines come from the Unix backends and name POSIX paths")
 	h := newHome(t)
 	got := detectDenials(nil, "mkdir: ../elsewhere: Operation not permitted\n", h.tree, h.policy(), writableByUser)
 	if len(got) != 1 || got[0].Path != h.h("work/elsewhere") || got[0].Source != "stderr" {
@@ -119,6 +124,7 @@ func TestDetectDenialsSourcesAndFilters(t *testing.T) {
 }
 
 func TestDetectDenialsReadsPiToolEvents(t *testing.T) {
+	testenv.SkipOnWindows(t, "denial lines come from the Unix backends and name POSIX paths")
 	h := newHome(t)
 	target := h.h(".npm/_cacache")
 	stdout := `{"type":"message_update"}` + "\n" +
@@ -155,11 +161,13 @@ func TestGrantFor(t *testing.T) {
 	if err := os.MkdirAll(h.h(".ssh"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(h.h(".ssh"), h.h(".cache/x")); err != nil {
-		t.Fatal(err)
-	}
-	if got := grantFor(h.h(".cache/x/authorized_keys"), ""); got != "" {
-		t.Errorf("symlinked out of the cache: %q", got)
+	if testenv.CanSymlink() {
+		if err := os.Symlink(h.h(".ssh"), h.h(".cache/x")); err != nil {
+			t.Fatal(err)
+		}
+		if got := grantFor(h.h(".cache/x/authorized_keys"), ""); got != "" {
+			t.Errorf("symlinked out of the cache: %q", got)
+		}
 	}
 }
 
@@ -186,6 +194,9 @@ func TestUserGrantRefusalsAndUVTools(t *testing.T) {
 			policyOpts{home: h.home, env: map[string]string{}, platform: platform})
 		if !contains(p.DenyWrite, tools) {
 			t.Errorf("%s: uv tools not denied: %v", platform, p.DenyWrite)
+		}
+		if runtime.GOOS == "windows" { // Landlock is Linux-only; its policy is built from POSIX paths
+			continue
 		}
 		ll, _ := landlockPolicy(&Policy{Writable: append(p.Writable, tools+"/x"), Tamper: p.Tamper,
 			DenyWrite: p.DenyWrite}, h.tree)
@@ -243,8 +254,9 @@ func TestLearnedStore(t *testing.T) {
 	}
 	buildPolicy(h.tree, "pi", Config{}, policyOpts{home: h.home, env: map[string]string{}}) // still builds
 
-	data := `{"version": 1, "grants": [{"path": "` + h.h(".config") + `", "source": "auto"},` +
-		`{"path": "` + h.home + `", "source": "user"}, {"path": "` + h.h(".claude") + `", "source": "user"}]}`
+	js := func(p string) string { return strings.ReplaceAll(p, `\`, `\\`) } // JSON-escape Windows paths
+	data := `{"version": 1, "grants": [{"path": "` + js(h.h(".config")) + `", "source": "auto"},` +
+		`{"path": "` + js(h.home) + `", "source": "user"}, {"path": "` + js(h.h(".claude")) + `", "source": "user"}]}`
 	if err := os.WriteFile(LearnedPath(), []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}

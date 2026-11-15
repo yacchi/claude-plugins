@@ -1,7 +1,8 @@
 import type { Io } from '../lib/io.ts'
 import { field, isSupervisor, type WorkerCall } from '../lib/agents.ts'
 import { enforcementOf, isOff, loadEnforcement } from '../lib/config.ts'
-import { dirname, join, normalize, realpath } from '../lib/paths.ts'
+import { dirname, isRoot, join, normalize, realpath, samePath } from '../lib/paths.ts'
+import { homeOf, toolOf } from '../lib/platform.ts'
 import { gitCall, hasEscape, redirections, segments, stripData } from '../lib/shell.ts'
 
 // One writer per worktree. A worktree gives a task a tree of its own, but
@@ -98,7 +99,7 @@ export const leaseFile = async (io: Io, path: string): Promise<{ file: string, t
         if (stat?.kind === 'dir') {
             break
         }
-        if (dir === '/') {
+        if (isRoot(dir)) {
             return undefined
         }
         dir = dirname(dir)
@@ -114,7 +115,9 @@ export const leaseFile = async (io: Io, path: string): Promise<{ file: string, t
     if (!gitDir || !common || !top) {
         return undefined
     }
-    if (await realpath(io, gitDir) === await realpath(io, common)) {
+    const realGitDir = await realpath(io, gitDir)
+    const realCommon = await realpath(io, common)
+    if (realGitDir === realCommon || (realGitDir !== undefined && realCommon !== undefined && samePath(realGitDir, realCommon))) {
         return undefined
     }
 
@@ -151,7 +154,7 @@ export const checkWorktreeLease = async (io: Io, call: WorkerCall): Promise<stri
         return undefined
     }
     const mentionsHome = [command, field(call.input, 'file_path'), field(call.input, 'notebook_path')].some(s => s.includes('~'))
-    const home = mentionsHome ? await io.env('HOME') ?? '' : ''
+    const home = mentionsHome ? await homeOf(io) ?? '' : ''
     const resolve = (base: string, p: string): string =>
         normalize(join(base, home && (p === '~' || p.startsWith('~/')) ? home + p.slice(1) : p))
     let targets: string[] = []
@@ -196,10 +199,14 @@ export const checkWorktreeLease = async (io: Io, call: WorkerCall): Promise<stri
         const since = mine ? lease?.since ?? now : now
         try {
             // Write then rename, so a concurrent reader never sees a torn lease
-            // ($.fs has no rename, hence `mv`).
+            // ($.fs has no rename, hence `mv`: Git's usr/bin/mv.exe on Windows).
+            const mv = await toolOf(io, 'mv')
+            if (mv === undefined) {
+                throw new Error('no mv')
+            }
             const tmp = `${found.file}.tmp`
             await io.write(tmp, JSON.stringify({ agent_id: call.agentId, agent_type: call.agentType, last_seen: now, since }))
-            const moved = await io.run(['mv', '-f', tmp, found.file], { timeoutMs: 5000 })
+            const moved = await io.run([mv, '-f', tmp, found.file], { timeoutMs: 5000 })
             if (moved.exitCode !== 0) {
                 throw new Error('lease rename failed')
             }
@@ -232,7 +239,7 @@ export const recordActivity = async (io: Io, call: ActivityCall): Promise<void> 
     if (await io.env('ORCHESTRA_LEASE_GUARD') === 'off') {
         return
     }
-    const home = call.command.includes('~') ? await io.env('HOME') ?? '' : ''
+    const home = call.command.includes('~') ? await homeOf(io) ?? '' : ''
     const resolve = (base: string, p: string): string =>
         normalize(join(base, home && (p === '~' || p.startsWith('~/')) ? home + p.slice(1) : p))
     let here = call.cwd
@@ -283,7 +290,11 @@ export const releaseLeases = async (io: Io, agentId: string): Promise<void> => {
     for (const file of files) {
         const lease = await readLease(io, file)
         if (lease?.agent_id === agentId) {
-            await io.run(['rm', '-f', file], { timeoutMs: 5000 }).catch(() => undefined)
+            // $.fs has no delete: `rm` (Git's usr/bin/rm.exe on Windows).
+            const rm = await toolOf(io, 'rm').catch(() => undefined)
+            if (rm !== undefined) {
+                await io.run([rm, '-f', file], { timeoutMs: 5000 }).catch(() => undefined)
+            }
         }
     }
 }

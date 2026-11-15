@@ -41,9 +41,42 @@ type Registered = { type: string, cwd: string, parentId?: string, status: string
 // calling agent (cwd) and for the session being ended (root).
 const during: { agent: string | undefined, root: string | undefined } = { agent: undefined, root: undefined }
 
+// Windows when this file was loaded from a drive path (the kit has no
+// platform API). There the engine hands the `fs.*` hooks `C:\w\repo` for a
+// `/w/repo` or `C:/w/repo` the plugin asked about, and a real `realPath` comes
+// back with `\`; git prints `C:/w/repo`. The host takes either separator,
+// keeps `C:/w/repo` itself, and answers `realPath` with `\` as the engine does.
+export const WINDOWS = /^file:\/\/\/[A-Za-z]:/.test(import.meta.url)
+
+// A test's absolute path on this platform: `/w/repo` as given on POSIX,
+// `C:/w/repo` on Windows.
+export const abs = (p: string): string => (WINDOWS ? `C:${p}` : p)
+
+// Where the host's Git for Windows lives: `git --exec-path` answers under it,
+// and its bin/sh.exe, usr/bin/mv.exe and usr/bin/rm.exe exist.
+const GIT_ROOT = 'C:/Program Files/Git'
+const BINARIES = new Set(WINDOWS ? [`${GIT_ROOT}/bin/sh.exe`, `${GIT_ROOT}/usr/bin/mv.exe`, `${GIT_ROOT}/usr/bin/rm.exe`] : [])
+
+// The program the plugin runs for a POSIX tool on this platform: the bare
+// name on POSIX, Git's copy on Windows (lib/platform.ts toolOf).
+export const toolPath = (name: string): string =>
+    !WINDOWS ? name : name === 'sh' ? `${GIT_ROOT}/bin/sh.exe` : `${GIT_ROOT}/usr/bin/${name}.exe`
+
+// Whether argv[0] is the shell the plugin runs agent-exec through.
+export const isSh = (argv0: string | undefined): boolean => argv0 === toolPath('sh')
+
+// `C:/` for a drive path, `/` otherwise.
+const rootOf = (p: string): string => (WINDOWS && /^[A-Za-z]:/.test(p) ? `${p.slice(0, 2).toUpperCase()}/` : '/')
+
+// A path an `fs.*` hook receives, as the test spelled it: on Windows the
+// engine's `\` back to `/`; as is on POSIX.
+export const slashed = (p: string): string => (WINDOWS ? p.replace(/\\/g, '/') : p)
+
 const norm = (p: string): string => {
+    const s = slashed(p)
+    const root = rootOf(s)
     const out: string[] = []
-    for (const part of p.split('/')) {
+    for (const part of (root === '/' ? s : s.slice(2)).split('/')) {
         if (part === '..') {
             out.pop()
         } else if (part !== '' && part !== '.') {
@@ -51,11 +84,18 @@ const norm = (p: string): string => {
         }
     }
 
-    return `/${out.join('/')}`
+    return `${root}${out.join('/')}`
+}
+
+const parentOf = (p: string): string => {
+    const root = rootOf(p)
+    const cut = p.lastIndexOf('/')
+
+    return cut < root.length ? root : p.slice(0, cut)
 }
 
 const within = (child: string, parent: string): boolean =>
-    child === parent || child.startsWith(parent === '/' ? '/' : `${parent}/`)
+    child === parent || child.startsWith(parent.endsWith('/') ? parent : `${parent}/`)
 
 const ok = (stdout: string) => ({ exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false })
 const fail = (exitCode: number) => ({ exitCode, stdout: '', stderr: 'fatal', isStdoutTruncated: false, isStderrTruncated: false })
@@ -66,8 +106,8 @@ let registry = new Map<string, Registered>()
 
 export const fakeHost = (on: On, options: HostOptions) => {
     const dirs = new Set<string>(['/'])
-    const files = new Map<string, string>(Object.entries(options.files ?? {}))
-    const links = new Map<string, string>(Object.entries(options.links ?? {}))
+    const files = new Map<string, string>(Object.entries(options.files ?? {}).map(([k, v]) => [norm(k), v]))
+    const links = new Map<string, string>(Object.entries(options.links ?? {}).map(([k, v]) => [norm(k), v]))
     const runs: string[][] = []
     const logs: string[] = []
     const commands: string[] = []
@@ -77,43 +117,49 @@ export const fakeHost = (on: On, options: HostOptions) => {
     registry = agents
     const addDir = (d: string): void => {
         let p = norm(d)
-        while (p !== '/') {
+        const root = rootOf(p)
+        dirs.add(root)
+        while (p !== root) {
             dirs.add(p)
-            p = p.slice(0, p.lastIndexOf('/')) || '/'
+            p = parentOf(p)
         }
     }
     for (const d of options.dirs ?? []) {
         addDir(d)
     }
     for (const f of files.keys()) {
-        addDir(f.slice(0, f.lastIndexOf('/')) || '/')
+        addDir(parentOf(f))
     }
 
     const trees: Tree[] = []
     for (const repo of options.repos ?? []) {
-        const common = `${repo.main}/.git`
-        addDir(repo.main)
+        const main = norm(repo.main)
+        const common = `${main}/.git`
+        addDir(main)
         addDir(common)
-        trees.push({ path: repo.main, branch: repo.branch ?? 'main', gitDir: common, common, repo })
+        trees.push({ path: main, branch: repo.branch ?? 'main', gitDir: common, common, repo })
         for (const l of repo.linked ?? []) {
-            const gitDir = `${common}/worktrees/${l.path.slice(l.path.lastIndexOf('/') + 1)}`
-            addDir(l.path)
+            const path = norm(l.path)
+            const gitDir = `${common}/worktrees/${path.slice(path.lastIndexOf('/') + 1)}`
+            addDir(path)
             addDir(gitDir)
-            trees.push({ path: l.path, branch: l.branch, gitDir, common, repo })
+            trees.push({ path, branch: l.branch, gitDir, common, repo })
         }
     }
 
     // Where a path lands, links followed component by component; undefined
     // when a component does not exist.
     const real = (path: string): string | undefined => {
-        let cur = '/'
-        const parts = path.split('/').filter(s => s !== '' && s !== '.')
+        const s = slashed(path)
+        const root = rootOf(s)
+        let cur = root
+        const parts = (root === '/' ? s : s.slice(2)).split('/').filter(s => s !== '' && s !== '.')
         for (const [i, part] of parts.entries()) {
             if (part === '..') {
-                cur = cur.slice(0, cur.lastIndexOf('/')) || '/'
+                cur = parentOf(cur)
                 continue
             }
-            cur = cur === '/' ? `/${part}` : `${cur}/${part}`
+            cur = cur === root ? `${root}${part}` : `${cur}/${part}`
             const target = links.get(cur)
             if (target !== undefined) {
                 const landed = real(target)
@@ -173,7 +219,7 @@ export const fakeHost = (on: On, options: HostOptions) => {
         const argv = [...e.argv]
         runs.push(argv)
         const cwd = e.init?.cwd ?? options.cwd ?? '/'
-        if (argv[0] === 'sh' && argv[3] === 'agent-exec') {
+        if (isSh(argv[0]) && argv[3] === 'agent-exec') {
             const answer = agentExec(argv.slice(4))
             if (answer === 'missing') {
                 return { value: fail(127) }
@@ -182,9 +228,13 @@ export const fakeHost = (on: On, options: HostOptions) => {
             return { value: { ...fail(answer.exitCode), stdout: answer.stdout ?? '' } }
         }
         if (argv[0] === 'git') {
+            if (argv[1] === '--exec-path') {
+                return { value: WINDOWS ? ok(`${GIT_ROOT}/mingw64/libexec/git-core\n`) : fail(1) }
+            }
+
             return { value: git(argv.slice(1), cwd) }
         }
-        if (argv[0] === 'mv' && argv[1] === '-f' && argv[2] !== undefined && argv[3] !== undefined) {
+        if (argv[0] === toolPath('mv') && argv[1] === '-f' && argv[2] !== undefined && argv[3] !== undefined) {
             const text = files.get(norm(argv[2]))
             if (text === undefined) {
                 return { value: fail(1) }
@@ -194,8 +244,8 @@ export const fakeHost = (on: On, options: HostOptions) => {
 
             return { value: ok('') }
         }
-        if (argv[0] === 'rm' && argv[1] === '-f' && argv[2] !== undefined) {
-            files.delete(argv[2])
+        if (argv[0] === toolPath('rm') && argv[1] === '-f' && argv[2] !== undefined) {
+            files.delete(norm(argv[2]))
 
             return { value: ok('') }
         }
@@ -209,9 +259,11 @@ export const fakeHost = (on: On, options: HostOptions) => {
         }
         const kind = dirs.has(landed) ? 'dir' as const : 'file' as const
 
-        return { value: { kind, size: 0, mtimeMs: 0, isLink: links.has(norm(e.path)), ...(e.resolve ? { realPath: landed } : {}) } }
+        const realPath = WINDOWS ? landed.replace(/\//g, '\\') : landed
+
+        return { value: { kind, size: 0, mtimeMs: 0, isLink: links.has(norm(e.path)), ...(e.resolve ? { realPath } : {}) } }
     })
-    on('fs.exists', (_$, e) => ({ value: real(e.path) !== undefined }))
+    on('fs.exists', (_$, e) => ({ value: BINARIES.has(norm(e.path)) || real(e.path) !== undefined }))
     on('fs.read', (_$, e) => {
         const landed = real(e.path)
         const text = landed === undefined ? undefined : files.get(landed)
@@ -219,7 +271,7 @@ export const fakeHost = (on: On, options: HostOptions) => {
         return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
     })
     on('fs.write', (_$, e) => {
-        addDir(e.path.slice(0, e.path.lastIndexOf('/')))
+        addDir(parentOf(norm(e.path)))
         files.set(norm(e.path), e.text)
 
         return { value: undefined }

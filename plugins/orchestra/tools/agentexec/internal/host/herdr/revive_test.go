@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // reviveServerStarts counts the `server` spawns the executor made.
@@ -26,6 +27,7 @@ func reviveServerStarts(e *env) int {
 // keeps failing.
 func reviveShim(t *testing.T, e *env, once, always bool) string {
 	t.Helper()
+	testenv.SkipOnWindows(t, "the herdr stand-in is a shebang script, which Windows cannot exec; herdr itself has no Windows build")
 	onceFlag := filepath.Join(e.tmp, "fail-once")
 	alwaysFlag := filepath.Join(e.tmp, "fail-always")
 	if once {

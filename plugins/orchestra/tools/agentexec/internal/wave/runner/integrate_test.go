@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -118,7 +119,11 @@ func TestOnGreenRunsInGreenTreeAtIntegratedSHAAndIsRemovedOnDone(t *testing.T) {
 	ex := newFake(t, map[string][]round{
 		"A": {edit(map[string]string{"a.txt": "a\n"})}, "B": {edit(map[string]string{"b.txt": "b\n"})},
 	})
-	cmd := fmt.Sprintf(`echo "{sha} $WAVE_GREEN_SHA $(pwd -P)" >> '%s'; exit 3`, log)
+	pwd := "pwd -P"
+	if runtime.GOOS == "windows" {
+		pwd = "pwd -W" // Git's sh: the Windows path, not /tmp/...
+	}
+	cmd := fmt.Sprintf(`echo "{sha} $WAVE_GREEN_SHA $(%s)" >> '%s'; exit 3`, pwd, filepath.ToSlash(log))
 	var greenSeen bool
 	ex.onStart = func(pid string, _ spec) {
 		if pid == "B" {
@@ -137,7 +142,7 @@ func TestOnGreenRunsInGreenTreeAtIntegratedSHAAndIsRemovedOnDone(t *testing.T) {
 	f := strings.Fields(lines[1])
 	eq(t, "{sha}", f[0], head)
 	eq(t, "WAVE_GREEN_SHA", f[1], head)
-	eq(t, "cwd", f[2], filepath.Join(w.waveDir, "green-tree"))
+	eq(t, "cwd", filepath.FromSlash(f[2]), filepath.Join(w.waveDir, "green-tree"))
 	eq(t, "same tree reused", strings.Fields(lines[0])[2], f[2])
 	if !greenSeen {
 		t.Error("the green tree was not there between greens")

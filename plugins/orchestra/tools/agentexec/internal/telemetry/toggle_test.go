@@ -220,7 +220,7 @@ func TestToggleWritesFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	path, err = Toggle("project", true)
-	if err != nil || !strings.HasSuffix(path, ".claude/orchestra.yml") || !filepath.IsAbs(path) {
+	if err != nil || !strings.HasSuffix(path, filepath.Join(".claude", "orchestra.yml")) || !filepath.IsAbs(path) {
 		t.Fatalf("Toggle = %q, %v", path, err)
 	}
 	if got, _ := os.ReadFile(path); string(got) != "a: 1\r\ntelemetry:\r\n  enabled: true\r\n" {

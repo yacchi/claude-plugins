@@ -238,7 +238,7 @@ func TestCoreKillTreeFreezesFirst(t *testing.T) {
 		t.Errorf("KillTree = %d, %v after %d calls", n, err, *calls)
 	}
 	coreWantSignals(t, sigs, []coreSig{
-		{coreRoot, syscall.SIGSTOP}, {5000002, syscall.SIGSTOP}, {5000003, syscall.SIGSTOP},
+		{coreRoot, sigStop}, {5000002, sigStop}, {5000003, sigStop},
 		{coreRoot, syscall.SIGKILL}, {5000002, syscall.SIGKILL}, {5000003, syscall.SIGKILL},
 	})
 }
@@ -251,7 +251,7 @@ func TestCoreKillTreeSparesRoot(t *testing.T) {
 		t.Errorf("KillTree = %d, %v", n, err)
 	}
 	coreWantSignals(t, sigs, []coreSig{
-		{5000002, syscall.SIGSTOP}, {5000004, syscall.SIGSTOP},
+		{5000002, sigStop}, {5000004, sigStop},
 		{5000002, syscall.SIGKILL}, {5000004, syscall.SIGKILL},
 	})
 }
@@ -269,7 +269,7 @@ func TestCoreKillTreeSnapshotFailsMidFreeze(t *testing.T) {
 		t.Errorf("KillTree = %d, %v after %d calls", n, err, *calls)
 	}
 	coreWantSignals(t, sigs, []coreSig{
-		{coreRoot, syscall.SIGSTOP}, {5000002, syscall.SIGSTOP}, {5000003, syscall.SIGSTOP},
+		{coreRoot, sigStop}, {5000002, sigStop}, {5000003, sigStop},
 		{coreRoot, syscall.SIGKILL}, {5000002, syscall.SIGKILL}, {5000003, syscall.SIGKILL},
 	})
 }
@@ -278,7 +278,7 @@ func TestCoreKillTreeFailures(t *testing.T) {
 	sigs := coreSignals(t, map[coreSig]error{
 		{5000002, syscall.SIGKILL}: syscall.ESRCH,
 		{5000003, syscall.SIGKILL}: syscall.EPERM,
-		{5000004, syscall.SIGSTOP}: syscall.EPERM,
+		{5000004, sigStop}:         syscall.EPERM,
 		{5000004, syscall.SIGKILL}: syscall.EPERM,
 	})
 	coreSnapshots(t, coreSeq(coreTable(5000002, 5000003, 5000004)))
@@ -288,9 +288,9 @@ func TestCoreKillTreeFailures(t *testing.T) {
 		t.Errorf("KillTree = %d, %v; want 1, %q", n, err, want)
 	}
 	coreWantSignals(t, sigs, []coreSig{
-		{5000001, syscall.SIGSTOP}, {5000002, syscall.SIGSTOP}, {5000003, syscall.SIGSTOP}, {5000004, syscall.SIGSTOP},
+		{5000001, sigStop}, {5000002, sigStop}, {5000003, sigStop}, {5000004, sigStop},
 		{5000001, syscall.SIGKILL}, {5000002, syscall.SIGKILL}, {5000003, syscall.SIGKILL}, {5000004, syscall.SIGKILL},
-		{5000003, syscall.SIGCONT},
+		{5000003, sigCont},
 	})
 }
 
@@ -298,7 +298,7 @@ func TestCoreKillTreeProtects(t *testing.T) {
 	sigs := coreSignals(t, nil)
 	coreSnapshots(t, coreSeq(append(coreTable(1, 5000002, 5000004),
 		Proc{os.Getpid(), 5000002, coreRoot, 0},
-		Proc{5000003, coreRoot, syscall.Getpgrp(), 0},
+		Proc{5000003, coreRoot, sysGetpgrp(), 0},
 	)))
 	// Root and 5000002 are this process's ancestors here, so root is spared
 	// though includeRoot.
@@ -306,7 +306,7 @@ func TestCoreKillTreeProtects(t *testing.T) {
 	if n != 1 || err != nil {
 		t.Errorf("KillTree = %d, %v", n, err)
 	}
-	coreWantSignals(t, sigs, []coreSig{{5000004, syscall.SIGSTOP}, {5000004, syscall.SIGKILL}})
+	coreWantSignals(t, sigs, []coreSig{{5000004, sigStop}, {5000004, syscall.SIGKILL}})
 }
 
 func TestCoreKillTreeBounded(t *testing.T) {
@@ -324,7 +324,7 @@ func TestCoreKillTreeBounded(t *testing.T) {
 	}
 	var want []coreSig
 	for k := 5000002; k <= 5000011; k++ {
-		want = append(want, coreSig{k, syscall.SIGSTOP})
+		want = append(want, coreSig{k, sigStop})
 	}
 	for k := 5000002; k <= 5000012; k++ {
 		want = append(want, coreSig{k, syscall.SIGKILL})
@@ -415,7 +415,7 @@ func TestCoreKillChildTreeProtects(t *testing.T) {
 		t.Errorf("KillChildTree = %d, %v after %d calls", n, err, *calls)
 	}
 	coreWantSignals(t, sigs, []coreSig{
-		{5000003, syscall.SIGSTOP}, {5000005, syscall.SIGSTOP},
+		{5000003, sigStop}, {5000005, sigStop},
 		{5000003, syscall.SIGKILL}, {5000005, syscall.SIGKILL},
 	})
 }
@@ -439,7 +439,7 @@ func TestCoreKillChildTreeRescan(t *testing.T) {
 		t.Errorf("KillChildTree = %d, %v after %d calls", n, err, *calls)
 	}
 	coreWantSignals(t, sigs, []coreSig{
-		{5000003, syscall.SIGSTOP}, {5000008, syscall.SIGSTOP},
+		{5000003, sigStop}, {5000008, sigStop},
 		{5000003, syscall.SIGKILL}, {5000008, syscall.SIGKILL},
 	})
 }

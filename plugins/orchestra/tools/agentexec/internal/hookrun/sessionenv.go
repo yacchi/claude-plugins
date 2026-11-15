@@ -22,14 +22,16 @@ const SessionEnvMarker = "# orchestra session env"
 // config.NodeCapShellPrefix(testSlots) on its own line when it is not "",
 // then the tree-env line, then the line `true`; every line ends in "\n".
 // The last line is `true` on purpose: the file is chained with `&&` to the
-// command, so a failing line above must not skip the command.
+// command, so a failing line above must not skip the command. exe is written
+// with forward slashes: on Windows the block runs in Git Bash, inlined into
+// a command line whose parser folds a doubled backslash (a UNC path) into one.
 func SessionEnvScript(exe string, testSlots int) string {
 	var b strings.Builder
 	b.WriteString(SessionEnvMarker + "\n")
 	if p := config.NodeCapShellPrefix(testSlots); p != "" {
 		b.WriteString(p + "\n")
 	}
-	b.WriteString("if [ -f .git ] && [ -z \"${pnpm_config_enable_global_virtual_store:-}\" ]; then eval \"$(" + sessionEnvQuote(exe) + " hook tree-env 2>/dev/null)\"; fi\n")
+	b.WriteString("if [ -f .git ] && [ -z \"${pnpm_config_enable_global_virtual_store:-}\" ]; then eval \"$(" + sessionEnvQuote(filepath.ToSlash(exe)) + " hook tree-env 2>/dev/null)\"; fi\n")
 	b.WriteString("true\n")
 	return b.String()
 }

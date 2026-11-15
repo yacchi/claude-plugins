@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 )
 
@@ -168,13 +169,11 @@ func integrateRunning(repo, task string) bool {
 		return false
 	}
 	defer f.Close()
-	for {
-		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		return errors.Is(err, syscall.EWOULDBLOCK)
+	err = fsutil.Flock(f, fsutil.LockEx|fsutil.LockNB)
+	if err == nil {
+		_ = fsutil.Flock(f, fsutil.LockUn)
 	}
+	return errors.Is(err, syscall.EWOULDBLOCK)
 }
 
 // inUse says why task's tree at path must not be removed now, "" when

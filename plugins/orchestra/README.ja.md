@@ -44,6 +44,8 @@ flowchart TD
 
 `agent-exec` CLI(pi への振り分け、ワークツリー隔離、`wave run`、フックが使います)は Go で書かれており、初回の実行時にソースからビルドします。[mise](https://mise.jdx.dev/)(`tools/agentexec/.go-version` で固定した Go の版を使います)か、`PATH` 上の Go が必要です。初回の呼び出しで数秒かけてビルドし、バイナリを `~/.cache/claude-orchestra/agent-exec/` に保存します(ソースのハッシュ、OS、CPU アーキテクチャごとに分けます)。`agent-exec doctor`(`/orchestra:setup` が実行します)で事前にビルドできます。
 
+**Windows** では WSL なしでそのまま動きます。[Git for Windows](https://gitforwindows.org/) が必要です。Claude Code の Bash・フック・agent-exec のシェルコマンドはその `sh.exe` で動き、フックは `PATH` 上の `git` からその場所を見つけます。PowerShell でだけ有効にしている mise でも、固定した版の Go(mise のインストール先)か winget で入れた `mise.exe` を見つけて使います。開発者モードは不要です(無効のときはシンボリックリンクを作らず、コピー・ハードリンク・ジャンクションで代わりにします)。Windows で使えないもの: サンドボックス(Seatbelt・Landlock・bwrap・srt)は無いため、ワーカーはサンドボックスなしで動きます。herdr ホストも使えません(herdr に Windows 版が無いため)。Orca ホストは使え、端末を Git Bash で開きます。
+
 Claude Code の中では shim は不要です。プラグインの `bin/` ディレクトリが Bash ツールの `PATH` に `agent-exec` を載せます。`agent-exec install` が引き続き必要なのは、Claude Code の外で `agent-exec` を名前で呼ぶシェル、つまり pi ワーカーのシェル(pi は子プロセスとして動き、プラグインの `bin/` を受け取るとは限りません)とご自身のターミナルです。ランナーは実行中のバイナリを絶対パスで起動し、herdr のペインは Claude Code のセッションを動かすため `bin/` を受け取るので、どちらも shim を必要としません。
 
 ローカルで開発する場合は、マーケットプレイスのリポジトリのルートをローカルのマーケットプレイスとして追加します:

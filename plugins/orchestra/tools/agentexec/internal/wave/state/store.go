@@ -55,7 +55,7 @@ func EventsPath(statePath string) string {
 }
 
 func (s *Store) read() (State, error) {
-	data, err := os.ReadFile(s.Path)
+	data, err := fsutil.ReadFile(s.Path)
 	if err != nil {
 		return State{}, err
 	}

@@ -22,6 +22,8 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 var fakeOrca string
@@ -33,14 +35,12 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	bin := filepath.Join(dir, "fakeherdr")
-	build := exec.Command("go", "build", "-o", bin, "../../testutil/fakeherdr")
+	// Built straight under the orca name (no link: Windows without
+	// Developer Mode cannot make one); the fake keys off its own name.
+	fakeOrca = filepath.Join(dir, testenv.Exe("orca"))
+	build := exec.Command("go", "build", "-o", fakeOrca, "../../testutil/fakeherdr")
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
-		panic(err)
-	}
-	fakeOrca = filepath.Join(dir, "orca")
-	if err := os.Symlink(bin, fakeOrca); err != nil {
 		panic(err)
 	}
 	code := m.Run()
@@ -79,8 +79,8 @@ func newEnv(t *testing.T, scenario map[string]any) *env {
 	t.Setenv("HOME", filepath.Join(tmp, "home"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(tmp, "xstate"))
 	t.Setenv("ORCHESTRA_ALIVE_DIR", filepath.Join(tmp, "alive"))
-	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	t.Setenv("FAKEHERDR_DIR", e.fake)
 	t.Setenv("AGENT_EXEC_BOOTSTRAP", "")
 	gitRun(t, e.repo, "init", "-q", "-b", "main", ".")
@@ -274,8 +274,11 @@ func TestAddDirsAndPermissionModeAreRendered(t *testing.T) {
 		t.Errorf("want exactly one --session-id, got %d in %q", n, cmd)
 	}
 	cmd = sessionID.ReplaceAllString(cmd, "--session-id <ID>")
-	prefix := "env " + strings.Join(append(iso, pin), " ")
-	if cmd != prefix+" claude --model opus --permission-mode acceptEdits --add-dir "+e.state+" --session-id <ID>"+` --settings '{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}'` {
+	prefix := "env"
+	for _, kv := range append(iso, pin) {
+		prefix += " " + sandbox.ShellQuote(kv) // a Windows path's backslashes get quoted
+	}
+	if cmd != prefix+" claude --model opus --permission-mode acceptEdits --add-dir "+sandbox.ShellQuote(e.state)+" --session-id <ID>"+` --settings '{"disableRemoteControl":true,"promptCacheTtl":"1h","subagentPromptCacheTtl":"1h"}'` {
 		t.Errorf("%q", cmd)
 	}
 }
@@ -610,7 +613,7 @@ func TestCommandCarriesTheMiseTrustOfItsTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "MISE_TRUSTED_CONFIG_PATHS=/keep:" + linked; !slices.Contains(words, want) {
+	if want := "MISE_TRUSTED_CONFIG_PATHS=/keep" + string(os.PathListSeparator) + linked; !slices.Contains(words, want) {
 		t.Errorf("%q lacks %q", cmd, want)
 	}
 }

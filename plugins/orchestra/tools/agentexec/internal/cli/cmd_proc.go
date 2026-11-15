@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 )
 
 // The seams. Tests replace them and restore them with t.Cleanup. procCmdStart
@@ -122,7 +122,7 @@ func newProcCmd() *cobra.Command {
 // Bash call would wait for an end-of-file that never comes.
 func procCmdWatcher(exe string, args []string) *exec.Cmd {
 	c := exec.Command(exe, args...)
-	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	procx.Detach(c)
 	return c
 }
 

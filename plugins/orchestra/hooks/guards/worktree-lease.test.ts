@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { callTool, endAgent, fakeHost, freshSession, startAgent, type HostOptions } from '../testing/host.ts'
+import { abs, callTool, endAgent, fakeHost, freshSession, startAgent, type HostOptions } from '../testing/host.ts'
 
 // One writer per worktree: a message to a running workflow agent resumed a
 // COPY of it, and both committed the same files seconds apart. Pinned: the
@@ -8,15 +8,15 @@ import { callTool, endAgent, fakeHost, freshSession, startAgent, type HostOption
 // tests never need the lease, SubagentStop and the window both free it, the
 // main worktree is never leased, and the lease stays out of the tree.
 
-const REPO = '/w/repo'
-const WT1 = '/w/wt1'
-const WT2 = '/w/wt2'
+const REPO = abs('/w/repo')
+const WT1 = abs('/w/wt1')
+const WT2 = abs('/w/wt2')
 const LEASE = `${REPO}/.git/worktrees/wt1/orchestra-lease.json`
 const ACTIVITY = `${REPO}/.git/worktrees/wt1/orchestra-activity.json`
 
 const host = (on: On, extra: Partial<HostOptions> = {}) => fakeHost(on, {
     sessionId: freshSession(),
-    dirs: ['/w/scratch'],
+    dirs: [abs('/w/scratch')],
     repos: [{ main: REPO, linked: [{ path: WT1, branch: 'orchestra/s1/t1' }, { path: WT2, branch: 'feature/any' }] }],
     ...extra,
 })
@@ -84,7 +84,7 @@ describe('worktree-lease', () => {
         expect((await as($, 'ag_G', 'orchestra:orchestra-delegate', WT1, run('git commit -qm integrate'))).deny, 'supervisor').toBeUndefined()
         expect((await as($, 'ag_G', light, WT1, editIn(`${WT1}/a.ts`))).deny, 'another worker').toBeDefined()
         expect((await as($, 'ag_G', light, WT1, run('git commit -qm x', 'take over [orchestra:allow-lease: holder confirmed dead]'))).deny).toBeUndefined()
-        expect((await as($, 'ag_H', light, '/w/scratch', editIn('/w/scratch/notrepo/x.ts'))).deny, 'outside a repository').toBeUndefined()
+        expect((await as($, 'ag_H', light, abs('/w/scratch'), editIn(abs('/w/scratch/notrepo/x.ts')))).deny, 'outside a repository').toBeUndefined()
     })
 
     test('activity: any Bash call in a linked worktree stamps it, never denied', async ($, on) => {

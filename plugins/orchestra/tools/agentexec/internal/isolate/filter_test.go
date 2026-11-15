@@ -1,13 +1,13 @@
 package isolate
 
 import (
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 var testFilter = ChangeFilter{Exclude: []string{".pnpm-store/", "node_modules/", "packages/a/.cache/"}}
@@ -79,9 +79,7 @@ func TestDiffLeavesExcludedSymlinkAndFileOut(t *testing.T) {
 	path := create(t, repo, "t1", "")
 	writeFile(t, filepath.Join(path, "src/a.ts"), "a\n")
 	writeFile(t, filepath.Join(path, ".pnpm-store"), "x\n")
-	if err := os.Symlink(t.TempDir(), filepath.Join(path, "node_modules")); err != nil {
-		t.Fatal(err)
-	}
+	testenv.Symlink(t, t.TempDir(), filepath.Join(path, "node_modules"))
 	f := ChangeFilter{Exclude: []string{".pnpm-store/", "node_modules/"}}
 	res, err := DiffWith(repo, "t1", "", true, f)
 	if err != nil || res.Status != "ok" {

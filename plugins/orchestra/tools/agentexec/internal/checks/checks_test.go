@@ -270,7 +270,7 @@ func TestRunJunitDeletedBeforeRunAndNamesLead(t *testing.T) {
 	tree := t.TempDir()
 	write(t, tree, "reports/junit.xml", "<stale/>")
 	items := []Item{{Name: "j", Junit: "reports/junit.xml", Run: "test ! -e reports/junit.xml || exit 7; mkdir -p reports; " +
-		`printf '%s' '<testsuite><testcase classname="A" name="ok"/><testcase classname="A" name="bad"><failure message="boom&#10;more"/></testcase></testsuite>' > reports/junit.xml; echo FAIL A > /dev/stderr; exit 1`}}
+		`printf '%s' '<testsuite><testcase classname="A" name="ok"/><testcase classname="A" name="bad"><failure message="boom&#10;more"/></testcase></testsuite>' > reports/junit.xml; echo FAIL A >&2; exit 1`}}
 	o := runOpts(t)
 	o.RetryFailedAlone = false
 	res := Run(tree, items, o)

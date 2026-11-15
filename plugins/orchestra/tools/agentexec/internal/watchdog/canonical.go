@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"unicode/utf8"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 )
 
 // previewRunes caps args_preview (code points).
@@ -171,10 +171,4 @@ func toolName(v any) string {
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
-func killGroup(pgid int, hard bool) error {
-	sig := syscall.SIGTERM
-	if hard {
-		sig = syscall.SIGKILL
-	}
-	return syscall.Kill(-pgid, sig)
-}
+func killGroup(pgid int, hard bool) error { return procx.KillGroup(pgid, hard) }

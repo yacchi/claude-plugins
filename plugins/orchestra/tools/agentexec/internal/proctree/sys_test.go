@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"testing"
 )
 
@@ -33,8 +32,8 @@ func TestSysSnapshotSelf(t *testing.T) {
 	if self.PPID != os.Getppid() {
 		t.Errorf("PPID = %d, want %d", self.PPID, os.Getppid())
 	}
-	if self.PGID != syscall.Getpgrp() {
-		t.Errorf("PGID = %d, want %d", self.PGID, syscall.Getpgrp())
+	if self.PGID != sysGetpgrp() {
+		t.Errorf("PGID = %d, want %d", self.PGID, sysGetpgrp())
 	}
 	// A Go test binary holds well over 1 MiB; the upper bound catches a
 	// KiB/page unit mixup on the way to bytes.
@@ -51,17 +50,21 @@ func TestSysSnapshotForeign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
-	// pid 1 belongs to another user: its per-process read fails, which must
-	// not fail the table.
+	// pid 1 (Windows: 4, the System process) belongs to another user: its
+	// per-process read fails, which must not fail the table.
+	foreign := 1
+	if runtime.GOOS == "windows" {
+		foreign = 4
+	}
 	for _, p := range tab {
-		if p.PID == 1 {
+		if p.PID == foreign {
 			if p.Mem < 0 {
-				t.Errorf("pid 1 Mem = %d, want >= 0", p.Mem)
+				t.Errorf("pid %d Mem = %d, want >= 0", foreign, p.Mem)
 			}
 			return
 		}
 	}
-	t.Fatal("no row for pid 1")
+	t.Fatalf("no row for pid %d", foreign)
 }
 
 func TestSysSnapshotChild(t *testing.T) {
@@ -74,9 +77,14 @@ func TestSysSnapshotChild(t *testing.T) {
 	}
 	// The name holds a space and parentheses, which the stat parser must
 	// survive.
-	link := filepath.Join(t.TempDir(), "sys) (sleep")
-	if err := os.Symlink(sleep, link); err != nil {
-		t.Fatalf("symlink: %v", err)
+	// Windows: a symlink needs a privilege, and the name never reaches the
+	// reader, so the binary runs as it is.
+	link := sleep
+	if runtime.GOOS != "windows" {
+		link = filepath.Join(t.TempDir(), "sys) (sleep")
+		if err := os.Symlink(sleep, link); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
 	}
 	cmd := exec.Command(link, "30")
 	if err := cmd.Start(); err != nil {
@@ -102,8 +110,8 @@ func TestSysSnapshotChild(t *testing.T) {
 }
 
 func TestSysPhysicalMemory(t *testing.T) {
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
-		t.Skip("physical memory reader is darwin and linux only")
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		t.Skip("physical memory reader is darwin, linux and windows only")
 	}
 	if PhysicalMemory == nil {
 		t.Fatal("PhysicalMemory is nil on " + runtime.GOOS)

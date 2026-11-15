@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { callTool, fakeHost, freshSession, startAgent } from '../testing/host.ts'
+import { callTool, fakeHost, freshSession, isSh, startAgent } from '../testing/host.ts'
 
 // The wave watcher's guard and the handoff writer, through the module's one
 // tool.call and turn.complete listeners.
@@ -86,7 +86,7 @@ const flush = async (): Promise<void> => {
     }
 }
 
-const handoffRuns = (runs: readonly string[][]) => runs.filter(r => r[0] === 'sh' && r[3] === 'agent-exec' && r[4] === 'hook' && r[5] === 'handoff')
+const handoffRuns = (runs: readonly string[][]) => runs.filter(r => isSh(r[0]) && r[3] === 'agent-exec' && r[4] === 'hook' && r[5] === 'handoff')
 
 describe('handoff wiring', () => {
     test('an orchestra agent\'s turn end writes its handoff with the answer as one argument', async ($, on) => {

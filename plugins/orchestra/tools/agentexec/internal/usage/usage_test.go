@@ -70,6 +70,9 @@ func write(t *testing.T, path string, lines ...string) {
 	}
 }
 
+// jsonPath is p as the inside of a JSON string (Windows paths hold backslashes).
+func jsonPath(p string) string { return strings.ReplaceAll(p, "\\", "\\\\") }
+
 func decodeCfg(t *testing.T, text string) *config.Resolved {
 	t.Helper()
 	v, err := fsutil.DecodeJSON([]byte(text))
@@ -297,17 +300,17 @@ func TestTelemetryAggregation(t *testing.T) {
 		`{"event": "dispatch", "executor": "pi", "ts": "`+iso(now)+`"}`,
 		"not json",
 	)
-	cfg := decodeCfg(t, `{"telemetry": {"enabled": true, "dir": "`+dir+`"}}`)
+	cfg := decodeCfg(t, `{"telemetry": {"enabled": true, "dir": "`+jsonPath(dir)+`"}}`)
 	e := telemetryUsage(cutoff, cfg, "pi")
 	if e.Status != "ok" || e.Records != 2 || e.Tokens != (Tokens{11, 20, 30}) || e.Scope != "global" {
 		t.Errorf("%+v", e)
 	}
 
-	off := telemetryUsage(cutoff, decodeCfg(t, `{"telemetry": {"enabled": false, "dir": "`+dir+`"}}`), "pi")
+	off := telemetryUsage(cutoff, decodeCfg(t, `{"telemetry": {"enabled": false, "dir": "`+jsonPath(dir)+`"}}`), "pi")
 	if off.Status != "unavailable" || off.Tokens != (Tokens{}) || !strings.Contains(off.Note, "disabled") {
 		t.Errorf("%+v", off)
 	}
-	missing := telemetryUsage(cutoff, decodeCfg(t, `{"telemetry": {"enabled": true, "dir": "`+filepath.Join(dir, "nope")+`"}}`), "pi")
+	missing := telemetryUsage(cutoff, decodeCfg(t, `{"telemetry": {"enabled": true, "dir": "`+jsonPath(filepath.Join(dir, "nope"))+`"}}`), "pi")
 	if missing.Status != "unavailable" || missing.Note != "no telemetry records file yet" {
 		t.Errorf("%+v", missing)
 	}
@@ -346,7 +349,7 @@ func fixture(t *testing.T) (ReportOptions, string) {
 	tel := filepath.Join(home, "tel")
 	write(t, filepath.Join(tel, "records.jsonl"),
 		fmt.Sprintf(`{"event":"dispatch","executor":"pi","ts":%q,"usage":{"input_tokens":6,"output_tokens":5}}`, iso(now.Add(-time.Hour))))
-	cfg := decodeCfg(t, `{"telemetry": {"enabled": true, "dir": "`+tel+`"}, "ledger": {"dir": "`+led+`"}}`)
+	cfg := decodeCfg(t, `{"telemetry": {"enabled": true, "dir": "`+jsonPath(tel)+`"}, "ledger": {"dir": "`+jsonPath(led)+`"}}`)
 	return ReportOptions{Since: cutoff, Now: now, Sources: Sources, AllProjects: true, Cfg: cfg, Home: home}, home
 }
 

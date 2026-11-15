@@ -192,7 +192,7 @@ func TestWorkspaceEnvCarriesTheMiseTrustOfItsTree(t *testing.T) {
 	e.scenario(map[string]any{}, true)
 	tree := e.linkedTree("mise")
 	_ = os.WriteFile(filepath.Join(tree, "mise.toml"), []byte("[env]\n"), 0o644)
-	want := "MISE_TRUSTED_CONFIG_PATHS=/keep:" + tree
+	want := "MISE_TRUSTED_CONFIG_PATHS=/keep" + string(os.PathListSeparator) + tree
 	if got := e.workspaceEnvOf(e.executor("{}"), tree); !slices.Contains(got, want) {
 		t.Errorf("workspace --env = %v, want %q", got, want)
 	}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -99,9 +100,16 @@ func hookEnvWriteFile(t *testing.T, path, content string) {
 	}
 }
 
+// hookJSONString is s as a JSON string literal (a Windows path's
+// backslashes escaped).
+func hookJSONString(s string) string {
+	raw, _ := json.Marshal(s)
+	return string(raw)
+}
+
 func TestHookCmdSessionStartInjectsForOpus(t *testing.T) {
 	hookEnvIsolate(t)
-	in := `{"session_id":"s1","source":"startup","model":"claude-opus-5","cwd":"` + t.TempDir() + `"}`
+	in := `{"session_id":"s1","source":"startup","model":"claude-opus-5","cwd":` + hookJSONString(t.TempDir()) + `}`
 	out, code := hookCmdRun(t, in, "hook", "session-start")
 	if code != 0 {
 		t.Fatalf("exit %d", code)
@@ -121,7 +129,7 @@ func TestHookCmdSessionStartInjectsForOpus(t *testing.T) {
 
 func TestHookCmdSessionStartSilentForSonnet(t *testing.T) {
 	hookEnvIsolate(t)
-	in := `{"session_id":"s1","source":"startup","model":"claude-sonnet-5","cwd":"` + t.TempDir() + `"}`
+	in := `{"session_id":"s1","source":"startup","model":"claude-sonnet-5","cwd":` + hookJSONString(t.TempDir()) + `}`
 	if out, code := hookCmdRun(t, in, "hook", "session-start"); code != 0 || out != "" {
 		t.Errorf("exit %d, output %q; want exit 0 and no output", code, out)
 	}
@@ -234,7 +242,7 @@ func TestHookCmdContextReportsModelAndLimit(t *testing.T) {
 
 // hookEnvOpusInput is a SessionStart payload for an Opus session in cwd.
 func hookEnvOpusInput(cwd string) string {
-	return `{"session_id":"s1","source":"startup","model":"claude-opus-5","cwd":"` + cwd + `"}`
+	return `{"session_id":"s1","source":"startup","model":"claude-opus-5","cwd":` + hookJSONString(cwd) + `}`
 }
 
 func TestHookEnvSessionStartWritesBlock(t *testing.T) {
@@ -415,7 +423,7 @@ func TestHookHandoffWritesFromTranscript(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	file := transcript.HandoffPath("s1", "a1")
-	if want := `{"path":"` + file + `"}` + "\n"; out != want {
+	if want := `{"path":` + hookJSONString(file) + `}` + "\n"; out != want {
 		t.Errorf("stdout %q; want %q", out, want)
 	}
 	got, err := os.ReadFile(file)
@@ -431,7 +439,8 @@ func TestHookHandoffWritesFromTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Mode().Perm() != 0o644 {
+	// Windows has no POSIX permission bits: a writable file reads as 0666.
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o644 {
 		t.Errorf("mode = %v; want 0644", fi.Mode().Perm())
 	}
 }

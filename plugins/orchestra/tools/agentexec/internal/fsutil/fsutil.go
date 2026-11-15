@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -48,7 +47,7 @@ func AtomicWriteFile(path string, data []byte, perm fs.FileMode) error {
 		os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameReplace(tmp, path); err != nil {
 		os.Remove(tmp)
 		return err
 	}
@@ -72,7 +71,7 @@ func EnsureDir(path string, perm fs.FileMode) error {
 
 // ReadJSONFile decodes the JSON file at path into v.
 func ReadJSONFile(path string, v any) error {
-	data, err := os.ReadFile(path)
+	data, err := ReadFile(path)
 	if err != nil {
 		return err
 	}
@@ -158,16 +157,6 @@ func encodeJSON(v any, indent bool) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// PIDAlive reports whether a process with this pid exists (a process owned
-// by another user counts as alive).
-func PIDAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
-}
-
 // TailLines returns the last n lines of s (all of s when it has fewer).
 // A trailing newline does not count as an extra empty line.
 func TailLines(s string, n int) string {
@@ -183,8 +172,13 @@ func TailLines(s string, n int) string {
 
 // ExpandUser replaces a leading "~" or "~/" with $HOME; any other path is returned unchanged.
 func ExpandUser(p string) string {
-	if p != "~" && !strings.HasPrefix(p, "~/") {
+	if p != "~" && !strings.HasPrefix(p, "~/") && !(os.PathSeparator == '\\' && strings.HasPrefix(p, `~\`)) {
 		return p
+	}
+	// $HOME wins when absolute (Git Bash and tests set it on Windows, where
+	// os.UserHomeDir reads %USERPROFILE%).
+	if h := os.Getenv("HOME"); h != "" && filepath.IsAbs(h) {
+		return h + p[1:]
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

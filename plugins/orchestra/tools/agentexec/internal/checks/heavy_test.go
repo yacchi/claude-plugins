@@ -26,7 +26,7 @@ func TestRerunFailedAloneTakesOneHeavySlot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	template := fmt.Sprintf(`test "$(ls %s | grep -c '\.lease$')" -eq 2 && test -n {failed}`, pool.Dir)
+	template := fmt.Sprintf(`test "$(ls %s | grep -c '\.lease$')" -eq 2 && test -n {failed}`, shellQuote(filepath.ToSlash(pool.Dir)))
 	done := make(chan string, 1)
 	go func() {
 		status, _ := RerunFailedAlone(" FAIL  tests/a.test.ts\n", template, t.TempDir(),
@@ -59,7 +59,7 @@ func TestTestCommandTakesATestSlot(t *testing.T) {
 	}
 
 	// `go test` never runs (true ||); it makes the line a test run.
-	command := fmt.Sprintf(`true || go test ./x; test "$(ls %s | grep -c '\.lease$')" -eq 1`, tests.Dir)
+	command := fmt.Sprintf(`true || go test ./x; test "$(ls %s | grep -c '\.lease$')" -eq 1`, shellQuote(filepath.ToSlash(tests.Dir)))
 	done := make(chan shellResult, 1)
 	go func() { done <- runShell(command, t.TempDir(), nil, 10*time.Second, t.TempDir(), 0) }()
 	select {

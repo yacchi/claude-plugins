@@ -7,8 +7,6 @@ import (
 	"regexp"
 	"strings"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
 
@@ -114,7 +112,7 @@ func toolEndTexts(stdout string) []string {
 	return texts
 }
 
-func writableByUser(p string) bool { return unix.Access(p, unix.W_OK) == nil }
+func writableByUser(p string) bool { return fsutil.Writable(p) }
 
 // DetectDenials finds the sandbox denials of a finished run under s from
 // its stdout (pi JSONL: tool_execution_end records) and stderr. A
@@ -170,7 +168,7 @@ func detectDenials(toolTexts []string, stderr, cwd string, p *Policy, access fun
 			op := lineOp(line)
 			for _, cand := range candidates(line) {
 				path := cand
-				if !strings.HasPrefix(cand, "/") {
+				if !filepath.IsAbs(cand) {
 					path = filepath.Join(cwd, cand)
 				}
 				real := realPath(path)

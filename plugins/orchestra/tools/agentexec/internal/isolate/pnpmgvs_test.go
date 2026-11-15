@@ -3,10 +3,12 @@ package isolate
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // fakePnpm puts a pnpm on PATH that logs each call (argv and the GVS
@@ -32,6 +34,9 @@ func fakePnpm(t *testing.T, failOn ...string) string {
 		"mkdir -p node_modules && echo 'virtualStoreDir: ../../store/links' > node_modules/.modules.yaml\n"
 	if err := os.WriteFile(filepath.Join(dir, "pnpm"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		shimExe(t, filepath.Join(dir, "pnpm")) // no shebang scripts on Windows
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return log
@@ -149,9 +154,7 @@ func TestCarryRebuildsEveryPnpmProjectUnderTheGlobalVirtualStore(t *testing.T) {
 	tree := linkedTree(t, repo)
 	other := t.TempDir()
 	writeFile(t, filepath.Join(other, "keep.js"), "x\n")
-	if err := os.Symlink(other, filepath.Join(tree, "packages", "a", "node_modules")); err != nil {
-		t.Fatal(err)
-	}
+	testenv.Symlink(t, other, filepath.Join(tree, "packages", "a", "node_modules"))
 	carried, method, present, note := CarryDependencies(repo, tree, nil)
 	if method != carryPnpmGVS || note != "" {
 		t.Errorf("method %q note %q, want %q and none", method, note, carryPnpmGVS)
@@ -182,10 +185,14 @@ func TestCarryClonesOnlyTheProjectWhoseInstallFailed(t *testing.T) {
 	tree := linkedTree(t, repo)
 	writeFile(t, filepath.Join(tree, "packages", "a", ".fail-pnpm"), "")
 	carried, method, _, note := CarryDependencies(repo, tree, nil)
-	if method != carryClone {
-		t.Errorf("method = %q, want %q", method, carryClone)
+	wantMethod := carryClone
+	if runtime.GOOS == "windows" {
+		wantMethod = carryCopy // no reflink copy on Windows
 	}
-	if strings.Join(carried, ",") != filepath.Join("packages", "a", "node_modules") {
+	if method != wantMethod {
+		t.Errorf("method = %q, want %q", method, wantMethod)
+	}
+	if strings.Join(carried, ",") != "packages/a/node_modules" {
 		t.Errorf("carried = %q, want packages/a/node_modules only", carried)
 	}
 	if !strings.Contains(note, "pnpm install (gvs) failed in packages/a") || strings.Contains(note, "packages/b") {
@@ -215,9 +222,7 @@ func TestCarryRepairsDanglingLinksWithoutTheGlobalVirtualStore(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(repo, dir, "node_modules", "@scope"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink("../../../../store/dep", filepath.Join(repo, dir, "node_modules", "@scope", "dep")); err != nil {
-			t.Fatal(err)
-		}
+		testenv.Symlink(t, "../../../../store/dep", filepath.Join(repo, dir, "node_modules", "@scope", "dep"))
 	}
 	writeFile(t, filepath.Join(repo, "fine", "node_modules", "ok", "index.js"), "x\n")
 	log := fakePnpm(t)
@@ -229,7 +234,7 @@ func TestCarryRepairsDanglingLinksWithoutTheGlobalVirtualStore(t *testing.T) {
 	tree := filepath.Join(parent, "deeper")
 	git(t, repo, "worktree", "add", "-q", "-b", "t", tree)
 	carried, _, _, note := CarryDependencies(repo, tree, nil)
-	want := strings.Join([]string{filepath.Join("app", "node_modules"), filepath.Join("fine", "node_modules")}, ",")
+	want := "app/node_modules,fine/node_modules"
 	if strings.Join(carried, ",") != want {
 		t.Errorf("carried = %q, want %q", carried, want)
 	}
@@ -242,7 +247,7 @@ func TestCarryRepairsDanglingLinksWithoutTheGlobalVirtualStore(t *testing.T) {
 	if !exists(filepath.Join(tree, "fine", "node_modules", "ok", "index.js")) {
 		t.Error("a node_modules without dangling links was removed")
 	}
-	if !strings.Contains(note, filepath.Join("loose", "node_modules")) {
+	if !strings.Contains(note, "loose/node_modules") {
 		t.Errorf("note = %q, want it to name loose/node_modules", note)
 	}
 	b, _ := os.ReadFile(log)

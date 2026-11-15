@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,14 +17,22 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/watchdog"
 )
 
 func TestSpawnLargeStdinStdoutStderrDoesNotDeadlock(t *testing.T) {
 	payload := strings.Repeat(strings.Repeat("x", 99)+"\n", 10000) // ~1 MB
+	// Git Bash has no /dev/stderr when stderr is a native pipe; gawk opens
+	// "/dev/stderr" itself.
+	script := "tee /dev/stderr"
+	if runtime.GOOS == "windows" {
+		script = `awk '{ print; print > "/dev/stderr" }'`
+	}
 	res, err := spawn(context.Background(), spawnOptions{
-		Argv: []string{"sh", "-c", "tee /dev/stderr"}, Input: payload,
+		Argv: shArgv(script), Input: payload,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +62,7 @@ func TestSpawnSplitsRecordsOnNewlineOnly(t *testing.T) {
 func TestSpawnVeryLongLine(t *testing.T) {
 	var longest int
 	res, err := spawn(context.Background(), spawnOptions{
-		Argv:   []string{"sh", "-c", "head -c 3000000 /dev/zero | tr '\\0' y; echo"},
+		Argv:   shArgv("head -c 3000000 /dev/zero | tr '\\0' y; echo"),
 		OnLine: func(l string) { longest = max(longest, len(l)) },
 	})
 	if err != nil {
@@ -65,7 +74,8 @@ func TestSpawnVeryLongLine(t *testing.T) {
 }
 
 func TestSpawnSignalExitIsNegative(t *testing.T) {
-	res, err := spawn(context.Background(), spawnOptions{Argv: []string{"sh", "-c", "kill -TERM $$"}})
+	testenv.SkipOnWindows(t, "no POSIX signals: a process cannot die by SIGTERM, so there is no signal to report")
+	res, err := spawn(context.Background(), spawnOptions{Argv: shArgv("kill -TERM $$")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,12 +87,12 @@ func TestSpawnSignalExitIsNegative(t *testing.T) {
 func TestSpawnWorkdirAndEnv(t *testing.T) {
 	dir, _ := filepath.EvalSymlinks(t.TempDir())
 	res, err := spawn(context.Background(), spawnOptions{
-		Argv: []string{"sh", "-c", "pwd; echo $P5_X"}, Cwd: dir, Env: []string{"P5_X=1", "PATH=" + os.Getenv("PATH")},
+		Argv: shArgv(shPwd + "; echo $P5_X"), Cwd: dir, Env: []string{"P5_X=1", "PATH=" + os.Getenv("PATH")},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Stdout != dir+"\n1\n" {
+	if res.Stdout != shPath(dir)+"\n1\n" {
 		t.Fatalf("stdout %q", res.Stdout)
 	}
 }
@@ -93,7 +103,7 @@ func TestSpawnContextCancelKillsGroup(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := spawn(ctx, spawnOptions{Argv: []string{"sh", "-c", "sleep 30 & echo $! > " + marker + "; wait"}})
+	_, err := spawn(ctx, spawnOptions{Argv: shArgv(bgGrandchild(marker) + "; wait")})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err %v", err)
 	}
@@ -111,12 +121,50 @@ func assertDead(t *testing.T, marker string) {
 	}
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
 	for i := 0; i < 100; i++ {
-		if syscall.Kill(pid, 0) != nil {
+		if !fsutil.PIDAlive(pid) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("grandchild survived")
+}
+
+// shArgv runs script in the POSIX shell commands go through.
+func shArgv(script string) []string { return []string{procx.ShellPath(), "-c", script} }
+
+// shPwd prints the shell's cwd the way shPath writes a native path: Git
+// Bash's plain pwd prints its own /c/... or /tmp/... form.
+var shPwd = map[bool]string{false: "pwd", true: "pwd -W"}[runtime.GOOS == "windows"]
+
+// shPath is p as shPwd prints it, and as a single-quoted shell word survives
+// Git Bash's argv parsing (which folds a doubled backslash).
+func shPath(p string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.ToSlash(p)
+	}
+	return p
+}
+
+// bgGrandchild is shell that starts a 30 s grandchild in the background and
+// appends its pid, as fsutil.PIDAlive takes it, to file. On Windows $! is an
+// MSYS pid, mapped through /proc/<pid>/winpid, and the grandchild is native
+// (ping): an MSYS program is exec'd by a fork stub that exits, leaving it
+// outside the Windows process tree where no tree kill reaches it, while a
+// native one stays under the stub, as an executor's children do.
+func bgGrandchild(file string) string {
+	if runtime.GOOS == "windows" {
+		return "ping -n 30 127.0.0.1 >/dev/null & cat /proc/$!/winpid >> '" + shPath(file) + "'"
+	}
+	return "sleep 30 & echo $! >> " + file
+}
+
+// killedExit is the exit code of a child the guards killed with sig: -sig,
+// or TerminateProcess's 1 on Windows, which has no signals.
+func killedExit(sig syscall.Signal) int {
+	if runtime.GOOS == "windows" {
+		return 1
+	}
+	return -int(sig)
 }
 
 func guard(idle, toolIdle, wall time.Duration) *watchdog.Watchdog {
@@ -127,7 +175,7 @@ func guard(idle, toolIdle, wall time.Duration) *watchdog.Watchdog {
 func TestWatchdogWallKillsGrandchildren(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "pid")
 	res, err := spawn(context.Background(), spawnOptions{
-		Argv:     []string{"sh", "-c", "sleep 30 & echo $! > " + marker + "; wait"},
+		Argv:     shArgv(bgGrandchild(marker) + "; wait"),
 		Watchdog: guard(10*time.Second, 10*time.Second, 500*time.Millisecond),
 	})
 	if err != nil {
@@ -140,9 +188,16 @@ func TestWatchdogWallKillsGrandchildren(t *testing.T) {
 }
 
 func TestWatchdogToolIdleUsesLongerBudget(t *testing.T) {
+	// The idle budget must cover the shell's start up to its first line:
+	// Git Bash takes longer than 50 ms, so Windows gets a wider idle and a
+	// tool step that still outlasts it.
+	idle, toolSleep := 50*time.Millisecond, "0.15"
+	if runtime.GOOS == "windows" {
+		idle, toolSleep = 300*time.Millisecond, "0.5"
+	}
 	res, err := spawn(context.Background(), spawnOptions{
-		Argv:     []string{"sh", "-c", `echo '{"type": "tool_execution_start", "toolCallId": "c", "toolName": "bash", "args": {}}'; sleep 0.15`},
-		Watchdog: guard(50*time.Millisecond, 800*time.Millisecond, 2*time.Second),
+		Argv:     shArgv(`echo '{"type": "tool_execution_start", "toolCallId": "c", "toolName": "bash", "args": {}}'; sleep ` + toolSleep),
+		Watchdog: guard(idle, 800*time.Millisecond, 2*time.Second),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +209,7 @@ func TestWatchdogToolIdleUsesLongerBudget(t *testing.T) {
 
 func TestWatchdogToolIdleFiresWithinHalfASecond(t *testing.T) {
 	res, err := spawn(context.Background(), spawnOptions{
-		Argv:     []string{"sh", "-c", `echo '{"type": "tool_execution_start", "toolCallId": "c", "toolName": "bash", "args": {}}'; sleep 10`},
+		Argv:     shArgv(`echo '{"type": "tool_execution_start", "toolCallId": "c", "toolName": "bash", "args": {}}'; sleep 10`),
 		Watchdog: guard(200*time.Millisecond, 600*time.Millisecond, 30*time.Second),
 	})
 	if err != nil {
@@ -218,11 +273,25 @@ func TestUnregisteredExecutorDoesNotFallBack(t *testing.T) {
 func TestPiChildEnvCwdAndStdin(t *testing.T) {
 	home := isolatedHome(t)
 	bin := t.TempDir()
+	// Paths are printed as shPath writes them: a native Windows path's
+	// backslashes would not survive inside the JSON string.
+	agentDir := `"$PI_CODING_AGENT_DIR"`
+	if runtime.GOOS == "windows" {
+		agentDir = `"$(cygpath -m "$PI_CODING_AGENT_DIR")"`
+	}
 	script := "#!/bin/sh\nprompt=$(cat)\n" +
 		`printf '{"type":"session","id":"s"}\n{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"%s|%s|%s|%s"}],"stopReason":"stop"}}\n' ` +
-		`"$(pwd)" "$PI_SKIP_VERSION_CHECK" "$PI_CODING_AGENT_DIR" "$prompt"` + "\n"
+		`"$(` + shPwd + `)" "$PI_SKIP_VERSION_CHECK" ` + agentDir + ` "$prompt"` + "\n"
 	if err := os.WriteFile(filepath.Join(bin, "pi"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		// Windows cannot exec a shebang script; a batch wrapper on PATH is
+		// what an npm-installed pi is too (pi.cmd).
+		wrapper := "@\"" + procx.ShellPath() + "\" \"" + filepath.Join(bin, "pi") + "\" %*\r\n"
+		if err := os.WriteFile(filepath.Join(bin, "pi.cmd"), []byte(wrapper), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	cfg := defaultsCfg()
@@ -242,10 +311,11 @@ func TestPiChildEnvCwdAndStdin(t *testing.T) {
 			wantCwd, _ = filepath.EvalSymlinks(cwd)
 		}
 		agent := filepath.Join(home, ".local", "state", "claude-orchestra", "pi-agent")
-		if parts[0] != wantCwd || parts[1] != "1" || parts[2] != agent || parts[3] != "the prompt" {
+		if parts[0] != shPath(wantCwd) || parts[1] != "1" || parts[2] != shPath(agent) || parts[3] != "the prompt" {
 			t.Fatalf("child saw %q", parts)
 		}
-		if st, err := os.Stat(agent); err != nil || st.Mode().Perm() != 0o700 {
+		// Windows has no POSIX permission bits to check.
+		if st, err := os.Stat(agent); err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o700) {
 			t.Fatalf("agent dir %v %v", st, err)
 		}
 	}

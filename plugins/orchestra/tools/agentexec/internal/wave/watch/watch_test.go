@@ -4,11 +4,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -17,7 +19,7 @@ import (
 // records it in runner.pid.
 func liveRunner(t *testing.T, statePath string) *exec.Cmd {
 	t.Helper()
-	cmd := exec.Command("/bin/sh", "-c", "sleep 30", "wave", "run", "--state="+statePath)
+	cmd := exec.Command(procx.ShellPath(), "-c", "sleep 30", "wave", "run", "--state="+statePath)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -62,13 +64,13 @@ func lines(t *testing.T, path string) int {
 func TestDetachRefusesASecondRunnerWhileOneLives(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	args := []string{"-c", "sleep 30", "wave", "run", "--state=" + statePath}
-	first, err := Detach(statePath, "/bin/sh", args)
+	first, err := Detach(statePath, procx.ShellPath(), args)
 	if err != nil || first["status"] != "detached" {
 		t.Fatalf("first detach: %v %v", first, err)
 	}
 	pid := first["pid"].(int)
 	t.Cleanup(func() { _ = syscallKill(pid) })
-	second, err := Detach(statePath, "/bin/sh", args)
+	second, err := Detach(statePath, procx.ShellPath(), args)
 	if err != nil || second["status"] != "running" || second["pid"] != pid {
 		t.Fatalf("second detach must find the live runner %d: %v %v", pid, second, err)
 	}
@@ -80,7 +82,7 @@ func TestDetachRefusesASecondRunnerWhileOneLives(t *testing.T) {
 	other := filepath.Join(t.TempDir(), "state.json")
 	liveRunner(t, other)
 	writeRecord(t, statePath, mustRecord(t, other))
-	third, err := Detach(statePath, "/bin/sh", args)
+	third, err := Detach(statePath, procx.ShellPath(), args)
 	if err != nil || third["status"] != "detached" {
 		t.Fatalf("a live process of another state must not block: %v %v", third, err)
 	}
@@ -97,6 +99,14 @@ func mustRecord(t *testing.T, statePath string) Record {
 }
 
 func syscallKill(pid int) error {
+	if runtime.GOOS == "windows" {
+		// Killing Git's sh leaves its sleep child running and holding
+		// runner.log open, which Windows then refuses to remove: kill the
+		// tree and give the handles a moment to close.
+		err := procx.KillGroup(pid, true)
+		time.Sleep(200 * time.Millisecond)
+		return err
+	}
 	p, err := os.FindProcess(pid)
 	if err != nil {
 		return err
@@ -257,7 +267,7 @@ func progressFor(t *testing.T, store *state.Store) Progress {
 
 func TestProgressMovesInFlightToInterruptedWhenTheRunnerIsGone(t *testing.T) {
 	store := newStore(t, "a")
-	dead := exec.Command("/bin/sh", "-c", "exit 0", "wave", "run", "--state="+store.Path)
+	dead := exec.Command(procx.ShellPath(), "-c", "exit 0", "wave", "run", "--state="+store.Path)
 	if err := dead.Run(); err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +387,7 @@ func TestWaitGivesANeedPrecedenceOverAHeld(t *testing.T) {
 // endedRunner leaves a gone runner whose end report is log.
 func endedRunner(t *testing.T, store *state.Store, log string) {
 	t.Helper()
-	dead := exec.Command("/bin/sh", "-c", "exit 0", "wave", "run", "--state="+store.Path)
+	dead := exec.Command(procx.ShellPath(), "-c", "exit 0", "wave", "run", "--state="+store.Path)
 	if err := dead.Run(); err != nil {
 		t.Fatal(err)
 	}

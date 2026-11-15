@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // The default runtime locations all sit under StateDir, which follows
@@ -58,10 +60,10 @@ func planPathsSeam(t *testing.T, roots ...string) {
 
 func TestPlanPathsLayout(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "/nonexistent-xdg")
-	if got, want := PlansDir(), StateDir()+"/plans"; got != want {
+	if got, want := PlansDir(), filepath.Join(StateDir(), "plans"); got != want {
 		t.Errorf("PlansDir() = %q, want %q", got, want)
 	}
-	if got, want := PlanDir("abc"), StateDir()+"/plans/abc"; got != want {
+	if got, want := PlanDir("abc"), filepath.Join(StateDir(), "plans", "abc"); got != want {
 		t.Errorf("PlanDir(abc) = %q, want %q", got, want)
 	}
 }
@@ -84,6 +86,7 @@ func TestPlanPathsRefusesTempPaths(t *testing.T) {
 }
 
 func TestPlanPathsSymlinkedAlias(t *testing.T) {
+	testenv.MustSymlink(t)
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
 		t.Fatal(err)

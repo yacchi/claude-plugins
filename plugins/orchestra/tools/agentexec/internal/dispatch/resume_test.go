@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 )
 
 // resumeGatePi is a stand-in pi: it appends its argv to argv.log beside it,
@@ -41,6 +43,14 @@ func resumeGateRun(t *testing.T, cfg *config.Resolved, wd, usage string, req Req
 	script := fmt.Sprintf(resumeGatePi, usageJSON)
 	if err := os.WriteFile(filepath.Join(dir, "pi"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		// Windows cannot exec a shebang script; npm installs pi as pi.cmd,
+		// so the stand-in is a .cmd that hands the script to sh.
+		shim := fmt.Sprintf("@\"%s\" \"%%~dp0pi\" %%*\r\n", procx.ShellPath())
+		if err := os.WriteFile(filepath.Join(dir, "pi.cmd"), []byte(shim), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	req.Class, req.Task, req.RunID, req.Workdir = "standard", "t-1", "run-1", wd

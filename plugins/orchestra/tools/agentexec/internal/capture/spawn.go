@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/proctree"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/watchdog"
@@ -114,7 +115,7 @@ func spawn(ctx context.Context, o spawnOptions) (spawnResult, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = o.Cwd
 	cmd.Env = o.Env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	procx.Detach(cmd)
 
 	stdinR, stdinW, err := os.Pipe()
 	if err != nil {
@@ -226,7 +227,7 @@ func spawn(ctx context.Context, o spawnOptions) (spawnResult, error) {
 	go func() {
 		select {
 		case <-ctx.Done():
-			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			_ = procx.KillGroup(pgid, true)
 			_ = cmd.Process.Kill()
 		case <-exited:
 		}

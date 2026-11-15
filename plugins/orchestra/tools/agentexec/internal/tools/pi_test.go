@@ -3,6 +3,7 @@ package tools
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
@@ -20,6 +21,17 @@ func piHome(t *testing.T) string {
 	return home
 }
 
+// linksTo reports whether link is target: a symlink to it, or (where symlinks
+// are not allowed, as on Windows) a hard link or copy of it.
+func linksTo(link, target string) bool {
+	if got, err := os.Readlink(link); err == nil {
+		return got == target
+	}
+	a, errA := os.Stat(link)
+	b, errB := os.Stat(target)
+	return errA == nil && errB == nil && os.SameFile(a, b)
+}
+
 func cfgWithPi(key string, v any) *config.Resolved {
 	r := &config.Resolved{Values: config.Defaults()}
 	config.ObjectAt(config.ObjectAt(r.Values, "external_executors"), "pi")[key] = v
@@ -29,6 +41,7 @@ func cfgWithPi(key string, v any) *config.Resolved {
 func TestPiAgentDirModes(t *testing.T) {
 	home := piHome(t)
 	managed := filepath.Join(home, ".local", "state", "claude-orchestra", "pi-agent")
+	abs := filepath.Join(filepath.VolumeName(home)+string(filepath.Separator), "abs", "pi") // /abs/pi
 	for _, c := range []struct {
 		v          any
 		mode, want string
@@ -39,7 +52,7 @@ func TestPiAgentDirModes(t *testing.T) {
 		{true, PiAgentManaged, managed},
 		{"user", PiAgentUser, ""},
 		{"~/pi-dir", PiAgentPath, filepath.Join(home, "pi-dir")},
-		{"/abs/pi", PiAgentPath, "/abs/pi"},
+		{abs, PiAgentPath, abs},
 	} {
 		mode, dir := PiAgentDir(cfgWithPi("agent_dir", c.v))
 		if mode != c.mode || dir != c.want {
@@ -74,11 +87,11 @@ func TestEnsurePiAgentDirLinksExistingLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, err := os.Stat(dir)
-	if err != nil || st.Mode().Perm() != 0o700 {
+	if err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o700) {
 		t.Fatalf("dir %v %v", st, err)
 	}
-	if target, err := os.Readlink(filepath.Join(dir, "auth.json")); err != nil || target != userAuth {
-		t.Fatalf("auth link %q %v", target, err)
+	if !linksTo(filepath.Join(dir, "auth.json"), userAuth) {
+		t.Fatalf("auth.json is not linked to %s", userAuth)
 	}
 	// An existing auth.json is never replaced.
 	other := filepath.Join(home, "other")
@@ -92,8 +105,8 @@ func TestEnsurePiAgentDirLinksExistingLogin(t *testing.T) {
 	if _, err := EnsurePiAgentDir(nil); err != nil {
 		t.Fatal(err)
 	}
-	if target, _ := os.Readlink(filepath.Join(dir, "auth.json")); target != userAuth {
-		t.Fatalf("relinked to %q", target)
+	if !linksTo(filepath.Join(dir, "auth.json"), userAuth) {
+		t.Fatalf("relinked away from %s", userAuth)
 	}
 }
 
@@ -111,8 +124,8 @@ func TestEnsurePiAgentDirPrefersOverrideDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if target, _ := os.Readlink(filepath.Join(dir, "auth.json")); target != filepath.Join(other, "auth.json") {
-		t.Fatalf("link %q", target)
+	if !linksTo(filepath.Join(dir, "auth.json"), filepath.Join(other, "auth.json")) {
+		t.Fatalf("auth.json is not linked to the override dir's")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -143,7 +144,7 @@ func TestCacheLivesInStateDirWithMode0600(t *testing.T) {
 	Snapshot(cfg, []string{"claude"}, now)
 	want := filepath.Join(os.Getenv("XDG_STATE_HOME"), "claude-orchestra", "usage-limits.json")
 	fi, err := os.Stat(want)
-	if err != nil || fi.Mode().Perm() != 0o600 {
+	if err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) { // no permission bits on Windows
 		t.Fatalf("cache %s: %v %v", want, fi, err)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "orchestra")); !errors.Is(err, os.ErrNotExist) {

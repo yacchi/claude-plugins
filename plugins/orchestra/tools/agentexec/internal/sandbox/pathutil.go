@@ -20,6 +20,9 @@ func realPath(name string) string {
 	if name == "" {
 		name = "."
 	}
+	if os.PathSeparator == '\\' {
+		return paths.RealPath(name)
+	}
 	rest := reversed(strings.Split(name, "/"))
 	path := "/"
 	if !strings.HasPrefix(name, "/") {
@@ -145,6 +148,10 @@ func dedupe(list []string) []string {
 
 // under: path is dir or lies below it (component boundary).
 func under(path, dir string) bool {
+	if os.PathSeparator == '\\' {
+		path, dir = strings.ToLower(path), strings.ToLower(dir)
+		return path == dir || strings.HasPrefix(path, strings.TrimRight(dir, `\`)+`\`)
+	}
 	return path == dir || strings.HasPrefix(path, strings.TrimRight(dir, "/")+"/")
 }
 

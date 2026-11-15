@@ -11,7 +11,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"syscall"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
@@ -64,7 +63,7 @@ func isExecutableFile(path string) bool {
 	if err != nil || !st.Mode().IsRegular() {
 		return false
 	}
-	return syscall.Access(path, 1) == nil
+	return fsutil.Executable(path)
 }
 
 func abs(p string) string {

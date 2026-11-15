@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { callTool, fakeHost, freshSession, startAgent } from '../testing/host.ts'
+import { abs, callTool, fakeHost, freshSession, startAgent } from '../testing/host.ts'
 
 // With pnpm's global virtual store a worktree's node_modules entries are
 // links into one store every tree shares: a worker editing one changes it
@@ -7,7 +7,7 @@ import { callTool, fakeHost, freshSession, startAgent } from '../testing/host.ts
 // segment is denied, a lookalike name is not, and the instructor's main
 // thread is never touched.
 
-const TREE = '/work/task-a'
+const TREE = abs('/work/task-a')
 
 describe('dependency-edit', () => {
     test('denies a worker subagent editing under node_modules', async ($, on) => {
@@ -43,8 +43,8 @@ describe('dependency-edit', () => {
         fakeHost(on, {
             sessionId,
             cwd: TREE,
-            repos: [{ main: '/repo', linked: [{ path: TREE, branch: 'orchestra/task-a' }] }],
-            files: { '/repo/.git/worktrees/task-a/orchestra-baseline': 'base\n' },
+            repos: [{ main: abs('/repo'), linked: [{ path: TREE, branch: 'orchestra/task-a' }] }],
+            files: { [abs('/repo/.git/worktrees/task-a/orchestra-baseline')]: 'base\n' },
         })
         await $.classic.SessionStart({ session_id: sessionId, source: 'startup', cwd: TREE })
         const r = await callTool($, undefined, { tool: 'Write', file_path: 'node_modules/x/index.js' })

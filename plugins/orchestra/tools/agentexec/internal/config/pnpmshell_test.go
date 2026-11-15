@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,16 +15,16 @@ func TestPnpmGVSShellPrefix(t *testing.T) {
 	main, linked := miseTrees(t)
 	writeTestFile(t, filepath.Join(linked, "pnpm-lock.yaml"), "lockfileVersion: 9\n")
 	writeTestFile(t, filepath.Join(main, "pnpm-lock.yaml"), "lockfileVersion: 9\n")
-	env := []string{"HOME=/h", "PNPM_HOME=/my store"}
+	env := []string{"HOME=" + absAt("/h"), "PNPM_HOME=" + absAt("/my store")}
 
 	prefix := PnpmGVSShellPrefix(true, linked, env)
-	cmd := exec.Command("/bin/sh", "-c", prefix+`printf '%s|%s' "$pnpm_config_store_dir" "$pnpm_config_enable_global_virtual_store"`)
+	cmd := exec.Command(procx.ShellPath(), "-c", prefix+`printf '%s|%s' "$pnpm_config_store_dir" "$pnpm_config_enable_global_virtual_store"`)
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(out), "/my store/store|true"; got != want {
+	if got, want := string(out), filepath.Join(absAt("/my store"), "store")+"|true"; got != want {
 		t.Errorf("shell saw %q, want %q (prefix %q)", got, want, prefix)
 	}
 

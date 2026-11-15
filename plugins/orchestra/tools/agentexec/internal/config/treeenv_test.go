@@ -20,6 +20,12 @@ func isPnpmStoreEntry(kv string) bool {
 	return name == PnpmStorePinName
 }
 
+// absAt roots a slash path at the temp dir's volume, so "/h" is absolute on
+// every platform (C:\h on Windows, /h elsewhere).
+func absAt(p string) string {
+	return filepath.Join(filepath.VolumeName(os.TempDir())+string(filepath.Separator), filepath.FromSlash(p))
+}
+
 // mapGetenv is a getenv over a map, for PnpmStoreDir.
 func mapGetenv(m map[string]string) func(string) string {
 	return func(name string) string { return m[name] }
@@ -28,22 +34,23 @@ func mapGetenv(m map[string]string) func(string) string {
 // The store root is pnpm's own default: PNPM_HOME, else XDG_DATA_HOME, else
 // the platform's data dir. A relative PNPM_HOME or XDG_DATA_HOME is ignored.
 func TestPnpmStoreDir(t *testing.T) {
+	h, ph, x := absAt("/h"), absAt("/ph"), absAt("/x")
 	cases := []struct {
 		name     string
 		platform string
 		env      map[string]string
 		want     string
 	}{
-		{"darwin default", "darwin", nil, "/h/Library/pnpm/store"},
-		{"linux default", "linux", nil, "/h/.local/share/pnpm/store"},
-		{"PNPM_HOME", "darwin", map[string]string{"PNPM_HOME": "/ph"}, "/ph/store"},
-		{"relative PNPM_HOME ignored", "darwin", map[string]string{"PNPM_HOME": "rel", "XDG_DATA_HOME": "/x"}, "/x/pnpm/store"},
-		{"relative PNPM_HOME alone ignored", "darwin", map[string]string{"PNPM_HOME": "rel"}, "/h/Library/pnpm/store"},
-		{"relative XDG_DATA_HOME ignored", "linux", map[string]string{"XDG_DATA_HOME": "rel"}, "/h/.local/share/pnpm/store"},
+		{"darwin default", "darwin", nil, filepath.Join(h, "Library", "pnpm", "store")},
+		{"linux default", "linux", nil, filepath.Join(h, ".local", "share", "pnpm", "store")},
+		{"PNPM_HOME", "darwin", map[string]string{"PNPM_HOME": ph}, filepath.Join(ph, "store")},
+		{"relative PNPM_HOME ignored", "darwin", map[string]string{"PNPM_HOME": "rel", "XDG_DATA_HOME": x}, filepath.Join(x, "pnpm", "store")},
+		{"relative PNPM_HOME alone ignored", "darwin", map[string]string{"PNPM_HOME": "rel"}, filepath.Join(h, "Library", "pnpm", "store")},
+		{"relative XDG_DATA_HOME ignored", "linux", map[string]string{"XDG_DATA_HOME": "rel"}, filepath.Join(h, ".local", "share", "pnpm", "store")},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := PnpmStoreDir(c.platform, "/h", mapGetenv(c.env)); got != c.want {
+			if got := PnpmStoreDir(c.platform, h, mapGetenv(c.env)); got != c.want {
 				t.Errorf("PnpmStoreDir = %q, want %q", got, c.want)
 			}
 		})
@@ -86,8 +93,8 @@ func TestPnpmStorePin(t *testing.T) {
 // pnpm-workspace.yaml.
 func TestTreeEntriesPinsTheStore(t *testing.T) {
 	main, linked := miseTrees(t)
-	env := []string{"HOME=/h", "PNPM_HOME=/ph"}
-	const pin = PnpmStorePinName + "=/ph/store"
+	env := []string{"HOME=" + absAt("/h"), "PNPM_HOME=" + absAt("/ph")}
+	pin := PnpmStorePinName + "=" + filepath.Join(absAt("/ph"), "store")
 
 	t.Run("linked tree pins first", func(t *testing.T) {
 		writeTestFile(t, filepath.Join(linked, "pnpm-lock.yaml"), "lockfileVersion: 9\n")
@@ -203,11 +210,11 @@ func TestMiseTrustAppendsToTheExistingValue(t *testing.T) {
 	main, linked := miseTrees(t)
 	setMiseShow(t, func(dir string) ([]byte, error) { return []byte(main + "/mise.toml: trusted\n"), nil })
 	env := []string{"HOME=/h", MiseTrustedEnv + "=/keep"}
-	if want := MiseTrustedEnv + "=/keep:" + linked; !slices.Contains(TreeEntries(false, linked, env), want) {
+	if want := MiseTrustedEnv + "=/keep" + string(os.PathListSeparator) + linked; !slices.Contains(TreeEntries(false, linked, env), want) {
 		t.Errorf("entries lack %q", want)
 	}
 	out := WithTreeEnv(false, linked, env)
-	if want := MiseTrustedEnv + "=/keep:" + linked; !slices.Contains(out, want) || !slices.Contains(out, "HOME=/h") {
+	if want := MiseTrustedEnv + "=/keep" + string(os.PathListSeparator) + linked; !slices.Contains(out, want) || !slices.Contains(out, "HOME=/h") {
 		t.Errorf("env = %q, want %q kept beside HOME", out, want)
 	}
 }

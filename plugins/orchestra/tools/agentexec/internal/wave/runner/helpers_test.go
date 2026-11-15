@@ -15,6 +15,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
@@ -48,9 +49,9 @@ func buildAgentExec() {
 		}
 		goBin, err := exec.LookPath("go")
 		if err != nil {
-			goBin = filepath.Join(runtime.GOROOT(), "bin", "go")
+			goBin = filepath.Join(runtime.GOROOT(), "bin", testenv.Exe("go"))
 		}
-		out := filepath.Join(dir, "agent-exec")
+		out := filepath.Join(dir, testenv.Exe("agent-exec"))
 		cmd := exec.Command(goBin, "build", "-o", out, "./cmd/agent-exec")
 		cmd.Dir = moduleDir
 		if b, err := cmd.CombinedOutput(); err != nil {
@@ -379,6 +380,12 @@ func agentExecBinOrSkip(t *testing.T) string { return agentExec(t) }
 
 func (w *waveRepo) state() state.State {
 	st, err := (&state.Store{Path: w.statePath}).Load()
+	// Windows refuses to open a file while the runner renames a new
+	// state.json over it; that sharing violation passes within moments.
+	for i := 0; err != nil && runtime.GOOS == "windows" && i < 100; i++ {
+		time.Sleep(20 * time.Millisecond)
+		st, err = (&state.Store{Path: w.statePath}).Load()
+	}
 	if err != nil {
 		w.t.Fatal(err)
 	}

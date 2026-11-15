@@ -99,10 +99,11 @@ func filesForCommand(tree, cwdDir string, matched []string) []string {
 			continue
 		}
 		r, err := filepath.Rel(absCwd, absP)
-		if err != nil || r == ".." || strings.HasPrefix(r, "../") {
+		if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
 			continue
 		}
-		out = append(out, r)
+		// The command runs under sh, which reads a backslash as an escape.
+		out = append(out, filepath.ToSlash(r))
 	}
 	return out
 }

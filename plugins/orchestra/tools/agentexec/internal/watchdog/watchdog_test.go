@@ -5,12 +5,14 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
-	"syscall"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 )
 
 // fixtures is testdata/fixtures.json: Watchdog runs driven by a fake clock,
@@ -138,14 +140,38 @@ func TestConfigFromDefaults(t *testing.T) {
 // A tripped watchdog ends the whole process group, grandchildren included.
 func TestStartTerminatesProcessGroup(t *testing.T) {
 	dir := t.TempDir()
-	marker := dir + "/grandchild.pid"
-	cmd := exec.Command("sh", "-c", "sleep 30 & echo $! > "+marker+"; wait")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	marker := filepath.Join(dir, "grandchild.pid")
+	grandchild, pidExpr := "sleep 30", "$!"
+	if runtime.GOOS == "windows" {
+		// In Git Bash $! is an MSYS pid; /proc/<pid>/winpid maps it to the
+		// Windows pid fsutil.PIDAlive understands. The grandchild is a native
+		// program: an MSYS one (sleep) is exec'd by a fork stub that exits,
+		// leaving it parentless in the Windows process table, whereas the
+		// stub stays as the parent of a native one, as for real workers.
+		grandchild, pidExpr = "ping -n 30 127.0.0.1 >/dev/null", "$(cat /proc/$!/winpid)"
+	}
+	cmd := exec.Command(procx.ShellPath(), "-c",
+		grandchild+" & echo "+pidExpr+" > '"+filepath.ToSlash(marker)+"'; wait")
+	procx.Detach(cmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	exited := make(chan struct{})
 	go func() { _ = cmd.Wait(); close(exited) }()
+	// The budget runs from w.Start, so start it once the grandchild exists:
+	// a shell slower to start than the budget (Git Bash) would otherwise be
+	// killed before it forks.
+	var pid int
+	for i := 0; ; i++ {
+		raw, err := os.ReadFile(marker)
+		if err == nil && json.Unmarshal(raw, &pid) == nil && pid > 0 {
+			break
+		}
+		if i == 500 {
+			t.Fatalf("grandchild never started: %v", err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	cfg := DefaultConfig()
 	cfg.Wall = map[string]time.Duration{"standard": 300 * time.Millisecond}
 	w := New(cfg, "no-such-class")
@@ -164,16 +190,8 @@ func TestStartTerminatesProcessGroup(t *testing.T) {
 	if r == nil || r.Reason != "wall" || r.RuntimeS < 0.3 || r.RuntimeS > 1.0 {
 		t.Fatalf("result %+v", r)
 	}
-	raw, err := os.ReadFile(marker)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var pid int
-	if err := json.Unmarshal(raw, &pid); err != nil {
-		t.Fatal(err)
-	}
 	for i := 0; i < 50; i++ {
-		if syscall.Kill(pid, 0) != nil {
+		if !fsutil.PIDAlive(pid) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
