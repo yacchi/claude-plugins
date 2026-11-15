@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os/exec"
 	"syscall"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 )
 
 // VerifyResult grades one run of a verify command. Baseline ("pass" |
@@ -71,10 +71,10 @@ func RunVerify(dir, cmd string, timeout time.Duration) VerifyResult {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 	}
 	defer cancel()
-	c := exec.CommandContext(ctx, "/bin/sh", "-c", cmd)
+	c := procx.Shell(ctx, cmd)
 	c.Dir, c.Env = dir, config.TreeEnv(dir)
-	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	c.Cancel = func() error { return syscall.Kill(-c.Process.Pid, syscall.SIGKILL) }
+	procx.Detach(c)
+	c.Cancel = func() error { return procx.KillGroup(c.Process.Pid, true) }
 	c.WaitDelay = verifyKillGrace
 	var out bytes.Buffer
 	c.Stdout, c.Stderr = &out, &out

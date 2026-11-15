@@ -12,6 +12,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 func TestEveryCallCarriesTheSessionAndTheServerEnvIsClean(t *testing.T) {
@@ -77,6 +78,7 @@ func TestConfigTOMLIsRewrittenBeforeTheServerStarts(t *testing.T) {
 }
 
 func TestLongStatePathFallsBackToAPrivateTmpHome(t *testing.T) {
+	testenv.SkipOnWindows(t, "the fallback exists for the unix socket name limit and checks POSIX owner and mode bits")
 	tmp := t.TempDir()
 	long := filepath.Join(tmp, strings.Repeat("x", 60), "hx")
 	root := filepath.Join(tmp, "tmp")

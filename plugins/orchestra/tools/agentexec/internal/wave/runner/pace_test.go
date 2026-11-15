@@ -132,7 +132,7 @@ func TestUsageNoticeDoesNotWaitForTheNotifyCommand(t *testing.T) {
 	w.plan(pkgDef{id: "A"}, pkgDef{id: "B", dependsOn: []string{"A"}})
 	out := filepath.Join(w.tmp, "notify")
 	done := filepath.Join(w.tmp, "notify-done")
-	notifyCmd := `[ "$WAVE_EVENT" = usage ] || exit 0; cat > ` + out + `; sleep 3; touch ` + done
+	notifyCmd := `[ "$WAVE_EVENT" = usage ] || exit 0; cat > '` + filepath.ToSlash(out) + `'; sleep 3; touch '` + filepath.ToSlash(done) + `'`
 	var doneBeforeB bool
 	ex := newFake(t, map[string][]round{
 		"A": {edit(map[string]string{"a.txt": "a\n"})},

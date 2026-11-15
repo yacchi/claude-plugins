@@ -1,6 +1,8 @@
 import type { EngineInterface, Register, Timer } from 'claude-code'
 import { agentExec } from './lib/config.ts'
 import type { Io } from './lib/io.ts'
+import { isWindowsPath, normalize } from './lib/paths.ts'
+import { onWindows } from './lib/platform.ts'
 import { type Progress, progressOf, redraw, registerProgress, type Snapshot } from './progress.tsx'
 
 // Live orchestra visibility: the band above the prompt and the wave's detail
@@ -77,6 +79,23 @@ const parseVerdict = (answer: string | undefined): Record<string, unknown> | und
 const isRecord = (v: unknown): v is Record<string, unknown> =>
     typeof v === 'object' && v !== null && !Array.isArray(v)
 
+const pluginRootOf = ($: EngineInterface): string => {
+    try {
+        return $.plugin.root
+    } catch {
+        return ''
+    }
+}
+
+// Windows, told by the plugin's own root (lib/platform.ts). There the process
+// table is not asked by argv: Claude Code's PATH has no ps, pgrep or lsof, and
+// Git's msys ps neither takes these flags nor shows a native process's
+// arguments. A runner's liveness is then asked by its recorded pid alone.
+const windowsOf = ($: EngineInterface): boolean => onWindows({ pluginRoot: () => pluginRootOf($) })
+
+// An absolute state path: `/...`, and on Windows a drive or UNC path too.
+const isAbsoluteState = (windows: boolean, p: string): boolean => p.startsWith('/') || (windows && isWindowsPath(p))
+
 // A flag's value in a command line (`--flag X`, `--flag=X`, either quoted).
 const flagOf = (args: string, flag: string): string | undefined => {
     const m = args.match(new RegExp(`(?:^|\\s)--${flag}(?:=|\\s+)(?:'([^']*)'|"([^"]*)"|([^\\s;&|)]+))`))
@@ -116,10 +135,11 @@ const MATCHED_FLAGS = ['plan', 'run-id', 'into']
 // `~` and `$HOME` expanded, a relative path read against the session cwd.
 // Undefined when only the shell knows (another variable, a `cd` first).
 const typedStatePath = async ($: EngineInterface, run: WaveRun): Promise<string | undefined> => {
+    const windows = windowsOf($)
     let state = run.state
     const home = state.match(/^(?:~|\$HOME|\$\{HOME\})(?=\/|$)/)
     if (home) {
-        const dir = await $.env.get('HOME')
+        const dir = windows ? await windowsHome($) : await $.env.get('HOME')
         if (!dir) {
             return undefined
         }
@@ -128,15 +148,29 @@ const typedStatePath = async ($: EngineInterface, run: WaveRun): Promise<string 
     if (state.includes('$') || state.startsWith('~')) {
         return undefined
     }
-    if (state.startsWith('/')) {
-        return state
+    if (isAbsoluteState(windows, state)) {
+        return isWindowsPath(state) ? normalize(state) : state
     }
     if (run.cd) {
         return undefined
     }
     const cwd = await $.session.cwd().catch(() => '')
+    if (!cwd) {
+        return undefined
+    }
 
-    return cwd ? `${cwd}/${state}` : undefined
+    return isWindowsPath(cwd) ? normalize(`${cwd}/${state}`) : `${cwd}/${state}`
+}
+
+// The home `~` and $HOME stand for on Windows (lib/platform.ts homeOf).
+const windowsHome = async ($: EngineInterface): Promise<string | undefined> => {
+    const home = await $.env.get('HOME')
+    if (home !== undefined && isWindowsPath(home)) {
+        return home
+    }
+    const profile = await $.env.get('USERPROFILE')
+
+    return profile !== undefined && isWindowsPath(profile) ? profile : undefined
 }
 
 // `ps` etime, `[[dd-]hh:]mm:ss`, in seconds.
@@ -160,6 +194,9 @@ const cwdOf = async ($: EngineInterface, pid: string): Promise<string | undefine
 // --into of the call, the newest. A relative argv path (a `cd` first) is read
 // against that process's cwd.
 const runnerStatePath = async ($: EngineInterface, run: WaveRun): Promise<string | undefined> => {
+    if (windowsOf($)) {
+        return undefined
+    }
     const r = await $.process.run(['ps', '-axwwo', 'pid=,etime=,command='], { timeoutMs: 5000 })
     if (r.exitCode !== 0) {
         return undefined
@@ -223,7 +260,10 @@ const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$
 // The pid a detached runner recorded beside its state (`runner.pid`).
 const recordedPid = async ($: EngineInterface, statePath: string): Promise<number | undefined> => {
     try {
-        const value: unknown = JSON.parse(await $.fs.read(`${statePath.slice(0, statePath.lastIndexOf('/'))}/runner.pid`))
+        const cut = isWindowsPath(statePath)
+            ? Math.max(statePath.lastIndexOf('/'), statePath.lastIndexOf('\\'))
+            : statePath.lastIndexOf('/')
+        const value: unknown = JSON.parse(await $.fs.read(`${statePath.slice(0, cut)}/runner.pid`))
 
         return isRecord(value) && typeof value.pid === 'number' && value.pid > 0 ? value.pid : undefined
     } catch {
@@ -234,10 +274,20 @@ const recordedPid = async ($: EngineInterface, statePath: string): Promise<numbe
 // state.json records a stop but not a run that ended done, so whether the
 // runner still runs is asked of the process table: by the pid a detached
 // runner recorded, else by its argv; undefined when that cannot be told (no
-// pgrep, a failure).
+// pgrep, a failure). On Windows only by the pid, through the system's own
+// tasklist (a CSV row quoting the pid when it runs): undefined without one.
 const runnerAlive = async ($: EngineInterface, statePath: string): Promise<boolean | undefined> => {
     try {
         const pid = await recordedPid($, statePath)
+        if (windowsOf($)) {
+            if (pid === undefined) {
+                return undefined
+            }
+            const system = normalize(await $.env.get('SystemRoot').catch(() => undefined) || 'C:/Windows')
+            const r = await $.process.run([`${system}/System32/tasklist.exe`, '/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { timeoutMs: 5000 })
+
+            return r.exitCode === 0 ? r.stdout.includes(`","${pid}","`) : undefined
+        }
         if (pid !== undefined) {
             const r = await $.process.run(['ps', '-p', String(pid)], { timeoutMs: 5000 })
 
@@ -286,14 +336,9 @@ const poll = async ($: EngineInterface, wave: Wave): Promise<void> => {
         }
         const io = {
             run: (argv, init) => $.process.run(argv, init),
-            pluginRoot: () => {
-                try {
-                    return $.plugin.root
-                } catch {
-                    return ''
-                }
-            },
-        } as Pick<Io, 'run' | 'pluginRoot'> as Io
+            exists: path => $.fs.exists(path),
+            pluginRoot: () => pluginRootOf($),
+        } as Pick<Io, 'run' | 'exists' | 'pluginRoot'> as Io
         const r = await agentExec(io, ['wave', 'status', '--state', wave.statePath, '--json'], 10_000)
         if (r.kind === 'missing') {
             untrack($, wave)
@@ -485,8 +530,8 @@ export const register: Register = (on, options) => {
             } else if (run && wave && !background && !run.detach) {
                 await finish($, wave, result.deny === undefined)
             } else if (run && !wave && (background || run.detach)) {
-                const state = run.detach && typeof answer?.state === 'string' && answer.state.startsWith('/')
-                    ? answer.state
+                const state = run.detach && typeof answer?.state === 'string' && isAbsoluteState(windowsOf($), answer.state)
+                    ? isWindowsPath(answer.state) ? normalize(answer.state) : answer.state
                     : undefined
                 if (state === undefined) {
                     void locate($, run, 1).catch(() => undefined)

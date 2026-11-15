@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -16,6 +17,9 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 )
+
+// jsonPath is p as the inside of a JSON string (Windows paths hold backslashes).
+func jsonPath(p string) string { return strings.ReplaceAll(p, "\\", "\\\\") }
 
 func obj(t *testing.T, text string) map[string]any {
 	t.Helper()
@@ -109,14 +113,14 @@ func TestSanitizeRejectsOrFiltersEnums(t *testing.T) {
 func TestAppendWritesCompactSessionFiles(t *testing.T) {
 	session(t, "session-test")
 	tmp := t.TempDir()
-	cfg := cfgOf(t, `{"telemetry": {"dir": "`+filepath.Join(tmp, "telemetry")+`", "enabled": false}}`)
+	cfg := cfgOf(t, `{"telemetry": {"dir": "`+jsonPath(filepath.Join(tmp, "telemetry"))+`", "enabled": false}}`)
 	rec := obj(t, `{"executor": "pi", "model": "gpt-5.6-luna", "status": "ok",
 		"prompt": "secret prompt text", "nested": {"prompt": "secret"}}`)
 	Append(rec, "wf_a26027ae-bdb", cfg)
 	Append(rec, "wf_a26027ae-bdb", cfg)
 
 	dir := filepath.Join(tmp, "runs")
-	if fi, err := os.Stat(dir); err != nil || fi.Mode().Perm() != 0o700 {
+	if fi, err := os.Stat(dir); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o700) { // no permission bits on Windows
 		t.Fatalf("ledger dir: %v %v", fi, err)
 	}
 	lines := readLines(t, filepath.Join(dir, "session-test", "001-wf_a26027ae-bdb.jsonl"))
@@ -139,7 +143,7 @@ func TestAppendNeverFails(t *testing.T) {
 func TestAppendAllocatesOrdinalsAndReusesThem(t *testing.T) {
 	session(t, "session-test")
 	tmp := t.TempDir()
-	cfg := cfgOf(t, `{"ledger": {"dir": "`+filepath.Join(tmp, "runs")+`", "enabled": true}}`)
+	cfg := cfgOf(t, `{"ledger": {"dir": "`+jsonPath(filepath.Join(tmp, "runs"))+`", "enabled": true}}`)
 	rec := obj(t, `{"executor": "pi", "status": "ok"}`)
 	Append(rec, "wf_a", cfg)
 	Append(rec, "wf_a", cfg)
@@ -162,7 +166,7 @@ func TestAppendAllocatesOrdinalsAndReusesThem(t *testing.T) {
 func TestConcurrentWritersGetDistinctOrdinals(t *testing.T) {
 	session(t, "parallel-session")
 	tmp := t.TempDir()
-	cfg := cfgOf(t, `{"ledger": {"dir": "`+filepath.Join(tmp, "runs")+`", "enabled": true}}`)
+	cfg := cfgOf(t, `{"ledger": {"dir": "`+jsonPath(filepath.Join(tmp, "runs"))+`", "enabled": true}}`)
 	var wg sync.WaitGroup
 	for i := 0; i < 6; i++ {
 		wg.Add(1)
@@ -194,7 +198,7 @@ func TestInvalidOrMissingSessionWritesNothing(t *testing.T) {
 		t.Run(fmt.Sprintf("%q", bad), func(t *testing.T) {
 			session(t, bad)
 			tmp := t.TempDir()
-			cfg := cfgOf(t, `{"ledger": {"dir": "`+filepath.Join(tmp, "runs")+`"}}`)
+			cfg := cfgOf(t, `{"ledger": {"dir": "`+jsonPath(filepath.Join(tmp, "runs"))+`"}}`)
 			Append(obj(t, `{"executor": "pi", "status": "ok"}`), "run_id_ok", cfg)
 			Append(obj(t, `{"executor": "pi", "status": "ok"}`), "", cfg)
 			if entries, _ := os.ReadDir(tmp); len(entries) != 0 {
@@ -207,11 +211,11 @@ func TestInvalidOrMissingSessionWritesNothing(t *testing.T) {
 func TestLedgerSwitchAndRunIDValidation(t *testing.T) {
 	session(t, "session-independence")
 	tmp := t.TempDir()
-	off := cfgOf(t, `{"ledger": {"dir": "`+filepath.Join(tmp, "off")+`", "enabled": false}}`)
+	off := cfgOf(t, `{"ledger": {"dir": "`+jsonPath(filepath.Join(tmp, "off"))+`", "enabled": false}}`)
 	Append(obj(t, `{"executor": "pi", "status": "ok"}`), "run", off)
-	notBool := cfgOf(t, `{"ledger": {"dir": "`+filepath.Join(tmp, "yes")+`", "enabled": "yes"}}`)
+	notBool := cfgOf(t, `{"ledger": {"dir": "`+jsonPath(filepath.Join(tmp, "yes"))+`", "enabled": "yes"}}`)
 	Append(obj(t, `{"executor": "pi", "status": "ok"}`), "run", notBool)
-	on := cfgOf(t, `{"ledger": {"dir": "`+filepath.Join(tmp, "on")+`", "enabled": true}}`)
+	on := cfgOf(t, `{"ledger": {"dir": "`+jsonPath(filepath.Join(tmp, "on"))+`", "enabled": true}}`)
 	for _, bad := range []string{"a b", "../x", strings.Repeat("x", 65)} {
 		Append(obj(t, `{"executor": "pi", "status": "ok"}`), bad, on)
 	}
@@ -262,7 +266,7 @@ func TestRetentionDeletesOldOnceAndKeepsTheRest(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cfg := cfgOf(t, `{"ledger": {"dir": "`+dir+`", "enabled": true, "retention_days": 30}}`)
+	cfg := cfgOf(t, `{"ledger": {"dir": "`+jsonPath(dir)+`", "enabled": true, "retention_days": 30}}`)
 	rec := obj(t, `{"executor": "pi", "status": "ok"}`)
 	Append(rec, "run", cfg)
 	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
@@ -318,7 +322,7 @@ func TestBuildRecordFlattensResult(t *testing.T) {
 }
 
 func TestDirFallsBackBesideTelemetry(t *testing.T) {
-	if got := Dir(cfgOf(t, `{"telemetry": {"dir": "/x/telemetry"}}`)); got != "/x/runs" {
+	if got := Dir(cfgOf(t, `{"telemetry": {"dir": "/x/telemetry"}}`)); got != filepath.FromSlash("/x/runs") {
 		t.Errorf("Dir = %s", got)
 	}
 	if got := Dir(cfgOf(t, `{"ledger": {"dir": "/y/led"}}`)); got != "/y/led" {
@@ -349,6 +353,9 @@ func TestReadSideSkipsFlatFilesAndOrdersNumerically(t *testing.T) {
 		rel = append(rel, r)
 	}
 	want := []string{"s1/999-a.jsonl", "s1/1000-b.jsonl", "s1/plain.jsonl", "s1/no.run.jsonl", "s2/001-a.jsonl"}
+	for i := range want {
+		want[i] = filepath.FromSlash(want[i])
+	}
 	if !reflect.DeepEqual(rel, want) {
 		t.Errorf("Paths = %v", rel)
 	}

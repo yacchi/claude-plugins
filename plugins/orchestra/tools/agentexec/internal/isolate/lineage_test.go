@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/paths"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // lineageLink makes child's parent marker name parent.
@@ -82,9 +83,7 @@ func TestLineageSymlinkedParent(t *testing.T) {
 	asm := create(t, repo, "asm", "")
 	work := create(t, repo, "work", "")
 	link := filepath.Join(t.TempDir(), "asm-link")
-	if err := os.Symlink(asm, link); err != nil {
-		t.Fatal(err)
-	}
+	testenv.Symlink(t, asm, link)
 
 	lineageLink(t, work, link)
 	if got := ReadParent(work); got != paths.RealPath(asm) {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { ProcessRunResult } from 'claude-code'
-import { type AgentExecAnswer, callTool, fakeHost, freshSession, startAgent } from '../testing/host.ts'
+import { abs, type AgentExecAnswer, callTool, fakeHost, freshSession, isSh, startAgent } from '../testing/host.ts'
 import type { Io } from './io.ts'
 import { classifyCommand, ensureWatcher, guardResult, withHeavySlot } from './slot.ts'
 
@@ -20,7 +20,7 @@ const admitting = (args: readonly string[]): AgentExecAnswer => {
 // The admission calls (acquire, release); the classify before them is the
 // full-suite guard's as much as admission's.
 const slotCalls = (runs: readonly string[][]) => runs
-    .filter(r => r[0] === 'sh' && r[4] === 'slot' && r[5] !== 'classify')
+    .filter(r => isSh(r[0]) && r[4] === 'slot' && r[5] !== 'classify')
     .map(r => r.slice(5).join(' '))
 
 describe('the fake host\'s record of Bash commands', () => {
@@ -48,10 +48,10 @@ describe('heavy slot admission', () => {
         const h = fakeHost(on, {
             sessionId,
             agentExec: admitting,
-            repos: [{ main: '/repo', linked: [{ path: '/work/task-a', branch: 'orchestra/task-a' }] }],
-            files: { '/repo/.git/worktrees/task-a/orchestra-baseline': 'base\n' },
+            repos: [{ main: abs('/repo'), linked: [{ path: abs('/work/task-a'), branch: 'orchestra/task-a' }] }],
+            files: { [abs('/repo/.git/worktrees/task-a/orchestra-baseline')]: 'base\n' },
         })
-        await $.classic.SessionStart({ session_id: sessionId, source: 'startup', cwd: '/work/task-a' })
+        await $.classic.SessionStart({ session_id: sessionId, source: 'startup', cwd: abs('/work/task-a') })
         await callTool($, undefined, { tool: 'Bash', command: 'pnpm test', description: 'test' })
         expect(slotCalls(h.runs)).toEqual([expect.stringContaining('acquire'), 'release t1'])
     })

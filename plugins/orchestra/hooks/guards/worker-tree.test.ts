@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { callTool, fakeHost, freshSession, startAgent, type HostOptions } from '../testing/host.ts'
+import { abs, callTool, fakeHost, freshSession, startAgent, type HostOptions } from '../testing/host.ts'
 
 // A worker with its own orchestra worktree writing into the user's MAIN tree
 // anyway (observed: a Sonnet worker told "cd there FIRST" edited the main
@@ -11,7 +11,7 @@ import { callTool, fakeHost, freshSession, startAgent, type HostOptions } from '
 // A symbolic link into another orchestra tree (under the state root) is denied
 // too, unless the link stays in the worker's own tree.
 
-const BASE = '/w'
+const BASE = abs('/w')
 const MAIN = `${BASE}/repo`
 const ISO = `${BASE}/iso`
 const SIBLING = `${BASE}/repo-worktrees/x`

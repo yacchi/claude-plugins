@@ -37,10 +37,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 func main() {
@@ -67,7 +67,7 @@ func run(name string, args []string) int {
 		return 2
 	}
 	defer lock.Close()
-	_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX)
+	_ = fsutil.Flock(lock, fsutil.LockEx)
 	orca := strings.HasPrefix(name, "orca")
 	if orca {
 		var kept []string

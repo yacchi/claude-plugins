@@ -89,7 +89,14 @@ func ensureManaged(dir string) error {
 		paths.RealPath(sourceAuth) == paths.RealPath(auth) {
 		return nil
 	}
-	_ = os.Symlink(sourceAuth, auth) // best effort, as a login carry-over
+	// Best effort, as a login carry-over. Windows without Developer Mode may
+	// not create a symlink: a hard link (same volume) still shares the file,
+	// and a copy at least carries the login over once.
+	if os.Symlink(sourceAuth, auth) != nil && os.Link(sourceAuth, auth) != nil {
+		if raw, err := os.ReadFile(sourceAuth); err == nil {
+			_ = os.WriteFile(auth, raw, 0o600)
+		}
+	}
 	return nil
 }
 

@@ -16,7 +16,11 @@ import (
 // temporary dir whose path needs quoting, and names a 14-core machine.
 func nodeCapState(t *testing.T) string {
 	t.Helper()
-	state := filepath.Join(t.TempDir(), `it's "state"`)
+	name := `it's "state"`
+	if os.PathSeparator == '\\' {
+		name = `it's state` // a double quote cannot appear in a Windows file name
+	}
+	state := filepath.Join(t.TempDir(), name)
 	t.Setenv("XDG_STATE_HOME", state)
 	was := CPUCount
 	t.Cleanup(func() { CPUCount = was })
@@ -293,6 +297,15 @@ func TestNodeCapShellPrefixInShells(t *testing.T) {
 				t.Run(c.name, func(t *testing.T) {
 					script := strings.Repeat(prefix, c.times) + report
 					args := append(append([]string{}, sh.args...), "-c", script)
+					if os.PathSeparator == '\\' {
+						// Windows hands the shell one command line it re-parses, and that
+						// mangles backslashes before quotes: run the script from a file.
+						file := filepath.Join(t.TempDir(), "script.sh")
+						if err := os.WriteFile(file, []byte(script), 0o644); err != nil {
+							t.Fatal(err)
+						}
+						args = append(append([]string{}, sh.args...), file)
+					}
 					cmd := exec.Command(path, args...)
 					cmd.Env = append([]string{"PATH=" + os.Getenv("PATH")}, c.extra...)
 					out, err := cmd.Output()

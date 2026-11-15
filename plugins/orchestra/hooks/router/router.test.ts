@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { beginTurn, callTool, fakeHost, freshSession, type HostOptions } from '../testing/host.ts'
+import { abs, beginTurn, callTool, fakeHost, freshSession, type HostOptions } from '../testing/host.ts'
 
 // The turn tripwire re-asks for a route at the threshold and, firmer, at
 // twice it, once each per main-loop turn, on the edit's own result. It stays
@@ -49,10 +49,10 @@ describe('router: turn edits', () => {
     test('counts distinct files, not calls', async ($, on) => {
         host(on)
         await beginTurn($, 't1')
-        expect(await edits($, 20, 'Edit', undefined, '/repo/a.ts'), 'one file, many edits').toEqual([])
+        expect(await edits($, 20, 'Edit', undefined, abs('/repo/a.ts')), 'one file, many edits').toEqual([])
         expect(await edits($, 6), 'six more files: seven in all').toEqual([])
         expect((await edits($, 1)).length, 'the eighth file').toBe(1)
-        expect(await edits($, 1, 'Edit', undefined, '/repo/a.ts'), 'a repeat of a counted file').toEqual([])
+        expect(await edits($, 1, 'Edit', undefined, abs('/repo/a.ts')), 'a repeat of a counted file').toEqual([])
     })
 
     test('every edit tool counts; reads and subagent turns do not', async ($, on) => {
@@ -131,16 +131,16 @@ describe('router: verdict', () => {
 // A repository with one main tree and linked task trees; the task trees carry
 // their orchestra markers in their own git dirs.
 const TASKS = {
-    '/repo/.git/worktrees/task-a/orchestra-baseline': 'base\n',
-    '/repo/.git/worktrees/task-c/orchestra-adopted': 'adopted\n',
+    [abs('/repo/.git/worktrees/task-a/orchestra-baseline')]: 'base\n',
+    [abs('/repo/.git/worktrees/task-c/orchestra-adopted')]: 'adopted\n',
 }
 const tasks = (on: On, extra: Partial<HostOptions> = {}) => host(on, {
     repos: [{
-        main: '/repo',
+        main: abs('/repo'),
         linked: [
-            { path: '/work/task-a', branch: 'orchestra/task-a' },
-            { path: '/work/task-b', branch: 'orchestra/task-b' },
-            { path: '/work/task-c', branch: 'orchestra/task-c' },
+            { path: abs('/work/task-a'), branch: 'orchestra/task-a' },
+            { path: abs('/work/task-b'), branch: 'orchestra/task-b' },
+            { path: abs('/work/task-c'), branch: 'orchestra/task-c' },
         ],
     }],
     files: TASKS,
@@ -150,55 +150,55 @@ const tasks = (on: On, extra: Partial<HostOptions> = {}) => host(on, {
 describe('router: hosted workers', () => {
     for (const model of ['claude-opus-5', 'claude-sonnet-5', '']) {
         test(`a task worktree is a worker on any model, and is not nudged: ${model || 'no model'}`, async ($, on) => {
-            tasks(on, { cwd: '/work/task-a', model })
+            tasks(on, { cwd: abs('/work/task-a'), model })
             expect(await nudged($)).toBe(false)
         })
     }
 
     test('the session root decides, falling back to the session cwd when blank', async ($, on) => {
-        tasks(on, { cwd: '/work/task-a', root: '' })
+        tasks(on, { cwd: abs('/work/task-a'), root: '' })
         expect(await nudged($), 'blank root: session cwd').toBe(false)
     })
 
     test('a main-tree root wins over a task-tree cwd', async ($, on) => {
-        tasks(on, { cwd: '/work/task-a', root: '/repo' })
+        tasks(on, { cwd: abs('/work/task-a'), root: abs('/repo') })
         expect(await nudged($)).toBe(true)
     })
 
     test('the main worktree is never a worker, even with a stray marker', async ($, on) => {
         host(on, {
-            repos: [{ main: '/repo' }],
-            files: { '/repo/.git/orchestra-baseline': 'base\n' },
-            cwd: '/repo',
+            repos: [{ main: abs('/repo') }],
+            files: { [abs('/repo/.git/orchestra-baseline')]: 'base\n' },
+            cwd: abs('/repo'),
         })
         expect(await nudged($)).toBe(true)
     })
 
     test('an integration tree is not a worker', async ($, on) => {
         tasks(on, {
-            cwd: '/work/task-a',
-            files: { ...TASKS, '/repo/.git/worktrees/task-a/orchestra-role': 'integration\n' },
+            cwd: abs('/work/task-a'),
+            files: { ...TASKS, [abs('/repo/.git/worktrees/task-a/orchestra-role')]: 'integration\n' },
         })
         expect(await nudged($)).toBe(true)
     })
 
     test('a linked tree without a task marker is not a worker', async ($, on) => {
-        tasks(on, { cwd: '/work/task-b' })
+        tasks(on, { cwd: abs('/work/task-b') })
         expect(await nudged($)).toBe(true)
     })
 
     test('a linked tree with the adopted marker is a worker', async ($, on) => {
-        tasks(on, { cwd: '/work/task-c' })
+        tasks(on, { cwd: abs('/work/task-c') })
         expect(await nudged($)).toBe(false)
     })
 
     test('outside any repository the session is not a worker', async ($, on) => {
-        host(on, { cwd: '/nowhere' })
+        host(on, { cwd: abs('/nowhere') })
         expect(await nudged($)).toBe(true)
     })
 
     test('with git failing the session is not a worker', async ($, on) => {
-        tasks(on, { cwd: '/nowhere/else' })
+        tasks(on, { cwd: abs('/nowhere/else') })
         expect(await nudged($)).toBe(true)
     })
 })

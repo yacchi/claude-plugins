@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"syscall"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
@@ -201,7 +200,7 @@ func LoadToken(cfg *config.Resolved, token string) (PrepareSpec, error) {
 		return PrepareSpec{}, ErrInvalidToken
 	}
 	path := filepath.Join(TokenDir(cfg), token+".json")
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := fsutil.OpenNoFollow(path)
 	if err != nil {
 		return PrepareSpec{}, ErrInvalidToken
 	}

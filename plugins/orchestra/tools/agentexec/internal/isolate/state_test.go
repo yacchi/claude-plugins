@@ -10,6 +10,9 @@ import (
 // state, in the developer's real ~/.local/state/claude-orchestra. A test that
 // needs another state dir still sets its own with t.Setenv.
 func TestMain(m *testing.M) {
+	if script := os.Getenv(shimScriptEnv); script != "" {
+		os.Exit(runShimScript(script))
+	}
 	dir, err := os.MkdirTemp("", "agentexec-state-")
 	if err != nil {
 		panic(err)

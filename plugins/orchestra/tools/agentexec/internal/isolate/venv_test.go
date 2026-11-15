@@ -3,7 +3,10 @@ package isolate
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 func TestCarryDirRelocatesVenvs(t *testing.T) {
@@ -18,8 +21,11 @@ func TestCarryDirRelocatesVenvs(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(venv, "bin", "activate"), "VIRTUAL_ENV='"+venv+"'\n")
-	if err := os.Symlink("pytest", filepath.Join(venv, "bin", "runner")); err != nil {
-		t.Fatal(err)
+	links := testenv.CanSymlink() // without symlink rights only content is carried
+	if links {
+		if err := os.Symlink("pytest", filepath.Join(venv, "bin", "runner")); err != nil {
+			t.Fatal(err)
+		}
 	}
 	binary := "\x00\x01" + src + "/.venv"
 	writeFile(t, filepath.Join(venv, "bin", "tool"), binary)
@@ -59,10 +65,10 @@ func TestCarryDirRelocatesVenvs(t *testing.T) {
 	if got := readFile(t, filepath.Join(dstVenv, "bin", "tool")); got != binary {
 		t.Fatalf("a binary file was rewritten: %q", got)
 	}
-	if link, err := os.Readlink(filepath.Join(dstVenv, "bin", "runner")); err != nil || link != "pytest" {
+	if link, err := os.Readlink(filepath.Join(dstVenv, "bin", "runner")); links && (err != nil || link != "pytest") {
 		t.Fatalf("symlink not kept: %q %v", link, err)
 	}
-	if st, err := os.Stat(filepath.Join(dstVenv, "bin", "pytest")); err != nil || st.Mode().Perm() != 0o755 {
+	if st, err := os.Stat(filepath.Join(dstVenv, "bin", "pytest")); err != nil || runtime.GOOS != "windows" && st.Mode().Perm() != 0o755 {
 		t.Fatalf("mode not preserved: %v %v", st, err)
 	}
 	if got := readFile(t, filepath.Join(dst, ".tox", "py312", "bin", "pytest")); got != "exec "+filepath.Join(dst, ".tox", "py312")+"/bin/python\n" {

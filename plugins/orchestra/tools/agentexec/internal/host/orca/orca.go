@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -397,8 +398,15 @@ func (e *Executor) openTerminal(ctx context.Context, s *host.Session) (string, e
 	if err != nil {
 		return "", err
 	}
-	result, err := e.call(ctx, callTimeout, "terminal", "create", "--worktree", "path:"+s.Worktree,
-		"--title", "wave "+s.Pkg, "--command", command)
+	args := []string{"terminal", "create", "--worktree", "path:" + s.Worktree,
+		"--title", "wave " + s.Pkg, "--command", command}
+	if runtime.GOOS == "windows" {
+		// --command is typed into the terminal's shell, and the command is a
+		// POSIX line (env K=V …, single quotes): on a Windows host the
+		// default shell is PowerShell or cmd, so ask for Git Bash.
+		args = append(args, "--shell", "git-bash")
+	}
+	result, err := e.call(ctx, callTimeout, args...)
 	if err != nil {
 		return "", host.Need(host.KindError, err.Error())
 	}

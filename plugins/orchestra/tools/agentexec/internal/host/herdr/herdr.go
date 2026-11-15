@@ -376,6 +376,9 @@ func (e *Executor) Available() (bool, string) {
 	if e.cfg.Enabled == host.TriFalse {
 		return false, "disabled by config (herdr.enabled: false)"
 	}
+	if unsupportedOS != "" {
+		return false, unsupportedOS
+	}
 	bin := e.binary()
 	if bin == "" {
 		return false, "herdr binary not found"

@@ -1,13 +1,11 @@
 package integrate
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
@@ -56,12 +54,9 @@ func acquireLock(path, mode string, timeout time.Duration) (*heldLock, string, e
 	}
 	deadline := time.Now().Add(timeout)
 	for {
-		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		err := fsutil.Flock(f, fsutil.LockEx|fsutil.LockNB)
 		if err == nil {
 			break
-		}
-		if errors.Is(err, syscall.EINTR) {
-			continue
 		}
 		if mode == LockFail || !time.Now().Before(deadline) {
 			holder := ""

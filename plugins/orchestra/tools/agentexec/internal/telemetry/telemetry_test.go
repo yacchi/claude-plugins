@@ -45,6 +45,9 @@ func sanitize(t testing.TB, text string) map[string]any {
 	return out
 }
 
+// jsonPath is p as the inside of a JSON string (Windows paths hold backslashes).
+func jsonPath(p string) string { return strings.ReplaceAll(p, "\\", "\\\\") }
+
 func asJSON(o map[string]any) string {
 	b, _ := fsutil.MarshalJSON(o)
 	return string(b)
@@ -266,14 +269,14 @@ func TestAppendIsGatedAndSanitized(t *testing.T) {
 	dir := filepath.Join(tmp, "telemetry")
 	rec := decode(t, `{"event": "dispatch", "status": "ok", "prompt": "/Users/secret/leak"}`)
 
-	Append(rec, cfgOf(t, `{"telemetry": {"enabled": false, "dir": "`+dir+`"}}`))
-	Append(rec, cfgOf(t, `{"telemetry": {"enabled": "yes", "dir": "`+dir+`"}}`))
+	Append(rec, cfgOf(t, `{"telemetry": {"enabled": false, "dir": "`+jsonPath(dir)+`"}}`))
+	Append(rec, cfgOf(t, `{"telemetry": {"enabled": "yes", "dir": "`+jsonPath(dir)+`"}}`))
 	Append(rec, cfgOf(t, `{}`))
 	if _, err := os.Stat(dir); err == nil {
 		t.Fatal("disabled telemetry created its directory")
 	}
 
-	on := cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+dir+`"}}`)
+	on := cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+jsonPath(dir)+`"}}`)
 	Append(rec, on)
 	Append(decode(t, `{"event": "bogus"}`), on)
 	Append(nil, on)
@@ -290,7 +293,7 @@ func TestAppendIsGatedAndSanitized(t *testing.T) {
 func TestAppendNeverFailsOnGarbage(t *testing.T) {
 	on := cfgOf(t, `{"telemetry": {"enabled": true, "dir": "/dev/null/x"}}`)
 	Append(decode(t, `{"event": "dispatch"}`), on)
-	Append(decode(t, `{"event": "dispatch", "classes": "not-a-dict"}`), cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+t.TempDir()+`"}}`))
+	Append(decode(t, `{"event": "dispatch", "classes": "not-a-dict"}`), cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+jsonPath(t.TempDir())+`"}}`))
 }
 
 func TestAppendEnforcesTheLineCap(t *testing.T) {
@@ -303,7 +306,7 @@ func TestAppendEnforcesTheLineCap(t *testing.T) {
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	Append(decode(t, `{"event": "run_summary"}`), cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+dir+`"}}`))
+	Append(decode(t, `{"event": "run_summary"}`), cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+jsonPath(dir)+`"}}`))
 	data, _ := os.ReadFile(path)
 	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
 	if len(lines) != maxLines || !strings.Contains(lines[len(lines)-1], "run_summary") {

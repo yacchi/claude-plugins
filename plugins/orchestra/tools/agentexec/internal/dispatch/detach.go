@@ -7,11 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 )
 
 // A run can outlast its caller's per-call timeout (a relay's Bash call is
@@ -138,7 +138,7 @@ func spawnDetached(outPath string, args []string) (int, error) {
 	defer out.Close()
 	cmd := exec.Command(exe, append([]string{"dispatch"}, args...)...)
 	cmd.Stdout, cmd.Stderr, cmd.Stdin = out, out, nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	procx.Detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return 0, err
 	}

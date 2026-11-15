@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
@@ -59,7 +59,7 @@ func (r *runner) notify(kind string, payload map[string]any) {
 		defer r.notifyWG.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
 		defer cancel()
-		c := exec.CommandContext(ctx, "/bin/sh", "-c", cmd)
+		c := procx.Shell(ctx, cmd)
 		c.Env = env
 		c.Stdin = bytes.NewReader(data)
 		end := trace.Begin(trace.KindExec, "wave notify", trace.Attrs{})

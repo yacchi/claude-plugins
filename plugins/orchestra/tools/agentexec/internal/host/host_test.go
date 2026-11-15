@@ -331,8 +331,18 @@ func TestSortedDirsDropsNested(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := SortedDirs(tc.in)
-			if got == nil || !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("SortedDirs(%q) = %q, want %q", tc.in, got, tc.want)
+			// The wanted dirs are absolute as the OS spells them ("/a" is
+			// "/a" on Unix, "C:\a" on Windows).
+			want := []string{}
+			for _, w := range tc.want {
+				a, err := filepath.Abs(filepath.FromSlash(w))
+				if err != nil {
+					t.Fatal(err)
+				}
+				want = append(want, a)
+			}
+			if got == nil || !reflect.DeepEqual(got, want) {
+				t.Errorf("SortedDirs(%q) = %q, want %q", tc.in, got, want)
 			}
 		})
 	}

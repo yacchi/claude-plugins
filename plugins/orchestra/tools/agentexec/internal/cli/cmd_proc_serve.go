@@ -75,13 +75,11 @@ func procWatchLockHeld(path string) bool {
 		return false
 	}
 	defer f.Close()
-	for {
-		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		return errors.Is(err, syscall.EWOULDBLOCK)
+	err = fsutil.Flock(f, fsutil.LockEx|fsutil.LockNB)
+	if err == nil {
+		_ = fsutil.Flock(f, fsutil.LockUn)
 	}
+	return errors.Is(err, syscall.EWOULDBLOCK)
 }
 
 // procWatchHeld reports whether a watcher for owner is running.

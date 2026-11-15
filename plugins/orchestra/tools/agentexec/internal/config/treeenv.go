@@ -54,7 +54,7 @@ func TreeEntries(on bool, tree string, env []string) []string {
 	if miseTrustedTree(tree) {
 		value := tree
 		if prev, ok := envValue(env, MiseTrustedEnv); ok && prev != "" {
-			value = prev + ":" + tree
+			value = prev + string(os.PathListSeparator) + tree
 		}
 		out = append(out, MiseTrustedEnv+"="+value)
 	}

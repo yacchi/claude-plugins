@@ -87,8 +87,12 @@ func NodeCapEntries(testSlots int, env []string) []string {
 }
 
 // NodeCapRequire is the NODE_OPTIONS option that preloads path, quoted as
-// Node reads NODE_OPTIONS (a backslash escapes the next character).
+// Node reads NODE_OPTIONS (a backslash escapes the next character). A
+// Windows path is written with forward slashes, which Node accepts: its
+// backslashes would otherwise be doubled here and halved again by Git Bash,
+// which reads the session env block, leaving escapes Node misreads.
 func NodeCapRequire(path string) string {
+	path = filepath.ToSlash(path)
 	quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(path)
 	return `--require "` + quoted + `"`
 }

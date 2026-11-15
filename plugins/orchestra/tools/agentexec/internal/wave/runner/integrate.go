@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/integrate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
@@ -319,7 +319,7 @@ func (r *runner) onGreen(sha string) {
 // runPlain runs command via /bin/sh -c (output discarded); a timeout kills
 // it and reports nil.
 func runPlain(dir, command string, timeout time.Duration, env []string) *int {
-	c := exec.Command("/bin/sh", "-c", command)
+	c := procx.Shell(nil, command)
 	c.Dir, c.Env = dir, env
 	end := trace.Begin(trace.KindExec, "wave on-green", trace.Attrs{Cwd: dir})
 	if err := c.Start(); err != nil {

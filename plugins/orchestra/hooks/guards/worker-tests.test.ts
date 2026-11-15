@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { type AgentExecAnswer, callTool, fakeHost, freshSession, type HostOptions, startAgent } from '../testing/host.ts'
+import { abs, type AgentExecAnswer, callTool, fakeHost, freshSession, type HostOptions, startAgent } from '../testing/host.ts'
 
 // Workers ran the whole suite for every small task and it dominated the
 // wall clock. Pinned: a worker's full run is denied, the instructor's main
@@ -50,10 +50,10 @@ describe('worker-tests', () => {
         const sessionId = freshSession()
         host(on, {
             sessionId,
-            repos: [{ main: '/repo', linked: [{ path: '/work/task-a', branch: 'orchestra/task-a' }] }],
-            files: { '/repo/.git/worktrees/task-a/orchestra-baseline': 'base\n' },
+            repos: [{ main: abs('/repo'), linked: [{ path: abs('/work/task-a'), branch: 'orchestra/task-a' }] }],
+            files: { [abs('/repo/.git/worktrees/task-a/orchestra-baseline')]: 'base\n' },
         })
-        await $.classic.SessionStart({ session_id: sessionId, source: 'startup', cwd: '/work/task-a' })
+        await $.classic.SessionStart({ session_id: sessionId, source: 'startup', cwd: abs('/work/task-a') })
         expect((await callTool($, undefined, { tool: 'Bash', command: FULL, description: 'x' })).deny).toBeDefined()
     })
 

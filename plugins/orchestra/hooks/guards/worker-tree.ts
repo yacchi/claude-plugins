@@ -1,7 +1,8 @@
 import type { Io } from '../lib/io.ts'
 import { field, isSupervisor, type WorkerCall } from '../lib/agents.ts'
 import { loadEnforcement } from '../lib/config.ts'
-import { inside, isAbsolute, join, normalize, realpath, stateDirOf } from '../lib/paths.ts'
+import { inside, join, normalize, realpath, samePath, stateDirOf } from '../lib/paths.ts'
+import { homeOf, stateDirArgs } from '../lib/platform.ts'
 import { basename, hasEscape, redirections, segments, stripData, words } from '../lib/shell.ts'
 
 // A worker subagent must not write into the user's MAIN working tree while it
@@ -37,7 +38,7 @@ import { basename, hasEscape, redirections, segments, stripData, words } from '.
 // a link into another task's tree was observed to stall the worker reading
 // through it. Relative operands follow a plain `cd` earlier in the command.
 // The state root is paths.StateDir() (lib/paths.ts stateDirOf: XDG_STATE_HOME
-// when absolute, else $HOME/.local/state/claude-orchestra). This rule does not
+// when absolute, else <home>/.local/state/claude-orchestra). This rule does not
 // need an orchestra worktree in the session.
 //
 // Escape hatches: [orchestra:allow-tree(: reason)] in a Bash command or
@@ -156,7 +157,7 @@ const linkSteps = (command: string): LinkStep[] => {
 }
 
 // Strictly inside, or the same path.
-const within = (child: string, parent: string): boolean => child === parent || inside(child, parent)
+const within = (child: string, parent: string): boolean => samePath(child, parent) || inside(child, parent)
 
 // Strictly under an orchestra state root's requests/<id>/.work/ or .integration/.
 // `requests` is already real.
@@ -176,7 +177,7 @@ const linkIntoOtherTree = async (io: Io, call: WorkerCall, steps: readonly LinkS
     if (!steps.some(isSymbolicLink) || !call.cwd) {
         return false
     }
-    const state = stateDirOf(await io.env('HOME'), await io.env('XDG_STATE_HOME'))
+    const state = stateDirOf(...await stateDirArgs(io))
     if (state === undefined) {
         return false
     }
@@ -199,7 +200,10 @@ const linkIntoOtherTree = async (io: Io, call: WorkerCall, steps: readonly LinkS
         }
     }
     own ??= cwd
-    const at = (p: string): string => (p === '~' || p.startsWith('~/') ? home + p.slice(1) : p)
+    const home = steps.some(s => s.kind === 'cd' ? s.target.startsWith('~') : s.operands.some(o => o.startsWith('~')))
+        ? await homeOf(io) ?? ''
+        : ''
+    const at = (p: string): string => (home && (p === '~' || p.startsWith('~/')) ? home + p.slice(1) : p)
     let here = call.cwd
     for (const step of steps) {
         if (step.kind === 'cd') {
@@ -286,7 +290,7 @@ export const checkWorkerTree = async (io: Io, call: WorkerCall): Promise<string 
     }
     let offender: string | undefined
     for (const target of targets) {
-        const resolved = isAbsolute(target.path) ? target.path : join(call.cwd, target.path)
+        const resolved = join(call.cwd, target.path)
         if (target.exists && !await io.exists(resolved).catch(() => false)) {
             continue
         }

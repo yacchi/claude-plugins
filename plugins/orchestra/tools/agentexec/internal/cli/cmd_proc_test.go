@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -155,8 +156,8 @@ func TestProcCmdWatchServe(t *testing.T) {
 
 func TestProcCmdWatcherStdio(t *testing.T) {
 	c := procCmdWatcher("x", nil)
-	if c.SysProcAttr == nil || !c.SysProcAttr.Setsid {
-		t.Fatalf("watcher SysProcAttr %+v, want Setsid", c.SysProcAttr)
+	if !procx.Detached(c) {
+		t.Fatalf("watcher SysProcAttr %+v, want detached", c.SysProcAttr)
 	}
 	if c.Stdin != nil || c.Stdout != nil || c.Stderr != nil {
 		t.Fatal("watcher holds the shell's stdio; want nil (/dev/null)")

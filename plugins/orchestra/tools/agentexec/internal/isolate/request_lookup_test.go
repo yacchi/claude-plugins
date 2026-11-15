@@ -6,6 +6,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // lookupPlant makes an assembly for request id in repo and saves the request
@@ -86,9 +88,7 @@ func TestLookupRequestForFollowsSymlink(t *testing.T) {
 	r1, asm := lookupPlant(t, repo, "20261028-one", sessA, 0)
 
 	link := filepath.Join(t.TempDir(), "asm-link")
-	if err := os.Symlink(asm, link); err != nil {
-		t.Fatal(err)
-	}
+	testenv.Symlink(t, asm, link)
 	got, ok, err := RequestFor(link)
 	if err != nil || !ok || got.ID != r1.ID {
 		t.Fatalf("RequestFor(symlink) = %q, %v, %v; want %q", got.ID, ok, err, r1.ID)

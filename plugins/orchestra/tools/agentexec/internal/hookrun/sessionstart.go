@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -111,7 +112,9 @@ func sessionStartContext(in map[string]any) string {
 		}
 	}
 	if top, ok := isolate.TaskTree(cwd); ok {
-		return strings.ReplaceAll(sessionStartWorker, sessionStartTreePlaceholder, top)
+		// git reports the top level with forward slashes on Windows too; the
+		// notice names it the way the session's own paths read.
+		return strings.ReplaceAll(sessionStartWorker, sessionStartTreePlaceholder, filepath.FromSlash(top))
 	}
 	model := strings.TrimSpace(sessionStartField(in, "model"))
 	switch {

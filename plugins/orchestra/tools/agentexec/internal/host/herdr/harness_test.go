@@ -18,23 +18,31 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 const session = "orchestra-abcdef12"
 
 var fakeBin string
 
+// refusal is unsupportedOS as the package set it, before TestMain cleared it.
+var refusal string
+
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "fakeherdr-bin-")
 	if err != nil {
 		panic(err)
 	}
-	fakeBin = filepath.Join(dir, "herdr")
+	fakeBin = filepath.Join(dir, testenv.Exe("herdr"))
 	build := exec.Command("go", "build", "-o", fakeBin, "../../testutil/fakeherdr")
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
 		panic(err)
 	}
+	// The fake herdr runs on every OS; TestUnsupportedOSRefuses checks the
+	// refusal the real host gives where herdr does not exist.
+	refusal = unsupportedOS
+	unsupportedOS = ""
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
@@ -81,8 +89,8 @@ func newEnv(t *testing.T) *env {
 	t.Setenv("XDG_STATE_HOME", filepath.Join(tmp, "xstate"))
 	t.Setenv("HOME", filepath.Join(tmp, "home"))
 	t.Setenv("ORCHESTRA_ALIVE_DIR", filepath.Join(tmp, "alive"))
-	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	t.Setenv("FAKEHERDR_DIR", e.fakeDir)
 	t.Setenv("CLAUDECODE", "1")
 	t.Setenv("AGENT_EXEC_BOOTSTRAP", pluginBootstrap(t))

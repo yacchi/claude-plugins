@@ -56,6 +56,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -129,7 +130,7 @@ func setupEnv() (string, error) {
 	}
 	goBin, err := exec.LookPath("go")
 	if err != nil {
-		goBin = filepath.Join(runtime.GOROOT(), "bin", "go")
+		goBin = filepath.Join(runtime.GOROOT(), "bin", testenv.Exe("go"))
 	}
 	build := func(pkg, out string) error {
 		cmd := exec.Command(goBin, "build", "-o", out, pkg)
@@ -139,12 +140,12 @@ func setupEnv() (string, error) {
 		}
 		return nil
 	}
-	fakepi := filepath.Join(dir, "fakepi")
+	fakepi := filepath.Join(dir, testenv.Exe("fakepi"))
 	if err := build("./internal/testutil/fakepi", fakepi); err != nil {
 		return dir, err
 	}
 	env.fakes = map[string]string{"pi": fakepi}
-	bin := filepath.Join(dir, "agent-exec")
+	bin := filepath.Join(dir, testenv.Exe("agent-exec"))
 	if err := build("./cmd/agent-exec", bin); err != nil {
 		return dir, err
 	}
@@ -153,6 +154,10 @@ func setupEnv() (string, error) {
 }
 
 func TestConformance(t *testing.T) {
+	// The scenarios run the binary in a Unix sandbox (a ":" PATH of /usr/bin
+	// and /bin, /dev/null, symlinked tools) against goldens written with "/"
+	// paths; Windows is covered by the package tests instead.
+	testenv.SkipOnWindows(t, "conformance scenarios and goldens are POSIX-shaped")
 	// Inside the test (not TestMain) so go test records the opens.
 	must(t, recordSources())
 	scenarios, err := loadScenarios(testdataDir)

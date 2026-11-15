@@ -50,8 +50,11 @@ func TestWaveStateResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, err := waveStateResolve("/a/plans/x/plan.json", ""); err != nil || got != "/a/plans/x/state.json" {
-		t.Errorf("default beside absolute plan = %q, %v; want /a/plans/x/state.json", got, err)
+	// "/" on Unix, the cwd's drive root on Windows.
+	root := filepath.VolumeName(cwd) + string(filepath.Separator)
+	abs := filepath.Join(root, "a", "plans", "x", "state.json")
+	if got, err := waveStateResolve(filepath.Join(root, "a", "plans", "x", "plan.json"), ""); err != nil || got != abs {
+		t.Errorf("default beside absolute plan = %q, %v; want %s", got, err, abs)
 	}
 	if got, err := waveStateResolve("/a/p.json", "rel/s.json"); err != nil || got != "rel/s.json" {
 		t.Errorf("explicit state = %q, %v; want rel/s.json kept as given", got, err)

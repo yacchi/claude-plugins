@@ -1,11 +1,14 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import { abs, slashed } from '../testing/host.ts'
+
+const HOME = abs('/h')
 
 // The bottom stands for the engine: a signed-in host on a terminal, a page
 // stored under "board" when given one, the status file in place, and the
 // ArtifactData calls the writer makes recorded in `calls`.
 const board = (on: On, { page, decision = 'allow', declined = false }: { page?: Record<string, unknown>, decision?: 'allow' | 'ask' | 'deny', declined?: boolean } = {}) => {
-    const files = new Map<string, string>([['/h/.local/state/claude-orchestra/status.json', JSON.stringify({ summary: { ok: 1 }, runs: [] })]])
+    const files = new Map<string, string>([[`${HOME}/.local/state/claude-orchestra/status.json`, JSON.stringify({ summary: { ok: 1 }, runs: [] })]])
     const store = new Map<string, unknown>(page ? [['board', page]] : [])
     const calls: any[] = []
     const prompts: any[] = []
@@ -14,7 +17,7 @@ const board = (on: On, { page, decision = 'allow', declined = false }: { page?: 
     const done = (exitCode: number, stdout = '') =>
         ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
-    on('env.get', (_$, e: any) => ({ value: e.name === 'HOME' ? '/h' : undefined }))
+    on('env.get', (_$, e: any) => ({ value: e.name === 'HOME' ? HOME : undefined }))
     on('session.surfaces', () => ({ value: ['terminal'] }))
     on('session.id', () => ({ value: 's1' }))
     on('ui.toast', (_$, e: any) => {
@@ -25,11 +28,11 @@ const board = (on: On, { page, decision = 'allow', declined = false }: { page?: 
     on('process.run', (_$, e: any) => [...e.argv].slice(4, 6).join(' ') === 'status whoami'
         ? done(0, '{"account":"Acme","host":"mbp"}')
         : done(127))
-    on('fs.exists', (_$, e: any) => ({ value: files.has(e.path) }))
-    on('fs.stat', (_$, e: any) => files.has(e.path) ? { value: { kind: 'file', size: 1, mtimeMs: 1000, isLink: false } } : { deny: 'ENOENT' })
-    on('fs.read', (_$, e: any) => files.has(e.path) ? { value: files.get(e.path) ?? '' } : { deny: 'ENOENT' })
+    on('fs.exists', (_$, e: any) => ({ value: files.has(slashed(e.path)) }))
+    on('fs.stat', (_$, e: any) => files.has(slashed(e.path)) ? { value: { kind: 'file', size: 1, mtimeMs: 1000, isLink: false } } : { deny: 'ENOENT' })
+    on('fs.read', (_$, e: any) => files.has(slashed(e.path)) ? { value: files.get(slashed(e.path)) ?? '' } : { deny: 'ENOENT' })
     on('fs.write', (_$, e: any) => {
-        files.set(e.path, e.text)
+        files.set(slashed(e.path), e.text)
 
         return { value: undefined }
     })
@@ -115,7 +118,7 @@ test('a write the permission check denies never starts, and says so unasked', as
     expect(calls).toEqual([])
     expect(toasts.length).toBe(1)
     expect(toasts[0]).toContain('denies')
-    const record = JSON.parse(files.get('/h/.local/state/claude-orchestra/dashboard/blocked.json') ?? '{}')
+    const record = JSON.parse(files.get(`${HOME}/.local/state/claude-orchestra/dashboard/blocked.json`) ?? '{}')
     expect(record.session).toBe('s1')
     expect(record.at).toBe(1000)
     expect(record.reason).toContain('denies')
@@ -141,7 +144,7 @@ test('a started writer clears the session\'s recorded block', async ($, on) => {
     const { files, clock } = board(on, { page: { url: 'https://claude.ai/artifact/p1', account: 'Acme' } })
     await runBoard($, '')
     await clock.advance(10)
-    const record = JSON.parse(files.get('/h/.local/state/claude-orchestra/dashboard/blocked.json') ?? '{}')
+    const record = JSON.parse(files.get(`${HOME}/.local/state/claude-orchestra/dashboard/blocked.json`) ?? '{}')
     expect(record.session).toBe('s1')
     expect(record.reason).toBe(null)
 })

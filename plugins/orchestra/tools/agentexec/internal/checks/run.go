@@ -14,6 +14,7 @@ import (
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/slot"
 )
 
@@ -313,12 +314,12 @@ func runShell(command, cwd string, env []string, timeout time.Duration, slotDir 
 	defer release()
 	defer holdMachineSlot(command, timeout)()
 	start := time.Now()
-	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd := procx.Shell(nil, command)
 	cmd.Dir = cwd
 	cmd.Env = config.WithNodeCap(env)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	procx.Detach(cmd)
 	cmd.WaitDelay = 5 * time.Second
 	if err := cmd.Start(); err != nil {
 		return shellResult{stderr: err.Error() + "\n", seconds: time.Since(start).Seconds()}
@@ -335,7 +336,7 @@ func runShell(command, cwd string, env []string, timeout time.Duration, slotDir 
 	case err = <-done:
 	case <-expired:
 		timedOut = true
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = procx.KillGroup(cmd.Process.Pid, true)
 		err = <-done
 	}
 	res := shellResult{stdout: stdout.String(), stderr: stderr.String(), timedOut: timedOut, seconds: time.Since(start).Seconds()}

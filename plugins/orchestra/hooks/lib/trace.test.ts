@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { callTool, fakeHost, freshSession, startAgent } from '../testing/host.ts'
+import { callTool, fakeHost, freshSession, isSh, startAgent } from '../testing/host.ts'
 import { bashOp } from './trace.ts'
 
 describe('bashOp', () => {
@@ -23,7 +23,7 @@ describe('bashOp', () => {
 
 describe('worker-bash trace', () => {
     const records = (runs: readonly string[][]) => runs
-        .filter(r => r[0] === 'sh' && r[4] === 'trace' && r[5] === 'record')
+        .filter(r => isSh(r[0]) && r[4] === 'trace' && r[5] === 'record')
         .map(r => JSON.parse(r[7]!) as Record<string, unknown>)
 
     test('a Bash call records exactly one worker-bash entry and returns the tool result', async ($, on) => {

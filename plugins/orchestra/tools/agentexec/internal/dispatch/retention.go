@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
@@ -111,7 +110,7 @@ func statePID(path string) int {
 // it must not keep a run "running" forever (unlike fsutil.PIDAlive, which
 // the UI uses for processes it does not own).
 func pidAlive(pid int) bool {
-	return pid > 0 && syscall.Kill(pid, 0) == nil
+	return pid > 0 && ownPIDAlive(pid)
 }
 
 // pidOf is a JSON pid: a positive integer (never a bool or a float).

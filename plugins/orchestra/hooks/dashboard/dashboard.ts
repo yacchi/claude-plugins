@@ -2,6 +2,7 @@ import type { EngineInterface, On, Timer } from 'claude-code'
 import { agentExec } from '../lib/config.ts'
 import type { Io } from '../lib/io.ts'
 import { stateDirOf } from '../lib/paths.ts'
+import { onWindows } from '../lib/platform.ts'
 import { verdictOf } from '../router/verdict.ts'
 import { type Identity, identityOf, pageOf, publishedUrlOf, publishPrompt } from './parts.ts'
 import { createWriter, docIdOf, type Writer } from './writer.ts'
@@ -157,7 +158,9 @@ async function block($: EngineInterface, reason: string): Promise<void> {
 
 // The machine-local state dir (lib/paths.ts stateDirOf), undefined when unknown.
 async function stateDir($: EngineInterface): Promise<string | undefined> {
-    return stateDirOf(await $.env.get('HOME'), await $.env.get('XDG_STATE_HOME'))
+    const windows = onWindows(hostIo($)) ? { userProfile: await $.env.get('USERPROFILE') } : undefined
+
+    return stateDirOf(await $.env.get('HOME'), await $.env.get('XDG_STATE_HOME'), windows)
 }
 
 // The session's last verdict, a null reason once its writer started.

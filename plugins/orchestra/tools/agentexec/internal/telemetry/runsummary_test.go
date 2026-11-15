@@ -131,7 +131,7 @@ func TestRunSummarySurvivesSanitize(t *testing.T) {
 
 func TestWriteReturnsTheRecordAsWritten(t *testing.T) {
 	dir := t.TempDir()
-	cfg := cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+dir+`"}}`)
+	cfg := cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+jsonPath(dir)+`"}}`)
 	returned, err := Write(decode(t, `{"event": "run_summary", "pass": 1, "prompt": "/Users/secret"}`), cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +154,7 @@ func TestWriteReturnsTheRecordAsWritten(t *testing.T) {
 
 func TestWriteErrors(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "telemetry")
-	off := cfgOf(t, `{"telemetry": {"enabled": "yes", "dir": "`+dir+`"}}`)
+	off := cfgOf(t, `{"telemetry": {"enabled": "yes", "dir": "`+jsonPath(dir)+`"}}`)
 	if _, err := Write(decode(t, `{"event": "run_summary"}`), off); !errors.Is(err, ErrDisabled) {
 		t.Errorf("disabled: err = %v", err)
 	}
@@ -162,7 +162,7 @@ func TestWriteErrors(t *testing.T) {
 		t.Error("disabled write created the directory")
 	}
 
-	on := cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+dir+`"}}`)
+	on := cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+jsonPath(dir)+`"}}`)
 	if _, err := Write(decode(t, `{"event": "bogus"}`), on); !errors.Is(err, ErrRejected) {
 		t.Errorf("invalid event: err = %v", err)
 	}
@@ -170,7 +170,12 @@ func TestWriteErrors(t *testing.T) {
 		t.Errorf("nil record: err = %v", err)
 	}
 
-	bad := cfgOf(t, `{"telemetry": {"enabled": true, "dir": "/dev/null/x"}}`)
+	// A directory below a regular file cannot be created.
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bad := cfgOf(t, `{"telemetry": {"enabled": true, "dir": "`+jsonPath(filepath.Join(blocker, "x"))+`"}}`)
 	_, err := Write(decode(t, `{"event": "run_summary"}`), bad)
 	if err == nil || errors.Is(err, ErrDisabled) || errors.Is(err, ErrRejected) {
 		t.Errorf("I/O failure: err = %v", err)

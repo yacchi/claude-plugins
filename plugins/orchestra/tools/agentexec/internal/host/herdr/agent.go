@@ -459,6 +459,9 @@ func revParseCommit(repo, ref string) string {
 // workspace and a Claude agent there and waits for it to be usable. With a
 // usable warm reader of the model the agent forks from it.
 func (e *Executor) Start(ctx context.Context, pkgID, repo, baseRef, cls, model, runID, stateDir string, addDirs []string) (*host.Session, error) {
+	if unsupportedOS != "" {
+		return nil, host.Need(host.KindError, unsupportedOS)
+	}
 	stateDir = e.adoptStateDir(stateDir)
 	e.mu.Lock()
 	e.runID = runID

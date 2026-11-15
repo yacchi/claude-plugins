@@ -5,13 +5,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/gitx"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 )
 
@@ -243,8 +244,19 @@ func trashPath(path string) string {
 // reclaims. done runs once the rm exits (while the caller lives); never when
 // it could not start.
 func deleteDetached(path string, done func()) error {
-	cmd := exec.Command("/bin/rm", "-rf", "--", path)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	argv := []string{"/bin/rm", "-rf", "--", path}
+	var env []string
+	if runtime.GOOS == "windows" {
+		// No /bin/rm: Git for Windows' rm, through its sh. The path goes in
+		// the environment, never on the command line: the MSYS runtime
+		// globs, brace-expands and unescapes unquoted arguments, which must
+		// never change what an rm -rf removes.
+		argv = []string{procx.ShellPath(), "-c", `rm -rf -- "$AGENT_EXEC_RM_PATH"`}
+		env = append(os.Environ(), "AGENT_EXEC_RM_PATH="+path)
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env = env
+	procx.Detach(cmd)
 	end := trace.Begin(trace.KindFS, "rm -rf (detached)", trace.Attrs{Detail: path})
 	if err := cmd.Start(); err != nil {
 		end(-1)

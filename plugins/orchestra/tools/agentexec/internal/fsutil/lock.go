@@ -27,7 +27,7 @@ const lockPoll = 50 * time.Millisecond
 // trace log.
 const minTracedWait = 50 * time.Millisecond
 
-// Lock takes a flock(2) on path (created 0600 if missing). timeout 0 tries
+// Lock takes an advisory lock (flock(2), LockFileEx on Windows) on path (created 0600 if missing). timeout 0 tries
 // once; a negative timeout waits indefinitely. unlock releases the lock and
 // closes the descriptor.
 func Lock(path string, mode LockMode, timeout time.Duration) (unlock func() error, err error) {
@@ -35,14 +35,13 @@ func Lock(path string, mode LockMode, timeout time.Duration) (unlock func() erro
 	if err != nil {
 		return nil, err
 	}
-	how := syscall.LOCK_SH
+	how := LockSh
 	if mode == Exclusive {
-		how = syscall.LOCK_EX
+		how = LockEx
 	}
-	fd := int(f.Fd())
 	start := time.Now()
 	deadline := start.Add(timeout)
-	err = flockRetry(fd, how|syscall.LOCK_NB)
+	err = Flock(f, how|LockNB)
 	if err == nil {
 		return release(f), nil
 	}
@@ -60,7 +59,7 @@ func Lock(path string, mode LockMode, timeout time.Duration) (unlock func() erro
 		}
 	}
 	if timeout < 0 {
-		if err := flockRetry(fd, how); err != nil {
+		if err := Flock(f, how); err != nil {
 			done(1)
 			f.Close()
 			return nil, err
@@ -76,7 +75,7 @@ func Lock(path string, mode LockMode, timeout time.Duration) (unlock func() erro
 			return nil, ErrLockTimeout
 		}
 		time.Sleep(min(lockPoll, remaining))
-		err := flockRetry(fd, how|syscall.LOCK_NB)
+		err := Flock(f, how|LockNB)
 		if err == nil {
 			done(0)
 			return release(f), nil
@@ -89,18 +88,9 @@ func Lock(path string, mode LockMode, timeout time.Duration) (unlock func() erro
 	}
 }
 
-func flockRetry(fd, how int) error {
-	for {
-		err := syscall.Flock(fd, how)
-		if !errors.Is(err, syscall.EINTR) {
-			return err
-		}
-	}
-}
-
 func release(f *os.File) func() error {
 	return func() error {
-		uerr := syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		uerr := Flock(f, LockUn)
 		cerr := f.Close()
 		if uerr != nil {
 			return uerr

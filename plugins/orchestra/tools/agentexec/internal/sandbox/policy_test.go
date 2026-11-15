@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 func gitT(t *testing.T, dir string, args ...string) {
@@ -59,6 +60,7 @@ func tempReal(t *testing.T) string {
 }
 
 func TestRealPathFollowsPython(t *testing.T) {
+	testenv.MustSymlink(t)
 	base := tempReal(t)
 	target := filepath.Join(base, "elsewhere", "dir")
 	if err := os.MkdirAll(target, 0o755); err != nil {
@@ -119,6 +121,7 @@ func TestBuildPolicyWorktree(t *testing.T) {
 }
 
 func TestBuildPolicyRealpathsAndPiState(t *testing.T) {
+	testenv.MustSymlink(t)
 	base := tempReal(t)
 	home := tempReal(t)
 	real := tempReal(t)
@@ -202,7 +205,7 @@ func TestPrepareUnderSrtAndItsFallback(t *testing.T) {
 	ok := ProbeReport{Seatbelt: Probe{OK: true, Detail: "ok"}, Bwrap: Probe{Detail: "no"}, Landlock: Probe{Detail: "no"}}
 	net := &Network{Srt: "/opt/srt", Domains: []string{"api.anthropic.com"}, ID: "t1", Session: "t1"}
 	s := prepare("pi", tree, normalizeConfig(nil), &ok, policyOpts{}, net)
-	if s.Backend != "srt" || s.Srt == nil || !strings.HasSuffix(s.Srt.SettingsPath, "/cli-srt/t1.json") {
+	if s.Backend != "srt" || s.Srt == nil || !strings.HasSuffix(s.Srt.SettingsPath, filepath.FromSlash("/cli-srt/t1.json")) {
 		t.Fatalf("srt spec: %+v", s)
 	}
 	argv := WrapArgv([]string{"pi", "it's"}, tree, s)
@@ -222,6 +225,7 @@ func TestPrepareUnderSrtAndItsFallback(t *testing.T) {
 }
 
 func TestBwrapArgvCarveOutAndDenyReadOrder(t *testing.T) {
+	testenv.SkipOnWindows(t, "bwrap is Linux-only and its argv is built from POSIX paths")
 	p := &Policy{Writable: []string{"/r", "/r/.git/objects", "/dev", "/missing"},
 		Readonly: []string{"/r/.git"}, DenyRead: []string{"/h/.ssh", "/h/.netrc", "/h/none"}}
 	ex := func(p string) bool { return p != "/missing" && p != "/h/none" }
@@ -254,6 +258,7 @@ func TestChildEnv(t *testing.T) {
 }
 
 func TestHostPolicy(t *testing.T) {
+	testenv.MustSymlink(t)
 	base := tempReal(t)
 	home := filepath.Join(base, "home")
 	shared := filepath.Join(home, ".config", "shared")
@@ -500,7 +505,7 @@ func TestChildEnvCarriesTheMiseTrustOfActiveTrees(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := "MISE_TRUSTED_CONFIG_PATHS=/keep:" + linked
+	want := "MISE_TRUSTED_CONFIG_PATHS=/keep" + string(os.PathListSeparator) + linked
 	if env := ChildEnv(Prepare("pi", linked, cfg, "", ""), []string{"MISE_TRUSTED_CONFIG_PATHS=/keep"}); !contains(env, want) {
 		t.Errorf("linked tree: env %v lacks %q", env, want)
 	}

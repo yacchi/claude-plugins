@@ -30,6 +30,7 @@ var deps = map[string][]string{
 	"internal/paths":              {},
 	"internal/sysload":            {},
 	"internal/proctree":           {},
+	"internal/procx":              {},
 	"internal/trace":              {"internal/paths", "internal/sysload"},
 	"internal/transcript":         {},
 	"internal/watchdog":           {},
@@ -73,15 +74,16 @@ var deps = map[string][]string{
 	"cmd/agent-exec":              {"internal/cli"},
 	"internal/testutil/fakepi":    {},
 	"internal/testutil/fakeherdr": {},
+	"internal/testutil/testenv":   {},
 	"internal/conformance":        {"*"},
 	"internal/archtest":           {},
 }
 
 // leaves may be imported by any package.
-var leaves = []string{"internal/fsutil", "internal/paths", "internal/trace", "internal/sysload", "internal/proctree"}
+var leaves = []string{"internal/fsutil", "internal/paths", "internal/trace", "internal/sysload", "internal/proctree", "internal/procx"}
 
 // thirdParty are the only non-standard imports allowed outside tests.
-var thirdParty = []string{"github.com/spf13/cobra", "go.yaml.in/yaml/v3", "golang.org/x/sys/unix"}
+var thirdParty = []string{"github.com/spf13/cobra", "go.yaml.in/yaml/v3", "golang.org/x/sys/unix", "golang.org/x/sys/windows"}
 
 // forbidden pins edges the plan rules out explicitly, whatever the table
 // says.

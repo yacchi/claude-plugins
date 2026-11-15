@@ -89,8 +89,9 @@ func DetectCarryDirs(root string, extra []string) []string {
 			}
 			if names[name] && isIgnored(abs, rel) {
 				// Nested copies (node_modules/.pnpm/*/node_modules) ride
-				// along inside the parent.
-				found = append(found, rel)
+				// along inside the parent. Reported repo-relative with "/"
+				// on every OS, like git paths.
+				found = append(found, filepath.ToSlash(rel))
 				continue
 			}
 			if depth < config.CarryScanMaxDepth {
@@ -136,6 +137,11 @@ func copyTreeMethod(src, dst string) string {
 		attempts = [][]string{{"cp", "-Rc", src, dst}}
 	}
 	attempts = append(attempts, []string{"cp", "-R", src, dst})
+	if runtime.GOOS == "windows" {
+		// Git's cp (when on PATH at all) emulates links in ways Node and
+		// Python cannot read; copyTree makes junctions instead.
+		attempts = nil
+	}
 	for i, argv := range attempts {
 		// The operation is the argv up to its two trailing paths.
 		end := trace.Begin(trace.KindFS, strings.Join(argv[:len(argv)-2], " "), trace.Attrs{Detail: src + " -> " + dst})
@@ -182,7 +188,9 @@ func absPath(p string) string {
 	return p
 }
 
-// copyTree is the in-process fallback: symlinks are copied as links.
+// copyTree is the in-process fallback: symlinks are copied as links. On
+// Windows links and junctions go through copyLinkWindows, since a symlink
+// may need a privilege this process lacks.
 func copyTree(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -194,6 +202,9 @@ func copyTree(src, dst string) error {
 		}
 		target := filepath.Join(dst, rel)
 		switch {
+		case runtime.GOOS == "windows" && info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0:
+			// Junctions (pnpm's node_modules links) lstat as irregular.
+			return copyLinkWindows(src, dst, path, target, info.Mode()&os.ModeSymlink != 0)
 		case info.Mode()&os.ModeSymlink != 0:
 			link, err := os.Readlink(path)
 			if err != nil {
@@ -310,7 +321,7 @@ func CarryDependencies(root, path string, extra []string) (carried []string, met
 		// What a failed install left behind would block the copy.
 		removeNodeModules(path, p)
 		carry(owned[p])
-		failures = append(failures, "pnpm install (gvs) failed in "+p+", node_modules copied instead: "+err.Error())
+		failures = append(failures, "pnpm install (gvs) failed in "+filepath.ToSlash(p)+", node_modules copied instead: "+err.Error())
 	}
 	if len(failures) == 0 && method != carryFailed {
 		method = carryPnpmGVS
@@ -323,7 +334,8 @@ func CarryDependencies(root, path string, extra []string) (carried []string, met
 func innermostProject(projects []string, rel string) (string, bool) {
 	best, found := "", false
 	for _, p := range projects {
-		if (p == "." || rel == p || strings.HasPrefix(rel, p+string(filepath.Separator))) &&
+		// rel is "/"-separated (DetectCarryDirs); p is an OS path.
+		if pp := filepath.ToSlash(p); (p == "." || rel == pp || strings.HasPrefix(rel, pp+"/")) &&
 			(!found || len(p) > len(best) || best == ".") {
 			best, found = p, true
 		}
@@ -406,7 +418,7 @@ func repairDangling(tree string, projects, carried []string) ([]string, string) 
 	sort.Strings(order)
 	for _, p := range order {
 		if err := pnpmInstall(filepath.Join(tree, p), tree, false); err != nil {
-			notes = append(notes, "pnpm install failed in "+p+" after removing a node_modules with dangling links: "+err.Error())
+			notes = append(notes, "pnpm install failed in "+filepath.ToSlash(p)+" after removing a node_modules with dangling links: "+err.Error())
 		}
 	}
 	kept := carried[:0:0]

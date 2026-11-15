@@ -2,6 +2,7 @@ import type { Io } from '../lib/io.ts'
 import { field } from '../lib/agents.ts'
 import { enforcementOf, isOff, loadEnforcement } from '../lib/config.ts'
 import { dirname, join, normalize } from '../lib/paths.ts'
+import { homeOf } from '../lib/platform.ts'
 import { gitCall, hasEscape, segments, stripDataKeepingVars, words } from '../lib/shell.ts'
 import { leaseFile } from './worktree-lease.ts'
 
@@ -48,7 +49,7 @@ type Hit = { ref: string, dir: string, verb: string, worktree: boolean }
 // `~` expands to HOME, as the lease guard does, so `git -C ~/x` is the path the user meant.
 const landResolve = async (io: Io, base: string, p: string): Promise<string> => {
     const tilde = p === '~' || p.startsWith('~/')
-    const home = tilde ? await io.env('HOME') ?? '' : ''
+    const home = tilde ? await homeOf(io) ?? '' : ''
 
     return normalize(join(base, home ? home + p.slice(1) : p))
 }

@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/proctree"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // treeGuardSeams lowers the limits and the interval for one test and restores
@@ -31,7 +33,7 @@ func treeGuardSeams(t *testing.T) {
 }
 
 // treeGuardFake returns the argv of a bounded fake worker: prefix, then eight
-// sleeps recorded in the returned file, then a wait. The cleanup SIGKILLs the
+// sleeps (bgGrandchild) recorded in the returned file, then a wait. The cleanup SIGKILLs the
 // recorded pids when the test failed.
 func treeGuardFake(t *testing.T, prefix string) ([]string, string) {
 	t.Helper()
@@ -41,11 +43,11 @@ func treeGuardFake(t *testing.T, prefix string) ([]string, string) {
 			return
 		}
 		for _, pid := range treeGuardPIDs(pids) {
-			_ = syscall.Kill(pid, syscall.SIGKILL)
+			_ = proctree.Signal(pid, syscall.SIGKILL)
 		}
 	})
-	script := prefix + "for i in 1 2 3 4 5 6 7 8; do sleep 30 & echo $! >> " + pids + "; done; wait"
-	return []string{"sh", "-c", script}, pids
+	script := prefix + "for i in 1 2 3 4 5 6 7 8; do " + bgGrandchild(pids) + "; done; wait"
+	return shArgv(script), pids
 }
 
 // treeGuardPIDs reads the pids a fake worker recorded.
@@ -70,7 +72,7 @@ func treeGuardAssertGone(t *testing.T, pidsFile string) {
 	for _, pid := range pids {
 		gone := false
 		for i := 0; i < 100; i++ {
-			if syscall.Kill(pid, 0) != nil {
+			if !fsutil.PIDAlive(pid) {
 				gone = true
 				break
 			}
@@ -101,7 +103,7 @@ func TestTreeGuardKillsRunawayTree(t *testing.T) {
 	if res.Runaway.ElapsedS != res.Runaway.RuntimeS || res.Runaway.ElapsedS <= 0 || res.Runaway.ElapsedS >= 10 {
 		t.Fatalf("elapsed %v runtime %v", res.Runaway.ElapsedS, res.Runaway.RuntimeS)
 	}
-	if res.ExitCode != -int(syscall.SIGKILL) {
+	if res.ExitCode != killedExit(syscall.SIGKILL) {
 		t.Fatalf("exit %d", res.ExitCode)
 	}
 	obj := res.Runaway.Object()
@@ -156,6 +158,7 @@ func TestTreeGuardKillErrorSuffix(t *testing.T) {
 }
 
 func TestTreeGuardWatchdogRunawayWins(t *testing.T) {
+	testenv.SkipOnWindows(t, "no SIGTERM: the wall trip terminates the tree at once, so there is no grace period for the tree guard to act in")
 	treeGuardSeams(t)
 	// The child ignores SIGTERM, so the wall trip (first) stays in its grace
 	// period and the tree trip (second) is the one that kills it.
@@ -179,7 +182,7 @@ func TestTreeGuardUnderLimit(t *testing.T) {
 	treeGuardSeams(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	res, err := spawn(ctx, spawnOptions{Argv: []string{"sh", "-c", "sleep 0.3"}})
+	res, err := spawn(ctx, spawnOptions{Argv: shArgv("sleep 0.3")})
 	if err != nil {
 		t.Fatal(err)
 	}

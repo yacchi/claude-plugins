@@ -1,5 +1,9 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import { slashed, WINDOWS } from './testing/host.ts'
+
+// The pid the Windows wave host's runners record.
+const PID = 4242
 
 // The bottom stands for the engine: it answers spawns with fresh ids, records
 // what the HUD toasts, and draws an empty box where the HUD draws nothing.
@@ -91,12 +95,22 @@ const waveHost = (on: On) => {
         if (argv[0] === 'ps') {
             return done(0, host.ps)
         }
+        // Windows asks by the recorded pid alone, through tasklist.
+        if (WINDOWS && /[\\/]System32[\\/]tasklist\.exe$/i.test(argv[0] ?? '') && argv.includes(`PID eq ${PID}`)) {
+            return done(0, host.alive
+                ? `"agent-exec.exe","${PID}","Console","1","10,000 K"\r\n`
+                : 'INFO: No tasks are running which match the specified criteria.\r\n')
+        }
         if (argv[0] === 'sh' && argv.slice(4, 6).join(' ') === 'wave status') {
             return done(0, JSON.stringify(host.state))
         }
 
         return done(127)
     })
+    // On Windows every runner recorded its pid (runner.pid beside the state).
+    if (WINDOWS) {
+        on('fs.read', (_$, e) => (slashed(e.path).endsWith('/runner.pid') ? { value: JSON.stringify({ pid: PID }) } : { deny: `ENOENT: ${e.path}` }))
+    }
     on('fs.exists', () => ({ value: host.exists }))
     on('session.cwd', () => ({ value: '/repo' }))
     on('tool.call', () => ({ result: { stdout: host.stdout, stderr: '', interrupted: false, ...(host.background ? { backgroundTaskId: 'b1' } : {}) } }))
@@ -217,6 +231,14 @@ test('wave run: a shell-expanded --state is taken from the runner started, by it
     ].join('\n')
     await bash($, 'cd /repo && agent-exec wave run --plan "$SP/wave/plan.json" --state "$SP/wave/state.json" --into prog-a')
     await clock.advance(15_000)
+    if (WINDOWS) {
+        // No process table on Windows: nothing asked, nothing tracked.
+        await clock.advance(15_000)
+        expect(host.runs.filter(r => r[0] === 'ps' || r[0] === 'lsof' || r[0] === 'pgrep')).toEqual([])
+        expect(statusCalls()).toEqual([])
+
+        return
+    }
     expect([...new Set(statusCalls().map(r => r[7]))]).toEqual(['/sp/wave/state.json'])
 
     host.alive = false

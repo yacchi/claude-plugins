@@ -33,10 +33,10 @@ var (
 // ignores it. The result has its existing prefix's symlinks resolved, so a
 // pin spelled through a symlink still matches the path the kernel reports.
 func PnpmStoreDir(platform, home string, getenv func(string) string) string {
-	if h := getenv("PNPM_HOME"); strings.HasPrefix(h, "/") {
+	if h := getenv("PNPM_HOME"); filepath.IsAbs(h) {
 		return paths.RealPath(filepath.Join(h, "store"))
 	}
-	if x := getenv("XDG_DATA_HOME"); strings.HasPrefix(x, "/") {
+	if x := getenv("XDG_DATA_HOME"); filepath.IsAbs(x) {
 		return paths.RealPath(filepath.Join(x, "pnpm", "store"))
 	}
 	if platform == "darwin" {

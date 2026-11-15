@@ -9,11 +9,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"syscall"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/host"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/isolate"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/srt"
 )
@@ -49,8 +50,7 @@ func ResolveHome(sname, base, fallbackRoot string, uid int, create bool) (string
 		}
 	}
 	if info, err := os.Lstat(parent); err == nil {
-		st, _ := info.Sys().(*syscall.Stat_t)
-		if !info.IsDir() || st == nil || int(st.Uid) != uid || info.Mode().Perm()&0o022 != 0 {
+		if !info.IsDir() || !fsutil.OwnedBy(info, uid) || info.Mode().Perm()&0o022 != 0 {
 			return "", host.Need(host.KindError, parent+" is not a private directory of this user (herdr home fallback)")
 		}
 	}
@@ -240,7 +240,7 @@ func (e *Executor) command(argv, env []string, stdout, stderr *os.File) *exec.Cm
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = env
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	procx.Detach(cmd)
 	return cmd
 }
 

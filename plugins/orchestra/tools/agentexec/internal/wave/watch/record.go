@@ -8,7 +8,6 @@ package watch
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -16,10 +15,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/procx"
 )
 
 // startSlack is how far a live process's start time may sit from the
@@ -97,24 +96,10 @@ func (r Record) Alive(statePath string) bool {
 	return math.Abs(started-float64(r.StartedAt)) <= startSlack
 }
 
-// processAge is a process's age in seconds from ps, gone for a zombie or a
-// pid ps does not list; known is false when ps could not tell.
-var processAge = func(pid int) (age float64, gone, known bool) {
-	out, err := exec.Command("ps", "-o", "stat=,etime=", "-p", strconv.Itoa(pid)).Output()
-	var exitErr *exec.ExitError
-	if err != nil && !errors.As(err, &exitErr) {
-		return 0, false, false
-	}
-	fields := strings.Fields(string(out))
-	if len(fields) < 2 {
-		return 0, true, true
-	}
-	secs, ok := parseEtime(fields[1])
-	if !ok {
-		return 0, false, false
-	}
-	return secs, strings.HasPrefix(fields[0], "Z"), true
-}
+// processAge is a process's age in seconds, gone for a zombie or a pid
+// the system does not list; known is false when that could not be told.
+// ps on Unix (processAgeOS), the process times on Windows.
+var processAge = processAgeOS
 
 // parseEtime reads ps's etime, [[dd-]hh:]mm:ss.
 func parseEtime(s string) (float64, bool) {
@@ -170,7 +155,7 @@ func Detach(statePath, exe string, args []string) (map[string]any, error) {
 	defer out.Close()
 	cmd := exec.Command(exe, args...)
 	cmd.Stdout, cmd.Stderr, cmd.Stdin = out, out, nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	procx.Detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("could not start the runner: %w", err)
 	}

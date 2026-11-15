@@ -10,8 +10,13 @@ import (
 	"testing"
 )
 
-// Home is $HOME.
+// Home is $HOME when it is an absolute path, else the OS's home directory
+// (%USERPROFILE% on Windows, where a native process usually has no HOME and
+// Git Bash may pass one in POSIX form).
 func Home() string {
+	if h := os.Getenv("HOME"); h != "" && filepath.IsAbs(h) {
+		return h
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "/"
@@ -20,7 +25,7 @@ func Home() string {
 }
 
 func expandUser(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~/") {
+	if p == "~" || strings.HasPrefix(p, "~/") || filepath.Separator == '\\' && strings.HasPrefix(p, `~\`) {
 		return Home() + p[1:]
 	}
 	return p
@@ -77,10 +82,10 @@ func TempRoot(p string) string {
 			continue
 		}
 		r := RealPath(root)
-		if r == "/" {
+		if r == "/" || r == filepath.VolumeName(r)+string(filepath.Separator) {
 			continue
 		}
-		if abs == r || strings.HasPrefix(abs, r+"/") {
+		if under(abs, r) {
 			return root
 		}
 	}
@@ -156,4 +161,14 @@ func RealPath(p string) string {
 		return abs
 	}
 	return filepath.Join(RealPath(dir), base)
+}
+
+// under reports whether p is r or lies below it, at a separator boundary.
+// Windows paths compare case-insensitively.
+func under(p, r string) bool {
+	sep := string(filepath.Separator)
+	if sep == `\` {
+		p, r = strings.ToLower(p), strings.ToLower(r)
+	}
+	return p == r || strings.HasPrefix(p, strings.TrimSuffix(r, sep)+sep)
 }

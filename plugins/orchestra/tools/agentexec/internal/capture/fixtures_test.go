@@ -13,12 +13,14 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/executor/pi"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/sandbox"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // The fixtures under testdata are the retired Python implementation's
@@ -35,9 +37,9 @@ func TestMain(m *testing.M) {
 	}
 	goBin, err := exec.LookPath("go")
 	if err != nil {
-		goBin = filepath.Join(runtime.GOROOT(), "bin", "go")
+		goBin = filepath.Join(runtime.GOROOT(), "bin", testenv.Exe("go"))
 	}
-	fakepiBin = filepath.Join(dir, "pi")
+	fakepiBin = filepath.Join(dir, testenv.Exe("pi"))
 	cmd := exec.Command(goBin, "build", "-o", fakepiBin, "./internal/testutil/fakepi")
 	cmd.Dir = "../.."
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -160,6 +162,11 @@ func TestCaptureMatchesPython(t *testing.T) {
 			if err := json.Unmarshal(c.Want, &want); err != nil {
 				t.Fatal(err)
 			}
+			// The recorded runaways died by SIGTERM; on Windows the watchdog's
+			// kill is TerminateProcess, whose exit code killedExit gives.
+			if w, ok := want.(map[string]any); ok && w["status"] == "runaway" && w["exit_code"] == -float64(syscall.SIGTERM) {
+				w["exit_code"] = float64(killedExit(syscall.SIGTERM))
+			}
 			if !reflect.DeepEqual(any(g), want) {
 				t.Errorf("got  %v\nwant %v", g, want)
 			}
@@ -188,6 +195,7 @@ type grantCase struct {
 
 // The grant + resume loop over canned pi transcripts == Python's.
 func TestGrantLoopMatchesPython(t *testing.T) {
+	testenv.SkipOnWindows(t, "the canned transcripts are seatbelt/bwrap denials of POSIX paths; neither backend exists on Windows")
 	raw, err := os.ReadFile("testdata/grants_fixtures.json")
 	if err != nil {
 		t.Fatal(err)

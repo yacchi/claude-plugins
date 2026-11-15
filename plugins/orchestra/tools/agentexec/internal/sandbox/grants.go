@@ -26,7 +26,7 @@ func StateDir() string { return stateDir("") }
 
 func stateDir(home string) string {
 	home = homeOf(home)
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" && strings.HasPrefix(xdg, "/") {
+	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" && filepath.IsAbs(xdg) {
 		return realPath(filepath.Join(xdg, "claude-orchestra"))
 	}
 	return expand(stateDirRel, home)
@@ -100,8 +100,9 @@ func grantFor(path, home string) string {
 		if real == root {
 			candidate = root
 		} else if under(real, root) {
-			relative := real[len(strings.TrimRight(root, "/"))+1:]
-			first, _, found := strings.Cut(relative, "/")
+			sep := string(filepath.Separator)
+			relative := real[len(strings.TrimRight(root, sep))+1:]
+			first, _, found := strings.Cut(relative, sep)
 			if first == "" || first == "." || first == ".." {
 				continue
 			}
@@ -136,7 +137,7 @@ func UserGrantRefusal(path string, denyRead []string) string {
 func userGrantRefusal(path string, denyRead []string, home string) string {
 	home = homeOf(home)
 	real := realPath(path)
-	if real == "/" {
+	if real == "/" || real == filepath.VolumeName(real)+string(filepath.Separator) {
 		return "refusing to grant /"
 	}
 	if real == home {
@@ -235,7 +236,7 @@ func validGrant(v any, home string, denyRead []string) bool {
 		return false
 	}
 	p, ok := mustGet(o, "path").(string)
-	if !ok || !strings.HasPrefix(p, "/") {
+	if !ok || !filepath.IsAbs(p) {
 		return false
 	}
 	src, _ := mustGet(o, "source").(string)

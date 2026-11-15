@@ -1,4 +1,6 @@
 import type { Io } from './io.ts'
+import { isWindowsPath, normalize } from './paths.ts'
+import { onWindows, toolOf } from './platform.ts'
 
 // One way to ask agent-exec anything, and one reader for its `enforcement`
 // block. Every caller fails open: a hook that errors would disrupt every tool
@@ -14,6 +16,8 @@ export type AgentExecResult =
 
 // The plugin's own launcher, handed to the shell in the environment so the
 // argv keeps its shape; no PATH lookup (the PATH copy may be another version).
+// On Windows the shell is Git's sh.exe (lib/platform.ts toolOf; `sh` from
+// PATH when Git's is not found) and the launcher path takes `/`.
 const PROBE = '[ -n "$ORCHESTRA_AGENT_EXEC" ] && [ -x "$ORCHESTRA_AGENT_EXEC" ] || exit 127; exec "$ORCHESTRA_AGENT_EXEC" "$@"'
 
 const pluginRootOf = (io: Io): string => {
@@ -31,9 +35,10 @@ export const agentExec = async (
 ): Promise<AgentExecResult> => {
     try {
         const root = pluginRootOf(io)
-        const r = await io.run(['sh', '-c', PROBE, 'agent-exec', ...args], {
+        const sh = onWindows(io) ? await toolOf(io, 'sh') ?? 'sh' : 'sh'
+        const r = await io.run([sh, '-c', PROBE, 'agent-exec', ...args], {
             timeoutMs,
-            env: { ORCHESTRA_AGENT_EXEC: root === '' ? '' : `${root}/bin/agent-exec` },
+            env: { ORCHESTRA_AGENT_EXEC: root === '' ? '' : `${isWindowsPath(root) ? normalize(root) : root}/bin/agent-exec` },
         })
         if (r.exitCode === 127) {
             return { kind: 'missing' }

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/fsutil"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
 // fixtures is testdata/sbpl/fixtures.json, recorded from the retired Python
@@ -135,6 +136,7 @@ func buildLayout(t *testing.T, root string, ops []layoutOp) {
 }
 
 func TestLearnedStoreBytesMatchPython(t *testing.T) {
+	testenv.SkipOnWindows(t, "the Python-parity fixture byte-compares POSIX path spellings")
 	f := loadFixtures(t)
 	root := fixtureRoot(t)
 	home := filepath.Join(root, "home")

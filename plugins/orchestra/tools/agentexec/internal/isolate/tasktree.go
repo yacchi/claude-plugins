@@ -33,7 +33,7 @@ func TaskTree(dir string) (top string, ok bool) {
 	if len(lines) < 3 {
 		return "", false
 	}
-	gitDir, commonDir, top := lines[0], lines[1], lines[2]
+	gitDir, commonDir, top := lines[0], lines[1], filepath.FromSlash(lines[2])
 	if paths.RealPath(gitDir) == paths.RealPath(commonDir) {
 		return "", false
 	}

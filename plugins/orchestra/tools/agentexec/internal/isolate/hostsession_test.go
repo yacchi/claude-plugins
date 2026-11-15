@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,10 @@ func fakeHost(t *testing.T, body string) (bin, log string) {
 	script := fmt.Sprintf("#!/bin/sh\necho \"$*\" >> %q\n%s\n", log, body)
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		shimExe(t, bin) // no shebang scripts on Windows
+		bin += ".exe"
 	}
 	return bin, log
 }

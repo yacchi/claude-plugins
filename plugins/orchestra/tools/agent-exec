@@ -10,7 +10,9 @@
 # `agent-exec doctor` (run by /orchestra:setup) builds it ahead of time.
 #   AGENT_EXEC_BIN   run this binary instead (no build, no hash)
 #   AGENT_EXEC_GO    the go toolchain to build with; else `go` on PATH; else
-#                    `mise exec go@<agentexec/.go-version> -- go`
+#                    `mise exec go@<agentexec/.go-version> -- go`; on Windows
+#                    (Git Bash) also mise's own install of that version and
+#                    a winget-installed mise that is not on PATH
 
 # Follow symlinks to this file. Portable: plain `readlink` (no -f, which
 # older macOS lacks), resolving relative targets against the link's dir.
@@ -57,8 +59,14 @@ sha256() {
 }
 
 HASH=$(source_hash) || exit 1
+# Git Bash on Windows: the binary needs .exe to be started as a program.
+EXE=
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) EXE=.exe ;;
+esac
+
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/claude-orchestra/agent-exec"
-BIN="$CACHE/$HASH/agent-exec"
+BIN="$CACHE/$HASH/agent-exec$EXE"
 
 if [ -x "$BIN" ]; then
     exec "$BIN" "$@"
@@ -71,7 +79,23 @@ find_go() {
         # (a mise shim with no version configured is on PATH but fails)
         echo go
     elif command -v mise >/dev/null 2>&1; then
-        echo mise
+        echo mise:mise
+    elif [ -n "$EXE" ] && [ -n "$LOCALAPPDATA" ]; then
+        # mise on Windows is usually activated in PowerShell only, so neither
+        # it nor its shims are on Git Bash's PATH.
+        local_app=$(cygpath -u "$LOCALAPPDATA" 2>/dev/null || printf '%s' "$LOCALAPPDATA")
+        mise_data=${MISE_DATA_DIR:-$local_app/mise}
+        installed="$mise_data/installs/go/$(cat "$SRC/.go-version")/bin/go.exe"
+        if [ -x "$installed" ]; then
+            echo "$installed"
+            return
+        fi
+        for m in "$local_app"/Microsoft/WinGet/Links/mise.exe             "$local_app"/Microsoft/WinGet/Packages/jdx.mise_*/mise/bin/mise.exe; do
+            if [ -x "$m" ]; then
+                echo "mise:$m"
+                return
+            fi
+        done
     fi
 }
 
@@ -84,8 +108,8 @@ if [ -z "$GO" ]; then
 fi
 
 go_build() {
-    if [ "$GO" = mise ]; then
-        mise exec "go@$(cat "$SRC/.go-version")" -- go "$@"
+    if [ "${GO#mise:}" != "$GO" ]; then
+        "${GO#mise:}" exec "go@$(cat "$SRC/.go-version")" -- go "$@"
     else
         "$GO" "$@"
     fi
@@ -115,13 +139,13 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
 
 if [ ! -x "$BIN" ]; then
     mkdir -p "$CACHE/$HASH" || exit 1
-    TMP="$CACHE/$HASH/agent-exec.tmp.$$"
-    if ! (cd "$SRC" && go_build build -trimpath -o "$TMP" ./cmd/agent-exec) >&2; then
-        rm -f "$TMP"
+    BUILD_TMP="$CACHE/$HASH/agent-exec.tmp.$$$EXE"
+    if ! (cd "$SRC" && go_build build -trimpath -o "$BUILD_TMP" ./cmd/agent-exec) >&2; then
+        rm -f "$BUILD_TMP"
         echo "agent-exec: building the Go implementation failed (source: $SRC)" >&2
         exit 1
     fi
-    mv -f "$TMP" "$BIN" || exit 1
+    mv -f "$BUILD_TMP" "$BIN" || exit 1
     # Keep the current build and the two most recent others.
     # shellcheck disable=SC2012 # hash-named directories only
     ls -1t "$CACHE" | while read -r entry; do

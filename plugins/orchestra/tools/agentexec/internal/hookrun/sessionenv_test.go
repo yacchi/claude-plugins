@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -119,7 +120,8 @@ func TestSessionEnvWriteMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o644 {
+	// Windows has no POSIX permission bits: a writable file reads as 0666.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o644 {
 		t.Fatalf("mode = %v, want 0644", info.Mode().Perm())
 	}
 }

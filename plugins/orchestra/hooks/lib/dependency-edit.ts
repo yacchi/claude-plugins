@@ -1,5 +1,5 @@
 import { field } from './agents.ts'
-import { join, normalize } from './paths.ts'
+import { isWindowsPath, join, normalize } from './paths.ts'
 
 // A worker must not edit installed dependencies. Editing node_modules is
 // never a deliverable (the diff leaves it out), and with
@@ -33,7 +33,7 @@ export const checkDependencyEdit = (tool: string, input: Readonly<Record<string,
             continue
         }
         const target = normalize(join(cwd || '/', path))
-        if (target.split('/').includes('node_modules')) {
+        if (target.split('/').some(s => s === 'node_modules' || (isWindowsPath(target) && s.toLowerCase() === 'node_modules'))) {
             return reason(target)
         }
     }

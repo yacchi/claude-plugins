@@ -127,7 +127,7 @@ func gitDirs(tree string) (string, string) {
 	}
 	own := realPath(lines[0])
 	common := lines[1]
-	if !strings.HasPrefix(common, "/") {
+	if !filepath.IsAbs(common) {
 		common = filepath.Join(tree, common)
 	}
 	return own, realPath(common)
