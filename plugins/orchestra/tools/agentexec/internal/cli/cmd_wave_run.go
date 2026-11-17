@@ -182,6 +182,12 @@ func waveRunPreflight(out io.Writer, repo, uncommitted string, text bool) error 
 }
 
 func runWaveRun(out, errw io.Writer, o runner.Options, text bool) error {
+	// The project layers (including the untracked .claude/orchestra.local.yaml)
+	// are the ones of --repo's checkout, whatever directory the runner was
+	// started in; the variable pins them for every child it runs.
+	if o.Repo != "" && os.Getenv("ORCHESTRA_CONFIG_ROOT") == "" {
+		os.Setenv("ORCHESTRA_CONFIG_ROOT", config.ProjectBaseAt(o.Repo))
+	}
 	cfg := configOrDefaults()
 	var herdrHost, orcaHost host.Host = herdr.New(cfg), orca.New(cfg)
 	report, code := runner.Run(context.Background(), o, runner.Deps{

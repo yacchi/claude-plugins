@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
 // poisonFull is red when any tracked .txt holds POISON and names a failing
@@ -346,5 +348,23 @@ func TestUnmatchedFailureGoesToCatchAllAndRoundsEndInNeed(t *testing.T) {
 	eqJSON(t, "fixups", fixups, []string{"B/standard", "<nil>/deep"})
 	if conc.together[[2]string{"fix-1", "fix-2"}] {
 		t.Error("the catch-all ran alongside another fix-up")
+	}
+}
+
+// A stop requested while the last package ran is still a stop: the final
+// verification (whole-suite checks nobody can interrupt) must not start.
+func TestStopRequestedDuringTheLastPackageSkipsTheFinalChecks(t *testing.T) {
+	w := newWaveRepo(t)
+	w.verifyMode = "final"
+	w.checks(fullNoPoison)
+	w.plan(pkgDef{id: "A"})
+	ex := newFake(t, map[string][]round{"A": {edit(map[string]string{"a.txt": "a\n"})}})
+	ex.onStart = func(pid string, _ spec) { _ = state.RequestStop(w.statePath, "enough") }
+	rep, code := w.run(ex)
+	eq(t, "exit", code, 5)
+	eq(t, "full runs", len(w.events("full-start")), 0)
+	eqJSON(t, "integrated", rep.Integrated, []string{"A"})
+	if rep.Reason == nil || *rep.Reason != "stop requested" {
+		t.Errorf("reason %v", rep.Reason)
 	}
 }

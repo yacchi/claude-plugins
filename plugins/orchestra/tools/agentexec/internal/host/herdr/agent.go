@@ -327,6 +327,20 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 	if err != nil {
 		return "", host.Need(host.KindError, err.Error())
 	}
+	// Claude asks once per --add-dir directory, before or after the folder-trust
+	// dialog; clear those first, whatever else is on the screen.
+	if host.IsAddDirText(screen) {
+		screen, err = e.acceptAddDirs(ctx, s, name, screen)
+		if err != nil {
+			return "", err
+		}
+		if !host.IsTrustText(screen) {
+			if err := e.awaitInput(ctx, s, name); err != nil {
+				return "", err
+			}
+			return name, nil
+		}
+	}
 	if !host.IsTrustText(screen) {
 		return "", host.Need(host.KindError, "agent not ready:\n"+host.TailText(screen))
 	}
@@ -354,7 +368,7 @@ func (e *Executor) openAgent(ctx context.Context, s *host.Session, fork bool) (s
 		}
 		return "", host.Need(host.KindStalled, "folder-trust dialog did not accept: "+err.Error()+"\n"+tail)
 	}
-	if err := e.awaitInput(ctx, name); err != nil {
+	if err := e.awaitInput(ctx, s, name); err != nil {
 		return "", err
 	}
 	e.emit(s.Pkg, "trust", name, nil)
@@ -376,19 +390,26 @@ func (e *Executor) recordHosted(s *host.Session) {
 
 // awaitInput waits until the trust dialog is gone and Claude's input box
 // is drawn: `agent wait --until idle` can return earlier, and a prompt sent
-// then is swallowed while herdr still reports it ok.
-func (e *Executor) awaitInput(ctx context.Context, name string) error {
+// then is swallowed while herdr still reports it ok. An --add-dir dialog
+// that shows up on the way (its "❯ No, exit" line looks like an input box)
+// is answered by acceptAddDirs.
+func (e *Executor) awaitInput(ctx context.Context, s *host.Session, name string) error {
 	deadline := e.now().Add(e.cfg.Seconds("startup_timeout", 90))
 	for {
 		screen, err := e.screen(ctx, name)
 		if err != nil {
 			screen = ""
 		}
-		if !host.IsTrustText(screen) && host.HasPromptBox(host.SplitLines(screen)) {
+		if host.IsAddDirText(screen) {
+			if screen, err = e.acceptAddDirs(ctx, s, name, screen); err != nil {
+				return err
+			}
+		}
+		if !host.IsTrustText(screen) && !host.IsAddDirText(screen) && host.HasPromptBox(host.SplitLines(screen)) {
 			return host.AsNeedOrNil(e.sleep(ctx, inputSettle))
 		}
 		if !e.now().Before(deadline) {
-			return host.Need(host.KindStalled, "input box never appeared after the folder-trust dialog:\n"+
+			return host.Need(host.KindStalled, "input box never appeared after the startup dialogs:\n"+
 				host.TailText(screen))
 		}
 		if err := e.sleep(ctx, e.pollShort()); err != nil {
@@ -424,6 +445,80 @@ func (e *Executor) record(s *host.Session, workspace, agent string) {
 	if err != nil {
 		e.warnf("could not record the workspace in %s: %s", s.Worktree, err)
 	}
+}
+
+// addDirResend is how long an answered --add-dir dialog may stay on screen
+// before its keys are sent again: a screen read right after the keys can
+// still show the old frame, and keys sent twice would answer the NEXT dialog
+// without its directory being checked.
+const addDirResend = 5 * time.Second
+
+// addDirNeed is nil when the --add-dir dialog for dir may be accepted
+// without a person, else the trust need. The conditions: auto_trust is on
+// and dir is a directory orchestra itself passed (the plan, state and spec
+// dirs, the request's repo root) or inside one. Unlike the folder-trust
+// dialog, accepting it does not depend on the server being sandboxed or on
+// who created the tree: the answer holds for this session only and the
+// directories are orchestra's own.
+func (e *Executor) addDirNeed(s *host.Session, dir, screen string) *host.NeedError {
+	home, _ := e.homeFor(e.sname)
+	where := "open the herdr session " + e.sname + " (herdr home " + home + ") and accept it"
+	switch {
+	case dir == "":
+		return host.Need(host.KindTrust, s.Worktree+" is held by Claude's --add-dir trust dialog, but the "+
+			"directory could not be read from the screen; "+where+":\n"+host.TailText(screen))
+	case !e.cfg.Truthy("auto_trust"):
+		return host.Need(host.KindTrust, dir+" needs Claude's --add-dir trust dialog accepted (auto_trust is off); "+where)
+	case !host.AddDirAllowed(dir, append(s.Strings("add_dirs"), s.Str("repo"))...):
+		return host.Need(host.KindTrust, dir+" needs Claude's --add-dir trust dialog accepted: orchestra did not "+
+			"pass that directory with --add-dir, so auto_trust does not apply; "+where)
+	}
+	return nil
+}
+
+// acceptAddDirs answers the --add-dir trust dialogs on screen, one per
+// directory, and returns the first screen without one. A dialog that may not
+// be accepted is the trust need (naming its directory).
+func (e *Executor) acceptAddDirs(ctx context.Context, s *host.Session, name, screen string) (string, error) {
+	deadline := e.now().Add(e.cfg.Seconds("startup_timeout", 90))
+	sent := map[string]int{}
+	var lastDir string
+	var lastSent time.Time
+	for host.IsAddDirText(screen) {
+		lines := host.SplitLines(screen)
+		dir := host.AddDirPath(lines)
+		if need := e.addDirNeed(s, dir, screen); need != nil {
+			return "", need
+		}
+		if !e.now().Before(deadline) || sent[dir] >= 3 {
+			return "", host.Need(host.KindStalled, "--add-dir trust dialog for "+dir+" did not accept:\n"+
+				host.TailText(screen))
+		}
+		if dir != lastDir || e.now().Sub(lastSent) >= addDirResend {
+			// The default option is "No, exit": move down first, then Enter.
+			keys := []string{"down", "enter"}
+			if host.AddDirYesSelected(lines) {
+				keys = []string{"enter"}
+			}
+			if _, _, err := e.call(ctx, callTimeout, "", append([]string{"agent", "send-keys", name}, keys...)...); err != nil {
+				return "", host.Need(host.KindError, err.Error())
+			}
+			if sent[dir] == 0 {
+				e.emit(s.Pkg, "trust", name, map[string]any{"dir": dir})
+			}
+			sent[dir]++
+			lastDir, lastSent = dir, e.now()
+		}
+		if err := e.sleep(ctx, e.pollShort()); err != nil {
+			return "", host.AsNeed(err)
+		}
+		next, err := e.screen(ctx, name)
+		if err != nil {
+			return "", host.Need(host.KindError, err.Error())
+		}
+		screen = next
+	}
+	return screen, nil
 }
 
 func (e *Executor) closeAgent(s *host.Session) {

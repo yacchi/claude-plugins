@@ -23,7 +23,7 @@ func (e *Executor) Prompt(ctx context.Context, s *host.Session, promptFiles []st
 		if err != nil {
 			screen = nil
 		}
-		if host.IsTrust(screen) || !host.HasPromptBox(screen) {
+		if host.IsTrust(screen) || host.IsAddDir(screen) || !host.HasPromptBox(screen) {
 			e.closeTerminal(s)
 			resumed = false
 		}
