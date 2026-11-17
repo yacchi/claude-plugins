@@ -148,6 +148,9 @@ func Resolve() (*Resolved, error) {
 		if err := checkRemovedDashboard(l.Path, data); err != nil {
 			return nil, err
 		}
+		if err := checkRemovedFanoutKeys(l.Path, data); err != nil {
+			return nil, err
+		}
 		u.add(data)
 		values = DeepMerge(values, data)
 	}

@@ -1,6 +1,6 @@
 import type { EngineInterface, Register } from 'claude-code'
 import { dashboardTurnStart, registerDashboard } from './dashboard/dashboard.ts'
-import { checkChildBudget, checkFanout } from './guards/fanout.ts'
+import { checkChildBudget, checkFanout, noteChildRequest } from './guards/fanout.ts'
 import { checkLand } from './guards/land.ts'
 import { checkLaunch } from './guards/launch.ts'
 import { checkLightClass } from './guards/light-class.ts'
@@ -40,7 +40,7 @@ import { verdictOf } from './router/verdict.ts'
 //
 // The tool.call listener also runs six guards, one line each:
 //   usage:   holds Agent, Task and Workflow calls near the plan's 5-hour limit
-//   fan-out: caps a planner's spawns, and a scout's, checker's or spec writer's tool calls
+//   fan-out: caps a planner's spawns, and a scout's, checker's or spec writer's model requests (counted at turn.step)
 //   resume:  holds SendMessage to an agent whose context is already long
 //   node:    denies a worker's Bash that replaces NODE_OPTIONS or runs a test runner from node -e
 //   process: reports agent-exec's process-watcher kill on a heavy or failed foreground Bash result
@@ -122,6 +122,24 @@ export const register: Register = (on, options) => {
 
         return next(e)
     }).catch(($, e, next) => next(e))
+
+    // One model request of a subagent is one unit of its fan-out budget (the
+    // deny itself is in tool.call). The hook counts before `next` and never
+    // touches the event, the chunks or the result: every request of the
+    // session passes through it, so it must neither rewrite nor throw.
+    on('turn.step', async function* (_$, e, next) {
+        try {
+            if (e.agentId) {
+                noteChildRequest(e.agentId)
+            }
+        } catch {
+            // Counting is best effort.
+        }
+
+        return yield* next(e)
+    }).catch(async function* (_$, e, next) {
+        return yield* next(e)
+    })
 
     // User prompts are counted and checked for an opt-in; the prompt itself
     // passes on unchanged.

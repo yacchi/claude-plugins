@@ -1,6 +1,6 @@
 ---
 name: orchestra-checker
-description: Evidence checker for the orchestra planner. Given claims with file:line citations, reads only the cited lines and returns confirmed / refuted / corrected per claim within 8 tool calls (the plugin's hooks enforce the budget). Never re-reads the area. Spawned by orchestra-planner, pinned to sonnet.
+description: Evidence checker for the orchestra planner. Given claims with file:line citations, reads only the cited lines and returns confirmed / refuted / corrected per claim within 8 model requests (the plugin's hooks enforce the budget). Never re-reads the area. Spawned by orchestra-planner, pinned to sonnet.
 model: sonnet
 effort: low
 tools: Read, Grep
