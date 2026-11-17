@@ -29,11 +29,11 @@
         },
         "enforcement": {
           "fanout": {
-            "checker_calls": 8,
+            "checker_requests": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15,
-            "writer_calls": 40
+            "scout_requests": 15,
+            "writer_requests": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -337,11 +337,11 @@
         },
         "enforcement": {
           "fanout": {
-            "checker_calls": 8,
+            "checker_requests": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15,
-            "writer_calls": 40
+            "scout_requests": 15,
+            "writer_requests": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -645,11 +645,11 @@
         },
         "enforcement": {
           "fanout": {
-            "checker_calls": 8,
+            "checker_requests": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15,
-            "writer_calls": 40
+            "scout_requests": 15,
+            "writer_requests": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -953,11 +953,11 @@
         },
         "enforcement": {
           "fanout": {
-            "checker_calls": 8,
+            "checker_requests": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15,
-            "writer_calls": 40
+            "scout_requests": 15,
+            "writer_requests": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",
@@ -1261,11 +1261,11 @@
         },
         "enforcement": {
           "fanout": {
-            "checker_calls": 8,
+            "checker_requests": 8,
             "children": 6,
             "concurrent": 2,
-            "scout_calls": 15,
-            "writer_calls": 40
+            "scout_requests": 15,
+            "writer_requests": 40
           },
           "light_class": "off",
           "opus_generalist": "nudge",

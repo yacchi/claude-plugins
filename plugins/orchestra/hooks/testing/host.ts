@@ -307,6 +307,9 @@ export const fakeHost = (on: On, options: HostOptions) => {
     })
     on('turn.start', (_$, e) => ({ turnId: e.turnId }))
     on('turn.complete', () => ({ text: '' }))
+    on('turn.step', async function* (_$, e) {
+        return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null } as never
+    })
     on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
     on('session.start', (_$, e) => ({ cwd: e.cwd }))
     on('prompt.submit', (_$, e) => ({ text: e.text, ...(e.context ? { context: e.context } : {}) }))
@@ -393,6 +396,18 @@ export const endSession = async ($: any, sessionId: string, cwd: string, reason 
 
 export const beginTurn = ($: any, turnId: string, agentId?: string): Promise<unknown> =>
     $.turn.start({ text: '', turnId, ...(agentId ? { agentId } : {}) })
+
+// One model request of an agent's loop, as the engine fires `turn.step` before it
+// is sent; the stream is read to its end, as the engine does.
+export const requestStep = async ($: any, agentId: string | undefined, index = 0): Promise<unknown> => {
+    const stream = $.turn.step({ turnId: 't', index, model: 'sonnet', messageCount: 1, ...(agentId ? { agentId } : {}) })
+    let result: IteratorResult<unknown, unknown>
+    do {
+        result = await stream.next()
+    } while (!result.done)
+
+    return result.value
+}
 
 // The main loop's turn; its answer is the text the turn produced.
 export const finishTurn = ($: any, turnId: string, answer: string): Promise<unknown> =>

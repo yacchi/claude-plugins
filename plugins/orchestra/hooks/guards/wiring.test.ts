@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { beginTurn, callTool, fakeHost, freshSession, startAgent } from '../testing/host.ts'
+import { beginTurn, callTool, fakeHost, freshSession, requestStep, startAgent } from '../testing/host.ts'
 
 // The usage, fan-out and resume guards reach their calls through the module's
 // one tool.call listener. One smoke test per guard, through that listener, so
@@ -42,26 +42,43 @@ describe('guard wiring', () => {
         expect(denied.deny).toContain('orchestra: a planner spawns only')
     })
 
-    test('fan-out: a scout is cut off at its tool budget, reads included', async ($, on) => {
+    test('fan-out: a scout is cut off after its 15th request; parallel calls of one request count once', async ($, on) => {
         fakeHost(on, { sessionId: freshSession() })
         startAgent($, 'wiring-scout', 'orchestra:orchestra-scout', '/w')
         const read = { tool: 'Read', file_path: '/w/a.ts' }
         for (let i = 0; i < 15; i++) {
-            expect((await callTool($, 'wiring-scout', read)).deny, `call ${i + 1}`).toBeUndefined()
+            await requestStep($, 'wiring-scout', i)
+            // Three parallel calls out of the same request.
+            for (let j = 0; j < 3; j++) {
+                expect((await callTool($, 'wiring-scout', read)).deny, `request ${i + 1} call ${j + 1}`).toBeUndefined()
+            }
         }
-        expect((await callTool($, 'wiring-scout', read)).deny).toContain('orchestra: tool budget spent')
+        await requestStep($, 'wiring-scout', 15)
+        expect((await callTool($, 'wiring-scout', read)).deny).toContain('orchestra: request budget spent (15 model requests for an orchestra-scout)')
     })
 
-    test('fan-out: a spec writer is cut off at its tool budget, but Write and Edit are never counted', async ($, on) => {
+    test('fan-out: the main loop\'s requests are not counted and the turn.step stream passes unchanged', async ($, on) => {
+        fakeHost(on, { sessionId: freshSession() })
+        startAgent($, 'wiring-scout2', 'orchestra:orchestra-scout', '/w')
+        for (let i = 0; i < 30; i++) {
+            await requestStep($, undefined, i)
+        }
+        expect((await callTool($, 'wiring-scout2', { tool: 'Read', file_path: '/w/a.ts' })).deny).toBeUndefined()
+        expect(await requestStep($, 'wiring-scout2', 0)).toMatchObject({ turnId: 't', index: 0, toolUses: [] })
+    })
+
+    test('fan-out: a spec writer is cut off after its 40th request, but Write and Edit are never denied', async ($, on) => {
         fakeHost(on, { sessionId: freshSession() })
         startAgent($, 'wiring-writer', 'orchestra:orchestra-spec-writer', '/w')
         const read = { tool: 'Read', file_path: '/w/a.ts' }
         const write = { tool: 'Write', file_path: '/w/spec.md', content: 'x' }
         for (let i = 0; i < 40; i++) {
+            await requestStep($, 'wiring-writer', i)
             expect((await callTool($, 'wiring-writer', read)).deny, `read ${i + 1}`).toBeUndefined()
             expect((await callTool($, 'wiring-writer', write)).deny, `write ${i + 1}`).toBeUndefined()
         }
-        expect((await callTool($, 'wiring-writer', read)).deny).toContain('orchestra: tool budget spent (40 tool calls for an orchestra-spec-writer)')
+        await requestStep($, 'wiring-writer', 40)
+        expect((await callTool($, 'wiring-writer', read)).deny).toContain('orchestra: request budget spent (40 model requests for an orchestra-spec-writer)')
         expect((await callTool($, 'wiring-writer', write)).deny).toBeUndefined()
     })
 

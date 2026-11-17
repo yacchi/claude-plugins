@@ -376,7 +376,7 @@ func Defaults() map[string]any {
 			"session_cleanup", "on",
 			"usage_guard", int64(95),
 			"usage_advise", int64(75),
-			"fanout", obj("children", int64(6), "concurrent", int64(2), "scout_calls", int64(15), "checker_calls", int64(8), "writer_calls", int64(40)),
+			"fanout", obj("children", int64(6), "concurrent", int64(2), "scout_requests", int64(15), "checker_requests", int64(8), "writer_requests", int64(40)),
 			"resume_max_tokens", int64(200000),
 			"resume_max_tokens_by_model", obj("haiku", int64(100000)),
 		),

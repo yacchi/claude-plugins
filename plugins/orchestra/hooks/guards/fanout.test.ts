@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { ProcessRunResult } from 'claude-code'
 import type { AgentInfo, Io } from '../lib/io.ts'
-import { checkChildBudget, checkFanout } from './fanout.ts'
+import { checkChildBudget, checkFanout, noteChildRequest } from './fanout.ts'
 
 // A planner may spawn only scouts and checkers, a bounded number of them and
 // a bounded number at once; each child has a tool-call budget. Module maps are
@@ -94,35 +94,62 @@ describe('fanout: spawn count and concurrency', () => {
     })
 })
 
-describe('fanout: child tool budget', () => {
-    test('a scout is allowed 15 calls, then denied, and the denial persists', async () => {
+// The model's requests of a child, as the turn.step hook counts them.
+const requests = (agentId: string, n: number): void => {
+    for (let i = 0; i < n; i++) {
+        noteChildRequest(agentId)
+    }
+}
+
+describe('fanout: child request budget', () => {
+    test('a scout may act on its first 15 requests; from the 16th every call is denied, and the denial persists', async () => {
         const scout = fresh('sc')
         const io = host({ types: { [scout]: SCOUT } })
         const sessionId = fresh('s')
-        for (let i = 0; i < 15; i++) {
-            expect(await checkChildBudget(io, sessionId, scout)).toBeUndefined()
-        }
-        expect(await checkChildBudget(io, sessionId, scout)).toContain('tool budget spent (15 tool calls for an orchestra-scout)')
-        expect(await checkChildBudget(io, sessionId, scout)).toContain('tool budget spent')
+        requests(scout, 15)
+        expect(await checkChildBudget(io, sessionId, scout)).toBeUndefined()
+        expect(await checkChildBudget(io, sessionId, scout)).toBeUndefined()
+        requests(scout, 1)
+        expect(await checkChildBudget(io, sessionId, scout)).toContain('request budget spent (15 model requests for an orchestra-scout)')
+        expect(await checkChildBudget(io, sessionId, scout)).toContain('request budget spent')
     })
 
-    test('a checker is allowed 8 calls and the 9th is denied', async () => {
+    test('parallel tool calls of one request count once', async () => {
+        const scout = fresh('sc')
+        const io = host({ types: { [scout]: SCOUT } })
+        const sessionId = fresh('s')
+        requests(scout, 15)
+        for (let i = 0; i < 30; i++) {
+            expect(await checkChildBudget(io, sessionId, scout, 'Read'), `call ${i + 1}`).toBeUndefined()
+        }
+    })
+
+    test('a checker may act on 8 requests and the 9th is denied', async () => {
         const checker = fresh('ck')
         const io = host({ types: { [checker]: CHECKER } })
         const sessionId = fresh('s')
-        for (let i = 0; i < 8; i++) {
-            expect(await checkChildBudget(io, sessionId, checker)).toBeUndefined()
-        }
-        expect(await checkChildBudget(io, sessionId, checker)).toContain('tool budget spent (8 tool calls for an orchestra-checker)')
+        requests(checker, 8)
+        expect(await checkChildBudget(io, sessionId, checker)).toBeUndefined()
+        requests(checker, 1)
+        expect(await checkChildBudget(io, sessionId, checker)).toContain('request budget spent (8 model requests for an orchestra-checker)')
+    })
+
+    test('a spent spec writer is denied reads but never Write or Edit', async () => {
+        const writer = fresh('sw')
+        const io = host({ types: { [writer]: 'orchestra:orchestra-spec-writer' } })
+        const sessionId = fresh('s')
+        requests(writer, 41)
+        expect(await checkChildBudget(io, sessionId, writer, 'Read')).toContain('request budget spent (40 model requests for an orchestra-spec-writer)')
+        expect(await checkChildBudget(io, sessionId, writer, 'Write')).toBeUndefined()
+        expect(await checkChildBudget(io, sessionId, writer, 'Edit')).toBeUndefined()
     })
 
     test('other child types are unlimited', async () => {
         const other = fresh('gp')
         const io = host({ types: { [other]: 'general-purpose' } })
         const sessionId = fresh('s')
-        for (let i = 0; i < 40; i++) {
-            expect(await checkChildBudget(io, sessionId, other)).toBeUndefined()
-        }
+        requests(other, 40)
+        expect(await checkChildBudget(io, sessionId, other)).toBeUndefined()
     })
 })
 
@@ -144,16 +171,13 @@ describe('fanout: configuration', () => {
         const cfgOff = host({ types, enforcement: { fanout: 'off' } })
         expect(await spawn(cfgOff, 'general-purpose', planner)).toBeUndefined()
         const sessionA = fresh('s')
-        for (let i = 0; i < 20; i++) {
-            expect(await checkChildBudget(cfgOff, sessionA, kid)).toBeUndefined()
-        }
+        requests(kid, 20)
+        expect(await checkChildBudget(cfgOff, sessionA, kid)).toBeUndefined()
 
         const envOff = host({ types, env: { ORCHESTRA_FANOUT_GUARD: 'off' } })
         expect(await spawn(envOff, 'general-purpose', planner)).toBeUndefined()
         const sessionB = fresh('s')
-        for (let i = 0; i < 20; i++) {
-            expect(await checkChildBudget(envOff, sessionB, kid)).toBeUndefined()
-        }
+        expect(await checkChildBudget(envOff, sessionB, kid)).toBeUndefined()
     })
 })
 
@@ -163,19 +187,18 @@ describe('fanout: ORCHESTRA_ENFORCEMENT=off and late registration', () => {
         const scout = fresh('sc')
         const io = host({ types: { [planner]: 'orchestra:orchestra-planner', [scout]: SCOUT }, env: { ORCHESTRA_ENFORCEMENT: 'off' } })
         expect(await spawn(io, 'general-purpose', planner)).toBeUndefined()
-        for (let i = 0; i < 20; i++) {
-            expect(await checkChildBudget(io, fresh('s'), scout)).toBeUndefined()
-        }
+        requests(scout, 20)
+        expect(await checkChildBudget(io, fresh('s'), scout)).toBeUndefined()
     })
 
     test('a child whose type is registered after its first call is still budgeted', async () => {
         const scout = fresh('sc')
         const types: Record<string, string> = {}
-        const io = host({ types, enforcement: { fanout: { scout_calls: 1 } } })
+        const io = host({ types, enforcement: { fanout: { scout_requests: 1 } } })
         const sessionId = fresh('s')
+        requests(scout, 2)
         expect(await checkChildBudget(io, sessionId, scout)).toBeUndefined()
         types[scout] = SCOUT
-        expect(await checkChildBudget(io, sessionId, scout)).toBeUndefined()
-        expect(await checkChildBudget(io, sessionId, scout)).toContain('tool budget spent')
+        expect(await checkChildBudget(io, sessionId, scout)).toContain('request budget spent')
     })
 })

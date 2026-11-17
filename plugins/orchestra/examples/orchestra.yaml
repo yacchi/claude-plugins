@@ -500,9 +500,9 @@ enforcement:
   fanout:
     children: 6
     concurrent: 2
-    scout_calls: 15
-    checker_calls: 8
-    writer_calls: 40     # tool calls per orchestra-spec-writer; Write/Edit never counted
+    scout_requests: 15      # model requests per orchestra-scout
+    checker_requests: 8     # model requests per orchestra-checker
+    writer_requests: 40     # model requests per orchestra-spec-writer; Write/Edit never denied
   # Never resume (SendMessage) a worker whose last context is at least floor(0.9 x cap) tokens;
   # the cap is the longest case-insensitive substring match in resume_max_tokens_by_model,
   # else resume_max_tokens. Haiku 5.5 prices above 100k input, and cache reads count against

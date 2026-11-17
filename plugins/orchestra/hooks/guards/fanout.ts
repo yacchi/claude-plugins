@@ -14,28 +14,33 @@ import { enforcementOf, isOff, loadEnforcement } from '../lib/config.ts'
 // spawns in stage 3 of planning, not a planner. A writer's Write and Edit are
 // never counted or denied, so a spent writer can still save its spec.
 //
+// The child budget counts model requests, not tool calls: cost is roughly
+// requests x context, and parallel tool calls of one request (or the many inner
+// calls of one Code Mode request) cost one request. The `turn.step` hook counts
+// (noteChildRequest); `tool.call` denies once the count passes the budget.
+//
 // Three caps, all configured under enforcement.fanout:
 //   children    spawns per planner (total)
 //   concurrent  live children (pending, running, waiting) per planner
-//   scout_calls / checker_calls / writer_calls  tool calls per child
+//   scout_requests / checker_requests / writer_requests  model requests per child
 // `fanout: off`, ORCHESTRA_FANOUT_GUARD=off or ORCHESTRA_ENFORCEMENT=off disables both checks. There is
 // no per-call escape: a planner must not lift its own cap. Fails open.
 
 export type FanoutConfig = {
     children: number,
     concurrent: number,
-    scout_calls: number,
-    checker_calls: number,
-    writer_calls: number,
+    scout_requests: number,
+    checker_requests: number,
+    writer_requests: number,
 }
 
-const DEFAULTS: FanoutConfig = { children: 6, concurrent: 2, scout_calls: 15, checker_calls: 8, writer_calls: 40 }
+const DEFAULTS: FanoutConfig = { children: 6, concurrent: 2, scout_requests: 15, checker_requests: 8, writer_requests: 40 }
 
 const LIVE = new Set(['pending', 'running', 'waiting'])
 
 const spawned = new Map<string, number>()
 const childTypes = new Map<string, string>()
-const childCalls = new Map<string, number>()
+const childRequests = new Map<string, number>()
 
 const block = (v: unknown): Record<string, unknown> =>
     typeof v === 'object' && v !== null && !Array.isArray(v) ? v as Record<string, unknown> : {}
@@ -60,9 +65,9 @@ const fanoutConfig = async (io: Io, sessionId: string): Promise<FanoutConfig | u
     return {
         children: positive(f.children, DEFAULTS.children),
         concurrent: positive(f.concurrent, DEFAULTS.concurrent),
-        scout_calls: positive(f.scout_calls, DEFAULTS.scout_calls),
-        checker_calls: positive(f.checker_calls, DEFAULTS.checker_calls),
-        writer_calls: positive(f.writer_calls, DEFAULTS.writer_calls),
+        scout_requests: positive(f.scout_requests, DEFAULTS.scout_requests),
+        checker_requests: positive(f.checker_requests, DEFAULTS.checker_requests),
+        writer_requests: positive(f.writer_requests, DEFAULTS.writer_requests),
     }
 }
 
@@ -112,8 +117,19 @@ export const checkFanout = async (
     }
 }
 
-// Caps the tool calls of a scout, checker or spec writer child. Once its budget
-// is spent, every later call is denied too, so the child ends instead of retrying.
+// Counts one model request of a subagent (called from the `turn.step` hook).
+// Never throws; the count of a child that is not budgeted is simply unused.
+export const noteChildRequest = (agentId: string): void => {
+    try {
+        childRequests.set(agentId, (childRequests.get(agentId) ?? 0) + 1)
+    } catch {
+        // Counting must never disturb a request.
+    }
+}
+
+// Caps the model requests of a scout, checker or spec writer child. The tool
+// calls coming out of request N are allowed while N <= budget; from request
+// budget+1 on every call is denied, so the child ends instead of retrying.
 export const checkChildBudget = async (
     io: Io,
     sessionId: string,
@@ -145,20 +161,18 @@ export const checkChildBudget = async (
         if (!cfg) {
             return undefined
         }
-        const budget = role === 'scout' ? cfg.scout_calls : role === 'checker' ? cfg.checker_calls : cfg.writer_calls
-        const used = childCalls.get(agentId) ?? 0
-        if (used < budget) {
-            childCalls.set(agentId, used + 1)
-
+        const budget = role === 'scout' ? cfg.scout_requests : role === 'checker' ? cfg.checker_requests : cfg.writer_requests
+        const used = childRequests.get(agentId) ?? 0
+        if (used <= budget) {
             return undefined
         }
 
         if (role === 'writer') {
-            return `orchestra: tool budget spent (${budget} tool calls for an orchestra-spec-writer). `
+            return `orchestra: request budget spent (${budget} model requests for an orchestra-spec-writer). `
                 + 'Write the spec now with what you have (Write and Edit still work), then return.'
         }
 
-        return `orchestra: tool budget spent (${budget} tool calls for an orchestra-${role}). `
+        return `orchestra: request budget spent (${budget} model requests for an orchestra-${role}). `
             + 'Stop now and answer with what you have: cite file:line for every claim and list what is left unchecked.'
     } catch {
         return undefined

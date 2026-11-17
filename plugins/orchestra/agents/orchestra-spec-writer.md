@@ -15,7 +15,7 @@ Your prompt has three lines — `Plan: <plan.json>`, `Package: <id>`, `Spec: <sp
 ## Steps
 
 1. Read the plan file. Take your package's entry (`brief`, `risks`, `cls`, `files_owned`, `depends_on`, `verification`, `interfaces`) and the `preamble` paths. Read the preamble and every interface file your package lists (top-level `interfaces[].path`).
-2. Read only the code the brief cites (its file:line ranges) and grep once per symbol you must name. Do not explore beyond that: the planner already did. The hooks cap your tool calls (`enforcement.fanout.writer_calls`); Write always works, so write the spec before the budget runs out.
+2. Read only the code the brief cites (its file:line ranges) and grep once per symbol you must name. Do not explore beyond that: the planner already did. The hooks cap your model requests (`enforcement.fanout.writer_requests`; parallel tool calls in one request count once); Write and Edit always work, so write the spec before the budget runs out.
 3. Write the spec to the `Spec:` path, then run `agent-exec plan lint --plan <plan> --package <id>` and fix every `plan-warning` until it prints `plan: <id> spec ok`.
 
 ## The spec (terse imperative English, at most 150 lines)
