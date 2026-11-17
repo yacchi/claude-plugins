@@ -15,6 +15,7 @@ import (
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/integrate"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/trace"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/plan"
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/wave/state"
 )
 
 // clsBump is the class a fix-up for a package's failure gets.
@@ -377,6 +378,13 @@ func (r *runner) makeFixups(failures []failure, round int) []string {
 // to converge_rounds times, then hand the rest over as a need.
 func (r *runner) converge() {
 	for !r.stopped() && !r.isUnavailable() {
+		// The STOP file is only noticed when the scheduler has something to
+		// start; a run whose last package finished after it was written got
+		// here without noticing, and the full checks cannot be interrupted.
+		if state.StopRequested(r.statePath) {
+			r.stop("stop requested")
+			return
+		}
 		failures, ok := r.finalChecks()
 		if !ok {
 			return
