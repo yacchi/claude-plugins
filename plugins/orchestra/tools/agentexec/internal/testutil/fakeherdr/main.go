@@ -29,7 +29,9 @@
 // close` and `server stop` drop them.
 //
 // orca scenario keys: status_ok (default true), trust (the folder-trust
-// dialog shows first), never_ready, prompts: {pkg: [{files: {rel: body},
+// dialog shows first), add_dirs ([]string: one --add-dir trust dialog per
+// directory shows next, "No, exit" preselected),
+// never_ready, prompts: {pkg: [{files: {rel: body},
 // result: {...}, after_waits: n, dialog: bool}]}. Worktrees are real `git
 // worktree add`s under $FAKEHERDR_DIR/workspaces.
 package main

@@ -351,3 +351,77 @@ func TestSortedDirsDropsNested(t *testing.T) {
 		t.Errorf("relative dir not made absolute: %q", rel)
 	}
 }
+
+// The screen of a pane whose claude is held by the --add-dir dialog, with
+// the shell noise printed before it.
+var addDirScreen = []string{
+	"zsh: locking failed for ~/.zsh_history: Resource temporarily unavailable",
+	"Warning: Ignoring extra certs from `/etc/ssl/cert.pem`, load failed: no such file",
+	"",
+	" Adding a new directory:",
+	" /Users/u/.local/state/claude-orchestra/plans/hooks-view",
+	"",
+	" This session hasn't worked here before. Is this a directory you created or one you trust?",
+	" Claude Code'll be able to read, edit, and execute files here. Your answer holds for this session.",
+	"",
+	" ❯ No, exit",
+	"   Yes, add it",
+	"",
+	" Enter to confirm · Esc to cancel",
+}
+
+func TestAddDirDialogIsRecognizedAndItsDirectoryRead(t *testing.T) {
+	text := strings.Join(addDirScreen, "\n")
+	if !IsAddDir(addDirScreen) || !IsAddDirText(text) || IsTrust(addDirScreen) || IsTrustText(text) {
+		t.Fatal("classification")
+	}
+	if got := AddDirPath(addDirScreen); got != "/Users/u/.local/state/claude-orchestra/plans/hooks-view" {
+		t.Errorf("path %q", got)
+	}
+	if AddDirYesSelected(addDirScreen) || !AddDirYesSelected([]string{" ❯ Yes, add it"}) {
+		t.Error("selection")
+	}
+	// framed, wrapped over two lines, no blank line before the prose
+	framed := []string{"╭─ Adding a new directory: ─╮", "│ /very/long/pa │", "│ th/to/dir │", "│ This session hasn't worked here before. │"}
+	if got := AddDirPath(framed); got != "/very/long/path/to/dir" {
+		t.Errorf("framed %q", got)
+	}
+	if AddDirPath([]string{"Adding a new directory:", "", "Is this a directory you trust?"}) != "" || AddDirPath([]string{"❯ "}) != "" {
+		t.Error("no path")
+	}
+	if IsAddDir([]string{"❯ ", "Claude Code"}) {
+		t.Error("prompt box")
+	}
+	// Claude Code on Windows prints a drive path
+	for _, dir := range []string{`C:\Users\u\AppData\Local\claude-orchestra\plans\p`, "d:/repo/sub"} {
+		if got := AddDirPath([]string{"Adding a new directory:", dir, "", "This session hasn't worked here before."}); got != dir {
+			t.Errorf("drive path %q, want %q", got, dir)
+		}
+	}
+	if AddDirPath([]string{"Adding a new directory:", "C:relative", ""}) != "" {
+		t.Error("a drive-relative path is not a path")
+	}
+}
+
+func TestAddDirAllowedOnlyForDirsOrchestraPassed(t *testing.T) {
+	passed := []string{"/state/plans/p", "/repo"}
+	for dir, want := range map[string]bool{
+		"/state/plans/p": true, "/state/plans/p/specs": true, "/repo": true, "/repo/.claude/worktrees/x": true,
+		"/state/plans/p2": false, "/state": false, "/repo2": false, "/": false, "": false, "relative/dir": false,
+	} {
+		if got := AddDirAllowed(dir, passed...); got != want {
+			t.Errorf("%q = %v, want %v", dir, got, want)
+		}
+	}
+	if AddDirAllowed("/repo", "", "relative") {
+		t.Error("relative and empty entries allow nothing")
+	}
+
+	// Windows folds case: the dialog may print the folder in another case
+	was := addDirFoldCase
+	t.Cleanup(func() { addDirFoldCase = was })
+	addDirFoldCase = true
+	if !AddDirAllowed("/Repo/Sub", "/repo") || AddDirAllowed("/Repo2", "/repo") {
+		t.Error("case folding")
+	}
+}

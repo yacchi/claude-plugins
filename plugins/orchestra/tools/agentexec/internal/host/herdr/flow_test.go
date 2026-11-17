@@ -509,3 +509,104 @@ func TestStartClosesALeftoverAgentOfTheSameName(t *testing.T) {
 		t.Errorf("leftover workspace w-old not closed: %v", e.callsOf("workspace close"))
 	}
 }
+
+// --- --add-dir trust dialog -------------------------------------------------------
+
+// addDirScreenFor is the pane text of a claude held by the --add-dir dialog
+// for dir, behind the shell noise a pane prints first.
+func addDirScreenFor(dir string) string {
+	return strings.Join([]string{
+		"zsh: locking failed for ~/.zsh_history: Resource temporarily unavailable",
+		"Warning: Ignoring extra certs from `/etc/ssl/cert.pem`, load failed: no such file",
+		"",
+		" Adding a new directory:",
+		" " + dir,
+		"",
+		" This session hasn't worked here before. Is this a directory you created or one you trust?",
+		"",
+		" ❯ No, exit",
+		"   Yes, add it",
+		"",
+		" Enter to confirm · Esc to cancel",
+	}, "\n")
+}
+
+func (e *env) startWithDirs(x *Executor, dirs ...string) (*host.Session, error) {
+	return x.Start(context.Background(), "a", e.repo, "main", "standard", "opus", "run-1", e.state, dirs)
+}
+
+func TestAddDirDialogIsAcceptedForDirsOrchestraPassed(t *testing.T) {
+	e := newEnv(t)
+	plan := filepath.Join(e.state, "plans", "p")
+	// the first read after the keys still shows the old frame: no second send
+	e.scenario(map[string]any{"not_ready": true, "screen": addDirScreenFor(plan),
+		"after_keys": []any{addDirScreenFor(plan), "", "❯ "}}, true)
+	x := e.executor("") // not sandboxed: the add-dir dialog does not depend on it
+	if _, err := e.startWithDirs(x, plan, e.repo); err != nil {
+		t.Fatal(err)
+	}
+	keys := e.callsOf("agent send-keys")
+	if len(keys) != 1 || !reflect.DeepEqual(keys[0].Argv[2:], []string{"agent", "send-keys", "p-a", "down", "enter"}) {
+		t.Fatalf("%v", keys)
+	}
+	trusted := false
+	for _, ev := range e.events {
+		trusted = trusted || (ev["action"] == "trust" && ev["dir"] == plan)
+	}
+	if !trusted {
+		t.Errorf("events %v", e.events)
+	}
+}
+
+func TestAddDirDialogsInARowAreEachCheckedAndAccepted(t *testing.T) {
+	e := newEnv(t)
+	plan := filepath.Join(e.state, "plans", "p")
+	e.scenario(map[string]any{"not_ready": true, "screen": addDirScreenFor(plan),
+		"after_keys": []any{addDirScreenFor(e.repo), "", "❯ "}}, true)
+	if _, err := e.startWithDirs(e.executor(""), plan, e.repo); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.count("agent send-keys"); n != 2 {
+		t.Errorf("send-keys %d", n)
+	}
+	// a dialog for a directory orchestra did not pass is never answered
+	e = newEnv(t)
+	e.scenario(map[string]any{"not_ready": true, "screen": addDirScreenFor(plan),
+		"after_keys": []any{addDirScreenFor("/etc/other"), "", "❯ "}}, true)
+	_, err := e.startWithDirs(e.executor(""), plan)
+	if n := needOf(t, err); n.Kind != host.KindTrust || !strings.Contains(n.Detail, "/etc/other") || e.count("agent send-keys") != 1 {
+		t.Errorf("%+v keys %d", n, e.count("agent send-keys"))
+	}
+}
+
+func TestAddDirDialogIsATrustNeedNamingTheDirectoryWhenNotAccepted(t *testing.T) {
+	for _, c := range []struct{ label, cfg, dir, want string }{
+		{"auto_trust off", `{"herdr": {"auto_trust": false}}`, "", "auto_trust is off"},
+		{"not passed by orchestra", ``, "/etc/other", "did not pass that directory"},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			e := newEnv(t)
+			plan := filepath.Join(e.state, "plans", "p")
+			dir := c.dir
+			if dir == "" {
+				dir = plan
+			}
+			e.scenario(map[string]any{"not_ready": true, "screen": addDirScreenFor(dir)}, true)
+			_, err := e.startWithDirs(e.executor(c.cfg), plan)
+			n := needOf(t, err)
+			if n.Kind != host.KindTrust || !strings.Contains(n.Detail, dir) || !strings.Contains(n.Detail, c.want) ||
+				e.has("agent send-keys") {
+				t.Errorf("%+v", n)
+			}
+		})
+	}
+}
+
+func TestAnUnrelatedScreenIsStillAgentNotReady(t *testing.T) {
+	e := newEnv(t)
+	e.scenario(map[string]any{"not_ready": true, "screen": "Loading plugins..."}, true)
+	_, err := e.start(e.executor(""), "a")
+	if n := needOf(t, err); n.Kind != host.KindError || !strings.Contains(n.Detail, "agent not ready") {
+		t.Error(n)
+	}
+}

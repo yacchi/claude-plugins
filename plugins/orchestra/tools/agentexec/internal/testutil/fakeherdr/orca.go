@@ -25,6 +25,25 @@ var orcaTrust = []string{
 	" Enter to confirm · Esc to cancel",
 }
 
+// orcaAddDir is Claude Code's --add-dir trust dialog for dir; the shell
+// noise above it is what a pane prints before claude starts.
+func orcaAddDir(dir string, yes bool) []string {
+	no, ok := "❯ No, exit", "  Yes, add it"
+	if yes {
+		no, ok = "  No, exit", "❯ Yes, add it"
+	}
+	return []string{
+		"zsh: locking failed for ~/.zsh_history: Resource temporarily unavailable",
+		"Warning: Ignoring extra certs from `/etc/ssl/cert.pem`, load failed",
+		" Adding a new directory:",
+		" " + dir,
+		" This session hasn't worked here before. Is this a directory you created or one you trust?",
+		" " + no,
+		" " + ok,
+		" Enter to confirm · Esc to cancel",
+	}
+}
+
 var orcaReady = []string{"Claude Code", "", "❯ "}
 
 var writeRE = regexp.MustCompile(`write (\S+) containing JSON`)
@@ -105,7 +124,7 @@ func (c *call) orca(root string) int {
 		base := filepath.Base(path)
 		terminals[handle] = map[string]any{
 			"worktree": path, "command": command, "closed": false,
-			"trusted": !truthy(sc["trust"]), "pending": nil,
+			"trusted": !truthy(sc["trust"]), "pending": nil, "add_dirs": sc["add_dirs"],
 			"pkg": base[strings.LastIndex(base, "-")+1:],
 		}
 		return c.orcaOut(map[string]any{"terminal": map[string]any{"handle": handle}})
@@ -133,6 +152,8 @@ func (c *call) orca(root string) int {
 				}
 				screen = append(screen, line)
 			}
+		case len(strList(term["add_dirs"])) > 0:
+			screen = orcaAddDir(str(strList(term["add_dirs"])[0]), term["selection"] == 1.0)
 		case truthy(sc["never_ready"]):
 			screen = []string{"Starting Claude Code..."}
 		case pending != nil && truthy(pending["dialog"]):
@@ -167,6 +188,19 @@ func (c *call) orca(root string) int {
 					term["exited"] = true
 				} else {
 					term["trusted"] = true
+				}
+			} else if strings.HasPrefix(text, "\x1b[B") {
+				term["selection"] = 1.0
+			}
+			return c.orcaOut(map[string]any{"send": map[string]any{}})
+		}
+		if dirs := strList(term["add_dirs"]); len(dirs) > 0 && !truthy(term["exited"]) {
+			if has(args, "--enter") {
+				if strings.HasPrefix(text, "\x1b[B") || term["selection"] != 1.0 {
+					term["exited"] = true
+				} else {
+					term["add_dirs"] = dirs[1:]
+					term["selection"] = 0.0
 				}
 			} else if strings.HasPrefix(text, "\x1b[B") {
 				term["selection"] = 1.0

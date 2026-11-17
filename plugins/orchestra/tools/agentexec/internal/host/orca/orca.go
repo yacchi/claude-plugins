@@ -48,6 +48,7 @@ const RegistryName = "orca-sessions.json"
 const (
 	down            = "\x1b[B"
 	trustKeyLimit   = 6
+	addDirKeyLimit  = 24               // two sends per dialog, one dialog per --add-dir directory
 	waitChunk       = 60 * time.Second // one `terminal wait` call
 	sendWaitSubmit  = 30
 	statusTimeout   = 15 * time.Second
@@ -424,13 +425,38 @@ func (e *Executor) openTerminal(ctx context.Context, s *host.Session) (string, e
 
 	startup := e.cfg.Seconds("startup_timeout", 90)
 	deadline := e.Clock.Now().Add(startup)
-	trustKeys := 0
+	trustKeys, addDirKeys := 0, 0
+	addDirSeen := map[string]bool{}
 	for {
 		screen, err := e.screen(ctx, handle)
 		if err != nil {
 			return "", host.Need(host.KindError, err.Error())
 		}
-		if host.IsTrust(screen) {
+		if host.IsAddDir(screen) {
+			// "❯ No, exit" would pass for the prompt box below, so this
+			// dialog is answered (or reported) first.
+			if need := e.addDirNeed(s, screen); need != nil {
+				return "", need
+			}
+			dir := host.AddDirPath(screen)
+			if addDirKeys >= addDirKeyLimit {
+				return "", host.Need(host.KindStalled, "--add-dir trust dialog for "+dir+" did not accept:\n"+host.TailLines(screen))
+			}
+			// Same two sends as the folder-trust dialog: Enter only once
+			// "Yes, add it" is selected.
+			keys := []string{"--text", down}
+			if host.AddDirYesSelected(screen) {
+				keys = []string{"--enter"}
+			}
+			if _, err := e.call(ctx, callTimeout, append([]string{"terminal", "send", "--terminal", handle}, keys...)...); err != nil {
+				return "", host.Need(host.KindError, err.Error())
+			}
+			if !addDirSeen[dir] {
+				addDirSeen[dir] = true
+				e.emit(s.Pkg, "trust", handle, map[string]any{"dir": dir})
+			}
+			addDirKeys++
+		} else if host.IsTrust(screen) {
 			if !e.cfg.Truthy("auto_trust") {
 				return "", host.Need(host.KindTrust, s.Worktree+" needs the folder-trust dialog accepted once; "+
 					"open it in Orca or trust ~/orca/workspaces")
@@ -475,6 +501,28 @@ func (e *Executor) record(tree, handle string) {
 	if err := isolate.WriteHostSession(tree, hostref.Ref{Host: hostref.Orca, Binary: bin, Terminal: handle}); err != nil {
 		e.warnf("could not record the terminal in %s: %s", tree, err)
 	}
+}
+
+// addDirNeed is nil when the --add-dir trust dialog on screen may be
+// accepted without a person, else the trust need naming its directory. The
+// conditions: auto_trust is on and the directory is one orchestra itself
+// passed with --add-dir (the plan, state and spec dirs, the request's repo
+// root) or inside one. The answer holds for this session only.
+func (e *Executor) addDirNeed(s *host.Session, screen []string) *host.NeedError {
+	dir := host.AddDirPath(screen)
+	switch {
+	case dir == "":
+		return host.Need(host.KindTrust, s.Worktree+" is held by Claude's --add-dir trust dialog, but the directory "+
+			"could not be read from the screen; accept it in Orca:\n"+host.TailLines(screen))
+	case !e.cfg.Truthy("auto_trust"):
+		return host.Need(host.KindTrust, dir+" needs Claude's --add-dir trust dialog accepted (auto_trust is off); "+
+			"open the terminal in Orca (worktree "+s.Worktree+") and accept it, or set orca.auto_trust")
+	case !host.AddDirAllowed(dir, append(s.Strings("add_dirs"), s.Str("repo"))...):
+		return host.Need(host.KindTrust, dir+" needs Claude's --add-dir trust dialog accepted: orchestra did not "+
+			"pass that directory with --add-dir, so auto_trust does not apply; open the terminal in Orca "+
+			"(worktree "+s.Worktree+") and accept it")
+	}
+	return nil
 }
 
 func (e *Executor) closeTerminal(s *host.Session) {

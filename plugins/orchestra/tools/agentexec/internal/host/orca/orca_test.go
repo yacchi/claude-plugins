@@ -617,3 +617,46 @@ func TestCommandCarriesTheMiseTrustOfItsTree(t *testing.T) {
 		t.Errorf("%q lacks %q", cmd, want)
 	}
 }
+
+// The --add-dir dialog's "❯ No, exit" line looks like the prompt box, so a
+// session held by it must not count as started.
+func TestAddDirDialogIsAnsweredForOrchestrasOwnDirsWithAutoTrust(t *testing.T) {
+	e := newEnv(t, nil)
+	plan := filepath.Join(e.state, "plans", "p")
+	e.scenario(map[string]any{"add_dirs": []any{plan, e.repo}})
+	s, err := e.start(e.executor(`{"orca": {"auto_trust": true}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sends := e.callsOf("terminal send")
+	if len(sends) != 4 || opt(sends[0], "--text") != down || !contains(sends[1], "--enter") ||
+		opt(sends[2], "--text") != down || !contains(sends[3], "--enter") {
+		t.Errorf("sends %q", sends)
+	}
+	if s.Terminal == "" || len(e.events) == 0 || e.events[0]["action"] != "trust" || e.events[0]["dir"] != plan {
+		t.Errorf("events %v", e.events)
+	}
+}
+
+func TestAddDirDialogIsATrustNeedNamingTheDirectory(t *testing.T) {
+	plan := "/plans/p"
+	for _, c := range []struct{ label, cfg, dir, want string }{
+		{"auto_trust off", `{}`, "", "auto_trust is off"},
+		{"not passed by orchestra", `{"orca": {"auto_trust": true}}`, "/somewhere/else", "did not pass that directory"},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			e := newEnv(t, nil)
+			dir := c.dir
+			if dir == "" {
+				dir = filepath.Join(e.state, plan)
+			}
+			e.scenario(map[string]any{"add_dirs": []any{dir}})
+			_, err := e.start(e.executor(c.cfg))
+			n := needOf(t, err)
+			if n.Kind != host.KindTrust || !strings.Contains(n.Detail, dir) || !strings.Contains(n.Detail, c.want) ||
+				len(e.callsOf("terminal send")) != 0 {
+				t.Errorf("%+v sends %q", n, e.callsOf("terminal send"))
+			}
+		})
+	}
+}

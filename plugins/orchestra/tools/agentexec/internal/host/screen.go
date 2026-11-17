@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 	"unicode"
@@ -46,6 +47,136 @@ func IsTrustText(text string) bool {
 		}
 	}
 	return false
+}
+
+// AddDirMarker is the title of Claude Code's --add-dir trust dialog
+// ("Adding a new directory:"). Unlike the folder-trust dialog it is asked
+// per --add-dir directory, in every session, and its answer holds for that
+// session only; the directory is on the lines after the title.
+const AddDirMarker = "Adding a new directory"
+
+var (
+	addDirYesRE = regexp.MustCompile(`^\s*❯\s*(?:\d+\.\s*)?Yes, add it`)
+	// boxChars are the border glyphs a framed dialog puts around its lines.
+	boxChars = "│┃|╭╮╰╯─━┌┐└┘ \t"
+)
+
+// IsAddDirText reports the --add-dir trust dialog in a screen's text. The
+// title is matched anywhere on a line, so shell noise printed before Claude
+// started (zsh history locks, certificate warnings) cannot hide it.
+func IsAddDirText(text string) bool { return strings.Contains(text, AddDirMarker) }
+
+// IsAddDir reports the --add-dir trust dialog in screen lines.
+func IsAddDir(screen []string) bool { return IsAddDirText(strings.Join(screen, "\n")) }
+
+// AddDirYesSelected reports the add-dir dialog's cursor on "Yes, add it".
+func AddDirYesSelected(screen []string) bool {
+	for _, line := range screen {
+		if addDirYesRE.MatchString(strings.Trim(line, boxChars)) || addDirYesRE.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+// AddDirPath is the directory the --add-dir dialog asks about: the text
+// after the title, up to the first blank line or the dialog's prose. A path
+// the terminal wrapped over several lines is joined back; "~" is expanded.
+// "" when the screen has no dialog or no path under the title.
+func AddDirPath(screen []string) string {
+	start := -1
+	for i, line := range screen {
+		if strings.Contains(line, AddDirMarker) {
+			start = i // the last one: older dialogs may still be scrolled up
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	var path strings.Builder
+	for _, line := range screen[start+1:] {
+		text := strings.Trim(line, boxChars)
+		if text == "" {
+			if path.Len() > 0 {
+				break
+			}
+			continue
+		}
+		// the path is one unbroken token; prose and options are not
+		if strings.ContainsAny(text, " \t") || (path.Len() == 0 && !startsPath(text)) {
+			break
+		}
+		path.WriteString(text)
+	}
+	p := path.String()
+	if p == "~" || strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, strings.TrimPrefix(p, "~"))
+		}
+	}
+	return p
+}
+
+// startsPath reports a line that can open the dialog's path: a POSIX path,
+// a "~" path or, as Claude Code prints it on Windows, a drive path ("C:\…",
+// "C:/…").
+func startsPath(text string) bool {
+	if strings.HasPrefix(text, "/") || strings.HasPrefix(text, "~") {
+		return true
+	}
+	if len(text) < 3 || text[1] != ':' || (text[2] != '\\' && text[2] != '/') {
+		return false
+	}
+	drive := text[0] | 0x20 // lower case
+	return drive >= 'a' && drive <= 'z'
+}
+
+// AddDirAllowed reports whether dir is one of the directories orchestra
+// itself passed with --add-dir (or inside one): the plan, state and spec
+// directories and the request's repo root. Only those may be accepted
+// without a person.
+func AddDirAllowed(dir string, passed ...string) bool {
+	if dir == "" || !filepath.IsAbs(dir) {
+		return false
+	}
+	norm := func(p string) []string {
+		p = filepath.Clean(p)
+		out := []string{p}
+		if real, err := filepath.EvalSymlinks(p); err == nil && real != p {
+			out = append(out, real)
+		}
+		if addDirFoldCase {
+			// Windows paths are case-insensitive, and the dialog may print the
+			// drive letter or a folder in another case than orchestra passed.
+			for i := range out {
+				out[i] = strings.ToLower(out[i])
+			}
+		}
+		return out
+	}
+	for _, d := range absDirs(passed) {
+		for _, a := range norm(d) {
+			for _, b := range norm(dir) {
+				if b == a || strings.HasPrefix(b, strings.TrimSuffix(a, string(filepath.Separator))+string(filepath.Separator)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// addDirFoldCase compares --add-dir paths case-insensitively (Windows).
+var addDirFoldCase = runtime.GOOS == "windows"
+
+func absDirs(dirs []string) []string {
+	out := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		if d != "" && filepath.IsAbs(d) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // IsTrust reports the folder-trust dialog in screen lines (Orca).
