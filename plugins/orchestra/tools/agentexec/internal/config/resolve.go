@@ -38,11 +38,29 @@ var projectFiles = []string{
 	"orchestra.yaml", "orchestra.yml", "orchestra.local.yaml", "orchestra.local.yml",
 }
 
+// ManagedWorktreeMarkers are the files orchestra keeps in the git dir of a
+// worktree it created or adopted (the on-disk contract of isolate/meta.go,
+// pinned by a test there). They tell an orchestra worktree from a linked
+// worktree the user made.
+var ManagedWorktreeMarkers = []string{"orchestra-baseline", "orchestra-adopted", "orchestra-role"}
+
 // ProjectBase is the directory whose .claude/ holds the project layers. An
 // existing $ORCHESTRA_CONFIG_ROOT wins; otherwise the nearest directory from
 // the cwd up to the git toplevel (inclusive) that holds a project layer file;
-// otherwise the cwd.
+// otherwise the cwd. In a worktree orchestra created or adopted (an
+// integration or package tree) the walk runs in the user's own checkout the
+// worktree belongs to, not in the worktree: the untracked, per-machine
+// .claude/orchestra.local.yaml exists only there.
 func ProjectBase() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	return ProjectBaseAt(cwd)
+}
+
+// ProjectBaseAt is ProjectBase for dir instead of the cwd.
+func ProjectBaseAt(dir string) string {
 	if forced := os.Getenv("ORCHESTRA_CONFIG_ROOT"); forced != "" {
 		if st, err := os.Stat(forced); err == nil && st.IsDir() {
 			if abs, err := filepath.Abs(forced); err == nil {
@@ -50,9 +68,9 @@ func ProjectBase() string {
 			}
 		}
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "."
+	cwd := dir
+	if abs, err := filepath.Abs(dir); err == nil {
+		cwd = abs
 	}
 	top := gitToplevel(cwd)
 	if top == "" {
@@ -60,6 +78,17 @@ func ProjectBase() string {
 	}
 	top = paths.RealPath(top)
 	current := paths.RealPath(cwd)
+	if origin := originCheckout(top); origin != "" {
+		// the same place of the user's checkout (its root when the
+		// worktree's subdirectory does not exist there)
+		mapped := origin
+		if rel, err := filepath.Rel(top, current); err == nil && !strings.HasPrefix(rel, "..") {
+			if p := filepath.Join(origin, rel); isDir(p) {
+				mapped = p
+			}
+		}
+		top, current, cwd = origin, mapped, mapped
+	}
 	for {
 		for _, name := range projectFiles {
 			if isFile(filepath.Join(current, ".claude", name)) {
@@ -78,9 +107,63 @@ func ProjectBase() string {
 	return cwd
 }
 
-func gitToplevel(cwd string) string {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	cmd.Dir = cwd
+// originCheckout is the main working tree a worktree orchestra created or
+// adopted belongs to; "" for the main tree itself, for a linked worktree
+// without orchestra's markers (the user's own, with its own layers) and when
+// the main tree cannot be told (a bare repository).
+func originCheckout(top string) string {
+	gitDir := gitOut(top, "rev-parse", "--absolute-git-dir")
+	common := gitOut(top, "rev-parse", "--git-common-dir")
+	if gitDir == "" || common == "" {
+		return ""
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(top, common)
+	}
+	if paths.RealPath(common) == paths.RealPath(gitDir) {
+		return ""
+	}
+	managed := false
+	for _, m := range ManagedWorktreeMarkers {
+		if _, err := os.Stat(filepath.Join(gitDir, m)); err == nil {
+			managed = true
+			break
+		}
+	}
+	if !managed {
+		return ""
+	}
+	// the first entry of the list is the main working tree
+	main := ""
+	for _, line := range strings.Split(gitOut(top, "worktree", "list", "--porcelain"), "\n") {
+		if strings.HasPrefix(line, "worktree ") {
+			main = paths.RealPath(strings.TrimSpace(strings.TrimPrefix(line, "worktree ")))
+			break
+		}
+	}
+	if main == "" {
+		return ""
+	}
+	if main == top {
+		return ""
+	}
+	if _, err := os.Stat(filepath.Join(main, ".git")); err != nil {
+		return ""
+	}
+	return main
+}
+
+func isDir(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
+}
+
+func gitToplevel(cwd string) string { return gitOut(cwd, "rev-parse", "--show-toplevel") }
+
+// gitOut is the trimmed stdout of a git command in dir, "" on failure.
+func gitOut(dir string, args ...string) string {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
 	cmd.WaitDelay = 10 * time.Second
 	out, err := cmd.Output()
 	if err != nil {

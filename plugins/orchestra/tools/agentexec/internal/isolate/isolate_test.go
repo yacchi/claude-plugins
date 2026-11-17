@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/config"
 	"github.com/yacchi/claude-plugins/plugins/orchestra/tools/agentexec/internal/testutil/testenv"
 )
 
@@ -705,5 +706,19 @@ func TestBaselineFallsBackToTheBranchTip(t *testing.T) {
 	tip, ok := ReadBaseline(path)
 	if !ok || tip != recorded {
 		t.Fatalf("fallback %q vs %q", tip, recorded)
+	}
+}
+
+// config finds orchestra's worktrees by these files (it cannot import
+// isolate), so the two lists must not drift.
+func TestManagedWorktreeMarkersMatchConfig(t *testing.T) {
+	have := map[string]bool{}
+	for _, m := range config.ManagedWorktreeMarkers {
+		have[m] = true
+	}
+	for _, m := range []string{baselineFile, adoptedFile, roleFile} {
+		if !have[m] {
+			t.Errorf("config.ManagedWorktreeMarkers lacks %q", m)
+		}
 	}
 }
