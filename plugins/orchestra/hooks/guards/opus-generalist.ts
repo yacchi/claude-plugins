@@ -7,14 +7,16 @@ import { verdictOf } from '../router/verdict.ts'
 // A general-purpose subagent that would run on the instructor's top tier: one
 // that omits `model` (so it inherits the session's Opus/Fable model) or names
 // Fable. Naming Opus is a deliberate choice and is never denied (SKILL §3).
+// Explore counts too: it inherits the session's model like a generalist, so
+// a search sweep left unpinned runs on the instructor's tier.
 //
 // A NUDGE, NEVER A WALL (about half were read-only investigation, where Opus
 // is occasionally right): at most ONE deny per session, and that deny says
 // how to proceed either way. Escape hatches: the cap;
 // [orchestra:allow-opus(: reason)] in the prompt or description (does not
 // spend the cap); carve-outs for a prompt mentioning `agent-exec`, a named
-// subagent_type other than general-purpose/claude, or a named model other
-// than Fable;
+// subagent_type other than general-purpose/claude/Explore, or a named model
+// other than Fable;
 // ORCHESTRA_OPUS_NUDGE=off or enforcement.opus_generalist: off; fail-open.
 //
 // Scope: the main thread of a session whose verdict (router/verdict.ts) is
@@ -23,13 +25,21 @@ import { verdictOf } from '../router/verdict.ts'
 const denied = new Set<string>()
 const disabled = new Map<string, boolean>()
 
-const reason = (model: string): string => {
-    const how = model === ''
-        ? 'leaves `model` out, so it inherits this session\'s Opus/Fable model'
-        : `names \`model: ${model}\``
+const tierCost = 'the most expensive tier (Fable 5x and Opus 2x Sonnet per token), usually by accident.'
 
-    return `orchestra: this general-purpose subagent ${how}, the most expensive tier `
-        + '(Fable 5x and Opus 2x Sonnet per token), usually by accident. Re-issue the call as: '
+const how = (model: string): string => model === ''
+    ? 'leaves `model` out, so it inherits this session\'s Opus/Fable model'
+    : `names \`model: ${model}\``
+
+const exploreReason = (model: string): string =>
+    `orchestra: this Explore subagent ${how(model)}, ${tierCost} Re-issue the call with `
+    + '`model: "haiku"` to locate files or symbols, or `model: "sonnet"` when it has to read '
+    + 'and understand the code it finds. If this sweep really needs the instructor-class model, '
+    + 'retry the same call with `[orchestra:allow-opus: <reason>]` in the description. '
+    + 'This is denied once per session; the retry is never blocked.'
+
+const reason = (model: string): string =>
+    `orchestra: this general-purpose subagent ${how(model)}, ${tierCost} Re-issue the call as: `
         + '(1) read-only investigation, search, test or build runs -> add '
         + '`model: "sonnet"` (or "haiku" for a mechanical lookup); '
         + '(2) writing or changing code -> do not use a generalist: load the '
@@ -39,7 +49,6 @@ const reason = (model: string): string => {
         + '600 s limit). If this one really needs the instructor-class model, retry the '
         + 'same call with `[orchestra:allow-opus: <reason>]` in the description. '
         + 'This is denied once per session; the retry is never blocked.'
-}
 
 export const checkOpusGeneralist = async (
     io: Io,
@@ -54,7 +63,8 @@ export const checkOpusGeneralist = async (
     const description = field(input, 'description')
     const subagentType = field(input, 'subagent_type').trim().toLowerCase()
     const model = field(input, 'model').trim().toLowerCase()
-    const isGeneric = ['', 'general-purpose', 'claude'].includes(subagentType)
+    const isExplore = subagentType === 'explore'
+    const isGeneric = isExplore || ['', 'general-purpose', 'claude'].includes(subagentType)
     // An omitted model inherits the instructor's (the accident this catches);
     // naming Fable is the top tier. Naming Opus is a deliberate choice -- SKILL §3
     // sanctions it for judgment-heavy review, and from a Fable session it is the cheaper tier.
@@ -80,5 +90,5 @@ export const checkOpusGeneralist = async (
     }
     denied.add(sessionId)
 
-    return reason(model)
+    return isExplore ? exploreReason(model) : reason(model)
 }

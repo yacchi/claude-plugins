@@ -452,8 +452,9 @@ priority:
 # first nudge).
 #
 # opus_generalist (default "nudge", or "off"): the first time per session a
-# general-purpose subagent would run on the instructor's own Opus/Fable model
-# -- named `model: opus`, or `model` omitted, which inherits it -- a
+# general-purpose or Explore subagent would run on the instructor's own
+# Opus/Fable model -- named `model: fable`, or `model` omitted, which inherits
+# it (a named `model: opus` is deliberate and passes) -- a
 # PreToolUse hook denies it once and says how to proceed: `model: "sonnet"`
 # for read-only work, orchestra:run for anything that writes code. The retry
 # is never blocked. Escapes: `[orchestra:allow-opus: <reason>]` in the
