@@ -47,7 +47,8 @@ describe('opus-generalist', () => {
             { ...generic, model: 'haiku' },
             { ...generic, model: 'opus' },
             { model: 'claude-opus-5-5' },
-            { subagent_type: 'Explore' },
+            { subagent_type: 'Explore', model: 'haiku' },
+            { subagent_type: 'Plan' },
             { subagent_type: 'orchestra:orchestra-deep' },
             { ...generic, model: 'opus', prompt: '[orchestra:allow-opus: needs the deep model] audit' },
             { ...generic, prompt: 'run agent-exec dispatch --class light ...' },
@@ -58,6 +59,17 @@ describe('opus-generalist', () => {
         expect((await spawn($, generic, 'ag_1')).deny, 'a subagent\'s own spawns').toBeUndefined()
         expect((await spawn($, generic)).deny, 'the one deny is still there').toBeDefined()
     })
+
+    for (const args of [{ subagent_type: 'Explore' }, { subagent_type: 'explore', model: 'fable' }]) {
+        test(`Explore inherits the session model too: ${JSON.stringify(args)}`, async ($, on) => {
+            const { sessionId } = host(on)
+            await begin($, sessionId, 'claude-opus-5')
+            const first = await spawn($, args)
+            expect(first.deny).toContain('this Explore subagent')
+            expect(first.deny).toContain('`model: "haiku"`')
+            expect((await spawn($, args)).deny, 'the retry').toBeUndefined()
+        })
+    }
 
     test('only instructor sessions', async ($, on) => {
         const { sessionId } = host(on)
